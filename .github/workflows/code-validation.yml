@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: EUPL-1.2
+name: Code validation
+'on':
+  push:
+    branches: [main, migrate/recover-code]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  composition:
+    uses: ./.github/workflows/validate-composition.yml
+    with:
+      target: project-governance
+      target_ref: ${{ github.sha }}
+      tooling_ref: ${{ github.sha }}

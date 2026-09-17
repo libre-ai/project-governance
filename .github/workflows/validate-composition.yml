@@ -1,0 +1,181 @@
+# SPDX-FileCopyrightText: 2026 Libre AI contributors
+# SPDX-License-Identifier: EUPL-1.2
+name: Validate source composition
+
+'on':
+  workflow_call:
+    inputs:
+      target:
+        description: Exact destination repository name
+        required: true
+        type: string
+      target_ref:
+        description: Full target commit ID to validate
+        required: true
+        type: string
+      tooling_ref:
+        description: Full governance tooling commit ID
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      INPUT_TARGET: ${{ inputs.target }}
+      INPUT_TARGET_REF: ${{ inputs.target_ref }}
+      INPUT_TOOLING_REF: ${{ inputs.tooling_ref }}
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Validate exact target and revisions before checkout
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          targets = {
+              'project-governance', 'schemas-and-contracts', 'ai-work-supervision',
+              'application-development-toolkit', 'organization-data-lifecycle',
+              'ai-model-policy', 'ai-practice-workbench', 'learning-session-facilitation',
+              'personal-knowledge-notebook', 'information-feed-filter',
+              'travel-itinerary-planner', 'public-vote-comparison', 'collaborative-data-sync',
+              'execution-continuity-evaluator', 'execution-sandbox',
+              'capability-authorization', 'database-policy-inspector',
+              'artifact-verification', 'project-website',
+          }
+          if os.environ['INPUT_TARGET'] not in targets:
+              raise SystemExit('Unknown composition target')
+          for key in ('INPUT_TARGET_REF', 'INPUT_TOOLING_REF'):
+              if re.fullmatch(r'[0-9a-f]{40}', os.environ[key]) is None:
+                  raise SystemExit('A full lowercase commit ID is required')
+          PY
+
+      - name: Checkout immutable governance tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: libre-ai/project-governance
+          ref: ${{ inputs.tooling_ref }}
+          path: tooling
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Test the composition tooling
+        shell: bash
+        run: python3 -B -m unittest discover -s tooling/.github/composition -p 'test_*.py'
+
+      - name: Prepare all source checkouts before installation
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/run-composition.py \
+            --target "$INPUT_TARGET" --revision "$INPUT_TARGET_REF" \
+            --root "$GITHUB_WORKSPACE/composition" --phase prepare
+
+      - name: Install verified Bun and Node toolchains
+        shell: bash
+        run: |
+          bash tooling/.github/composition/install-toolchains.sh \
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/bun.json" \
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json"
+
+      - name: Install Rust compiler and required components
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: 1.97.0
+          components: rustfmt, clippy, llvm-tools-preview
+          targets: wasm32-unknown-unknown
+
+      - name: Install artifact coverage tool
+        if: inputs.target == 'artifact-verification'
+        shell: bash
+        run: cargo install cargo-llvm-cov --version 0.8.7 --locked
+
+      - name: Install frozen composition, build UI and run target root checks
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/run-composition.py \
+            --target "$INPUT_TARGET" --revision "$INPUT_TARGET_REF" \
+            --root "$GITHUB_WORKSPACE/composition" --phase check
+
+      - name: Preload locked native dependencies
+        if: inputs.target == 'ai-model-policy' || inputs.target == 'personal-knowledge-notebook'
+        shell: bash
+        run: |
+          cd "$GITHUB_WORKSPACE/composition/$INPUT_TARGET"
+          cargo fetch --locked
+
+      - name: Run native product tests
+        if: inputs.target == 'ai-model-policy' || inputs.target == 'personal-knowledge-notebook'
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/check-products.py \
+            --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate native \
+            --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
+
+      - name: Build and verify current product WASM
+        if: inputs.target == 'ai-model-policy' || inputs.target == 'personal-knowledge-notebook'
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/check-products.py \
+            --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate wasm \
+            --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
+
+      - name: Install browsers for the selected product
+        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","public-vote-comparison","project-website"]'), inputs.target)
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import subprocess
+          children = {
+              'ai-work-supervision': 'packages/auth-web',
+              'ai-practice-workbench': 'apps/practices',
+              'personal-knowledge-notebook': 'apps/notebook',
+              'public-vote-comparison': 'apps/boussole',
+              'project-website': '',
+          }
+          target = os.environ['INPUT_TARGET']
+          cwd = Path(os.environ['GITHUB_WORKSPACE']) / 'composition' / target / children[target]
+          subprocess.run(
+              ['bun', 'x', '--no-install', 'playwright', 'install', '--with-deps',
+               'chromium', 'firefox', 'webkit'],
+              cwd=cwd, check=True, timeout=900,
+          )
+          PY
+
+      - name: Run selected browser suite sequentially
+        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","public-vote-comparison","project-website"]'), inputs.target)
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/check-products.py \
+            --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate e2e \
+            --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
+
+      - name: Install toolkit browsers
+        if: inputs.target == 'application-development-toolkit'
+        working-directory: composition/application-development-toolkit/packages/ui
+        shell: bash
+        run: bun x --no-install playwright install --with-deps chromium firefox webkit
+
+      - name: Build and exercise toolkit applications
+        if: inputs.target == 'application-development-toolkit'
+        working-directory: composition/application-development-toolkit
+        shell: bash
+        run: |
+          bun run build
+          bun run check:e2e
+
+      - name: Record the validation boundary
+        if: always()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          This job validates the selected target and its pinned local source composition.
+          Root, native, WASM and browser steps report their own outcomes; a skipped step is not a passed gate.
+          Existing macOS Notebook evidence does not qualify this Linux execution.
+          No Harness-wide coverage, deployment or package publication is claimed.
+          EOF
