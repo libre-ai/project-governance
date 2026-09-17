@@ -25,8 +25,17 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         installs = [step["cwd"] for step in plan["install"]]
         self.assertLess(installs.index("project-governance"), installs.index("schemas-and-contracts"))
-        self.assertLess(installs.index("ai-work-supervision"), installs.index("application-development-toolkit"))
-        self.assertTrue(all(step["argv"][-2:] == ["--frozen-lockfile", "--ignore-scripts"] for step in plan["install"]))
+        self.assertLess(installs.index("application-development-toolkit"), installs.index("ai-work-supervision"))
+        self.assertTrue(all(step["argv"][-2:] == ["--frozen-lockfile", "--ignore-scripts"] for step in plan["install"] if step["argv"][1] == "install"))
+
+    def test_ui_browser_exports_are_built_before_consumer_installation(self):
+        plan = module.prepare(self.manifest, "ai-practice-workbench")
+        steps = plan["install"]
+        ui = next(i for i, step in enumerate(steps) if step["cwd"] == "application-development-toolkit")
+        self.assertEqual(steps[ui + 1], {"cwd": "application-development-toolkit", "argv": ["bun", "run", "--cwd", "packages/ui", "build"]})
+        for consumer in ("ai-work-supervision", "ai-practice-workbench", "ai-model-policy"):
+            self.assertGreater(next(i for i, step in enumerate(steps) if step["cwd"] == consumer), ui + 1)
+        self.assertEqual(plan["setup"], [])
 
     def test_target_revision_changes_only_target(self):
         before = module.prepare(self.manifest, "execution-sandbox")

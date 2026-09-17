@@ -333,8 +333,8 @@
   "installOrder": [
     "project-governance",
     "schemas-and-contracts",
-    "ai-work-supervision",
     "application-development-toolkit",
+    "ai-work-supervision",
     "organization-data-lifecycle",
     "ai-model-policy",
     "ai-practice-workbench",

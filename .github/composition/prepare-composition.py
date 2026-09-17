@@ -7,8 +7,8 @@ import re
 import sys
 
 ORDER = (
-    "project-governance", "schemas-and-contracts", "ai-work-supervision",
-    "application-development-toolkit", "organization-data-lifecycle", "ai-model-policy",
+    "project-governance", "schemas-and-contracts", "application-development-toolkit",
+    "ai-work-supervision", "organization-data-lifecycle", "ai-model-policy",
     "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-notebook",
     "information-feed-filter", "travel-itinerary-planner", "public-vote-comparison",
     "collaborative-data-sync", "execution-continuity-evaluator", "execution-sandbox",
@@ -116,13 +116,16 @@ def prepare(manifest, target, target_revision=None):
         row = manifest["repositories"][name]
         ref = target_revision if name == target and target_revision is not None else row["ref"]
         checkouts.append({"repository": row["repository"], "ref": ref, "path": name})
-    install = [
-        {"cwd": name, "argv": ["bun", "install", "--frozen-lockfile", "--ignore-scripts"]}
-        for name in names if name != "database-policy-inspector"
-    ]
+    install = []
+    for name in names:
+        if name == "database-policy-inspector":
+            continue
+        install.append({"cwd": name, "argv": ["bun", "install", "--frozen-lockfile", "--ignore-scripts"]})
+        if name == "application-development-toolkit":
+            # File dependencies snapshot the package at install time. Browser
+            # exports must exist before consumers copy the UI package.
+            install.append({"cwd": name, "argv": ["bun", "run", "--cwd", "packages/ui", "build"]})
     setup = []
-    if "application-development-toolkit" in selected:
-        setup.append({"cwd": "application-development-toolkit", "argv": ["bun", "run", "--cwd", "packages/ui", "build"]})
     return {
         "target": target,
         "checkouts": checkouts,

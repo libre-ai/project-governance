@@ -93,6 +93,10 @@ jobs:
         shell: bash
         run: cargo install cargo-llvm-cov --version 0.8.7 --locked
 
+      - name: Install licensing checker
+        shell: bash
+        run: pipx install reuse==6.2.0
+
       - name: Install frozen composition, build UI and run target root checks
         shell: bash
         run: |

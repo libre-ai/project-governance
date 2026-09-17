@@ -157,7 +157,16 @@ def main() -> int:
             "NOTEBOOK_QUALIFICATION_NODE": tools["node"],
         }
         for step in plan["steps"]:
-            run_step(step, root, environment)
+            child_environment = environment.copy()
+            qualified_build = step["gate"] == "wasm" or (
+                step["target"] == "personal-knowledge-notebook" and step["gate"] == "e2e"
+            )
+            # The Rust setup action exports this default. Qualification builds
+            # derive controls from repository inputs; all unexpected controls
+            # remain visible to their unchanged rejection checks.
+            if qualified_build and child_environment.get("CARGO_INCREMENTAL") == "0":
+                child_environment.pop("CARGO_INCREMENTAL")
+            run_step(step, root, child_environment)
         print(json.dumps({**plan, "executed": True, "exitCode": 0}, indent=2))
         return 0
     except (CheckFailure, OSError) as error:

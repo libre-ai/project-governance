@@ -82,6 +82,29 @@ class ProductChecks(unittest.TestCase):
     def test_unsupported_gate_refuses_empty_success(self):
         self.assertNotEqual(self.call('--target','travel-itinerary-planner','--gate','native','--plan').returncode,0)
 
+    def test_action_incremental_default_is_removed_only_for_qualified_builds(self):
+        self.directories("ai-model-policy")
+        self.directories("personal-knowledge-notebook","apps/notebook")
+        self.tool.write_text("#!"+sys.executable+"\nimport json,os\nfrom pathlib import Path\nwith Path(os.environ[\"TEST_LOG\"]).open(\"a\") as f: f.write(json.dumps({k:os.environ[k] for k in [\"CARGO_INCREMENTAL\",\"RUSTFLAGS\"] if k in os.environ})+\"\\n\")\n")
+        self.env["CARGO_INCREMENTAL"]="0"
+        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-notebook","wasm"),("personal-knowledge-notebook","e2e")]:
+            result=self.call("--target",target,"--gate",gate)
+            self.assertEqual(result.returncode,0,result.stderr)
+        values=[json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(values,[{}, {}, {}, {}])
+        self.assertEqual(self.env["CARGO_INCREMENTAL"],"0")
+
+    def test_unexpected_controls_and_nonbuild_steps_remain_visible(self):
+        self.directories("ai-model-policy")
+        self.tool.write_text("#!"+sys.executable+"\nimport json,os\nfrom pathlib import Path\nwith Path(os.environ[\"TEST_LOG\"]).open(\"a\") as f: f.write(json.dumps({k:os.environ[k] for k in [\"CARGO_INCREMENTAL\",\"RUSTFLAGS\"] if k in os.environ})+\"\\n\")\n")
+        self.env.update({"CARGO_INCREMENTAL":"1","RUSTFLAGS":"unexpected-control"})
+        self.assertEqual(self.call("--target","ai-model-policy","--gate","wasm").returncode,0)
+        self.env["CARGO_INCREMENTAL"]="0"
+        self.assertEqual(self.call("--target","ai-model-policy","--gate","native").returncode,0)
+        values=[json.loads(line) for line in self.log.read_text().splitlines()]
+        self.assertEqual(values[:2],[{"CARGO_INCREMENTAL":"1","RUSTFLAGS":"unexpected-control"}]*2)
+        self.assertEqual(values[2],{"CARGO_INCREMENTAL":"0","RUSTFLAGS":"unexpected-control"})
+
     def test_timeout_stops_child(self):
         spec=importlib.util.spec_from_file_location('checks',SCRIPT)
         module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
