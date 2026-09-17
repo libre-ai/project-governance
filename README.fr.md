@@ -19,3 +19,5 @@ Les scripts réutilisables sont dans `tools/quality/`. Ils détectent des probl�
 Le corpus de décisions historiques n'est pas intégralement repris. Les sources importées sont identifiées dans [le relevé de migration](docs/migration/source.json).
 
 [English](README.md)
+
+[Installer et vérifier une composition locale de dépôts](docs/LOCAL-COMPOSITION.md).

@@ -19,3 +19,5 @@ Reusable scripts live in `tools/quality/`. Their checks cover defined patterns; 
 The historical decision corpus has not been imported in full. Imported sources are recorded in the [migration record](docs/migration/source.json).
 
 [Français](README.fr.md)
+
+[Install and verify a local repository composition](docs/LOCAL-COMPOSITION.md).
