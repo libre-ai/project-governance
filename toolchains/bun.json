@@ -36,8 +36,8 @@
   "sharedCiReady": true,
   "durableRelease": {
     "tag": "toolchain-bun-1.4.0-canary.1-57f349f63",
-    "url": "https://github.com/libre-ai/governance/releases/tag/toolchain-bun-1.4.0-canary.1-57f349f63",
-    "linuxX64Asset": "https://github.com/libre-ai/governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip",
+    "url": "https://github.com/libre-ai/project-governance/releases/tag/toolchain-bun-1.4.0-canary.1-57f349f63",
+    "linuxX64Asset": "https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip",
     "status": "qualified-bootstrap-ci"
   },
   "sourceArchive": {

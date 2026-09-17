@@ -42,7 +42,7 @@ def validate_policies(bun, notebook):
         bu = bun['durableRelease']['linuxX64Asset']
         if bun['revision'] != '1.4.0-canary.1+57f349f63' or node['version'] != '26.5.0':
             raise ValueError('Unexpected toolchain version')
-        if bu != 'https://github.com/libre-ai/governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip':
+        if bu != 'https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip':
             raise ValueError('Unexpected Bun archive URL')
         if n['archiveUrl'] != 'https://nodejs.org/dist/v26.5.0/node-v26.5.0-linux-x64.tar.xz':
             raise ValueError('Unexpected Node archive URL')

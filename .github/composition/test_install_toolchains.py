@@ -19,6 +19,16 @@ class InstallerTests(unittest.TestCase):
    self.assertEqual((root/'node').read_bytes(),b'ok')
    with zipfile.ZipFile(root/'bad.zip','w') as z:z.writestr('../escape',b'x');z.writestr('bun-linux-x64/bun',b'ok')
    with self.assertRaises(ValueError):self.ns['extract_binary'](root/'bad.zip','bun-linux-x64/bun',root/'bun',True)
+ def test_only_rehosted_bun_url_is_accepted(self):
+  root=SCRIPT.parents[2]
+  bun=json.loads((root/'toolchains/bun.json').read_text())
+  node=json.loads((root/'toolchains/notebook-qualification.json').read_text())
+  target='https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip'
+  bun['durableRelease']['linuxX64Asset']=target
+  self.assertEqual(self.ns['validate_policies'](bun,node)[0],target)
+  for bad in [target.replace('/project-governance/','/governance/'),target.replace('github.com/','github.com.invalid/')]:
+   bun['durableRelease']['linuxX64Asset']=bad
+   with self.assertRaises(ValueError):self.ns['validate_policies'](bun,node)
  def test_wrong_policy(self):
   with self.assertRaises(ValueError):self.ns['validate_policies']({}, {})
  def test_activation_waits_for_all_digests_and_versions(self):
@@ -29,7 +39,7 @@ class InstallerTests(unittest.TestCase):
     entry=tarfile.TarInfo('node-v26.5.0-linux-x64/bin/node');entry.size=4;out.addfile(entry,io.BytesIO(b'node'))
    digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
    bp=root/'bun.json';np=root/'node.json';gp=root/'path';ge=root/'env';gp.write_text('');ge.write_text('')
-   bun={'revision':'1.4.0-canary.1+57f349f63','assets':{'linux-x64':{'sha256':digest(z)}},'durableRelease':{'linuxX64Asset':'https://github.com/libre-ai/governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip'}}
+   bun={'revision':'1.4.0-canary.1+57f349f63','assets':{'linux-x64':{'sha256':digest(z)}},'durableRelease':{'linuxX64Asset':'https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip'}}
    node={'node':{'version':'26.5.0','platforms':{'linux-x64':{'archiveUrl':'https://nodejs.org/dist/v26.5.0/node-v26.5.0-linux-x64.tar.xz','archiveSha256':digest(t),'executableSha256':'0'*64,'executableRelativePath':'bin/node'}}}}
    bp.write_text(json.dumps(bun));np.write_text(json.dumps(node))
    def download(args,**kwargs):shutil.copyfile(z if args[-1].endswith('.zip') else t,args[args.index('--output')+1])
