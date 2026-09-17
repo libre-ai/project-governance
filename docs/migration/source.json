@@ -1,0 +1,158 @@
+{
+  "source": "governance",
+  "revision": "496cd814930d938198d9d487a01e4e9cb80f549d",
+  "files": [
+    {
+      "path": "DATA-PROVENANCE.md",
+      "sha256": "9c938c6662d18c493502050efe0e7233106db795b774205394f222b0b215decc"
+    },
+    {
+      "path": "LICENSE",
+      "sha256": "7397ad251e3fe6d61e4925f275a7e860b81c46aab23390d4e5f25f2e3e42b904"
+    },
+    {
+      "path": "LICENSES/Apache-2.0.txt",
+      "sha256": "074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff"
+    },
+    {
+      "path": "LICENSES/CC-BY-4.0.txt",
+      "sha256": "d557539df68e771cc1eedcc91d13f70fca930e508d11eedcafa4b15db49e3744"
+    },
+    {
+      "path": "LICENSES/EUPL-1.2.txt",
+      "sha256": "57fb42fbcd0b037ce528ed8f72f1ec095d67bc6825ecf1448ff39be1fe68a4b4"
+    },
+    {
+      "path": "LICENSES/LicenseRef-ThirdParty-Notices.txt",
+      "sha256": "d8b3ae7301ae7459b206232a201a1a431ccf6fe3b813a7b203fe5d5d95e33026"
+    },
+    {
+      "path": "REUSE.toml",
+      "sha256": "561cc1cdd1276cb666e91e481fcdc65cd50e688a03557e45e6640719faca68dd"
+    },
+    {
+      "path": "biome.json",
+      "sha256": "a374e5de702edcbd18cb11a122767c040213da007610f948c0780edd3e2238e6"
+    },
+    {
+      "path": "bun.lock",
+      "sha256": "2cd4ac7669fc3388ab38669a1f9b08ea60dc4c42bb994f59739e16e285aaf9dd"
+    },
+    {
+      "path": "toolchains/bun.json",
+      "sha256": "41a414363d24acd0ad542801dcbc349d0770374090f9078b8b259632aa1fb0d7"
+    },
+    {
+      "path": "toolchains/notebook-qualification.json",
+      "sha256": "38a17615f5c8a0baf5e0a9fd747ff165a5e2e31f34a73f568a859f64143fde40"
+    },
+    {
+      "path": "toolchains/notebook-resource-classes.json",
+      "sha256": "50b6986e97dc7cc541448ce32951f899bbca299c239c0680b7cc0d0c1bed6d55"
+    },
+    {
+      "path": "toolchains/notices/bun/1.4.0-canary.1+57f349f63/BUN-LICENSE.md",
+      "sha256": "38892ba0953585b366646ed0ffd9c22ca072e08a211b167a4768cf16c1a4dbce"
+    },
+    {
+      "path": "toolchains/notices/bun/1.4.0-canary.1+57f349f63/NOTICE.md",
+      "sha256": "f889620085fe89b3cded1c08dc07e0374897b3392041339a96e9cbed7f52e23e"
+    },
+    {
+      "path": "toolchains/notices/bun/1.4.0-canary.1+57f349f63/SHA256SUMS",
+      "sha256": "d27a7b9a86b99d2933114035623c3992e7836518cb44640c1c57376d3933d3b2"
+    },
+    {
+      "path": "tools/quality/bun-version.test.ts",
+      "sha256": "9444d5090dc8c09b6af69f5944d8582b2b8b2952ebc07cf16970ab1f092e15f7"
+    },
+    {
+      "path": "tools/quality/bun-version.ts",
+      "sha256": "7064e2d3f2b94df7fb4cfbc03484a8fc6b710770ea960dd68ff77b84d13d1942"
+    },
+    {
+      "path": "tools/quality/check-bun-manifests.ts",
+      "sha256": "116862c2fe4415e7aa65c4d02ea1b88f95fa90c24c9b0ce5f72debd86f22249b"
+    },
+    {
+      "path": "tools/quality/check-bun-minimum.ts",
+      "sha256": "94b17b68af517ea31950f6b739540cb4624029f23efa56b81b6b4fef68b30e07"
+    },
+    {
+      "path": "tools/quality/check-declared-licenses.test.ts",
+      "sha256": "b039263a615bbe963239dbde5bd852bc34d2154d857aff0f14152c42fc5c060f"
+    },
+    {
+      "path": "tools/quality/check-declared-licenses.ts",
+      "sha256": "ab34a56064d869481d48e30c56bb20985873753c10c300a3ee78615a60b1bc59"
+    },
+    {
+      "path": "tools/quality/check-js-licenses.ts",
+      "sha256": "83b4482adea67521f67e443b5d87fb3f1d807f1585de8d9b58d094bf1aad8bce"
+    },
+    {
+      "path": "tools/quality/check-no-transmission.test.ts",
+      "sha256": "809436daf1d6d6255bcb4ae62258778c3f42c466e3d9b8ceeb15d26c116d4706"
+    },
+    {
+      "path": "tools/quality/check-no-transmission.ts",
+      "sha256": "3ade462e24c82f01768ac3db010885b47e02e3b11a6af61eca4537a93f789e7f"
+    },
+    {
+      "path": "tools/quality/check-personal-data-boundary.test.ts",
+      "sha256": "9ab3e392d307fe36f1ce1b89a7d905f8b5fcc5ff28e13cfbf7a4d0e316fa0d4d"
+    },
+    {
+      "path": "tools/quality/check-personal-data-boundary.ts",
+      "sha256": "6dfe5842986d7b88db586932e51a1c52ccef472a7bc82917586c16634214cd4b"
+    },
+    {
+      "path": "tools/quality/check-secret-scan.test.ts",
+      "sha256": "99cf8c41dfd20f3907965f4f75f03a7e9518d6a3956e677687430da38e05524a"
+    },
+    {
+      "path": "tools/quality/check-secret-scan.ts",
+      "sha256": "c92e22556e63281f8df8b61014be365c1433744a6fa04f32a89bd3c5ce3107e9"
+    },
+    {
+      "path": "tools/quality/check-toolchain.ts",
+      "sha256": "ec9c7995d808ce675cf253d68e17a662a26cdca683ae7b091de4f5ef0b604550"
+    },
+    {
+      "path": "tools/quality/gate-report.test.ts",
+      "sha256": "4c16d1b70ab84ce1fc10a9b79b408de9940aa76bb21aa94b992d3d542254dd43"
+    },
+    {
+      "path": "tools/quality/gate-report.ts",
+      "sha256": "787bf8cf8a774e68185e7769aedd160ce5068423ba6919e30c12fe3da94de8fe"
+    },
+    {
+      "path": "tools/quality/public-source-scanner.test.ts",
+      "sha256": "d13824685af4123330df57fdfc10eed14e61644bf2f7a164d6c9a6da56931786"
+    },
+    {
+      "path": "tools/quality/public-source-scanner.ts",
+      "sha256": "f15862aa8e92df5fcd76d859b7a2db14fb2adc397237956843b91d8d283ffd9e"
+    },
+    {
+      "path": "tools/quality/verify-bun-snapshot.ts",
+      "sha256": "976ff386423990551f0208331ecf3a43c8396327cdf8458c9b0eb0e53e6f26e8"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "c275fcf21cc1841d683d2dadc68fa1aab14c24e57baea4e1ef03f46cee7e4d66"
+    },
+    {
+      "path": "docs/parity/draft-specs/DRAFT-SPEC-memory.md",
+      "sha256": "7b8901b1d978e7346808b12c7ee8a78794595907df098a51f03ac8c1a3726396"
+    },
+    {
+      "path": "tools/quality/check-specification-lock.ts",
+      "sha256": "fbaab0e0e720301a9a3e833f1410910dadad2f3f7534518ccd049d1c17a7b330"
+    },
+    {
+      "path": "docs/specifications/IDENTITY-AUTHORIZATION.md",
+      "sha256": "0c430b49969d06ab2f05d68e8e0da80f62434540f57fda394dce0e06b8762adf"
+    }
+  ]
+}

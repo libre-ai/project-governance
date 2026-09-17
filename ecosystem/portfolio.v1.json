@@ -1,0 +1,486 @@
+{
+  "schemaVersion": "libre-ai.portfolio.v1",
+  "sourcePublicationSha256": "8cd0963970e222a655271b2222354ed28468a98dcda52220595b5d8677a53c65",
+  "items": [
+    {
+      "repository": "ai-work-supervision",
+      "repositoryId": "1372583025",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Work Supervision",
+        "fr": "Libre AI Work Supervision"
+      },
+      "role": {
+        "en": "Keep track of work entrusted to AI agents without losing sight of what you asked for, what is blocked and what has actually been completed. This proposed product is for people coordinating work with agents who need a clear place to review progress and make decisions.",
+        "fr": "Suivre le travail confié à des agents IA en gardant une vue claire de la demande, des blocages et des résultats réellement obtenus. Ce produit vise les personnes qui coordonnent ce travail et souhaitent pouvoir examiner l’avancement avant de prendre une décision."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "2e5e97b07ce21d06ec0ba16cf7e6988014b97ba337b3660210541e65bfca2f5c"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "ea3dd9c3f3d0cf637f8b1187e9f62c614db8cdc869425048e48203043184173e"
+        }
+      }
+    },
+    {
+      "repository": "ai-model-policy",
+      "repositoryId": "1372583075",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Model Policy",
+        "fr": "Libre AI Model Policy"
+      },
+      "role": {
+        "en": "Understand whether a proposed use of an AI model fits your organization's rules, and why. This product is intended for people choosing models or reviewing their use who need an explained decision rather than an unexplained yes or no.",
+        "fr": "Comprendre si un usage prévu d’un modèle d’IA respecte les règles de votre organisation, et pourquoi. Ce produit vise les personnes qui choisissent des modèles ou examinent leur utilisation et ont besoin d’une décision expliquée plutôt que d’un simple oui ou non."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "8350c49b22926fc8ad71e9d45e48fb98d24a7010c24d46eaae41703c55ebac36"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "0081e005000b761b347fef846ce3215bcd999c402353fadf219a4de3a1fe4137"
+        }
+      }
+    },
+    {
+      "repository": "ai-practice-workbench",
+      "repositoryId": "1372583118",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Practice Workbench",
+        "fr": "Libre AI Practice Workbench"
+      },
+      "role": {
+        "en": "Learn through practice with AI while understanding the sources you use and the work you have done yourself. This proposed product is for learners who want a clear exercise, room to try things and a way to reflect on what they learned.",
+        "fr": "Apprendre en pratiquant avec l’IA, tout en comprenant les sources utilisées et le travail réalisé par soi-même. Ce produit vise les personnes qui souhaitent un exercice clair, de la place pour essayer et un moyen de réfléchir à leurs acquis."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "93be35f993e2c0487786c50db8f5f3fe14bc61e9deb6df8532425a77a685c7f4"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "fd8f2acd5c8e01c108e53b08caefd9cd1281317d56800f3755c0a038c8924a18"
+        }
+      }
+    },
+    {
+      "repository": "learning-session-facilitation",
+      "repositoryId": "1372583150",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Learning Session Facilitation",
+        "fr": "Libre AI Learning Session Facilitation"
+      },
+      "role": {
+        "en": "Prepare and follow a learning session with clear source material, participant roles and responsibilities. This proposed product is for trainers and facilitators who want to organize an activity and keep track of how the session unfolds.",
+        "fr": "Préparer et suivre une session d’apprentissage avec des sources, des rôles et des responsabilités clairs. Ce produit vise les formateurs et animateurs d’ateliers qui souhaitent organiser une activité et suivre son déroulement."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "8505e53de1c3ed9f22e648d2e7838aa719d2d5b90453fc035172b4802d62ee2b"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "304218fa61d4c9e7e8425cd3f16d0718391c90d9643803b58ada4aaf6b5a4e7e"
+        }
+      }
+    },
+    {
+      "repository": "personal-knowledge-notebook",
+      "repositoryId": "1372583201",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Personal Knowledge Notebook",
+        "fr": "Libre AI Personal Knowledge Notebook"
+      },
+      "role": {
+        "en": "Capture your notes, organize them and find useful information again while choosing what you share. This proposed product is for people building a personal collection of knowledge who want deliberate control over their notes and exports.",
+        "fr": "Saisir vos notes, les organiser et retrouver une information utile, tout en choisissant ce que vous partagez. Ce produit vise les personnes qui veulent organiser leurs connaissances et garder la maîtrise de leurs notes et exports."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "9b1c5b76613204f79c403623047680d4f62b70d5f3554f20816ab0c9f055cdae"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "276b6b88c92aef50e2774ce74f937984328dfcfd94c1b6d10e54a9993a87b044"
+        }
+      }
+    },
+    {
+      "repository": "information-feed-filter",
+      "repositoryId": "1372583247",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Information Feed Filter",
+        "fr": "Libre AI Information Feed Filter"
+      },
+      "role": {
+        "en": "Turn information subscriptions into a selection you can inspect and understand. This proposed product is for people following several sources who want to decide what deserves their attention without relying on unexplained recommendations.",
+        "fr": "Transformer vos abonnements à des sources d’information en une sélection que vous pouvez examiner et comprendre. Ce produit vise les personnes suivant plusieurs sources qui souhaitent choisir leurs lectures, sans recommandations inexpliquées."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "630e6428a1b865523776bf127980e2a9707b4dd5f91faf9167d8e6539e77b7b9"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "08546fbcd7810e7d8b3e5fe5be3e3efebffa9ea4aa6fab44469273d908a8cad1"
+        }
+      }
+    },
+    {
+      "repository": "travel-itinerary-planner",
+      "repositoryId": "1372583293",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Travel Itinerary Planner",
+        "fr": "Libre AI Travel Itinerary Planner"
+      },
+      "role": {
+        "en": "Prepare a trip using destination information you can trace to its source. This proposed product is for travelers who want to see which activities could fit together and what still needs checking before relying on a plan.",
+        "fr": "Préparer un voyage à partir d’informations dont vous pouvez retrouver la source. Ce produit vise les voyageurs qui veulent organiser leurs activités et savoir ce qui reste à vérifier dans leur programme."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "21edbf499d86cdef6b46f64484116d287b0a83774618f125afbdb145749412fd"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "4f53ff785680ec374d0e322279450bb73bc435d21ed3bb68cdddcad7ca09d0dc"
+        }
+      }
+    },
+    {
+      "repository": "public-vote-comparison",
+      "repositoryId": "1372583343",
+      "group": "products",
+      "name": {
+        "en": "Libre AI Public Vote Comparison",
+        "fr": "Libre AI Public Vote Comparison"
+      },
+      "role": {
+        "en": "Compare positions you choose to state with sourced public voting records. This proposed product is for people examining public decisions who want to understand where their stated position agrees or differs.",
+        "fr": "Comparer les positions que vous choisissez d’exprimer à des votes publics sourcés. Ce produit vise les personnes qui souhaitent comparer leur position à des décisions publiques précises, avec leurs sources."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "eef655b763bba2669153dbcda852000b201ca830dca1a7e2cf53860dacb071f9"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "46cff5d04dd2393723212bcec9f067781a077be49cfe45ef5ec452efd943cfc4"
+        }
+      }
+    },
+    {
+      "repository": "application-development-toolkit",
+      "repositoryId": "1372583383",
+      "group": "components",
+      "name": {
+        "en": "Build a Libre AI application",
+        "fr": "Construire une application Libre AI"
+      },
+      "role": {
+        "en": "Shared interface components, web adapters and testing tools so applications can reuse these foundations.",
+        "fr": "Des composants d'interface, des adaptateurs web et des outils de test partagés pour développer une application sans réécrire ces fondations."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "731d35a349fd790f5a837b48d6c16fd06340feadc8183173137a20eb758c0bd4"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "52f124282bb36e0cacf06e233809098a9aaf068f43da05679a885c2da30756b0"
+        }
+      }
+    },
+    {
+      "repository": "schemas-and-contracts",
+      "repositoryId": "1372583436",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Schemas And Contracts",
+        "fr": "Libre AI Schemas And Contracts"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "d39bea0fe18579e923ad3fa9842bc045f6a07a726a29f9460f6cb5ecf44bec6c"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "dc68ceeb74ceb5376a6637ff333eebd9b9717d97cfe7959ac6d7fa178641c3a1"
+        }
+      }
+    },
+    {
+      "repository": "collaborative-data-sync",
+      "repositoryId": "1372583486",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Collaborative Data Sync",
+        "fr": "Libre AI Collaborative Data Sync"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "61e211ece56c1ee01ef01eb2cc704b45ad419b780ab95da7af2f09274fc86043"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "0deeb165b7246249d337b96b27c534a9af89d7e72b3c85a5eacec0ff75ff0fe2"
+        }
+      }
+    },
+    {
+      "repository": "execution-continuity-evaluator",
+      "repositoryId": "1372583525",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Execution Continuity Evaluator",
+        "fr": "Libre AI Execution Continuity Evaluator"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "471a96578d6bfa379fd2876ecf2dd877be3f86ce726ce572c762ccfec23f7389"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "7c3b7c4e522e9a35b16f04355f2687cefcfef5fce4fb18618fde55aa3f2d5d40"
+        }
+      }
+    },
+    {
+      "repository": "execution-sandbox",
+      "repositoryId": "1372583572",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Execution Sandbox",
+        "fr": "Libre AI Execution Sandbox"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "9eb18589e5f16aecddbd7cee0fd9514bb709c5bc44d1bc3c15d57598c6584529"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "9b7ed9d302dcadd5cae0f2c14483c555d9cf5481e091d2b21c05985f695ea956"
+        }
+      }
+    },
+    {
+      "repository": "capability-authorization",
+      "repositoryId": "1372583620",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Capability Authorization",
+        "fr": "Libre AI Capability Authorization"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "955b154f694ee167694c16c22464d72cb828dd75dbbd984bf37f22ad5fb51c22"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "e8ff3db7ebf90fc6fde22064d5faa49baf762563cf69c62be5274b116bf11592"
+        }
+      }
+    },
+    {
+      "repository": "organization-data-lifecycle",
+      "repositoryId": "1372583659",
+      "group": "components",
+      "name": {
+        "en": "Libre AI Organization Data Lifecycle",
+        "fr": "Libre AI Organization Data Lifecycle"
+      },
+      "role": {
+        "en": "[Français](README.fr.md)",
+        "fr": "[English](README.md)"
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "a23ffa69d9ec0341394f7b5dbfda76c51a5e554b2bc2bb3307b2807fc3dae288"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "2271f3e66c76b2b1c99898cf86a0ce34f2a67137d33dc94eaf247735abec8578"
+        }
+      }
+    },
+    {
+      "repository": "database-policy-inspector",
+      "repositoryId": "1372583712",
+      "group": "components",
+      "name": {
+        "en": "Database Policy Inspector",
+        "fr": "Database Policy Inspector"
+      },
+      "role": {
+        "en": "Inspect PostgreSQL SQL files before applying a migration: find missing access policies, excessive permissions and dangerous operations.",
+        "fr": "Examiner des fichiers SQL PostgreSQL avant d’appliquer une migration : repérer des règles d’accès manquantes, des permissions trop larges ou des opérations dangereuses."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "398247bb663534b4bdf6d18a6d379bbd8bea253f5b3b199462cc98028b8b1084"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "81ec7c76fcf33f5b7ff2612a18b9bd9cb530784c535e51069eae499b7c8a48c3"
+        }
+      }
+    },
+    {
+      "repository": "artifact-verification",
+      "repositoryId": "1372583756",
+      "group": "components",
+      "name": {
+        "en": "Verify an artifact before integration",
+        "fr": "Vérifier un artefact avant de l'intégrer"
+      },
+      "role": {
+        "en": "Detect changed, missing or unexpected files and check that supplied evidence binds to the expected content.",
+        "fr": "Détecter un fichier modifié, absent ou ajouté et vérifier que les preuves fournies correspondent au contenu attendu."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "f4897b3ad8d0b98fb08fe2c2797ea3578aab344c4bb5547caf162183e2b1fa83"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "b7da82321b0c9f579f0959e27e40f720af13aa17f30b8169a0a8220b93046082"
+        }
+      }
+    },
+    {
+      "repository": ".github",
+      "repositoryId": "1372583807",
+      "group": "project",
+      "name": {
+        "en": "Libre AI",
+        "fr": "Libre AI"
+      },
+      "role": {
+        "en": "Projects for working and learning with AI, while keeping control over sources and decisions.",
+        "fr": "Des projets pour travailler et apprendre avec l’IA, en gardant la main sur les sources et les décisions."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "profile/README.md",
+          "sha256": "ffdac5bd73f9e443da2365f7d640bfbd218795c2c20190c5e618decd6974754b"
+        },
+        "fr": {
+          "path": "profile/README.fr.md",
+          "sha256": "bd707f3d2b03fbd007bfc51c2decc7e39d2be5b4497043990000b6f5dbc1f5e7"
+        }
+      }
+    },
+    {
+      "repository": "project-website",
+      "repositoryId": "1372583858",
+      "group": "project",
+      "name": {
+        "en": "The Libre AI website",
+        "fr": "Le site Libre AI"
+      },
+      "role": {
+        "en": "Find the Libre AI project that fits your needs and understand what to expect from it.",
+        "fr": "Trouver le projet Libre AI qui répond à votre besoin et comprendre ce que vous pouvez en attendre."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "406f51f49ac1651e8e4a41ee21684fff55af64fb484a60e78ea6d24d72f00821"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "816d3f69143482f47ec23a93d33d02dcc99f46ed304fc7984d9bcd064031693a"
+        }
+      }
+    },
+    {
+      "repository": "project-governance",
+      "repositoryId": "1372583911",
+      "group": "project",
+      "name": {
+        "en": "Contributing to Libre AI",
+        "fr": "Contribuer à Libre AI"
+      },
+      "role": {
+        "en": "Shared rules and tools for checking contributions before sharing them: tool versions, declared licenses, secrets and personal data in Git-tracked files.",
+        "fr": "Les règles et outils communs pour vérifier une contribution avant de la partager : versions des outils, licences déclarées, secrets et données personnelles dans les fichiers suivis par Git."
+      },
+      "status": "code_integration_local",
+      "sourceReadmes": {
+        "en": {
+          "path": "README.md",
+          "sha256": "bc876bac2393a1c1241293f688d42c7a2e8194fb986834fad878f3b2cbd6a604"
+        },
+        "fr": {
+          "path": "README.fr.md",
+          "sha256": "84283edc2dae03d0042048e07acce2dfbe1b7e3dd4faa7000bef9c254ed37d9b"
+        }
+      }
+    }
+  ]
+}

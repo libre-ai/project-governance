@@ -1,0 +1,131 @@
+version = 1
+
+# First-party software in known canonical locations is EUPL by default. New
+# top-level artefact classes deliberately remain uncovered until reviewed.
+# More permissive boundaries are declared below; the last matching annotation
+# wins within this file.
+[[annotations]]
+path = [
+  ".cargo/**",
+  ".github/**",
+  ".gitignore",
+  "Cargo.lock",
+  "Cargo.toml",
+  "apps/**",
+  "brand/*.ts",
+  "biome.json",
+  "bun.lock",
+  "bunfig.toml",
+  "crates/**",
+  "deny.toml",
+  "distribution/**",
+  "ecosystem/**",
+  "infrastructure/**",
+  "package.json",
+  "packages/**",
+  "prompts/**",
+  "rust-toolchain.toml",
+  "tsconfig.json",
+  "verification/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Editorial documentation, generated public brand copy, and first-party
+# project/ecosystem records.
+[[annotations]]
+path = ["*.md", "**/*.md", "brand/projections/**", "docs/**", "ecosystem/FORGOTTEN.yaml", "ecosystem/LEGACY-MANIFEST.yaml", "ecosystem/objects/**", "ecosystem/projections/**", "llms.txt"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# Interoperability contracts, generated boundary types, adoption packages,
+# templates, qualification harnesses, and generic project tooling.
+[[annotations]]
+path = [
+  "contracts/**",
+  "crates/contract-types/**",
+  ".evidence.json",
+  "distribution/templates/**",
+  "docs/security/notebook-core-v2-review/*.json",
+  "docs/security/notebook-core-v2-review/*.wit",
+  "ecosystem/schemas/**",
+  "packages/contracts/**",
+  "packages/ui/**",
+  "packages/web-platform/**",
+  "toolchains/*.json",
+  "tools/**",
+]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Executable runtime policies and operational prompts remain reciprocal.
+[[annotations]]
+path = ["contracts/authz/**", "contracts/data/**", "prompts/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "EUPL-1.2"
+
+# Agent skills collection (ADR-0025): a portable adoption artefact, meant to
+# be copied into another harness where this repository's REUSE.toml no longer
+# resolves it — Apache-2.0 like tools/**, not EUPL. Placed after the editorial
+# docs/**, *.md bucket above so it wins for skills/**/*.md (last match wins).
+[[annotations]]
+path = ["skills/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# The vendored DTCG schema and its upstream notice remain under the licence
+# selected by Design Tokens Community Group contributors for W3C reports.
+[[annotations]]
+path = [
+  "third_party/dtcg-format-2025.10/dtcg-format-2025.10.schema.json",
+  "third_party/dtcg-format-2025.10/LICENSE.design-tokens.md",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Design Tokens Community Group contributors"
+SPDX-License-Identifier = "W3C-20150513"
+
+# First-party vendoring note that documents the DTCG schema's source, digest
+# and update rule; the vendored material itself stays under its W3C licence.
+[[annotations]]
+path = "third_party/dtcg-format-2025.10/README.md"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Vendored RustCrypto sources retain their upstream dual licence. Libre AI's
+# local patch is distributed on the same terms.
+[[annotations]]
+path = "third_party/rustcrypto-aes-0.8.4/**"
+precedence = "closest"
+SPDX-FileCopyrightText = [
+  "2018 Artyom Pavlov",
+  "RustCrypto Developers",
+  "2026 Libre AI contributors",
+]
+SPDX-License-Identifier = "MIT OR Apache-2.0"
+
+# First-party checksum evidence accompanying the reviewed toolchain notice.
+[[annotations]]
+path = "toolchains/notices/bun/1.4.0-canary.1+57f349f63/SHA256SUMS"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "CC-BY-4.0"
+
+# This file aggregates upstream notices with several independent licences.
+[[annotations]]
+path = "toolchains/notices/bun/1.4.0-canary.1+57f349f63/BUN-LICENSE.md"
+precedence = "override"
+SPDX-FileCopyrightText = "NOASSERTION"
+SPDX-License-Identifier = "LicenseRef-ThirdParty-Notices"
+
+# Project state card (γ 3.6) — same licence as the repository doctrine.
+[[annotations]]
+path = ["project.v1.yaml"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "EUPL-1.2"

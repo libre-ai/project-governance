@@ -1,20 +1,21 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 
-# Les règles du projet Libre AI
+# Contribuer à Libre AI
 
-Comprendre comment les projets Libre AI sont délimités et comment leurs évolutions doivent être décidées.
+Les règles et outils communs pour vérifier une contribution avant de la partager : versions des outils, licences déclarées, secrets et données personnelles dans les fichiers suivis par Git.
 
-Ce dépôt s'adresse aux personnes qui souhaitent contribuer ou comprendre les choix du projet. Il a vocation à préciser :
+## Essayer les contrôles
 
-- le rôle de chaque dépôt ;
-- les règles communes de contribution et de validation ;
-- les décisions qui changent les engagements envers les utilisateurs.
+Avec la version de Bun indiquée dans `toolchains/` :
 
-## Où commencer ?
+```sh
+bun install --frozen-lockfile --ignore-scripts
+bun run check
+```
 
-Le dépôt présente actuellement ce périmètre. Le corpus complet des règles et décisions reste à constituer ici.
+Les scripts réutilisables sont dans `tools/quality/`. Ils détectent des problèmes définis par leurs règles ; ils ne remplacent pas la revue du code ni des droits de publication.
 
-Pour proposer une contribution, commencez par le [guide commun](https://github.com/libre-ai/.github/blob/main/CONTRIBUTING.md). Pour choisir un produit, consultez le [catalogue](https://github.com/libre-ai/.github/blob/main/profile/README.fr.md).
+Le corpus de décisions historiques n'est pas intégralement repris. Les sources importées sont identifiées dans [le relevé de migration](docs/migration/source.json).
 
 [English](README.md)
