@@ -29,7 +29,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "46990f5d0de04c61555964ac415345d148e94e48",
+      "ref": "9c9e445c994b63638fdf73249cbecaeab720afd6",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -47,7 +47,7 @@
     },
     "application-development-toolkit": {
       "repository": "libre-ai/application-development-toolkit",
-      "ref": "4e6eb19553568e2908a7d7c56dfea5bc3ad8726a",
+      "ref": "31f40c2dd3db3294a21a27476671dd91f543bcf0",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
