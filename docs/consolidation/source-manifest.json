@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.design-source.v1",
+  "originalDocumentSha256": {
+    "CONTRACT-CATALOG.md": "3c0ae71f0bfb416a17ef66bed0cf3a5fb5f36c6e6598097563fe3683331abf65",
+    "EXECUTION-PROTOCOL.md": "1fa90b0c4f88f6b0c8b84eef02d9f571c6fe08ec3db8edea47b644704a62befd",
+    "CONTEXT-ENGINE.md": "976c4457c5df2ebfca44004e46d9b986bf64e0fc9b11b911348650d0ad107f78",
+    "CONTROL-PLANE.md": "8e6efb480a5475beccd6ca4325886fc937f2e4555130e4a5d5b2a552f599a680",
+    "CONVERGENCE.md": "9f16ccf1de85468922ade20ea33a836928a4146026ddfb1360ee2b2a161d6b26",
+    "IMPLEMENTATION-PLAN.md": "5ad0822a3e3b3243beab80c2686cb9067e451ff00eb23f77b068894f44918e79",
+    "ADR-INDEX.md": "c6978b65fcb3f2a073cb69028e6ff0783d4c5b3200bda9ad3751a149a65fb8bc",
+    "FORGE-RUNTIME.md": "17dafe7910fe63d19e89f23f1d8eed9c1891ecc9ca11157b25962cae70dbbb2d",
+    "REPOSITORY-ARCHITECTURE.md": "f78b600b54ceca26a4b008f99ceb5a32fd631a3eff352709ed9122db7658a151",
+    "REPOSITORY-MANIFEST.md": "c79ed2e4730605e3ed0e1872e6d3785862191a842864314bda92f1633ed82384"
+  },
+  "transformation": "Clarify proposal status, existing repository destinations, shared convergence source, resumable blockers, effect reconciliation, manifest trust and outcome-driven construction.",
+  "sourceLicense": "Owner-supplied design documents; new repository documentation follows the repository editorial license."
+}
