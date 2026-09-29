@@ -37,6 +37,14 @@ class CompositionTests(unittest.TestCase):
             self.assertGreater(next(i for i, step in enumerate(steps) if step["cwd"] == consumer), ui + 1)
         self.assertEqual(plan["setup"], [])
 
+    def test_database_checks_cover_optional_feature_paths(self):
+        plan = module.prepare(self.manifest, "database-policy-inspector")
+        checks = [step["argv"] for step in plan["checks"]]
+        for tool in ("clippy", "test"):
+            recipe = next(argv for argv in checks if argv[:2] == ["cargo", tool])
+            self.assertIn("--all-features", recipe)
+            self.assertIn("--locked", recipe)
+
     def test_target_revision_changes_only_target(self):
         before = module.prepare(self.manifest, "execution-sandbox")
         after = module.prepare(self.manifest, "execution-sandbox", "a" * 40)
@@ -76,7 +84,7 @@ class CompositionTests(unittest.TestCase):
         result = subprocess.run([sys.executable, str(HERE / "prepare-composition.py"), "--target", "database-policy-inspector"], capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
-        self.assertEqual(plan["checks"][-1]["argv"], ["cargo", "test", "--locked"])
+        self.assertEqual(plan["checks"][-1]["argv"], ["cargo", "test", "--locked", "--all-features"])
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "manifest.json"
             path.write_text('{"schemaVersion":"a","schemaVersion":"b"}')

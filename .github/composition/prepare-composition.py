@@ -59,8 +59,8 @@ def checks(target):
     if target == "database-policy-inspector":
         return [
             ["cargo", "fmt", "--all", "--check"],
-            ["cargo", "clippy", "--locked", "--all-targets", "--", "-D", "warnings"],
-            ["cargo", "test", "--locked"],
+            ["cargo", "clippy", "--locked", "--all-targets", "--all-features", "--", "-D", "warnings"],
+            ["cargo", "test", "--locked", "--all-features"],
         ]
     return [["bun", "run", "check"]]
 
