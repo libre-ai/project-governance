@@ -21,3 +21,8 @@ Neither limitation may be reported as a passed product or execution gate.
 
 Original sources and recovery receipts remain preserved. Selecting these refs
 neither archives a donor nor authorizes deleting its repositories or branches.
+
+`bun run check` also runs the composition tool tests from the checked-out target.
+This is necessary because a reusable workflow can still be pinned to older
+governance tooling while reviewing a candidate that changes those scripts.
+The candidate's own parser, manifest and recipes must be exercised as well.
