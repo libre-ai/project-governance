@@ -16,3 +16,8 @@ Final candidate reviews must bind an immutable commit. Earlier reviews of a
 working diff provide preliminary findings only, even when content hashes later
 match the commit. Review receipts live outside the reviewed authoring commit;
 new normative changes require a fresh affected review.
+
+The governance package includes this protocol at the same relative path used by
+review consumers. The root gate packs the actual archive and compares the shipped
+protocol bytes to the source, so a successful repository checkout cannot hide a
+missing distribution resource.
