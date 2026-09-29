@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "6a646061901df59ec18cd4f924ede3f4b4a23e9a",
+      "ref": "ff3ef051f164662a85f1883a531bd5c426775587",
       "dependencies": [],
       "check": [
         [
@@ -29,7 +29,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "0ccc146b24c0ac7a8117b381888a5317a7a58eaf",
+      "ref": "775f04bba84b8d544e3b47bf3eb43d05861e573b",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -240,7 +240,7 @@
     },
     "execution-sandbox": {
       "repository": "libre-ai/execution-sandbox",
-      "ref": "a3fa2d06aca941362bcb37ec198b12baed0a09aa",
+      "ref": "c5f2761e935582e2dab488ca1675e2eb6b7ad7e8",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts"
@@ -270,7 +270,7 @@
     },
     "database-policy-inspector": {
       "repository": "libre-ai/database-policy-inspector",
-      "ref": "fb0a67848cfbee236eda404889bf58f68262ec15",
+      "ref": "d27dd3007dceb684585b94702de9f11fa5e8af72",
       "dependencies": [],
       "check": [
         [
