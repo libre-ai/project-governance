@@ -1,0 +1,522 @@
+{
+  "schemaVersion": "libre-ai.repository-transition.v1",
+  "observedAt": "2026-09-28T21:32:15.467976+00:00",
+  "decision": "../adr/2026-09-29-portfolio-consolidation.md",
+  "publicationState": "pending",
+  "items": [
+    {
+      "repository": ".github",
+      "category": "Cible existante à consolider",
+      "proposed_destination": ".github",
+      "condition": "Conserver le point d’entrée public ; aligner les promesses sur les preuves.",
+      "repositoryId": 1372583807,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ai-model-policy",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "ai-model-policy",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583075,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ai-practice-workbench",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "ai-practice-workbench",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583118,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ai-practices",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "ai-practice-workbench",
+      "condition": "Reprendre les exercices et critères utiles ; qualifier les parcours.",
+      "repositoryId": 1289778894,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ai-work-supervision",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "ai-work-supervision",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583025,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "application-development-toolkit",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "application-development-toolkit",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583383,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "artifact-verification",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "artifact-verification",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583756,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "artifacts",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "artifact-verification",
+      "condition": "Qualifier intégrité et admission ; la vérification de fichiers ne prouve pas le fonctionnement.",
+      "repositoryId": 1316237016,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "auth",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "Module partagé à qualifier dans le toolkit",
+      "condition": "Établir consommateurs et contrat ; ne pas multiplier les copies de logique de session.",
+      "repositoryId": 1316236873,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "authz-biscuit",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "capability-authorization",
+      "condition": "Préserver délégation et refus ; traiter les PR crypto avec preuves.",
+      "repositoryId": 1316236780,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "boussole-politique",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "public-vote-comparison",
+      "condition": "Qualifier calculs, sources et protection des données exprimées.",
+      "repositoryId": 1297703187,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "capability-authorization",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "capability-authorization",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583620,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "carriere",
+      "category": "Intention à clarifier",
+      "proposed_destination": "Recherche produit avant activation",
+      "condition": "Conserver les refs ; définir l’objectif et décider le statut produit sans suppression implicite.",
+      "repositoryId": 1309349503,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "classification",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "organization-data-lifecycle, sous réserve de contrat",
+      "condition": "Préserver règles et sémantiques ; classifier ne donne pas un droit de transfert.",
+      "repositoryId": 1316161061,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "collab-core",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "collaborative-data-sync",
+      "condition": "Qualifier opérations, conflits et absence de perte.",
+      "repositoryId": 1316161100,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "collab-relay",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "collaborative-data-sync",
+      "condition": "Qualifier transport, indisponibilité et réconciliation.",
+      "repositoryId": 1316161147,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "collaborative-data-sync",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "collaborative-data-sync",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583486,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "contracts",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "schemas-and-contracts",
+      "condition": "Comparer schémas, vecteurs, versions et consommateurs ; aucune perte de contrat implicite.",
+      "repositoryId": 1315949273,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "data",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "organization-data-lifecycle",
+      "condition": "Qualifier migrations et frontières de données ; ne pas centraliser les données de tous les produits.",
+      "repositoryId": 1316236927,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "database-policy-inspector",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "database-policy-inspector",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583712,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "db-inspect",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "database-policy-inspector",
+      "condition": "Préserver les contrôles déterministes et leurs scénarios de refus.",
+      "repositoryId": 1310378817,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ecosystem-engine",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "project-governance, module de projection",
+      "condition": "Préserver les fonctions utiles sans donner au graphe dérivé une autorité métier.",
+      "repositoryId": 1316236826,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "envelope",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "Frontière à arbitrer entre vérification et runtime",
+      "condition": "Conserver le donneur ; enveloppe de contenu non fiable à qualifier sans promettre la suppression des injections.",
+      "repositoryId": 1316112841,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "execution-continuity-evaluator",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "execution-continuity-evaluator",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583525,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "execution-sandbox",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "execution-sandbox",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583572,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "feed-radar",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "information-feed-filter",
+      "condition": "Conserver règles, corpus et comportements retenus ; comparer les évolutions postérieures à la récupération.",
+      "repositoryId": 1143520602,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "governance",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "project-governance",
+      "condition": "Réconcilier vision et ADR avant archivage ; 51 branches à traiter.",
+      "repositoryId": 1315871440,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "harness",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "execution-sandbox ; runtime complémentaire à qualifier",
+      "condition": "Préserver confinement et attestations ; ne pas assimiler la sandbox au harness complet.",
+      "repositoryId": 1338534844,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "information-feed-filter",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "information-feed-filter",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583247,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "knowledge",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "Propriétaire à déterminer selon les consommateurs",
+      "condition": "Conserver les objets et contrats utiles ; ne pas fusionner données personnelles, connaissance produit et contexte agent.",
+      "repositoryId": 1316160993,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "learning-session-facilitation",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "learning-session-facilitation",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583150,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "libre-ai",
+      "category": "Archive existante",
+      "proposed_destination": "Archive",
+      "condition": "Conserver sans réactiver le hub ni nettoyer ses branches pour la seule esthétique.",
+      "repositoryId": 1302653181,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "missions",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "ai-work-supervision",
+      "condition": "Qualifier tâches, décisions, preuves et parcours de supervision.",
+      "repositoryId": 1284190642,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "notebook",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "personal-knowledge-notebook",
+      "condition": "Préserver cœur, données, contrats, crypto et preuves ; traiter les six PR ouvertes.",
+      "repositoryId": 1284191049,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "orchestrator",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "Forge + execution-continuity-evaluator selon responsabilités",
+      "condition": "Cartographier les 14 branches ; distinguer scheduler, état de mission et reprise.",
+      "repositoryId": 1316237057,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "organization-data-lifecycle",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "organization-data-lifecycle",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583659,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "personal-knowledge-notebook",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "personal-knowledge-notebook",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583201,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "pi-evidence",
+      "category": "Qualification à conserver",
+      "proposed_destination": "pi-evidence",
+      "condition": "Préserver WIP et refs locales ; relier son profil Pi à des contrats portables, sans dépendance de Forge à Pi.",
+      "repositoryId": 1371871440,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "policy",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "ai-model-policy",
+      "condition": "Préserver la politique de sélection des modèles ; ne pas la confondre avec les permissions système.",
+      "repositoryId": 1296776274,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "project-governance",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "project-governance",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583911,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "project-website",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "project-website",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583858,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "provenance",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "artifact-verification",
+      "condition": "Préserver attribution et liens de preuves ; définir rétention et références indisponibles.",
+      "repositoryId": 1316160941,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "public-vote-comparison",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "public-vote-comparison",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583343,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "rgpd-kit",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "organization-data-lifecycle",
+      "condition": "Comparer droits, rétention, suppression et mécanismes de propagation.",
+      "repositoryId": 1316161025,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "schemas-and-contracts",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "schemas-and-contracts",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583436,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "sdk-rs",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "schemas-and-contracts",
+      "condition": "Projection Rust des contrats ; qualifier génération, dérive et consommateurs.",
+      "repositoryId": 1316139395,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "sdk-ts",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "schemas-and-contracts",
+      "condition": "Projection TS des contrats ; qualifier génération, dérive et consommateurs.",
+      "repositoryId": 1316089450,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "sessions",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "learning-session-facilitation",
+      "condition": "Qualifier parcours pédagogiques, rôles et règles de données.",
+      "repositoryId": 1282290281,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "signalement",
+      "category": "Produit autonome à conserver",
+      "proposed_destination": "signalement ; Capture & Relay comme nom produit candidat",
+      "condition": "Réconcilier main local, main public, next et next-public ; ne pas renommer pendant cette préparation.",
+      "repositoryId": 1371019288,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "spec-studio",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "ai-work-supervision",
+      "condition": "Préserver le cadrage et les décisions ; ne pas réduire son rôle à une liste de tâches.",
+      "repositoryId": 1284190132,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "starter",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "application-development-toolkit",
+      "condition": "Qualifier un projet réellement créé depuis le template.",
+      "repositoryId": 1316237094,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "testing",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "application-development-toolkit",
+      "condition": "Préserver les outils de test et leur indépendance vis-à-vis des résultats attendus.",
+      "repositoryId": 1316112932,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "travel-agent",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "travel-itinerary-planner",
+      "condition": "Conserver sources et veto déterministes ; vérifier parcours et données locales.",
+      "repositoryId": 1338626172,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "travel-itinerary-planner",
+      "category": "Cible existante à consolider",
+      "proposed_destination": "travel-itinerary-planner",
+      "condition": "Qualifier et admettre le contenu de migrate/recover-code avant intégration.",
+      "repositoryId": 1372583293,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "ui",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "application-development-toolkit",
+      "condition": "Préserver tokens, accessibilité et licences ; distinguer web et interfaces système natives.",
+      "repositoryId": 1316236978,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "web-platform",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "application-development-toolkit",
+      "condition": "Conserver les adaptateurs web nécessaires ; respecter les frontières de domaine.",
+      "repositoryId": 1316112879,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    },
+    {
+      "repository": "website",
+      "category": "Donneur candidat à archivage conditionnel",
+      "proposed_destination": "project-website",
+      "condition": "Vérifier contenu, catalogue et dépendances aux autorités retenues.",
+      "repositoryId": 1309349523,
+      "admission": "pending",
+      "destructiveActionAuthorized": false
+    }
+  ],
+  "scope": "Public repository transition projection; private research inventory remains owner-local."
+}

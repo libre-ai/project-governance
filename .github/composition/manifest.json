@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "9944bfffbfeddbd9a5c470260de996368818fb87",
+      "ref": "6a646061901df59ec18cd4f924ede3f4b4a23e9a",
       "dependencies": [],
       "check": [
         [
@@ -15,7 +15,7 @@
     },
     "schemas-and-contracts": {
       "repository": "libre-ai/schemas-and-contracts",
-      "ref": "c53967635a71bfd504da19764bcfc6c6b7d79785",
+      "ref": "4f3d53c3ecd96e7064057afd1587de41b66f13c1",
       "dependencies": [
         "project-governance"
       ],
@@ -29,7 +29,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "9c9e445c994b63638fdf73249cbecaeab720afd6",
+      "ref": "0ccc146b24c0ac7a8117b381888a5317a7a58eaf",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -47,7 +47,7 @@
     },
     "application-development-toolkit": {
       "repository": "libre-ai/application-development-toolkit",
-      "ref": "31f40c2dd3db3294a21a27476671dd91f543bcf0",
+      "ref": "5ec3630ece2a768872dfb67171c9b7fbf21a1aa9",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -63,7 +63,7 @@
     },
     "organization-data-lifecycle": {
       "repository": "libre-ai/organization-data-lifecycle",
-      "ref": "e8050a7202bd827a2dc73999192f791647b1cdc3",
+      "ref": "cf5c85999b72930a2388a80951305b9b4934d3f2",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -79,7 +79,7 @@
     },
     "ai-model-policy": {
       "repository": "libre-ai/ai-model-policy",
-      "ref": "6521c4a94c6477bd82c99ad9f2ee6a3e97385223",
+      "ref": "ba35dba3f2736b243439c3ab3ad41fea6236eb3d",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -97,7 +97,7 @@
     },
     "ai-practice-workbench": {
       "repository": "libre-ai/ai-practice-workbench",
-      "ref": "6ef532ec4dfd79feab7619a19ff5ef4562011383",
+      "ref": "9c25bf51b5588a388f1117975205627921e8e00c",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -116,7 +116,7 @@
     },
     "learning-session-facilitation": {
       "repository": "libre-ai/learning-session-facilitation",
-      "ref": "5068d836f8b112c547838bcd438420bbfe66c110",
+      "ref": "65cba786203702bcff237754543777f1916e490d",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -135,7 +135,7 @@
     },
     "personal-knowledge-notebook": {
       "repository": "libre-ai/personal-knowledge-notebook",
-      "ref": "05b053325b5ea3eaa096544795b1b9508a5355eb",
+      "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -154,7 +154,7 @@
     },
     "information-feed-filter": {
       "repository": "libre-ai/information-feed-filter",
-      "ref": "6c834093dd617d0c8c4658a4e96fdf480bf78484",
+      "ref": "7ee92fea4a53c58dff4dad3d66101cae74b99709",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -173,7 +173,7 @@
     },
     "travel-itinerary-planner": {
       "repository": "libre-ai/travel-itinerary-planner",
-      "ref": "8d53d27cb0f0533057872bd8a4686c73257e4ed7",
+      "ref": "d3e164cf01ebaebb4d1ad9f9cd393c72994cf6ad",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -192,7 +192,7 @@
     },
     "public-vote-comparison": {
       "repository": "libre-ai/public-vote-comparison",
-      "ref": "96b449935dd06903a4eae2b8b6b804f9351e160a",
+      "ref": "f8fe30c00f5c23be701db2d8c10a6ae7d0dc3081",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -211,7 +211,7 @@
     },
     "collaborative-data-sync": {
       "repository": "libre-ai/collaborative-data-sync",
-      "ref": "adddcbefe0ebd83350f8b877ec3e2a56f3084306",
+      "ref": "a3d90ebd80d721901b2cb0d0bbcd46897a9cd13b",
       "dependencies": [
         "project-governance"
       ],
@@ -225,7 +225,7 @@
     },
     "execution-continuity-evaluator": {
       "repository": "libre-ai/execution-continuity-evaluator",
-      "ref": "8dd6f37b913d626d7ef9c9a0684ab4d50baf0067",
+      "ref": "85a10dcf6a49d603d46cd066e6a3f2936f75060a",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts"
@@ -240,7 +240,7 @@
     },
     "execution-sandbox": {
       "repository": "libre-ai/execution-sandbox",
-      "ref": "dfc5fda932afdf6f4e469534220c8809206a03e8",
+      "ref": "a3fa2d06aca941362bcb37ec198b12baed0a09aa",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts"
@@ -255,7 +255,7 @@
     },
     "capability-authorization": {
       "repository": "libre-ai/capability-authorization",
-      "ref": "a0b2013dca67daac77104f6093eee4561da08e17",
+      "ref": "7ce06366663ff8b4329d0bc25f589c8ef830aef0",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts"
@@ -270,7 +270,7 @@
     },
     "database-policy-inspector": {
       "repository": "libre-ai/database-policy-inspector",
-      "ref": "0b36d6cf98052dc6ef71748017b89a3ab800316f",
+      "ref": "fb0a67848cfbee236eda404889bf58f68262ec15",
       "dependencies": [],
       "check": [
         [
@@ -284,6 +284,7 @@
           "clippy",
           "--locked",
           "--all-targets",
+          "--all-features",
           "--",
           "-D",
           "warnings"
@@ -291,13 +292,14 @@
         [
           "cargo",
           "test",
-          "--locked"
+          "--locked",
+          "--all-features"
         ]
       ]
     },
     "artifact-verification": {
       "repository": "libre-ai/artifact-verification",
-      "ref": "e4321f95f52b8c78d4022ae1f6a70e9f11e27fea",
+      "ref": "388d032367060c0905c791997bd0efc61b2a85a9",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts"
@@ -312,7 +314,7 @@
     },
     "project-website": {
       "repository": "libre-ai/project-website",
-      "ref": "408d9844f347e023ea34ea3324900c0aa7f40ec4",
+      "ref": "7cc7155ce7693abfbaf48de15bb42e185e3c2d62",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",

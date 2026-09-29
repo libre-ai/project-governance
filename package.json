@@ -30,8 +30,9 @@
     "lint": "bun run check:bun:runtime && biome ci tools/quality",
     "typecheck": "bun run check:bun:runtime && tsc --noEmit -p tsconfig.json",
     "test": "bun test tools/quality",
-    "check": "bun run check:bun && bun run check:toolchain && bun run check:secret-scan && bun run check:personal-data && bun run lint && bun run typecheck && bun run test",
-    "pretest": "bun run check:bun"
+    "check": "bun run check:bun && bun run check:toolchain && bun run check:secret-scan && bun run check:personal-data && bun run lint && bun run typecheck && bun run test && bun run check:composition",
+    "pretest": "bun run check:bun",
+    "check:composition": "bun run check:bun:runtime && python3 -B -m unittest discover -s .github/composition -p 'test_*.py'"
   },
   "repository": {
     "type": "git",
@@ -44,6 +45,8 @@
     "LICENSES",
     "docs/parity/draft-specs/DRAFT-SPEC-memory.md",
     "docs/specifications/IDENTITY-AUTHORIZATION.md",
-    "ecosystem/portfolio.v1.json"
+    "ecosystem/portfolio.v1.json",
+    "docs/reviews/AGENT-REVIEW-PROTOCOL.md",
+    "docs/reviews/README.md"
   ]
 }

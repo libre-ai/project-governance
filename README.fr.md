@@ -21,3 +21,9 @@ Le corpus de décisions historiques n'est pas intégralement repris. Les sources
 [English](README.md)
 
 [Installer et vérifier une composition locale de dépôts](docs/LOCAL-COMPOSITION.md).
+
+## Vision et consolidation
+
+[Vision](VISION.md) · [Décision de consolidation](docs/adr/2026-09-29-portfolio-consolidation.md) · [Design Forge](docs/architecture/forge/README.md)
+
+Ces documents distinguent orientation validée, design proposé et capacités à qualifier. Les autorités historiques restent disponibles pendant l’admission.
