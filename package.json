@@ -15,6 +15,7 @@
     "fast-uri": "4.1.4"
   },
   "dependencies": {
+    "@libre-ai/classification": "workspace:*",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "entities": "8.0.0"
@@ -46,7 +47,7 @@
     "lint": "bun run check:bun:runtime && biome ci .",
     "typecheck": "bun run check:bun:runtime && tsc --noEmit -p tsconfig.json",
     "test": "bun test",
-    "check": "bun run check:bun && bun run check:toolchain && bun run check:source && bun run check:names && bun run check:forgotten && bun run check:cards && bun run check:objects && bun run check:objectives && bun run check:specifications && bun run check:licenses && bun run check:dead-code && bun run check:allowances && bun run check:kernel-status-authority && bun run check:skills && bun run check:skills-routing && bun run check:brand && bun run lint && bun run typecheck && bun test && bun run check:secret-scan && bun run check:personal-data && bun run check:composition && bun run check:vendored && bun run check:patch-rev && bun run check:rust && bun run check:projection",
+    "check": "bun run check:bun && bun run check:toolchain && bun run check:source && bun run check:names && bun run check:forgotten && bun run check:cards && bun run check:objects && bun run check:objectives && bun run check:specifications && bun run check:licenses && bun run check:dead-code && bun run check:allowances && bun run check:kernel-status-authority && bun run check:skills && bun run check:skills-routing && bun run check:brand && bun run lint && bun run typecheck && bun test && bun run check:secret-scan && bun run check:personal-data && bun run check:composition && bun run check:vendored && bun run check:patch-rev && bun run check:rust && bun run check:projection && bun run check:projection:digest",
     "pretest": "bun run check:bun",
     "check:bun-snapshot": "bun run check:bun:runtime && bun tools/quality/verify-bun-snapshot.ts",
     "check:toolchain": "bun run check:bun && bun tools/quality/check-toolchain.ts",
@@ -61,7 +62,8 @@
     "check:rust:clippy": "bun run check:bun:runtime && cargo clippy --locked --manifest-path crates/ecosystem-engine/Cargo.toml --all-targets --all-features -- -D warnings",
     "check:rust:test": "bun run check:bun:runtime && cargo test --locked --manifest-path crates/ecosystem-engine/Cargo.toml --all-features",
     "check:projection": "bun run check:bun:runtime && cargo run --locked --manifest-path crates/ecosystem-engine/Cargo.toml --bin ecosystem-project -- --objects ecosystem/objects --output ecosystem/projections/public.v1.json --check",
-    "check:rust": "bun run check:bun:runtime && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test"
+    "check:rust": "bun run check:bun:runtime && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test",
+    "check:projection:digest": "bun run check:bun:runtime && bun ecosystem/check-projection-digest.ts"
   },
   "repository": {
     "type": "git",

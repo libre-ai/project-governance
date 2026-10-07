@@ -62,6 +62,14 @@
       "card": "project.v1.yaml"
     },
     {
+      "repository": "libre-ai/carriere",
+      "name": "carriere",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
       "repository": "libre-ai/collaborative-data-sync",
       "name": "collaborative-data-sync",
       "layer": "couche-4",

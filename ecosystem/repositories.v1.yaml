@@ -106,6 +106,20 @@ repositories:
     lifecycle: active
     owns:
       - incident capture, executable verification and portable projections
+  - repository: libre-ai/carriere
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    # I-16 abrogated the coverage-law preconditions as conditions of a
+    # repository's existence, and ADR-0023 §2.2 confines the exposure law to the
+    # public showcase. A repository without code is therefore not a defect; an
+    # observable repository absent from this inventory is.
+    owns:
+      - >
+        sovereign, explainable job-search assistance for cadres — scope still to
+        be clarified by the owner, which its card states instead of showing a
+        percentage
   - repository: libre-ai/project-website
     role: active-application
     layer: transverse
@@ -212,7 +226,16 @@ notes:
   - The short-name generation (38 repositories) is preserved as verified
     archive bundles with a real-clone restore proof; retiring its references
     is a separate act under a confirmed manifest.
-  - Four short-name repositories have no declared destination
-    (`ecosystem-engine`, `knowledge`, `classification`, `carriere`) and remain
-    unresolved, as the 2026-09-29 ADR requires for ambiguous destinations.
+  - >
+    The three short-name repositories that held a capability without a declared
+    destination were resolved on 2026-10-07 by absorption, not by deletion of the
+    capability. `ecosystem-engine` became `crates/ecosystem-engine` of this
+    authority, beside the objects it projects and the artefact it verifies.
+    `classification` became `packages/classification`, the K2 kernel, exported so
+    a protected write path links it in its own process, and it is now called by
+    `ecosystem/build-index.ts`. `knowledge` became
+    `ecosystem/knowledge-projection.ts`, kept as a second implementation of the
+    selection digest in another language. `carriere` is declared above and
+    conserved — the register forbids an implicit deletion, and no rule requires a
+    repository to carry code.
   - No private personal repository belongs to this inventory (ADR-0009 §9).

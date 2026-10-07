@@ -73,6 +73,8 @@ export interface RepositoryIndex {
 
 // @types/bun for the pinned toolchain does not declare Bun.YAML yet; the same
 // narrowing cast is already used by tools/quality/check-contracts.ts.
+import { classify, deriveFrom, requireAuthorityFor } from "@libre-ai/classification";
+
 const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
 
 function fail(path: string, expected: string, actual: unknown): never {
