@@ -109,3 +109,16 @@ generations:
       authority, on four surfaces each, and that pin is what blocks its
       retirement. Declared here first, as step 2 of the process above requires,
       because a merged pull request cannot name its own sha.
+  - sha: 368c9dc8b8efeafed7a1a0493529a925259b53b4
+    added_on: 2026-10-07
+    note: >-
+      the generation consumers can actually carry. e8e3b516 declared the
+      authority's arrival but shipped `@libre-ai/classification` as a
+      `workspace:*` entry under `dependencies`, which every consumer installing
+      this repository as a git-dep inherits and cannot resolve — signalement's
+      `bun install` failed on it. This generation makes that dependency lazy and
+      development-only, roots the Cargo workspace so the engine's dependencies
+      are watched, and carries the transferred signalement-bootstrap attestation
+      that signalement's card cites. libre-ai/signalement, libre-ai/pi-evidence
+      and libre-ai/carriere bump to it; retiring libre-ai/governance waits for
+      their green CI.
