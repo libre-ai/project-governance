@@ -122,3 +122,15 @@ generations:
       that signalement's card cites. libre-ai/signalement, libre-ai/pi-evidence
       and libre-ai/carriere bump to it; retiring libre-ai/governance waits for
       their green CI.
+  - sha: 2024a4884b314df99be457618be9c3b48a0287f7
+    added_on: 2026-10-07
+    note: >-
+      the first generation of this authority a consumer can actually install,
+      proved by the act: `bun install` in libre-ai/signalement against it
+      resolves 32 packages, where 368c9dc8 and e8e3b516 both failed on
+      `@libre-ai/classification@workspace:* failed to resolve`. It carries
+      check:consumable, which refuses a workspace-local specifier in
+      `dependencies` or `peerDependencies` so that this class of breakage cannot
+      reach a consumer again. libre-ai/signalement, libre-ai/pi-evidence and
+      libre-ai/carriere bump to it on their four surfaces; retiring
+      libre-ai/governance waits for their green CI.
