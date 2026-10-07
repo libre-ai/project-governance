@@ -321,7 +321,9 @@ async function compareStatus(patch: GitPatch, token: string | undefined): Promis
 // The manifest this gate reads is the absorbed crate's, not a root workspace:
 // `project-governance` has no root Cargo.toml, so an unqualified "Cargo.toml"
 // resolved to nothing once the crate moved under `crates/`.
-const CARGO_MANIFEST = "crates/ecosystem-engine/Cargo.toml";
+// The workspace root: `[patch]` is only read there, so that is where the
+// orphan-rev gate must look for it.
+const CARGO_MANIFEST = "Cargo.toml";
 
 if (import.meta.main) {
   const cargoToml = await Bun.file(CARGO_MANIFEST).text();

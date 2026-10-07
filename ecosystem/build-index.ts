@@ -73,8 +73,6 @@ export interface RepositoryIndex {
 
 // @types/bun for the pinned toolchain does not declare Bun.YAML yet; the same
 // narrowing cast is already used by tools/quality/check-contracts.ts.
-import { classify, deriveFrom, requireAuthorityFor } from "@libre-ai/classification";
-
 const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
 
 function fail(path: string, expected: string, actual: unknown): never {
@@ -224,9 +222,37 @@ export function renderIndex(index: RepositoryIndex): string {
 if (import.meta.main) {
   const sourceUrl = new URL("repositories.v1.yaml", import.meta.url);
   const targetUrl = new URL("../distribution/index/repositories.v1.json", import.meta.url);
-  const index = buildIndex(await Bun.file(sourceUrl).text());
-  await Bun.write(targetUrl, renderIndex(index));
+
+  // K2 made executable at the place its own invariant describes: no write to a
+  // source of truth may be justified by `operational` data alone. The published
+  // topology is such a source. The committed inventory is `authoritative` — a
+  // reviewed file of this repository under its branch protection — the index is
+  // `derived` from it, and `requireAuthorityFor` enforces that at the sink.
+  // Should this generator ever be fed a GitHub API response or any other tool
+  // output, the classification fails closed instead of publishing it as
+  // topology. Before this, K2 was declared `in service` and called by nothing:
+  // an invariant no code exercises is a claim, not a control.
+  //
+  // Imported here rather than at the top of the module: consumers install this
+  // repository as a git-dep, and a top-level import of a `workspace:*` package
+  // made their `bun install` fail on a specification that cannot resolve
+  // outside this workspace.
+  const { classify, deriveFrom, requireAuthorityFor } = await import("@libre-ai/classification");
+
+  const inventory = classify("authoritative", await Bun.file(sourceUrl).text());
+
+  // The authority checked is what JUSTIFIES the write, not what is written.
+  // Passing the derived index here was wrong and the kernel refused it —
+  // `OperationalNotAuthorityError: derived data may not authorize a write` —
+  // which is the whole point of linking it rather than asserting it in prose.
+  requireAuthorityFor("distribution/index/repositories.v1.json", inventory);
+
+  // The index records its provenance: derived from the inventory, traceable to
+  // it. Nothing downstream consumes the classification yet; it is the honest
+  // shape for when something does.
+  const index = deriveFrom(buildIndex(inventory.value), [inventory]);
+  await Bun.write(targetUrl, renderIndex(index.value));
   console.log(
-    `wrote distribution/index/repositories.v1.json (${index.repositories.length} repositories)`,
+    `wrote distribution/index/repositories.v1.json (${index.value.repositories.length} repositories)`,
   );
 }

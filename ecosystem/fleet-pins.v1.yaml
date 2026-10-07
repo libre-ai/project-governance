@@ -2,11 +2,11 @@
 #
 # Every non-archived repository lets a governance revision into its required
 # checks through FOUR surfaces, and they must all carry the SAME sha: each
-# `uses: libre-ai/governance/...@<sha>` in ANY workflow file, the
+# `uses: libre-ai/project-governance/...@<sha>` in ANY workflow file, the
 # `tooling_ref:` input (the revision reusable-licensing.yml checks governance
 # out at to run its tooling), the tooling git-dep
-# (`github:libre-ai/governance#<sha>`) in package.json, and the
-# `pinned: "github:libre-ai/governance#<sha>"` field of the repository's own
+# (`github:libre-ai/project-governance#<sha>`) in package.json, and the
+# `pinned: "github:libre-ai/project-governance#<sha>"` field of the repository's own
 # project card (`project.v1.yaml`, per its `card:` entry in
 # repositories.v1.yaml) — a card is documentation a human reads, and a sha
 # there the CI wiring has already moved past is the same drift as any other
@@ -98,3 +98,14 @@ generations:
       repository-local release authorization and Portique d'atelier terminology
       are merged and reviewable; libre-ai/website is the first consumer because
       its production brand projection requires the resulting authority SHA
+  - sha: e8e3b51638c2be0bb98a394e6b236efe9aa64010
+    added_on: 2026-10-07
+    note: >-
+      the authority itself moved (ADR-0041) — doctrine and fleet tooling now
+      live in project-governance, so every reusable template a consumer pins
+      is served from this repository and not from the retired `governance`.
+      libre-ai/signalement and libre-ai/pi-evidence are the two consumers that
+      must carry it: they are the only repositories still pinning the retired
+      authority, on four surfaces each, and that pin is what blocks its
+      retirement. Declared here first, as step 2 of the process above requires,
+      because a merged pull request cannot name its own sha.
