@@ -205,7 +205,12 @@ describe("buildWorkflowsTreeQuery", () => {
   test("aliases by index and reads the .github/workflows tree only", () => {
     const query = buildWorkflowsTreeQuery(["libre-ai/authz-biscuit"]);
     expect(query).toContain('repo0: repository(owner: "libre-ai", name: "authz-biscuit")');
-    expect(query).toContain('object(expression: "main:.github/workflows")');
+    expect(query).toContain('object(expression: "HEAD:.github/workflows")');
+    // Never a branch name: a literal `main` read the documentary branch of the
+    // twenty destinations, where the declared card does not exist. This
+    // assertion is what would have caught it.
+    expect(query).not.toContain("main:");
+
     expect(query).toContain(
       "... on Tree { entries { name type object { ... on Blob { text } } } }",
     );

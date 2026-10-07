@@ -82,7 +82,10 @@ function fetchFromGitHub(repository: string, path: string): string | null {
   const result = Bun.spawnSync([
     "gh",
     "api",
-    `repos/${repository}/contents/${path}?ref=main`,
+    // No `ref`: the REST contents endpoint then serves the repository's own
+    // default branch. Naming `main` read the documentary branch of the twenty
+    // destinations, whose tree holds four entries.
+    `repos/${repository}/contents/${path}`,
     "-H",
     "Accept: application/vnd.github.raw+json",
   ]);

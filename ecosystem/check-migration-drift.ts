@@ -462,14 +462,17 @@ if (import.meta.main) {
   // Reading it here is what made every entry look in-flight and every path
   // skippable. The orphan gate already reads the authority live; so does this
   // one now.
+  // `HEAD`, never a branch name: the hub serves `main` today, and writing that
+  // down is how this same gate came to read the documentary branch of every
+  // destination below.
   const indexRead = await fetchBlobWithFallback(
     "libre-ai/libre-ai",
     "ecosystem/migration-index.v1.yaml",
-    "main",
+    "HEAD",
   );
   if (indexRead.text === null) {
     console.error(
-      `unable to verify the hub migration index — ${indexRead.error ?? "not found at main"}`,
+      `unable to verify the hub migration index — ${indexRead.error ?? "not found on the served branch"}`,
     );
     process.exit(1);
   }
@@ -478,7 +481,7 @@ if (import.meta.main) {
     readonly entries: readonly Entry[];
   };
   const windowClosed = index.hub_state === "archived";
-  const hubTreeResult = await treeOf("libre-ai/libre-ai", "main");
+  const hubTreeResult = await treeOf("libre-ai/libre-ai", "HEAD");
   if ("error" in hubTreeResult) {
     console.error(`unable to verify the hub tree — ${hubTreeResult.error}`);
     process.exit(1);
@@ -502,7 +505,9 @@ if (import.meta.main) {
       if (entry.notes?.includes("history-only")) continue;
     }
     if (!destTrees.has(entry.destination)) {
-      destTrees.set(entry.destination, await treeOf(entry.destination, "main"));
+      // The destination's served branch. `main` there carries four documentary
+      // entries, so every pending path read as "missing at destination".
+      destTrees.set(entry.destination, await treeOf(entry.destination, "HEAD"));
     }
     const destTree = destTrees.get(entry.destination) as
       | Map<string, string>
@@ -536,7 +541,7 @@ if (import.meta.main) {
       const colon = key.indexOf(":");
       const repo = key.slice(0, colon);
       const destPath = key.slice(colon + 1);
-      if (!destTrees.has(repo)) destTrees.set(repo, await treeOf(repo, "main"));
+      if (!destTrees.has(repo)) destTrees.set(repo, await treeOf(repo, "HEAD"));
       const destTree = destTrees.get(repo);
       if (destTree !== undefined && "error" in destTree) {
         failures.push(`unable to verify ${repo} tree — ${destTree.error}`);

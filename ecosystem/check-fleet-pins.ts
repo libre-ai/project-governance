@@ -319,6 +319,12 @@ async function ghGraphQLRaw(
 export interface FleetPinTarget {
   readonly repository: string;
   readonly card: string;
+  /**
+   * The inventory declared this card path, rather than it being defaulted.
+   * A target with no declared card and no readable surface has nothing to
+   * measure, which is not the same as a target whose declared card is missing.
+   */
+  readonly cardDeclared: boolean;
 }
 
 /**
@@ -472,7 +478,16 @@ export function selectFleetPinTargets(
 ): FleetPinTarget[] {
   return repositories
     .filter((repo) => repo.lifecycle !== "archived" && isPublicCrossRepositoryTarget(repo))
-    .map((repo) => ({ repository: repo.repository, card: repo.card ?? "project.v1.yaml" }));
+    .map((repo) => ({
+      repository: repo.repository,
+      card: repo.card ?? "project.v1.yaml",
+      // Whether the INVENTORY declares the card, not whether a default was
+      // supplied. `libre-ai/.github` is an org-profile repository with no
+      // workflow, no manifest and no card, which is a legitimate state: judging
+      // it by the defaulted path reported the fleet's own profile repository as
+      // unreadable.
+      cardDeclared: repo.card !== undefined,
+    }));
 }
 
 if (import.meta.main) {
@@ -502,6 +517,7 @@ if (import.meta.main) {
 
   const fetched = await fetchFleetPinSources(targets);
   const failures: Failure[] = [];
+  const unreadable: string[] = [];
   let covered = 0;
   let inspected = 0;
   for (const target of targets) {
@@ -517,7 +533,24 @@ if (import.meta.main) {
       continue;
     }
     const sightings = collectSightings(sources);
-    if (sightings.length === 0) continue;
+    if (sightings.length === 0) {
+      // Zero sightings and nothing readable are not the same answer. A
+      // repository the inventory declares a card for, whose card, manifest and
+      // workflows all came back empty, was not measured -- it was not read.
+      // Counting the two alike is how twenty unreadable destinations hid behind
+      // the four that still serve `main`: `covered >= 1`, so the anti-empty rule
+      // below never fired and the gate reported a green over a fleet carrying
+      // twenty-four drifts.
+      if (
+        target.cardDeclared &&
+        sources.workflows.size === 0 &&
+        sources.manifest === null &&
+        sources.projectCard === null
+      ) {
+        unreadable.push(target.repository);
+      }
+      continue;
+    }
     covered += 1;
     inspected += sightings.length;
     for (const detail of auditRepository(target.repository, sources, generationShas)) {
@@ -536,6 +569,16 @@ if (import.meta.main) {
       repository: "fleet pins",
       kind: "drift",
       detail: `no pinned repository observed across ${targets.length} targets — the gate lost its inputs`,
+    });
+  }
+
+  // One unreadable target is a finding, whatever the others answered. This is
+  // the rule the `covered === 0` form could not express.
+  for (const repository of unreadable) {
+    failures.push({
+      repository,
+      kind: "unable-to-verify",
+      detail: `${repository}: no workflow, manifest or card could be read on the served branch — nothing here was measured`,
     });
   }
 
@@ -561,6 +604,11 @@ if (import.meta.main) {
       "fleet template pins",
       true,
       `${inspected} pins across ${covered} repositories match the ${generationShas.length} declared generations`,
+    );
+    // Printed, not only recorded: a success line that carries no volume is how
+    // "2 assertion(s) hold" stood for a fleet of twenty-four targets.
+    console.log(
+      `Fleet pins: ${inspected} pin(s) read across ${covered} of ${targets.length} target(s), 0 unreadable, against ${generationShas.length} declared generation(s)`,
     );
   }
   concludeGate("Fleet pins", report);

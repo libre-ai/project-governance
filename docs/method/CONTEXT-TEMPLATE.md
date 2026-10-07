@@ -30,13 +30,13 @@ requises et le pointeur d'autorité est conforme.
 | `couche-4`                                        | Authority, Boundaries, Quality gates, Agents                                          |      40 |
 | `couche-3`, `couche-2`, `transverse` non-autorité | idem (+ mention verified-projection/pin si applicable)                                |      45 |
 | `couche-1` actif (produit réservé activé)         | Purpose, Domain doctrine, Commands, Working here                                      |      60 |
-| `transverse` autorité (`governance`, `contracts`) | Authority, Boundaries, Quality gates, Agents (+ Stack, Naming, Security si possédées) |      80 |
+| `transverse` autorité (`project-governance`, `schemas-and-contracts`) | Authority, Boundaries, Quality gates, Agents (+ Stack, Naming, Security si possédées) |      80 |
 
 - « `transverse` non-autorité » = tout repo `layer: transverse` dont le
   `role` n'est pas `authority` (aujourd'hui : `.github`, `ecosystem-engine`,
   `db-inspect`).
-- « `transverse` autorité » = `role: authority` — aujourd'hui `governance` et
-  `contracts` seulement ; Stack/Naming/Security ne sont exigées que si le
+- « `transverse` autorité » = `role: authority` — aujourd'hui `project-governance` et
+  `schemas-and-contracts` seulement ; Stack/Naming/Security ne sont exigées que si le
   repo possède réellement ce qu'elles décrivent (un repo qui ne fixe aucune
   convention de nommage n'écrit pas de section Naming vide).
 - « couche-1 actif » couvre l'état observé aujourd'hui (les huit produits
@@ -60,11 +60,11 @@ requises et le pointeur d'autorité est conforme.
 
 **Pointeur d'autorité, obligatoire, jamais en prose.** Chaque `AGENTS.md`
 porte au moins une URL fetchable vers la doctrine :
-`https://raw.githubusercontent.com/libre-ai/governance/main/...` (forme
-canonique, lisible sans navigateur) ou `https://github.com/libre-ai/governance/...`
-(lien de consultation). Une phrase du type « voir la doctrine governance »
+`https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/...` (forme
+canonique, lisible sans navigateur) ou `https://github.com/libre-ai/project-governance/...`
+(lien de consultation). Une phrase du type « voir la doctrine project-governance »
 sans URL ne compte pas — `check-context-conformance` cherche le motif, pas
-l'intention. Un pointeur vers `contracts` s'ajoute seulement si le repo
+l'intention. Un pointeur vers `schemas-and-contracts` s'ajoute seulement si le repo
 consomme des contrats verrouillés (le gate n'exige jamais les deux).
 
 **`CLAUDE.md` est un adaptateur strict.** Contenu octet-exact `@AGENTS.md\n`,
@@ -107,11 +107,11 @@ toutes lettres dans une phrase anglaise est déjà en usage (`envelope`:
 ## Authority
 
 Integrity envelope for untrusted content, couche 4 brick of the constellation.
-Doctrine lives upstream: https://raw.githubusercontent.com/libre-ai/governance/main/docs/README.md
+Doctrine lives upstream: https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/README.md
 
 ## Boundaries
 
-- Contract shapes are canonical in `libre-ai/contracts`, never redefined here.
+- Contract shapes are canonical in `libre-ai/schemas-and-contracts`, never redefined here.
 - Product code and product specifications live in their own repositories.
 
 ## Quality gates
@@ -137,4 +137,4 @@ conformité n'est jamais une question de longueur.
   qui mesure l'écart, repo par repo. La vague de mise en conformité est passée
   (36/36 entrées du registre conformes, 2026-08-19) : le workflow tourne
   désormais aussi sur `pull_request`, et le check est requis au merge sur
-  `governance` (`tools/security/check-branch-protection.ts --fix`).
+  `project-governance` (`tools/security/check-branch-protection.ts --fix`).

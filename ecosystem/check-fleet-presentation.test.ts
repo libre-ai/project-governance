@@ -185,15 +185,19 @@ describe("buildFleetPresentationQuery", () => {
       { repository: "libre-ai/authz-biscuit", card: "project.v1.yaml" },
     ]);
     expect(query).toContain('repo0: repository(owner: "libre-ai", name: "authz-biscuit")');
-    expect(query).toContain('object(expression: "main:project.v1.yaml")');
-    expect(query).toContain('object(expression: "main:README.md")');
+    expect(query).toContain('object(expression: "HEAD:project.v1.yaml")');
+    expect(query).toContain('object(expression: "HEAD:README.md")');
+    // Never a branch name: a literal `main` read the documentary branch of the
+    // twenty destinations, where the declared card does not exist. This
+    // assertion is what would have caught it.
+    expect(query).not.toContain("main:");
   });
 
   test("reads a non-default card path verbatim", () => {
     const query = buildFleetPresentationQuery([
       { repository: "libre-ai/libre-ai", card: "ecosystem/cards/x.yaml" },
     ]);
-    expect(query).toContain('object(expression: "main:ecosystem/cards/x.yaml")');
+    expect(query).toContain('object(expression: "HEAD:ecosystem/cards/x.yaml")');
   });
 });
 

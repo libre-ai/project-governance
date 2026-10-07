@@ -11,7 +11,10 @@ name: Context hygiene
 # file, never whole directories.
 on:
   push:
-    branches: [main]
+    # The served branch is listed: with `[main]` alone this workflow had
+    # ZERO push runs on `migrate/recover-code` — every one of its runs was a
+    # pull_request, so no verdict was ever attached to a merged head.
+    branches: [main, migrate/recover-code]
   pull_request:
   workflow_dispatch:
 

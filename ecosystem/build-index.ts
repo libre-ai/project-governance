@@ -237,7 +237,21 @@ if (import.meta.main) {
   // repository as a git-dep, and a top-level import of a `workspace:*` package
   // made their `bun install` fail on a specification that cannot resolve
   // outside this workspace.
-  const { classify, deriveFrom, requireAuthorityFor } = await import("@libre-ai/classification");
+  //
+  // By path, not by package name. `@libre-ai/classification` resolves only
+  // through the `node_modules` link `bun install` creates, and the workflow
+  // that runs this generator states its own invariant three lines above the
+  // call: "Both scripts use Bun built-ins only -- no `bun install` needed,
+  // which keeps this gate independent from the dependency supply chain."
+  // Wiring the kernel by package name silently broke that: the step failed on
+  // `Cannot find module '@libre-ai/classification'`, and the seven fleet gates
+  // placed after it were skipped -- the inventory-drift workflow asserted
+  // nothing for five consecutive runs while reporting only its first step.
+  // The kernel lives in this repository, so a path import is both honest and
+  // install-free.
+  const { classify, deriveFrom, requireAuthorityFor } = await import(
+    "../packages/classification/src/index"
+  );
 
   const inventory = classify("authoritative", await Bun.file(sourceUrl).text());
 

@@ -1,6 +1,6 @@
 # Libre AI
 
-> Libre AI is an open-source, sovereignty-focused software lab whose portfolio is built by AI agents under a governed, evidence-first method; no product is released yet, every claim maps to a verifiable artifact, and the method itself is the first product. Since the general activation of 2026-07-28 (ADR-0020) the constellation has two authorities — `libre-ai/governance` for doctrine, invariants, the ecosystem index and evidence, `libre-ai/contracts` for the canonical contracts — while the former hub `libre-ai/libre-ai` has been a read-only archive since 2026-07-30 and is never a living source.
+> Libre AI is an open-source, sovereignty-focused software lab whose portfolio is built by AI agents under a governed, evidence-first method; no product is released yet, every claim maps to a verifiable artifact, and the method itself is the first product. Since the general activation of 2026-07-28 (ADR-0020) the constellation has two authorities — `libre-ai/project-governance` for doctrine, invariants, the ecosystem index and evidence, `libre-ai/schemas-and-contracts` for the canonical contracts (both admitted under their long names by the consolidation of 2026-10-07, ADR-0041, which retired the short-name generation) — while the former hub `libre-ai/libre-ai` has been a read-only archive since 2026-07-30 and is never a living source.
 
 Working language of the repositories is French; agent-facing surfaces are in English. Documentation is CC-BY-4.0, software is EUPL-1.2 or Apache-2.0 by surface.
 
@@ -8,61 +8,61 @@ A repository's own state is never declared centrally: it lives in the `project.v
 
 ## Authorities
 
-- [governance](https://raw.githubusercontent.com/libre-ai/governance/main/README.md): the governance authority — doctrine, invariants, ADRs, the LEXICON, the ecosystem index, the project-card schema and fleet aggregator, evidence and the fleet gates
-- [contracts](https://raw.githubusercontent.com/libre-ai/contracts/main/README.md): the contract authority — canonical schemas, vectors, OpenAPI documents, the catalog and the compatibility policy
-- [Authority map](https://raw.githubusercontent.com/libre-ai/governance/main/docs/README.md): one subject, one authority — the table locating every subject and naming what is merely explanatory, historical or evidence
+- [governance](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/README.md): the governance authority — doctrine, invariants, ADRs, the LEXICON, the ecosystem index, the project-card schema and fleet aggregator, evidence and the fleet gates
+- [contracts](https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/HEAD/README.md): the contract authority — canonical schemas, vectors, OpenAPI documents, the catalog and the compatibility policy
+- [Authority map](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/README.md): one subject, one authority — the table locating every subject and naming what is merely explanatory, historical or evidence
 
 ## Doctrine
 
-- [Invariants register](https://raw.githubusercontent.com/libre-ai/governance/main/docs/decisions/INVARIANTS.md): exhaustive by construction — doctrine absent from this file does not exist, whatever another document asserts. Load this first
-- [LEXICON](https://raw.githubusercontent.com/libre-ai/governance/main/docs/decisions/LEXICON.md): the signed map of target names and the product glossary; any name outside it is a blocking defect
-- [Decision register](https://raw.githubusercontent.com/libre-ai/governance/main/docs/decisions/DECISION-REGISTER.md): the structural decisions and the consequence each one carries
-- [ADR-0020 — general activation and hub dismantling](https://raw.githubusercontent.com/libre-ai/governance/main/docs/adr/0020-general-activation-and-hub-dismantling.md): the decision that split the hub into two authorities and turned it into an archive
-- [Architecture decision records](https://github.com/libre-ai/governance/tree/main/docs/adr): every dated and arbitrated decision
+- [Invariants register](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/decisions/INVARIANTS.md): exhaustive by construction — doctrine absent from this file does not exist, whatever another document asserts. Load this first
+- [LEXICON](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/decisions/LEXICON.md): the signed map of target names and the product glossary; any name outside it is a blocking defect
+- [Decision register](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/decisions/DECISION-REGISTER.md): the structural decisions and the consequence each one carries
+- [ADR-0020 — general activation and hub dismantling](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/adr/0020-general-activation-and-hub-dismantling.md): the decision that split the hub into two authorities and turned it into an archive
+- [Architecture decision records](https://github.com/libre-ai/project-governance/tree/HEAD/docs/adr): every dated and arbitrated decision
 
 ## Agents
 
-- [governance AGENTS.md](https://raw.githubusercontent.com/libre-ai/governance/main/AGENTS.md): canonical rules for agents touching doctrine — authority, stack, boundaries, naming, quality gates
-- [contracts AGENTS.md](https://raw.githubusercontent.com/libre-ai/contracts/main/AGENTS.md): canonical rules for agents touching the contract authorities
+- [governance AGENTS.md](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/AGENTS.md): canonical rules for agents touching doctrine — authority, stack, boundaries, naming, quality gates
+- [contracts AGENTS.md](https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/HEAD/AGENTS.md): canonical rules for agents touching the contract authorities
 
 ## Ecosystem index
 
-- [Repository inventory (YAML, authority)](https://raw.githubusercontent.com/libre-ai/governance/main/ecosystem/repositories.v1.yaml): single source of the public topology — repositories, roles, layers, visibility, lifecycle, and the card path of each
-- [Repository index (JSON)](https://raw.githubusercontent.com/libre-ai/governance/main/distribution/index/repositories.v1.json): deterministic projection of that inventory, one entry per repository
-- [Portfolio backlog](https://raw.githubusercontent.com/libre-ai/governance/main/ecosystem/portfolio.v1.yaml): products and families tracked before they earn a repository; an item moves to the inventory when it has something verifiable to show
+- [Repository inventory (YAML, authority)](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/ecosystem/repositories.v1.yaml): single source of the public topology — repositories, roles, layers, visibility, lifecycle, and the card path of each
+- [Repository index (JSON)](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/index/repositories.v1.json): deterministic projection of that inventory, one entry per repository
+- [Portfolio backlog](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/ecosystem/portfolio.v1.yaml): products and families tracked before they earn a repository; an item moves to the inventory when it has something verifiable to show
 
 ## Contracts
 
-- [Contract catalog (JSON, authority)](https://raw.githubusercontent.com/libre-ai/contracts/main/contracts/catalog.v1.json): the locked machine catalog — every contract with its kind, path, owners, consumers, compatibility and status
-- [Catalog summary](https://raw.githubusercontent.com/libre-ai/contracts/main/contracts/CATALOG.md): the same lock by family — JSON Schema, OpenAPI, WIT worlds, Biscuit policies — with counts and compatibility rules
-- [Compatibility policy](https://raw.githubusercontent.com/libre-ai/contracts/main/contracts/COMPATIBILITY.md): what may change inside a major, and what forces a new one
-- [Contracts directory](https://github.com/libre-ai/contracts/tree/main/contracts): schemas, fixtures and golden vectors; verified by the repository's own gates
+- [Contract catalog (JSON, authority)](https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/HEAD/contracts/catalog.v1.json): the locked machine catalog — every contract with its kind, path, owners, consumers, compatibility and status
+- [Catalog summary](https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/HEAD/contracts/CATALOG.md): the same lock by family — JSON Schema, OpenAPI, WIT worlds, Biscuit policies — with counts and compatibility rules
+- [Compatibility policy](https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/HEAD/contracts/COMPATIBILITY.md): what may change inside a major, and what forces a new one
+- [Contracts directory](https://github.com/libre-ai/schemas-and-contracts/tree/HEAD/contracts): schemas, fixtures and golden vectors; verified by the repository's own gates
 
 ## Evidence
 
-- [Gate acceptance log](https://raw.githubusercontent.com/libre-ai/governance/main/distribution/evidence/gate-acceptance-log.md): public journal of gate verdicts, each line carrying a verifiable reference — pull request, SHA or ADR. Evidence, never an authority
-- [Evidence changelog (Markdown)](https://raw.githubusercontent.com/libre-ai/governance/main/distribution/feeds/changelog.md): dated changelog of every evidence event — gate verdicts, adoption attestations, sovereignty reports, coverage measurements — newest first
-- [Evidence feed (JSON)](https://raw.githubusercontent.com/libre-ai/governance/main/distribution/feeds/evidence.json): structured projection of the same events (schema `libre-ai.evidence-feed.v1`) — stable ids, ISO 8601 dates, type, status, artifact reference
-- [Evidence feed (Atom)](https://raw.githubusercontent.com/libre-ai/governance/main/distribution/feeds/evidence.atom.xml): Atom 1.0 projection of the same events; regenerated deterministically, freshness enforced in CI
-- [Reference chain harness](https://raw.githubusercontent.com/libre-ai/governance/main/verification/harness/reference-chain.ts): replays the foundation chain from a clean checkout and emits a digest-anchored evidence report
-- [Evidence directory](https://github.com/libre-ai/governance/tree/main/distribution/evidence): dated evidence reports and measured coverage metrics
+- [Gate acceptance log](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/evidence/gate-acceptance-log.md): public journal of gate verdicts, each line carrying a verifiable reference — pull request, SHA or ADR. Evidence, never an authority
+- [Evidence changelog (Markdown)](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/feeds/changelog.md): dated changelog of every evidence event — gate verdicts, adoption attestations, sovereignty reports, coverage measurements — newest first
+- [Evidence feed (JSON)](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/feeds/evidence.json): structured projection of the same events (schema `libre-ai.evidence-feed.v1`) — stable ids, ISO 8601 dates, type, status, artifact reference
+- [Evidence feed (Atom)](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/feeds/evidence.atom.xml): Atom 1.0 projection of the same events; regenerated deterministically, freshness enforced in CI
+- [Reference chain harness](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/verification/harness/reference-chain.ts): replays the foundation chain from a clean checkout and emits a digest-anchored evidence report
+- [Evidence directory](https://github.com/libre-ai/project-governance/tree/HEAD/distribution/evidence): dated evidence reports and measured coverage metrics
 
 ## Positioning
 
-- [The method](https://raw.githubusercontent.com/libre-ai/governance/main/docs/positioning/method.md): the governed cycle, the closed human-touch surface, numbered autonomy ceilings, in-service versus specified-pending
-- [The evidence](https://raw.githubusercontent.com/libre-ai/governance/main/docs/positioning/evidence.md): claim-type to artifact to verification-command table, unfavourable numbers included
-- [Non-goals](https://raw.githubusercontent.com/libre-ai/governance/main/docs/positioning/non-goals.md): what Libre AI is not, and factual one-line distinctions from neighbouring organizations
+- [The method](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/positioning/method.md): the governed cycle, the closed human-touch surface, numbered autonomy ceilings, in-service versus specified-pending
+- [The evidence](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/positioning/evidence.md): claim-type to artifact to verification-command table, unfavourable numbers included
+- [Non-goals](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/docs/positioning/non-goals.md): what Libre AI is not, and factual one-line distinctions from neighbouring organizations
 
 ## Archive
 
 - [libre-ai/libre-ai](https://github.com/libre-ai/libre-ai): the dismantled hub, read-only since 2026-07-30. It holds its own history and the two registers below, and is never citable as a living source
-- [Archive agent rules](https://raw.githubusercontent.com/libre-ai/libre-ai/main/AGENTS.md): what the archive still owns and the rules for touching it — no resurrection of a migrated path, no history rewrite
-- [Migration index](https://raw.githubusercontent.com/libre-ai/libre-ai/main/ecosystem/migration-index.v1.yaml): destination, first carrying commit and last verified-green commit for every path that lived in the hub — the map from a dead path to its living owner
-- [Forgetting register](https://raw.githubusercontent.com/libre-ai/libre-ai/main/ecosystem/FORGOTTEN.yaml): evicted content, recoverable at the recorded commits and never citable as a living source
+- [Archive agent rules](https://raw.githubusercontent.com/libre-ai/libre-ai/HEAD/AGENTS.md): what the archive still owns and the rules for touching it — no resurrection of a migrated path, no history rewrite
+- [Migration index](https://raw.githubusercontent.com/libre-ai/libre-ai/HEAD/ecosystem/migration-index.v1.yaml): destination, first carrying commit and last verified-green commit for every path that lived in the hub — the map from a dead path to its living owner
+- [Forgetting register](https://raw.githubusercontent.com/libre-ai/libre-ai/HEAD/ecosystem/FORGOTTEN.yaml): evicted content, recoverable at the recorded commits and never citable as a living source
 
 ## Optional
 
 - [Organization profile](https://github.com/libre-ai): the human-readable story of the organization
-- [db-inspect](https://github.com/libre-ai/db-inspect): the organization's only public executable today — fail-closed PostgreSQL schema inspection gate, pinned releases
-- [Vision](https://raw.githubusercontent.com/libre-ai/governance/main/vision.md): the durable vision, without current state
-- [Licensing policy](https://raw.githubusercontent.com/libre-ai/governance/main/LICENSING.md): which licence applies to which surface, and how SPDX metadata decides
+- [database-policy-inspector](https://github.com/libre-ai/database-policy-inspector): the organization's only public executable today — fail-closed PostgreSQL schema inspection gate, pinned releases
+- [Vision](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/vision.md): the durable vision, without current state
+- [Licensing policy](https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/LICENSING.md): which licence applies to which surface, and how SPDX metadata decides

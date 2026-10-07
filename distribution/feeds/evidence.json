@@ -1,6 +1,6 @@
 {
   "schema_version": "libre-ai.evidence-feed.v1",
-  "repository": "libre-ai/libre-ai",
+  "repository": "libre-ai/project-governance",
   "events": [
     {
       "id": "coverage-2026-08-19",
