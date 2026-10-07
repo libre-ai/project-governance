@@ -34,12 +34,27 @@ function audit(cwd: string) {
 
 const report = new GateReport();
 
-// FETCH_HEAD rather than origin/main: an actions/checkout clone is shallow and
-// single-ref, where origin/main may not exist but a targeted fetch always
-// resolves. Locally the two are the same commit.
-const fetched = sh(["git", "fetch", "--quiet", "--depth=1", "origin", "main"]);
+// FETCH_HEAD rather than origin/<base>: an actions/checkout clone is shallow
+// and single-ref, where the remote-tracking ref may not exist but a targeted
+// fetch always resolves. Locally the two are the same commit.
+//
+// The base is the pull request's own target, not the literal `main`. A
+// repository whose default branch is documentary — four editorial files, no
+// manifest and no lockfile — audits as empty, so every advisory already
+// carried by the real base looked "introduced by this change" and a
+// documentation-only transfer went red on two advisories it did not move.
+// That is the exact failure mode the D2 gate exists to prevent, mirrored:
+// judging a change on the state of the world. `GITHUB_BASE_REF` is already
+// how check-review-evidence and doctrine-governance resolve the target;
+// `main` stays the fallback for a local run outside a pull request.
+const baseRef = process.env.GITHUB_BASE_REF?.trim() || "main";
+const fetched = sh(["git", "fetch", "--quiet", "--depth=1", "origin", baseRef]);
 if (fetched.exitCode !== 0) {
-  report.check("base lockfile", false, `could not fetch the base: ${fetched.stderr.trim()}`);
+  report.check(
+    "base lockfile",
+    false,
+    `could not fetch the base ${baseRef}: ${fetched.stderr.trim()}`,
+  );
   concludeGate("Audit delta", report);
 }
 
