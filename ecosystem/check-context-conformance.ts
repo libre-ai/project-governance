@@ -104,8 +104,13 @@ export function countLines(text: string): number {
   return text.replace(/\n$/, "").split("\n").length;
 }
 
+// The two transverse authorities, by their current names. `governance` and
+// `contracts` were retired on 2026-10-07; a pointer to either is a dead link,
+// so the gate that exists to require a REACHABLE pointer must not keep naming
+// them. Both historical spellings are deliberately absent: an AGENTS.md that
+// still points at them fails here, which is the signal wanted.
 const AUTHORITY_URL =
-  /https:\/\/(raw\.githubusercontent\.com|github\.com)\/libre-ai\/(governance|contracts)\//;
+  /https:\/\/(raw\.githubusercontent\.com|github\.com)\/libre-ai\/(project-governance|schemas-and-contracts)\//;
 
 export function hasAuthorityPointer(text: string): boolean {
   return AUTHORITY_URL.test(text);

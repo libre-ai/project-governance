@@ -19,7 +19,8 @@ import {
   reviewContext,
 } from "./check-context-conformance";
 
-const POINTER = "https://raw.githubusercontent.com/libre-ai/governance/main/docs/README.md";
+const POINTER =
+  "https://raw.githubusercontent.com/libre-ai/project-governance/migrate/recover-code/docs/README.md";
 
 function agentsFixture(opts: {
   sections: readonly string[];
@@ -120,13 +121,24 @@ describe("countLines", () => {
 describe("hasAuthorityPointer", () => {
   test("accepts the raw.githubusercontent.com form", () => {
     expect(
-      hasAuthorityPointer("see https://raw.githubusercontent.com/libre-ai/governance/main/x"),
+      hasAuthorityPointer(
+        "see https://raw.githubusercontent.com/libre-ai/project-governance/main/x",
+      ),
     ).toBe(true);
   });
 
-  test("accepts the github.com blob form for contracts", () => {
+  test("refuses the retired authority names, whose pointers are dead links", () => {
+    expect(hasAuthorityPointer("https://github.com/libre-ai/governance/blob/main/x.md")).toBe(
+      false,
+    );
+    expect(hasAuthorityPointer("https://github.com/libre-ai/contracts/blob/main/x.md")).toBe(false);
+  });
+
+  test("accepts the github.com blob form for the contracts authority", () => {
     expect(
-      hasAuthorityPointer("see https://github.com/libre-ai/contracts/blob/main/README.md"),
+      hasAuthorityPointer(
+        "see https://github.com/libre-ai/schemas-and-contracts/blob/main/README.md",
+      ),
     ).toBe(true);
   });
 

@@ -6,8 +6,8 @@ This repository is the **governance authority** of the Libre AI constellation
 (ADR-0020, general activation 2026-07-28) — the transverse layer's registry
 root: doctrine, invariants, ADRs, the LEXICON, the ecosystem index, the
 project-card schema and fleet aggregator, ecosystem tooling, evidence, and
-the fleet gates. The `contracts` repository is the other transverse authority
-(https://raw.githubusercontent.com/libre-ai/contracts/main/AGENTS.md) and
+the fleet gates. `schemas-and-contracts` is the other transverse authority
+(https://raw.githubusercontent.com/libre-ai/schemas-and-contracts/migrate/recover-code/AGENTS.md) and
 owns the canonical contract authorities. Every
 product and satellite repository is responsible for its own perimeter; its
 state lives in the `project.v1.yaml` card of its repository, aggregated and
@@ -26,13 +26,16 @@ forgotten**.
 
 ## Stack
 
-- Single Bun workspace, strict TypeScript, no application code: this
-  repository holds doctrine, schemas, gates and evidence tooling only.
-- No Rust workspace. No JavaScript source.
+- Bun workspace, strict TypeScript, no application code: doctrine, schemas,
+  gates and evidence tooling. No JavaScript source.
+- One crate, `crates/ecosystem-engine`: the knowledge graph and the
+  deterministic projection of `ecosystem/objects`, verified where it is held.
+- `packages/classification` is the K2 reliability kernel, exported so a
+  protected write path links it in its own process.
 
 ## Boundaries
 
-- Contract authorities are canonical in the `contracts` repository — never
+- Contract authorities are canonical in `schemas-and-contracts` — never
   here.
 - Product code, product specifications (`docs/apps/*`), qualification
   harnesses and brick tooling live in their product/satellite repositories.

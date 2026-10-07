@@ -223,7 +223,7 @@ describe("reviewDependabot", () => {
       templates,
     );
     expect(outcome.failures).toEqual([
-      ".github/dependabot.yml is missing at main — expected the cargo variant (distribution/templates/dependabot/cargo.yml)",
+      ".github/dependabot.yml is missing on the default branch — expected the cargo variant (distribution/templates/dependabot/cargo.yml)",
     ]);
   });
 
@@ -287,7 +287,7 @@ describe("reviewDependabot", () => {
       templates,
     );
     expect(outcome.failures).toEqual([
-      "unable to verify .github/dependabot.yml at main: rate limited",
+      "unable to verify .github/dependabot.yml on the default branch: rate limited",
     ]);
   });
 
@@ -333,9 +333,13 @@ describe("GraphQL fleet batch", () => {
     const query = buildBatchQuery(repositories);
     expect(query).toContain('repo0: repository(owner: "libre-ai", name: "sdk-ts")');
     expect(query).toContain('repo3: repository(owner: "libre-ai", name: "gone")');
-    expect(query).toContain('config: object(expression: "main:.github/dependabot.yml")');
-    expect(query).toContain('cargoToml: object(expression: "main:Cargo.toml")');
-    expect(query).toContain('workflows: object(expression: "main:.github/workflows")');
+    expect(query).toContain('config: object(expression: "HEAD:.github/dependabot.yml")');
+    // The default branch, never a literal `main`: the consolidated
+    // destinations serve `migrate/recover-code`, whose documentary ancestor
+    // carries neither workflows nor a Cargo manifest.
+    expect(query).not.toContain('expression: "main:');
+    expect(query).toContain('cargoToml: object(expression: "HEAD:Cargo.toml")');
+    expect(query).toContain('workflows: object(expression: "HEAD:.github/workflows")');
     // package.json no longer selects anything: asking for it would be a
     // field the gate reads and ignores.
     expect(query).not.toContain("package.json");

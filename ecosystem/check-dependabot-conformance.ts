@@ -200,7 +200,7 @@ export function reviewDependabot(
   if (state.fetchError !== null || state.manifests === null) {
     return {
       failures: [
-        `unable to verify ${CONFIG_PATH} at main: ${state.fetchError ?? "no manifest information recorded"}`,
+        `unable to verify ${CONFIG_PATH} on the default branch: ${state.fetchError ?? "no manifest information recorded"}`,
       ],
       notes: [],
       exempt: false,
@@ -221,7 +221,7 @@ export function reviewDependabot(
 
   if (state.config.error !== null) {
     return {
-      failures: [`unable to verify ${CONFIG_PATH} at main: ${state.config.error}`],
+      failures: [`unable to verify ${CONFIG_PATH} on the default branch: ${state.config.error}`],
       notes: [],
       exempt: false,
     };
@@ -229,7 +229,7 @@ export function reviewDependabot(
   if (state.config.text === null) {
     return {
       failures: [
-        `${CONFIG_PATH} is missing at main — expected the ${variant} variant (${templatePath})`,
+        `${CONFIG_PATH} is missing on the default branch — expected the ${variant} variant (${templatePath})`,
       ],
       notes: [],
       exempt: false,
@@ -272,9 +272,13 @@ export function buildBatchQuery(repositories: readonly string[]): string {
     const name = JSON.stringify(repository.slice(separator + 1));
     return [
       `  ${repoAlias(index)}: repository(owner: ${owner}, name: ${name}) {`,
-      `    config: object(expression: "main:${CONFIG_PATH}") { ... on Blob { text } }`,
-      `    cargoToml: object(expression: "main:Cargo.toml") { id }`,
-      `    workflows: object(expression: "main:.github/workflows") { id }`,
+      // `HEAD:` resolves the repository's default branch. A literal `main:`
+      // read the documentary ancestor of every consolidated destination and
+      // reported `{workflows:false, cargoToml:false}` for all of them, so the
+      // gate could not grade a single repository it was pointed at.
+      `    config: object(expression: "HEAD:${CONFIG_PATH}") { ... on Blob { text } }`,
+      `    cargoToml: object(expression: "HEAD:Cargo.toml") { id }`,
+      `    workflows: object(expression: "HEAD:.github/workflows") { id }`,
       `  }`,
     ].join("\n");
   });
@@ -363,7 +367,8 @@ async function existsViaRest(
   repository: string,
   path: string,
 ): Promise<{ readonly present: boolean; readonly error: string | null }> {
-  const result = await ghWithRetry(["api", `repos/${repository}/contents/${path}?ref=main`]);
+  // No `?ref=`: the Contents API resolves the default branch.
+  const result = await ghWithRetry(["api", `repos/${repository}/contents/${path}`]);
   if (result.error !== null) return { present: false, error: result.error };
   return { present: result.text !== null, error: null };
 }
