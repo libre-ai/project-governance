@@ -54,6 +54,12 @@ Changes to this register require an ADR and explicit human approval.
 
 ## Known gaps (2026-08-18, narrowed 2026-08-18 by ADR-0023)
 
+| D46 | La topologie publique passe aux noms descriptifs longs : `project-governance` reçoit doctrine et outillage de flotte, `schemas-and-contracts` contrats et projections de SDK ; les transferts sont individuels et tracés, le corpus historique n'est pas déclaré supersédé | ADR-0041 (direction propriétaire du 2026-09-29, numérotée par ADR-0041) | 2026-10-07 |
+| D47 | Les 19 destinations sont admises par bascule de branche par défaut vers `migrate/recover-code`, dont le `main` documentaire est un ancêtre — aucun ruleset de protection modifié | ADR-0041 §2 | 2026-10-07 |
+| D48 | Les donneurs aux noms courts sont retirés après préservation prouvée par clone réel depuis bundle, `fsck` et recomptage par branche, sur manifeste confirmé ; `governance` en dernier, après re-épinglage de ses consommateurs | ADR-0041 §3 | 2026-10-07 |
+| D49 | Les trois capacités sans destination sont absorbées dans `project-governance` et non supprimées — moteur de projection en `crates/ecosystem-engine`, noyau K2 en `packages/classification` exporté et désormais appelé, lecteur de projection conservé comme seconde implémentation du digest ; ADR-0024 §2.2 est amendée pour ces trois seules briques | ADR-0041 §4 | 2026-10-07 |
+| D50 | `carriere` est déclaré à l'inventaire et conservé : I-16 et ADR-0023 §2.2 excluent que l'absence de code conditionne l'existence d'un repository, et le registre de transition interdit sa suppression implicite | ADR-0041 §5 | 2026-10-07 |
+
 Two accepted ADRs still have no corresponding D-entry above: ADR-0010
 (auth v1 session/revision/concurrency code), ADR-0018 (wave 3 opening —
 orchestrator and harness). This note only records the gap; per the closure
