@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { CargoTomlParseError, isOnMain, scanPatches } from "./check-patch-rev";
+import {
+  CargoTomlParseError,
+  classifyContainment,
+  isOnMain,
+  parseSymrefHead,
+  scanPatches,
+} from "./check-patch-rev";
 
 const REV = "81ce4b579d383f8368f06c8f4e6e3765b518225f";
 const FIXTURES = new URL("../tests/fixtures/patch-rev/", import.meta.url);
@@ -118,5 +124,77 @@ describe("isOnMain", () => {
     expect(isOnMain("behind")).toBe(true);
     expect(isOnMain("ahead")).toBe(false);
     expect(isOnMain("diverged")).toBe(false);
+  });
+});
+
+describe("classifyContainment — ancestry named in the compare vocabulary", () => {
+  test("the same commit is identical", () => {
+    const status = classifyContainment({
+      equal: true,
+      revIsAncestorOfTip: true,
+      tipIsAncestorOfRev: true,
+    });
+    expect(status).toBe("identical");
+    expect(isOnMain(status)).toBe(true);
+  });
+
+  test("a rev the served tip descends from is behind, and acceptable", () => {
+    const status = classifyContainment({
+      equal: false,
+      revIsAncestorOfTip: true,
+      tipIsAncestorOfRev: false,
+    });
+    expect(status).toBe("behind");
+    expect(isOnMain(status)).toBe(true);
+  });
+
+  test("a rev that descends from the served tip is ahead: not merged yet, red", () => {
+    const status = classifyContainment({
+      equal: false,
+      revIsAncestorOfTip: false,
+      tipIsAncestorOfRev: true,
+    });
+    expect(status).toBe("ahead");
+    expect(isOnMain(status)).toBe(false);
+  });
+
+  test("unrelated lines diverge: red", () => {
+    const status = classifyContainment({
+      equal: false,
+      revIsAncestorOfTip: false,
+      tipIsAncestorOfRev: false,
+    });
+    expect(status).toBe("diverged");
+    expect(isOnMain(status)).toBe(false);
+  });
+
+  // The 2026-10-07 consolidation moved the fleet's served branches off `main`;
+  // equality is decided by sha, so the branch's name never enters the verdict.
+  test("equality wins over ancestry, whatever the branch is called", () => {
+    expect(
+      classifyContainment({ equal: true, revIsAncestorOfTip: false, tipIsAncestorOfRev: false }),
+    ).toBe("identical");
+  });
+});
+
+describe("parseSymrefHead — the producer's served branch, never a hardcoded main", () => {
+  test("reads the symbolic ref git prints before the HEAD line", () => {
+    const stdout =
+      "ref: refs/heads/migrate/recover-code\tHEAD\n0123456789abcdef0123456789abcdef01234567\tHEAD\n";
+    expect(parseSymrefHead(stdout)).toBe("migrate/recover-code");
+  });
+
+  test("a plain main is read the same way", () => {
+    expect(parseSymrefHead("ref: refs/heads/main\tHEAD\n")).toBe("main");
+  });
+
+  test("output without a symbolic ref is an error, never a guessed branch", () => {
+    expect(() => parseSymrefHead("0123456789abcdef0123456789abcdef01234567\tHEAD\n")).toThrow(
+      /no symbolic HEAD/,
+    );
+  });
+
+  test("empty output is an error", () => {
+    expect(() => parseSymrefHead("")).toThrow(/no symbolic HEAD/);
   });
 });
