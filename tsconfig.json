@@ -16,6 +16,13 @@
     "skipLibCheck": true,
     "types": ["bun"]
   },
-  "include": ["ecosystem/**/*.ts", "tools/**/*.ts", "verification/**/*.ts", "distribution/*.ts"],
+  "include": [
+    "ecosystem/**/*.ts",
+    "tools/**/*.ts",
+    "verification/**/*.ts",
+    "distribution/*.ts",
+    "crates/ecosystem-engine/scripts/**/*.ts",
+    "packages/**/*.ts"
+  ],
   "exclude": ["node_modules", "dist", "target", ".tools"]
 }

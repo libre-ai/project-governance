@@ -1,0 +1,22 @@
+package libre-ai:notebook-core@1.0.0;
+
+interface types {
+  record contract-error {
+    code: string,
+    message: string,
+  }
+}
+
+world notebook-core {
+  use types.{contract-error};
+
+  /// Canonicalizes context-document JSON bytes and returns the canonical bytes.
+  export canonicalize-context: func(document: list<u8>) -> result<list<u8>, contract-error>;
+
+  /// Seals canonical notebook bytes with Argon2id + AES-256-GCM.
+  /// Browser Web Crypto supplies fresh salt/nonce bytes; the core imports no randomness.
+  export seal-backup: func(plaintext: list<u8>, recovery-secret: list<u8>, salt: list<u8>, nonce: list<u8>, memory-kib: u32, iterations: u32, parallelism: u32) -> result<list<u8>, contract-error>;
+
+  /// Authenticates and opens a notebook-backup envelope without persisting key material.
+  export open-backup: func(envelope: list<u8>, recovery-secret: list<u8>) -> result<list<u8>, contract-error>;
+}

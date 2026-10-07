@@ -1,0 +1,42 @@
+[package]
+name = "libre-ai-ecosystem-engine"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+license = "EUPL-1.2"
+repository = "https://github.com/libre-ai/libre-ai"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+jsonschema = { version = "=0.47.0", default-features = false }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = { version = "=1.0.151", features = ["float_roundtrip"] }
+sha2 = { version = "=0.11.0", default-features = false }
+
+[dev-dependencies]
+biscuit-auth = { version = "=6.0.0", default-features = false }
+biscuit-parser = "=0.2.0"
+wit-parser = { version = "=0.253.0", default-features = false, features = ["std"] }
+
+[workspace]
+
+# The published biscuit-auth 6.0.0 archive does not compile with default
+# features off (upstream eclipse-biscuit/biscuit-rust#305); the fix (#306) is
+# merged upstream but unreleased. authz-biscuit — the couche-3 authorization
+# brick that owns the runtime qualification of this dependency — carries the
+# single vendored copy of the fleet (archive + #306, provenance and removal
+# condition in its third_party/biscuit-auth-6.0.0/PATCH.md). This dev-dep is
+# resolved to that same copy rather than to a second one, so the two crates
+# cannot drift. The rev pins the squash-merge commit of libre-ai/authz-biscuit#12
+# on main (ADR-0031 D2/D3: a full sha reachable from the home's main, checked
+# by scripts/check-patch-rev.ts).
+[patch.crates-io]
+# I-28: a vendored patch has a single home in the fleet, and a secondary
+# consumer pins that home by rev under the orphan-rev gate. The home moved
+# from the retired `authz-biscuit` to `capability-authorization`, which
+# carries `third_party/biscuit-auth-6.0.0` (name = "biscuit-auth", 6.0.0)
+# and patches it by path for its own build.
+biscuit-auth = { git = "https://github.com/libre-ai/capability-authorization", rev = "7ce06366663ff8b4329d0bc25f589c8ef830aef0" }

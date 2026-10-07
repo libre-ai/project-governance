@@ -11,9 +11,14 @@
       },
       "devDependencies": {
         "@biomejs/biome": "2.5.3",
+        "@libre-ai/contracts-authority": "github:libre-ai/schemas-and-contracts#d2767988c7b1a00b304b76c5d5ac92b93898bf30",
         "@types/bun": "1.3.14",
         "typescript": "7.0.2",
       },
+    },
+    "packages/classification": {
+      "name": "@libre-ai/classification",
+      "version": "0.1.0",
     },
   },
   "overrides": {
@@ -37,6 +42,14 @@
     "@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.5.3", "", { "os": "win32", "cpu": "arm64" }, "sha512-cX5z+GYwRcqEok0AH3KSfQGgqYd0Nomfp6Fbe1uiTtELE38hdH2k842wQ9wLNaF/JJ7r4rjJQ4VR+ce+fRmQbw=="],
 
     "@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.5.3", "", { "os": "win32", "cpu": "x64" }, "sha512-ExSaJWi4/u6+GXCszlSKpWSjKNbDseAYqqkCznsCsZ/4uidZ/BEqsCc5/3ctlq6dfIubdIIRSVLC/PG9xPl70Q=="],
+
+    "@libre-ai/classification": ["@libre-ai/classification@workspace:packages/classification"],
+
+    "@libre-ai/contracts-authority": ["@libre-ai/contracts-authority@github:libre-ai/schemas-and-contracts#d276798", { "dependencies": { "@noble/curves": "2.4.0", "ajv": "8.20.0", "ajv-formats": "3.0.1", "entities": "8.0.0" } }, "libre-ai-schemas-and-contracts-d276798", "sha512-MFwBY/w5LV9GsHAgFsJNTKsqMOacxKVRPOuV7KjZbAjd39DsaRz6c82Nz/0Pw5+c4lEbzD8SA4Mx1DFoHjcfWg=="],
+
+    "@noble/curves": ["@noble/curves@2.4.0", "", { "dependencies": { "@noble/hashes": "2.4.0" } }, "sha512-P4/62zrgfH33CneE3Dn4WhJVA22YUU0eR51wKIan4NVRvwsA0YnPTwWGpNbpuacSujmSFLvyzpyuR30+fbq2Ew=="],
+
+    "@noble/hashes": ["@noble/hashes@2.4.0", "", {}, "sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA=="],
 
     "@types/bun": ["@types/bun@1.3.14", "", { "dependencies": { "bun-types": "1.3.14" } }, "sha512-h1hFqFVcvAvD9j9K7ZW7vd82aSA+rTdznZa+5bwvCwqSB1jmmfLcbIWhOLx1/+boy/xmjgCs/OMUL8hRJSmnPw=="],
 

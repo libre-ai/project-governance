@@ -1,0 +1,2 @@
+[patch.crates-io]
+biscuit-auth = { git = "https://github.com/libre-ai/authz-biscuit", rev = "81CE4B579D383F8368F06C8F4E6E3765B518225F" }

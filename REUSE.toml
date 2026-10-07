@@ -129,3 +129,16 @@ path = ["project.v1.yaml"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Libre AI contributors"
 SPDX-License-Identifier = "EUPL-1.2"
+
+# Vendored copies of the contracts authority keep the licence they carry
+# upstream. Under `contracts/**` that authority classes this whole tree
+# Apache-2.0; landing it under `crates/**` would otherwise make the sources
+# EUPL-1.2 and the accompanying SEMANTICS/PROFILE documents CC-BY-4.0 through
+# the editorial block. A vendored artefact does not change licence by crossing
+# a repository, so the class is re-anchored here, last, because the last
+# matching annotation wins in this file.
+[[annotations]]
+path = ["crates/ecosystem-engine/vendored/**"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "Apache-2.0"

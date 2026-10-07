@@ -14,7 +14,9 @@
       "!ecosystem/fixtures/repository-index/expected.json",
       "!ecosystem/projections/public.v1.json",
       "!docs/reviews/**/evidence",
-      "!docs/transformation/inputs"
+      "!docs/transformation/inputs",
+      "!crates/ecosystem-engine/vendored",
+      "!crates/ecosystem-engine/target"
     ]
   },
   "formatter": {
