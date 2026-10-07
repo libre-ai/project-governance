@@ -61,17 +61,29 @@ export interface PinSighting {
   readonly subject: string;
   /** The ref exactly as written. */
   readonly ref: string;
+  /**
+   * Repository the pin points at. Absent means the current authority, which is
+   * what every surface described before `governance` was retired.
+   */
+  readonly authority?: string;
 }
 
 // A pin is a YAML key, never prose: the templates document their own
 // consumption as `#   uses: libre-ai/project-governance/...@<sha>`, and governance is
 // itself covered by this gate. Anchoring on the key excludes the comment.
+// Both the current authority and the retired one. Matching only the current
+// name would have made a pin to `governance` INVISIBLE to this gate instead of
+// a failure — a repository pinning a repository that is about to disappear
+// would have graded clean. A sighting of the retired authority is reported with
+// its own message and always fails.
+const CURRENT_AUTHORITY = "project-governance";
+const RETIRED_AUTHORITY = "governance";
 const USES_LINE =
-  /^[ \t]*(?:-[ \t]+)?uses:[ \t]*libre-ai\/project-governance\/(\S+?)@(\S+?)[ \t\r]*$/;
+  /^[ \t]*(?:-[ \t]+)?uses:[ \t]*libre-ai\/(project-governance|governance)\/(\S+?)@(\S+?)[ \t\r]*$/;
 // The input declaration in the template carries no value on its line, so only
 // a consumer supplying one is sighted.
 const TOOLING_REF_LINE = /^[ \t]*tooling_ref:[ \t]*(\S+?)[ \t\r]*$/;
-const GIT_DEP = /github:libre-ai\/project-governance#([^"'\s,}]+)/g;
+const GIT_DEP = /github:libre-ai\/(project-governance|governance)#([^"'\s,}]+)/g;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
 
 export function collectSightings(sources: RepositorySources): PinSighting[] {
@@ -81,32 +93,47 @@ export function collectSightings(sources: RepositorySources): PinSighting[] {
     for (const line of text.split("\n")) {
       const uses = USES_LINE.exec(line);
       if (uses !== null) {
-        const [path, ref] = [uses[1] as string, uses[2] as string];
-        sightings.push({ source: name, subject: path.split("/").pop() as string, ref });
+        const authority = uses[1] as string;
+        const path = uses[2] as string;
+        const ref = uses[3] as string;
+        // Emitted only when it names the retired authority, so that `absent`
+        // keeps meaning `current` for every surface written before the move.
+        sightings.push(
+          authority === RETIRED_AUTHORITY
+            ? { source: name, subject: path.split("/").pop() as string, ref, authority }
+            : { source: name, subject: path.split("/").pop() as string, ref },
+        );
         continue;
       }
       const tooling = TOOLING_REF_LINE.exec(line);
       if (tooling !== null) {
+        // The input carries no owner of its own; it belongs to whichever
+        // authority the surrounding `uses:` names, so it is attributed to the
+        // current one and only the ref is judged.
         sightings.push({ source: name, subject: "tooling_ref", ref: tooling[1] as string });
       }
     }
   }
   if (sources.manifest !== null) {
     for (const match of sources.manifest.matchAll(GIT_DEP)) {
-      sightings.push({
-        source: "package.json",
-        subject: "tooling git-dep",
-        ref: match[1] as string,
-      });
+      const authority = match[1] as string;
+      const ref = match[2] as string;
+      sightings.push(
+        authority === RETIRED_AUTHORITY
+          ? { source: "package.json", subject: "tooling git-dep", ref, authority }
+          : { source: "package.json", subject: "tooling git-dep", ref },
+      );
     }
   }
   if (sources.projectCard !== null) {
     for (const match of sources.projectCard.matchAll(GIT_DEP)) {
-      sightings.push({
-        source: "project.v1.yaml",
-        subject: "project card pin",
-        ref: match[1] as string,
-      });
+      const authority = match[1] as string;
+      const ref = match[2] as string;
+      sightings.push(
+        authority === RETIRED_AUTHORITY
+          ? { source: "project.v1.yaml", subject: "project card pin", ref, authority }
+          : { source: "project.v1.yaml", subject: "project card pin", ref },
+      );
     }
   }
   return sightings;
@@ -126,6 +153,21 @@ export function auditRepository(
   const declared = new Set(generations);
   const failures: string[] = [];
   const pinned: PinSighting[] = [];
+
+  // A pin on the RETIRED authority fails on its own terms, before the sha is
+  // even judged. Its sha may well be a declared generation — `pi-evidence`
+  // carried one — so a gate that only compared shas would have graded such a
+  // repository clean while it pointed at a repository about to disappear. The
+  // retirement of an authority is exactly when this gate has to speak.
+  for (const sighting of sightings) {
+    if (sighting.authority === RETIRED_AUTHORITY) {
+      failures.push(
+        `${repository}: ${sighting.source} pins ${sighting.subject} on the retired authority ` +
+          `libre-ai/${RETIRED_AUTHORITY} — re-point it at libre-ai/${CURRENT_AUTHORITY}`,
+      );
+    }
+  }
+
   for (const sighting of sightings) {
     if (COMMIT_SHA.test(sighting.ref)) {
       pinned.push(sighting);

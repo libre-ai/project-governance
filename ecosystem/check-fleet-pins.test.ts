@@ -390,3 +390,43 @@ describe("hasUsableGraphQLData", () => {
     expect(hasUsableGraphQLData({ data: { repo0: {} } })).toBe(true);
   });
 });
+
+describe("the retired authority", () => {
+  test("a pin on libre-ai/governance fails even when its sha is a declared generation", () => {
+    const sha = "a".repeat(40);
+    const failures = auditRepository(
+      "libre-ai/demo",
+      {
+        workflows: new Map([
+          [
+            "ci.yml",
+            `    uses: libre-ai/governance/.github/workflows/reusable-licensing.yml@${sha}\n`,
+          ],
+        ]),
+        manifest: null,
+        projectCard: null,
+      },
+      [sha],
+    );
+    expect(failures.some((failure) => failure.includes("retired authority"))).toBe(true);
+  });
+
+  test("the same surface on the current authority passes", () => {
+    const sha = "b".repeat(40);
+    const failures = auditRepository(
+      "libre-ai/demo",
+      {
+        workflows: new Map([
+          [
+            "ci.yml",
+            `    uses: libre-ai/project-governance/.github/workflows/reusable-licensing.yml@${sha}\n`,
+          ],
+        ]),
+        manifest: null,
+        projectCard: null,
+      },
+      [sha],
+    );
+    expect(failures).toEqual([]);
+  });
+});
