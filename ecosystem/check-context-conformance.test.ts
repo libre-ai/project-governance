@@ -507,9 +507,18 @@ describe("buildBatchQuery", () => {
 
   test("requests AGENTS.md, CLAUDE.md and the AGENTS.md commit history in one block", () => {
     const query = buildBatchQuery(["libre-ai/demo"]);
-    expect(query).toContain('object(expression: "main:AGENTS.md")');
-    expect(query).toContain('object(expression: "main:CLAUDE.md")');
+    expect(query).toContain('object(expression: "HEAD:AGENTS.md")');
+    expect(query).toContain('object(expression: "HEAD:CLAUDE.md")');
     expect(query).toContain('history(first: 1, path: "AGENTS.md")');
+  });
+
+  test("resolves the default branch, never a literal main", () => {
+    // The nineteen consolidated destinations default to `migrate/recover-code`,
+    // whose documentary `main` is an ancestor carrying no AGENTS.md. A pinned
+    // `main:` read the wrong tree and reported conformant repositories as
+    // missing their agent context.
+    const query = buildBatchQuery(["libre-ai/demo"]);
+    expect(query).not.toContain('expression: "main:');
   });
 
   test("rejects a malformed registry entry instead of guessing an owner", () => {

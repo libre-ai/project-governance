@@ -14,7 +14,8 @@
  *
  * For every entry in `ecosystem/repositories.v1.yaml`, this gate verifies:
  *
- *   1. `AGENTS.md` exists at `main` for every `lifecycle: active` entry.
+ *   1. `AGENTS.md` exists on the DEFAULT BRANCH for every `lifecycle: active`
+ *      entry — the branch an agent actually works from, not a literal `main`.
  *      Absence on a non-active entry is asserted as a pass, never a silent
  *      skip (gate-report's `check()` records it either way). Two standing
  *      exemptions, both asserted, never silently skipped: the
@@ -286,14 +287,14 @@ export function reviewContext(
       // pull request on a transient condition that has nothing to do with
       // this repository's actual AGENTS.md.
       return {
-        failures: [`unable to verify AGENTS.md at main: ${docs.agentsFetchError}`],
+        failures: [`unable to verify AGENTS.md on the default branch: ${docs.agentsFetchError}`],
         notes: [],
         exempt: false,
       };
     }
     if (entry.lifecycle === "active") {
       return {
-        failures: ["AGENTS.md is missing at main (lifecycle=active)"],
+        failures: ["AGENTS.md is missing on the default branch (lifecycle=active)"],
         notes: [],
         exempt: false,
       };
@@ -336,7 +337,7 @@ export function reviewContext(
   }
 
   if (docs.claudeFetchError) {
-    failures.push(`unable to verify CLAUDE.md at main: ${docs.claudeFetchError}`);
+    failures.push(`unable to verify CLAUDE.md on the default branch: ${docs.claudeFetchError}`);
   } else {
     const claudeIssue = claudeAdapterIssue(true, docs.claude);
     if (claudeIssue !== null) failures.push(claudeIssue);
@@ -411,10 +412,17 @@ export async function ghWithRetry(args: string[]): Promise<GhFetchResult> {
   return { text: null, error: lastError };
 }
 
+// No `?ref=`: the Contents API then resolves the repository's DEFAULT branch.
+// Pinning `main` read the wrong tree as soon as a repository's default branch
+// was not called `main` — the nineteen consolidated destinations default to
+// `migrate/recover-code`, whose documentary `main` is an ancestor, so the gate
+// reported an AGENTS.md "missing at main" while the file was present on the
+// branch an agent actually works from. A repository's agent context lives on
+// the branch it serves, which is the one this gate must read.
 export function fetchFile(repository: string, path: string): Promise<GhFetchResult> {
   return ghWithRetry([
     "api",
-    `repos/${repository}/contents/${path}?ref=main`,
+    `repos/${repository}/contents/${path}`,
     "-H",
     "Accept: application/vnd.github.raw+json",
   ]);
@@ -484,8 +492,11 @@ export function buildBatchQuery(repositories: readonly string[]): string {
     const name = JSON.stringify(repository.slice(separator + 1));
     return [
       `  ${repoAlias(index)}: repository(owner: ${owner}, name: ${name}) {`,
-      `    agents: object(expression: "main:AGENTS.md") { ... on Blob { text } }`,
-      `    claude: object(expression: "main:CLAUDE.md") { ... on Blob { text } }`,
+      // `HEAD:` resolves against the repository's default branch, where a
+      // literal `main:` read the wrong tree for any repository whose default
+      // branch carries another name.
+      `    agents: object(expression: "HEAD:AGENTS.md") { ... on Blob { text } }`,
+      `    claude: object(expression: "HEAD:CLAUDE.md") { ... on Blob { text } }`,
       `    defaultBranchRef {`,
       `      target {`,
       `        ... on Commit {`,
