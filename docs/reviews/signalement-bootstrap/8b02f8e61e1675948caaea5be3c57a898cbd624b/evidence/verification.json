@@ -1,0 +1,41 @@
+{
+  "candidate": "8b02f8e61e1675948caaea5be3c57a898cbd624b",
+  "manifest_sha256": "b63c266142ffba8955ee4206a14d0212273f74827c2e6bde5ff95c7667e27c7e",
+  "bun_revision": "1.4.0-canary.1+57f349f63",
+  "git_version": "2.55.0",
+  "host_profile": "macOS-arm64",
+  "checks": {
+    "local_product": {
+      "recipe_sha256": "63dec8353e51c65817391feadd75be2f6aa3ca1aa6819c05e2b738694b704bd4",
+      "exit_status": 0
+    },
+    "local_licenses": {
+      "recipe_sha256": "e1e2ccce353703b1d721600523a1124da56188f07e3751aba8975ebe96a39816",
+      "exit_status": 0
+    },
+    "private_attestation": {
+      "recipe_sha256": "ee960a5efd84691503ba7186b6c7d2ed10a9a84f53569a60bb0a7349a55041ce",
+      "exit_status": 0
+    }
+  },
+  "tests": {
+    "passed": 282,
+    "failed": 0,
+    "assertions": 562
+  },
+  "private_attestation": {
+    "refs": 1,
+    "objects": 224,
+    "git_api_refs_equal": true,
+    "manifest_equal": true,
+    "fresh_full_clone_gate_passed": true
+  },
+  "dco": {
+    "commits": 19,
+    "author_matching_signoffs": true
+  },
+  "log_digests": {
+    "product": "dcbd72d58222cf82b43a502c309aa10a43bdb89cd67b1cdfaec7881d1c9efc04",
+    "licenses": "8aaec9fc9fbddb460060f77a602a9ed9f3acb95021a1ff464f576727e6a54462"
+  }
+}

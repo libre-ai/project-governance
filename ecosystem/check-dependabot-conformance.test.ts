@@ -114,9 +114,16 @@ describe("template variants (distribution/templates/dependabot)", () => {
     }
   });
 
-  test("governance itself carries the github-actions variant byte-exact", async () => {
+  test("the authority itself carries the variant its manifest set selects, byte-exact", async () => {
+    // It carries `cargo` since ADR-0041 absorbed the projection engine as a
+    // workspace member: a root Cargo.toml is exactly what selectVariant reads,
+    // and the cargo variant is what makes the engine's 181 locked crates
+    // watchable. Asserting `github-actions` here would have frozen the gate on
+    // the shape the repository had before it held a crate.
     const own = await Bun.file(new URL("../.github/dependabot.yml", import.meta.url)).text();
-    expect(firstDifference(templates["github-actions"], own)).toBeNull();
+    const root = await Bun.file(new URL("../Cargo.toml", import.meta.url)).exists();
+    expect(selectVariant({ workflows: true, cargoToml: root })).toBe("cargo");
+    expect(firstDifference(templates.cargo, own)).toBeNull();
   });
 
   test("every variant parses as a version-2 Dependabot configuration", () => {
