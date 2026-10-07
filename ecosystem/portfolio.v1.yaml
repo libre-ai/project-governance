@@ -49,6 +49,61 @@ families:
         locks actuels, à spécifier et verrouiller avant toute exécution réelle
         d'agents." Not optional.
       scope: fleet/mission/capability taxonomy; per-mission token; per-agent revocation
+      benchmark: >
+        deepseek-ai/deepseek-harness (MIT) — its `identity` and `credentials`
+        packages are the most complete observed surface for this capability,
+        which has no repository of its own yet. Reference for SCOPE, not an
+        adoption: qualification dated 2026-10-07.
+      benchmark_limit: >
+        Its specification must exist before a reuse is evaluated, otherwise the
+        reuse defines the specification — the reverse of the intended order.
+
+  benchmarks:
+    # Cibles de parite etablies par le proprietaire le 2026-10-07. Un benchmark
+    # est une cible a atteindre, jamais une parite deja atteinte. Chaque entree
+    # porte sa LIMITE : ce sur quoi la parite ne porte pas. Analyse datee :
+    # ~/Documents/analyses/delta-dsh-2026-10-07/ (hors depot, machine locale).
+    - source: deepseek-ai/deepseek-harness
+      licence: MIT
+      maturity: developer-preview, compatibility-breaking changes announced, no security audit
+      serves: [ai-work-supervision, execution-continuity-evaluator]
+      parity_axis: >
+        breadth and composability of the plugin surface — about fifty packages
+        on an everything-is-a-plugin architecture (Cordis), covering session and
+        context management (compaction, spill, session-query), subagents,
+        workflows, plans, jobs, skills, hooks, and the ACP and MCP protocol
+        boundaries.
+      not_a_parity_axis: >
+        confinement and attestation. Its own SAFETY.md refuses the guarantee
+        that execution-sandbox exists to carry (ADR-0018): "Sandboxing, approval
+        prompts, and permission controls ... do not guarantee isolation", and
+        "Do not rely on DeepSeek Harness as the sole security control for
+        untrusted workloads." On that axis it is an assumed counter-example, not
+        a best-in-class target; taking it as the confinement benchmark would aim
+        below the existing invariant.
+      sovereignty: >
+        PASS with a recorded reservation — the tool is local, its telemetry is
+        standard OpenTelemetry and therefore self-hostable, its protocols are
+        open. Same reasoning as the uv adoption. To verify before any reuse:
+        that no package calls a vendor endpoint by default.
+      reuse_decision: per-capability, never wholesale — see the dated analysis
+    - source: delta.dev (Zed Industries)
+      licence: none published — proprietary by default
+      maturity: beta, commercial product with Personal, Pro and Business tiers
+      serves: [collaborative-data-sync, ai-work-supervision]
+      parity_axis: >
+        co-presence of the agent conversation and the code change in one
+        reviewable object, and reverting to any edit in a thread. The
+        constellation has no evidence on this dimension yet.
+      not_a_parity_axis: >
+        model hosting, usage-based billing, and coupling to an editor account.
+        Its paid tier sends content to a third-party host, which is the inverse
+        of the local-first promise of personal-knowledge-notebook,
+        public-vote-comparison and travel-itinerary-planner.
+      sovereignty: FAIL on the hosted tier — third-party US host, hosted models
+      reuse_decision: >
+        EXCLUDED. No licence is published, so there is nothing to adopt, wrap or
+        fork. Parity reference only; never an execution dependency.
 
   candidates:
     # Familles neuves issues de l'audit Run ε. No repository until verifiable (§4).
