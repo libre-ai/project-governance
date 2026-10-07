@@ -8,9 +8,11 @@
  * branch never stops resolving. Nothing in cargo tells the consumer that
  * `main` of the producing repository does not contain the code it depends
  * on. This gate does: every such rev must be an ancestor of (or equal to) the
- * producer's `main`, as reported by the GitHub compare API
- * (`repos/<owner>/<repo>/compare/<default branch>...<rev>` -> status `identical` or
- * `behind`). `ahead` and `diverged` mean the rev is not on `main`: red.
+ * tip of the branch the producer serves, established with git against the
+ * public remote -- `ls-remote --symref` for that branch, then
+ * `merge-base --is-ancestor` both ways, named `identical` / `behind` / `ahead`
+ * / `diverged`. `ahead` and `diverged` mean the rev is not on the served line:
+ * red. No API, so no quota and no token (see `classifyContainment`).
  *
  * Pin rule (D2): `rev` is a full lowercase 40-hex commit sha, never a branch
  * name, a tag or a short sha; `branch =` and `tag =` are refused outright on an
@@ -30,6 +32,10 @@
  * commit on `main`, replace `rev`, `cargo update -p <crate>` (that package
  * only), run this gate, open the bump pull request.
  */
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ORGANISATION = "libre-ai";
 const FULL_SHA = /^[0-9a-f]{40}$/;
@@ -264,57 +270,146 @@ export function isOnMain(status: CompareStatus): boolean {
   return status === "identical" || status === "behind";
 }
 
-function apiHeaders(token: string | undefined): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "libre-ai-ecosystem-engine-check-patch-rev",
-  };
-  if (token !== undefined && token.length > 0) headers.Authorization = `Bearer ${token}`;
-  return headers;
+/**
+ * Containment is asked of git, not of an API.
+ *
+ * Until 2026-10-07 this gate asked `repos/<owner>/<repo>/compare/...`, which
+ * made its verdict depend on a quota shared by every job leaving the runner's
+ * address: sixty requests an hour without a token. CI then reported
+ * `CANNOT CHECK biscuit-auth: HTTP 403` for a repository that exists and a rev
+ * that is on its released line. Failing closed on "I could not ask" was the
+ * right reflex, and that is exactly what makes the defect serious: a red that
+ * means nothing is how a red that means something gets waved through.
+ *
+ * Adding a token would have made the blip rarer, not the verdict deterministic.
+ * git answers the same question with no quota, no token and so nothing to leak,
+ * and answers it more precisely: `merge-base --is-ancestor` IS containment,
+ * where the compare status is a four-valued summary of it. A rev the producer
+ * cannot serve at all stops being indistinguishable from a quota refusal — it
+ * is the finding the gate exists to make.
+ */
+
+/** Ancestry, named in the compare vocabulary the register and `isOnMain` use. */
+export function classifyContainment(options: {
+  readonly equal: boolean;
+  readonly revIsAncestorOfTip: boolean;
+  readonly tipIsAncestorOfRev: boolean;
+}): CompareStatus {
+  if (options.equal) return "identical";
+  if (options.revIsAncestorOfTip) return "behind";
+  if (options.tipIsAncestorOfRev) return "ahead";
+  return "diverged";
 }
 
 /**
- * The producer's own default branch, never a hardcoded `main`.
- *
- * I-28 asks whether the producer's released line contains the pinned rev. The
- * released line is whichever branch that repository serves, and the 2026-10-07
- * consolidation moved the fleet's default branches to `migrate/recover-code`,
- * whose documentary `main` is an ancestor. Comparing against a literal `main`
- * would have declared every correctly pinned rev orphaned — the gate would
- * fail on conformant input, which is worse than not running.
+ * The rev is not obtainable from the producer: force-pushed away, or never
+ * pushed there. Distinct from an unreachable producer, because this one is a
+ * finding about the pin and not about the network.
  */
-async function defaultBranch(patch: GitPatch, token: string | undefined): Promise<string> {
-  const url = `https://api.github.com/repos/${patch.owner}/${patch.repo}`;
-  const response = await fetch(url, { headers: apiHeaders(token) });
-  if (!response.ok) {
-    throw new Error(`GitHub repository ${url} -> HTTP ${response.status}`);
-  }
-  const body = (await response.json()) as { default_branch?: unknown };
-  const branch = body.default_branch;
-  if (typeof branch !== "string" || branch.length === 0) {
-    throw new Error(`GitHub repository ${url} -> no default branch reported`);
+export class UnreachableRevError extends Error {}
+
+interface Ran {
+  readonly code: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+async function run(args: readonly string[]): Promise<Ran> {
+  const proc = Bun.spawn(["git", ...args], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { code, stdout, stderr };
+}
+
+/** The symbolic HEAD of the producer, never a hardcoded `main`. */
+export function parseSymrefHead(lsRemoteStdout: string): string {
+  const match = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/m.exec(lsRemoteStdout);
+  const branch = match?.[1];
+  if (branch === undefined || branch.length === 0) {
+    throw new Error("ls-remote reported no symbolic HEAD");
   }
   return branch;
 }
 
-async function compareStatus(patch: GitPatch, token: string | undefined): Promise<CompareStatus> {
-  const base = await defaultBranch(patch, token);
-  const url = `https://api.github.com/repos/${patch.owner}/${patch.repo}/compare/${encodeURIComponent(base)}...${patch.rev}`;
-  const response = await fetch(url, { headers: apiHeaders(token) });
-  if (!response.ok) {
-    throw new Error(`GitHub compare ${url} -> HTTP ${response.status}`);
+/**
+ * Commits without blobs: ancestry needs the commit graph and nothing else, and
+ * a producer carrying fifty thousand files must not be downloaded whole to
+ * answer one ancestry question. A git or a server that refuses the filter is
+ * retried unfiltered, so a refused filter never reads as a missing rev.
+ */
+async function fetchRefspec(gitDir: string, refspec: string): Promise<Ran> {
+  const fetchArgs = ["--git-dir", gitDir, "fetch", "--quiet", "--no-tags"];
+  const filtered = await run([...fetchArgs, "--filter=blob:none", "origin", refspec]);
+  if (filtered.code === 0) return filtered;
+  return await run([...fetchArgs, "origin", refspec]);
+}
+
+async function compareStatus(patch: GitPatch): Promise<CompareStatus> {
+  const url = `https://github.com/${patch.owner}/${patch.repo}`;
+  const gitDir = await mkdtemp(join(tmpdir(), "check-patch-rev-"));
+  try {
+    const init = await run(["init", "--bare", "--quiet", gitDir]);
+    if (init.code !== 0)
+      throw new Error(`cannot initialise a scratch repository: ${init.stderr.trim()}`);
+    // A named remote with `extensions.partialClone` is what makes `--filter` legal.
+    const remote = await run(["--git-dir", gitDir, "remote", "add", "origin", url]);
+    if (remote.code !== 0) throw new Error(`cannot address ${url}: ${remote.stderr.trim()}`);
+    await run(["--git-dir", gitDir, "config", "extensions.partialClone", "origin"]);
+
+    const head = await run(["--git-dir", gitDir, "ls-remote", "--symref", url, "HEAD"]);
+    if (head.code !== 0) throw new Error(`cannot reach ${url}: ${head.stderr.trim()}`);
+    const branch = parseSymrefHead(head.stdout);
+
+    const tip = await fetchRefspec(gitDir, `refs/heads/${branch}:refs/pinned/tip`);
+    if (tip.code !== 0) {
+      throw new Error(`cannot fetch ${url} ${branch}: ${tip.stderr.trim()}`);
+    }
+    const rev = await fetchRefspec(gitDir, `${patch.rev}:refs/pinned/rev`);
+    if (rev.code !== 0) {
+      throw new UnreachableRevError(
+        `${url} does not serve ${patch.rev}: ${rev.stderr.trim().split("\n").pop() ?? "fetch refused"}`,
+      );
+    }
+
+    const resolve = async (ref: string): Promise<string> => {
+      const parsed = await run(["--git-dir", gitDir, "rev-parse", ref]);
+      if (parsed.code !== 0) throw new Error(`cannot resolve ${ref}: ${parsed.stderr.trim()}`);
+      return parsed.stdout.trim();
+    };
+    const ancestor = async (earlier: string, later: string): Promise<boolean> => {
+      // Exit 1 is an answer, not a failure; anything else is.
+      const asked = await run(["--git-dir", gitDir, "merge-base", "--is-ancestor", earlier, later]);
+      if (asked.code === 0) return true;
+      if (asked.code === 1) return false;
+      throw new Error(`cannot compare ${earlier} to ${later}: ${asked.stderr.trim()}`);
+    };
+
+    const [revSha, tipSha] = await Promise.all([
+      resolve("refs/pinned/rev"),
+      resolve("refs/pinned/tip"),
+    ]);
+    if (revSha !== patch.rev) {
+      throw new Error(
+        `${url} served ${revSha} for ${patch.rev}: a rev must be the commit it names`,
+      );
+    }
+    if (revSha === tipSha)
+      return classifyContainment({
+        equal: true,
+        revIsAncestorOfTip: true,
+        tipIsAncestorOfRev: true,
+      });
+    const [revIsAncestorOfTip, tipIsAncestorOfRev] = await Promise.all([
+      ancestor("refs/pinned/rev", "refs/pinned/tip"),
+      ancestor("refs/pinned/tip", "refs/pinned/rev"),
+    ]);
+    return classifyContainment({ equal: false, revIsAncestorOfTip, tipIsAncestorOfRev });
+  } finally {
+    await rm(gitDir, { recursive: true, force: true });
   }
-  const body = (await response.json()) as { status?: unknown };
-  const status = body.status;
-  if (
-    status !== "identical" &&
-    status !== "behind" &&
-    status !== "ahead" &&
-    status !== "diverged"
-  ) {
-    throw new Error(`GitHub compare ${url} -> unexpected status ${String(status)}`);
-  }
-  return status;
 }
 
 // Repository-root relative, like every other `check:*` of this repository.
@@ -343,13 +438,15 @@ if (import.meta.main) {
     console.error(`  FAIL ${rejection.crate} [patch.${rejection.section}]: ${rejection.reason}`);
     failures += 1;
   }
-  const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
   for (const patch of scan.patches) {
     let status: CompareStatus;
     try {
-      status = await compareStatus(patch, token);
+      status = await compareStatus(patch);
     } catch (error) {
-      console.error(`  CANNOT CHECK ${patch.crate}: ${(error as Error).message}`);
+      // Two reds, named apart: a pin the producer cannot serve is a finding to
+      // act on, an unreachable producer is a condition to look into. Both fail.
+      const label = error instanceof UnreachableRevError ? "FAIL" : "CANNOT CHECK";
+      console.error(`  ${label} ${patch.crate}: ${(error as Error).message}`);
       failures += 1;
       continue;
     }
