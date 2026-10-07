@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Hypothesis",
+  "id": "urn:libre-ai:hypothesis:convergence-requires-verbatim-anchoring",
+  "name": "Une convergence non ancrée verbatim est du bruit de modèle",
+  "purpose": "Un modèle à qui l’on demande « puis-je être utile ici ? » répond toujours oui : la question appelle sa réponse. Une proposition de convergence n’a donc de valeur que si elle est ancrée — citer verbatim un extrait de l’item observé ET nommer l’artefact qui converge — la vérification rejetant automatiquement tout ancrage inexact, sur le modèle du vérificateur d’ancrage déjà éprouvé côté RAG (un booléen du fournisseur ne suffit pas). SUCCÈS : sur vingt propositions, au moins seize survivent à la vérification. RÉFUTATION : un taux nettement inférieur signale que la convergence est du bruit ; repli sur un rapprochement déterministe par recouvrement de termes contractuels. MESURE ASSOCIÉE : le ratio lacunes/convergences est publié à chaque briefing — un ratio qui tend vers zéro signale un effet de bulle, pas une expertise complète.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/hypotheses/convergence-requires-verbatim-anchoring.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

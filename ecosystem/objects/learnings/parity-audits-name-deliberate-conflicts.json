@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Learning",
+  "id": "urn:libre-ai:learning:parity-audits-name-deliberate-conflicts",
+  "name": "Un audit de parité vaut par les conflits qu'il nomme",
+  "purpose": "Comparer un produit à une référence établie sert moins à mesurer un retard qu'à séparer deux choses qu'on confond : ce qui n'est pas encore fait, et ce qui ne sera jamais fait. Les deux audits menés ici classent explicitement une part importante des fonctionnalités de référence en **conflit délibéré** — 29 sur 143 pour l'un, 15 traits opposables pour l'autre. Sans cette catégorie, chaque absence se lit comme une dette et la pression d'adoption pousse à trahir un non-goal. Avec elle, l'inventaire peut porter des prédicats de mort chiffrés : un produit meurt s'il stagne sous un seuil, ou s'il couvre un trait qu'il s'était interdit.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/learnings/parity-audits-name-deliberate-conflicts.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "informs",
+      "target": "urn:libre-ai:evidence:parity-notebook-siyuan",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

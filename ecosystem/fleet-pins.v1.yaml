@@ -1,0 +1,100 @@
+# Declared template-pin generations of the fleet (K4 WAVE-A-02 / FINAL-01).
+#
+# Every non-archived repository lets a governance revision into its required
+# checks through FOUR surfaces, and they must all carry the SAME sha: each
+# `uses: libre-ai/governance/...@<sha>` in ANY workflow file, the
+# `tooling_ref:` input (the revision reusable-licensing.yml checks governance
+# out at to run its tooling), the tooling git-dep
+# (`github:libre-ai/governance#<sha>`) in package.json, and the
+# `pinned: "github:libre-ai/governance#<sha>"` field of the repository's own
+# project card (`project.v1.yaml`, per its `card:` entry in
+# repositories.v1.yaml) — a card is documentation a human reads, and a sha
+# there the CI wiring has already moved past is the same drift as any other
+# surface (found on `orchestrator` and `harness`, 2026-08-18 convergence).
+# `bun ecosystem/check-fleet-pins.ts` (network gate, like inventory-drift)
+# enumerates every one of them across every non-archived repository — not only
+# satellite/authority, since a `reserved-product-home` or `active-application`
+# repository wiring the templates is exactly as exposed to an unpinned tooling
+# checkout — and fails on a ref that is not a 40-character sha, on surfaces
+# that disagree, on a sha absent from this register, or on a pin declared but
+# more than two generations behind the most recent one (stale beyond the
+# fleet's own adoption cadence). A template evolution is: commit in governance
+# → add the new generation here → bump consumers → retire the old generation
+# from this list.
+#
+# PUBLISHING A NEW TEMPLATE (not an evolution of an existing one) follows the
+# same order, and its first two steps cannot be merged into one: the
+# generation sha is the governance commit that carries the template, so it
+# does not exist until that commit is on main.
+#
+#   1. Merge the governance PR publishing `.github/workflows/reusable-*.yml`.
+#      It declares no generation — it cannot yet name its own sha. No gate is
+#      red: no repository observes the new template.
+#   2. Merge a second governance PR adding that sha here. A declared
+#      generation nobody pins is not a failure; the register is only ever read
+#      to answer "is this observed pin declared?".
+#   3. In ONE pull request per consumer, move EVERY pin surface of that
+#      repository to the new sha and add the job consuming the new template.
+#      Partial adoption fails: `pins disagree` names each surface and the
+#      generation it still carries. This is where a `workflow_call` wiring is
+#      proved for the first time — the consumer's own required check runs it.
+#   4. Retire superseded generations here once no repository carries them.
+#
+# Running step 3 before step 2 is the one ordering that turns a gate red:
+# governance's own Inventory drift job reports `pin <sha> is not a declared
+# generation` on its next run (push to main, any pull request, or the Monday
+# cron). Declare, then bump — the order the fleet already acted on in γ 3.4.
+#
+# Step 4 exercised for the first time 2026-08-18 (K4 WAVE-A/domain-C fleet
+# convergence): every satellite/authority repository, plus every
+# reserved-product-home and active-application repository the role-scoped
+# gate had never audited, was moved to 9cd1d421 across all four surfaces (a
+# comprehensive sweep of every non-archived repository's tree confirmed zero
+# remaining consumers of any older sha, including two real governance commits,
+# 9cec3d575ca1af5af5ede4ca694eea84129c9f5e and
+# c64ea95db35e49d5d2a5e69e3a52342661150ff7, that several repositories had
+# pinned without either ever being declared here). The five generations below
+# retired as a result — 9511c408, 8b641394, 4fd6e183, 7eaa13d4, f767f2fb —
+# are that convergence's evidence, not deleted without a trace: they remain in
+# this file's git history for whoever needs to know what a repository used to
+# carry.
+schema_version: libre-ai.fleet-pins.v1
+generations:
+  - sha: 9cd1d421d318129db99456d963f4bc1cfad67b33
+    added_on: 2026-08-18
+    note: >-
+      reusable-dependency-policy.yml published (e1232c1) and declarable for
+      the first time — libre-ai/harness is the first consumer to wire it
+      (step 3 of the process above, harness domain F chantier A)
+  - sha: f9e7b5bab3d9ed71046df7b7dd2e70de1fe31436
+    added_on: 2026-08-19
+    note: >-
+      check-bun-manifests accepts the post-dispatch tools/quality path for
+      apps/*/packages/* manifests (#65) — required by consumers whose app
+      workspaces carry their own manifests; libre-ai/boussole-politique
+      pinned it out of necessity before this declaration (step 2 recorded
+      after the fact, caught by the widened fleet-pins gate)
+  - sha: 767ee84aabfab27be29adb9606584e76e15243b6
+    added_on: 2026-08-19
+    note: >-
+      personal-data boundary exempts events*.jsonl review journals (#30) +
+      DCO gate fix (#29) — needed by libre-ai/orchestrator to consign the
+      first real fanout campaign
+  - sha: 8c238c09efd443a4866459160dac1cfee31d88be
+    added_on: 2026-09-08
+    note: >-
+      #86 loop alerting + #87 fast-uri 4.1.4 + #88 canonical Dependabot —
+      fleet convergence wave 2026-09-07/08 ; declared while the wave is in
+      flight, the fleet-pins gate names the repositories not yet converged
+  - sha: 28ff7935955caab6baf42c6f8045221edde3defe
+    added_on: 2026-09-10
+    note: >-
+      mixed-package licence declarations become verifiable without weakening
+      file-level REUSE attribution; libre-ai/ui is the first consumer because
+      its reserved figurative asset and Apache software ship together
+  - sha: 9ac334cdf86cf05d126091f394d07c01d7745930
+    added_on: 2026-09-10
+    note: >-
+      repository-local release authorization and Portique d'atelier terminology
+      are merged and reviewable; libre-ai/website is the first consumer because
+      its production brand projection requires the resulting authority SHA

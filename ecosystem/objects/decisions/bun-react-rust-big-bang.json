@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:bun-react-rust-big-bang",
+  "name": "Bun/React, Rust spécialisé et reconstruction Big Bang",
+  "purpose": "Établir la stack et le mode de migration canoniques de Libre AI.",
+  "version": "1.0.0",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "docs/adr/0001-bun-fullstack-rust-specialized-big-bang.md",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "implements",
+      "target": "urn:libre-ai:bet:bun-fullstack",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-16T00:00:00Z",
+    "reviewedAt": "2026-07-16T00:00:00Z"
+  }
+}

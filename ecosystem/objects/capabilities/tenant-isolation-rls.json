@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:tenant-isolation-rls",
+  "name": "Isolation multi-tenant PostgreSQL par RLS forcée",
+  "purpose": "Barrière d'isolation où le tenant n'est jamais un paramètre applicatif mais une propriété de la transaction. Chaque table porte `ENABLE` et `FORCE ROW LEVEL SECURITY` avec une policy sur `current_setting('app.tenant_id')`, un CHECK de format `^ten_[a-z0-9]{16,64}$`, et l'accès passe obligatoirement par `withTenantDbTransaction` (`packages/data/src/adapters/tenant-transaction.ts`), qui pose le réglage local et vide la session du pool à la sortie. `guardTenantRow` lève `CrossTenantAccessError` sur toute ligne étrangère. Prouvé par un test d'intégration deux tenants avec deny croisé (`rls-barrier.integration.test.ts`). Douze migrations appliquent le patron sans exception.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/tenant-isolation-rls.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

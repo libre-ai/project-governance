@@ -1,0 +1,62 @@
+name: Fleet advisories
+
+# ADR-0021 D1: the periodic control that owns the state of the world for
+# dependency advisories. It audits every living repository's lockfile and
+# notifies through a red run — it never blocks a pull request; what a change
+# introduces is judged by the audit-delta gate in each repository's own CI
+# (D2). Loop fields declared in docs/method/AGENTIC-LOOP-INVENTORY.md; a red
+# run — or the absence of a recent run — is the observable failure.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fleet-advisories:
+    name: Every living lockfile is free of known advisories
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # Repo-local imports only — no `bun install`, so this control does not
+      # depend on the very supply chain it audits.
+      - name: Audit every living repository's lockfile
+        run: bun tools/security/check-fleet-advisories.ts
+      # A red run here is only visible to someone who opens the Actions tab
+      # (AGENTIC-LOOP-INVENTORY.md, "Contrôle d'advisories de flotte" —
+      # "absence de run récent" is its own failure mode). One red run stays a
+      # run; two in a row files a deduplicated governance issue.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Fleet advisories
+          WORKFLOW_FILE: fleet-advisories.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Fleet advisories
+          WORKFLOW_FILE: fleet-advisories.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Bet",
+  "id": "urn:libre-ai:bet:bun-fullstack",
+  "name": "Bun fullstack pour les applications web",
+  "purpose": "Réduire la fragmentation de la stack web et accélérer la livraison d’expériences IA-native.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/bets/bun-fullstack.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "implemented-by",
+      "target": "urn:libre-ai:decision:bun-react-rust-big-bang",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-16T00:00:00Z",
+    "reviewedAt": "2026-07-16T00:00:00Z"
+  }
+}

@@ -1,0 +1,150 @@
+# Fiche pilote du hub lui-même — exercée par check:cards (γ 3.2).
+# Les phases sont celles du jalon γ ; l'avancement est CALCULÉ, jamais déclaré.
+schema_version: libre-ai.project.v1
+project: libre-ai
+repository: libre-ai/libre-ai
+kind: authority
+layer: moyeu
+statement:
+  for: le propriétaire et les agents de la constellation Libre AI
+  who_faces: un monorepo qui portait tout le contenu et cesse d'être l'autorité unique
+  enables: démanteler le hub en repos responsables de leur périmètre, sans rien perdre
+  producing:
+    - un index de migration reliant chaque chemin à sa destination
+    - une archive clonable portant l'histoire et les preuves
+  without_depending_on:
+    - aucun registre de paquets nouveau, aucun compte nouveau
+summary: Le hub démantelé — archive clonable + index de migration à l'issue du jalon γ (ADR-0020).
+current_situation: >-
+  Jalon γ clos (2026-07-30) : phases 3.0 à 3.8 closes, hub à sa forme d'archive
+  (50 fichiers trackés, gate d'orphelins 50/50 rendus compte, 0 orphelin) et
+  archivé sur GitHub (`archived: true`). L'organisation porte 34 repos, 33
+  non archivés. Index de migration : 88 entrées, 5 encore `pending` par
+  construction (doubles présences d'archive volontaires — registres, chaîne
+  minimale, toolchain).
+scope:
+  - statuer et migrer chaque chemin du hub vers son repo responsable
+  - photographier la chaîne de référence et préserver l'archive
+non_goals:
+  - implémenter les moteurs produits (roadmap des repos produits)
+  - publier sur npm ou crates.io (checkpoint propriétaire hors jalon)
+dependencies: []
+maturity: usable
+confidence: high
+exposure: usable-verifiable
+freshness:
+  last_verified_on: "2026-08-18"
+scope_stability: stable
+phases:
+  - id: housekeeping
+    title: γ 3.0 — Housekeeping
+    exit_criteria:
+      - id: leftovers-settled
+        text: Chaque reliquat de session est statué sous revue role-separated.
+        weight: 6
+        status: accepted
+        evidence:
+          date: "2026-07-28"
+          reference: distribution/evidence/2026-07-28-milestone-gamma-housekeeping.md
+      - id: reference-chain-green
+        text: La chaîne de référence rejoue 10/10 avec le digest byte-identique à la clôture G2.
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-07-28"
+          reference: "digest f45dfad0…, gate-acceptance-log 2026-07-28"
+  - id: doctrinal-act
+    title: γ 3.1 — Acte doctrinal
+    exit_criteria:
+      - id: adr-signed
+        text: ADR-0020 signé par merge propriétaire, invariants et LEXICON amendés dans la même PR.
+        weight: 10
+        status: accepted
+        evidence:
+          date: "2026-07-28"
+          reference: "PR #273, gate-acceptance-log 2026-07-28 (ligne 3.1)"
+  - id: card-system
+    title: γ 3.2 — Système de fiches
+    exit_criteria:
+      - id: schema-validator-aggregator
+        text: >-
+          Schéma project.v1 + validateur + agrégateur + générateur + primitive du gate de
+          divergence, TDD verts (le câblage du gate sur les README réels est la phase 3.6).
+        weight: 6
+        status: accepted
+        evidence:
+          date: "2026-07-29"
+          reference: "PR #274 (merge 1c1a1fae), gate-acceptance-log 2026-07-29 (ligne 3.2)"
+      - id: dependency-bench
+        text: Le banc d'essai des mécanismes de dépendance (design §5.2.6) est exécuté et son évidence versée.
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-07-29"
+          reference: distribution/evidence/2026-07-29-dependency-bench.md
+  - id: authorities
+    title: γ 3.3 — Autorités governance + contracts
+    exit_criteria:
+      - id: repos-created-migrated
+        text: >-
+          Les deux repos créés (checkpoint propriétaire), contenus migrés avec histoire,
+          gates verts des deux côtés, index de migration renseigné (retraits du hub :
+          pending, étalés sur 3.4-3.8 selon la règle dure de bascule).
+        weight: 10
+        status: accepted
+        evidence:
+          date: "2026-07-29"
+          reference: "PR #277 (merge 52f567d9), gate-acceptance-log 2026-07-29 (ligne 3.3)" 
+  - id: satellites
+    title: γ 3.4 — Satellites de code partagé
+    exit_criteria:
+      - id: nineteen-satellites
+        text: >-
+          Les 19 repos satellites naissent verts dans l'ordre du graphe, git-deps épinglées
+          (retraits des chemins du hub : pending à l'index, étalés jusqu'à 3.8 selon la
+          règle dure de bascule).
+        weight: 10
+        status: accepted
+        evidence:
+          date: "2026-07-29"
+          reference: "PRs #279-#283 (merge d3cfcc47), gate-acceptance-log 2026-07-29 (ligne 3.4)" 
+  - id: products
+    title: γ 3.5 — Repos produits et application missions
+    exit_criteria:
+      - id: products-grafted
+        text: Les 8 repos produits + missions reçoivent leur contenu par greffe sans force push, bannières retirées.
+        weight: 10
+        status: accepted
+        evidence:
+          date: "2026-07-30"
+          reference: "ecosystem/migration-index.v1.yaml — hub_removal_commit non-pending (ba3761b4…, 42dffb47…) pour les neuf destinations"
+  - id: presentation
+    title: γ 3.6 — Présentation
+    exit_criteria:
+      - id: cards-readmes-site
+        text: Fiches dans chaque repo, README générés, README org, page d'accueil, comparaisons datées, descriptions GitHub.
+        weight: 10
+        status: accepted
+        evidence:
+          date: "2026-07-30"
+          reference: "docs/reports/2026-07-30-general-activation-final-report.md — 33/34 repos avec fiche, 0 divergence présentation↔fiche"
+  - id: coherence
+    title: γ 3.7 — Cohérence et rapport final
+    exit_criteria:
+      - id: cross-repo-gate-report
+        text: Gate cross-repo vert partout, rapport final produit, trois niveaux de lecture vérifiés.
+        weight: 6
+        status: accepted
+        evidence:
+          date: "2026-07-30"
+          reference: "PRs hub #289/#291, docs/reports/2026-07-30-general-activation-final-report.md, gate-acceptance-log 2026-07-30 (ligne 3.7)"
+  - id: archive
+    title: γ 3.8 — Archivage du hub
+    exit_criteria:
+      - id: hub-archived
+        text: Hub vidé, index sans orphelin, bannière publiée, archivage GitHub prononcé par le propriétaire.
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-07-30"
+          reference: "PR hub #293, gate-acceptance-log 2026-07-30 (ligne 3.8) ; the hub repository reads archived true on the GitHub API"

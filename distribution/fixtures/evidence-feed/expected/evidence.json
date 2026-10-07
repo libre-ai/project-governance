@@ -1,0 +1,58 @@
+{
+  "schema_version": "libre-ai.evidence-feed.v1",
+  "repository": "libre-ai/libre-ai",
+  "events": [
+    {
+      "id": "gate-2026-01-13-2026-01-13-ligne-incomplete-sans-les-quatre-cellules",
+      "date": "2026-01-13",
+      "type": "gate",
+      "title": "Gate log entry (unparsed row)",
+      "status": "unparsed",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "| 2026-01-13 ligne incomplète sans les quatre cellules |"
+    },
+    {
+      "id": "gate-2026-01-11-g-y-plage-chevrons-guillemets-apostrophe",
+      "date": "2026-01-11",
+      "date_raw": "2026-01-11/12",
+      "type": "gate",
+      "title": "G-Y — plage & <chevrons> \"guillemets\" 'apostrophe'",
+      "status": "APPROUVÉ (périmètre borné)",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #2, `docs/adr/0001.md`"
+    },
+    {
+      "id": "gate-2026-01-10-g-x-gate-simple-accentuee",
+      "date": "2026-01-10",
+      "type": "gate",
+      "title": "G-X — gate simple accentuée",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #1"
+    },
+    {
+      "id": "sovereignty-2026-01-03-def5678",
+      "date": "2026-01-03",
+      "type": "sovereignty",
+      "title": "Sovereignty report (commit def5678) — 1 pass, 1 fail, 2 pending",
+      "status": "fail",
+      "artifact": "distribution/evidence/sovereignty/2026-01-03-def5678.json"
+    },
+    {
+      "id": "adoption-2026-01-02-abc1234",
+      "date": "2026-01-02T10:00:00.000Z",
+      "type": "adoption",
+      "title": "Adoption attestation 2026-01-02-abc1234 — blank-room reproduction",
+      "status": "pass",
+      "artifact": "distribution/evidence/adoption/2026-01-02-abc1234.json"
+    },
+    {
+      "id": "coverage-2026-01-01",
+      "date": "2026-01-01",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 10 merges)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-2026-01-01.json"
+    }
+  ]
+}

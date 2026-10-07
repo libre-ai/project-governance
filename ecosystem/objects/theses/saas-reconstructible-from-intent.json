@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Thesis",
+  "id": "urn:libre-ai:thesis:saas-reconstructible-from-intent",
+  "name": "Une part du SaaS des années 2020 est reconstructible à la demande",
+  "purpose": "Pari à dix ans énoncé par `vision.md` §2 : une part importante des services SaaS caractéristiques des années 2020 pourra être reconstruite ou profondément adaptée à la demande, à partir d'intentions, de connaissances, de contraintes, de contrats et de critères de vérification explicites. Le corollaire est la thèse opérante : générer du code ne suffit pas à produire un service durable, et la valeur se déplace vers la formulation d'intention, la structuration des connaissances, les contrats exécutables, la maîtrise des données et des autorisations, et la vérification. Toute la constellation existe pour éprouver ce pari sur des usages réels plutôt que pour l'affirmer.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/theses/saas-reconstructible-from-intent.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "pursued-by",
+      "target": "urn:libre-ai:bet:method-as-product-zero",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-16T00:00:00Z",
+    "reviewedAt": "2026-07-16T00:00:00Z"
+  }
+}

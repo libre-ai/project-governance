@@ -1,0 +1,160 @@
+name: reusable-dependency-policy
+# Fleet gate template (design §5.3): consumed as
+#   uses: libre-ai/governance/.github/workflows/reusable-dependency-policy.yml@<sha>
+#
+# Executes the calling repository's own deny.toml. Across the constellation
+# that file was versioned and read by nothing: the licence allowlist,
+# `yanked = "deny"`, the ban list and the `[sources.allow-org]` clause that
+# ADR-0020 §2.5 relies on to bound git-dep trust were policy on paper. A
+# dependency could enter a graph under any licence, from any source, with any
+# advisory against it, and every required check stayed green.
+#
+# This repository cannot host the gate for itself: it has no Cargo workspace
+# (AGENTS.md, Stack), so `cargo deny check` exits 1 on a missing Cargo.toml.
+# Its deny.toml is the base policy Rust repositories inherit, and the gate that
+# executes it is published here rather than copied into each satellite.
+#
+# The split between the two checks below is deliberate, and is the reason this
+# template exists rather than a single `cargo deny check`. `bans`, `licenses`
+# and `sources` are a pure function of the committed Cargo.lock and deny.toml,
+# so their verdict is reproducible at constant commit — that is what a required
+# check may assert. The advisory verdict is not: it depends on the RustSec
+# database fetched at run time, so a commit green today turns red tomorrow with
+# nothing in the repository having changed. Blocking on it would make a
+# required check a function of the calendar rather than of the tree; it is
+# reported instead, and acted on by a follow-up commit that bumps, pins or
+# drops the affected crate.
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-policy:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # This action installs `stable` — its own default, moving every six
+      # weeks — and nothing here reads the calling repository's
+      # rust-toolchain.toml: rustup honours that file when `cargo` runs in the
+      # working directory, and only if the repository carries one. The
+      # blocking verdict below survives that movement because bans, licences
+      # and sources are read from the committed Cargo.lock and deny.toml, not
+      # produced by the compiler; the pre-flight step states which toolchain
+      # actually ran, so a log never has to be trusted on the point.
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable action
+
+      # Both tools are pinned by exact version AND by the sha256 of the release
+      # archive, in the culture of the pin (K4 AUTH-01) and matching how the
+      # archived Bun toolchain is installed: `cargo install` resolves against a
+      # mutable registry and would silently change the enforcing binary between
+      # two runs of the same commit.
+      - name: Install pinned dependency-policy toolchain
+        env:
+          CARGO_DENY_VERSION: 0.19.5
+          CARGO_DENY_ARCHIVE_URL: https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.5/cargo-deny-0.19.5-x86_64-unknown-linux-musl.tar.gz
+          CARGO_DENY_ARCHIVE_SHA256: 5ea64ae09959b5fe1072d898f95caaa89b374678ba6728d5e9ed1366745479b0
+          CARGO_AUDIT_VERSION: 0.22.1
+          CARGO_AUDIT_ARCHIVE_URL: https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.1/cargo-audit-x86_64-unknown-linux-musl-v0.22.1.tgz
+          CARGO_AUDIT_ARCHIVE_SHA256: c32506f338bdcdaef5a17fb9f33abb6ecf9561324cfd34237fd335f9283a1eab
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/cargo-deny.tar.gz" "$CARGO_DENY_ARCHIVE_URL"
+          echo "$CARGO_DENY_ARCHIVE_SHA256  $RUNNER_TEMP/cargo-deny.tar.gz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/cargo-deny.tar.gz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cargo-deny-$CARGO_DENY_VERSION-x86_64-unknown-linux-musl" >> "$GITHUB_PATH"
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/cargo-audit.tgz" "$CARGO_AUDIT_ARCHIVE_URL"
+          echo "$CARGO_AUDIT_ARCHIVE_SHA256  $RUNNER_TEMP/cargo-audit.tgz" | sha256sum --check --strict
+          tar -xzf "$RUNNER_TEMP/cargo-audit.tgz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/cargo-audit-x86_64-unknown-linux-musl-v$CARGO_AUDIT_VERSION" >> "$GITHUB_PATH"
+
+      # A gate that only prints "ok" cannot be distinguished from a gate that
+      # checked nothing: state the enforcing binaries and the policy they read.
+      #
+      # The two preconditions are stated here rather than discovered by a
+      # downstream `cat`: a repository without deny.toml has no policy to
+      # enforce, which is a wiring mistake to name as such, not a "No such
+      # file" from a shell. A repository without rust-toolchain.toml runs
+      # whatever `stable` means today — reported, not blocked: the blocking
+      # verdict does not depend on the compiler version, and every Rust
+      # repository of the fleet does not yet pin one.
+      - name: State the policy under enforcement
+        run: |
+          set -euo pipefail
+          if [ ! -f deny.toml ]; then
+            echo "::error::This repository has no deny.toml: there is no dependency policy to enforce. Add one (the base policy lives in libre-ai/governance) before wiring this gate."
+            exit 1
+          fi
+          cargo-deny --version
+          cargo-audit --version
+          echo "toolchain in force: $(rustc --version)"
+          if [ -f rust-toolchain.toml ]; then
+            echo "toolchain pinned by rust-toolchain.toml:"
+            cat rust-toolchain.toml
+          else
+            echo "::warning::No rust-toolchain.toml in this repository — the toolchain above is whatever 'stable' resolves to today. The blocking verdict is read from Cargo.lock and deny.toml and does not depend on it."
+          fi
+          echo "policy file: deny.toml (blocking: bans, licenses, sources)"
+          echo "::group::deny.toml as enforced"
+          cat deny.toml
+          echo "::endgroup::"
+
+      - name: Bans, licences and sources (blocking)
+        run: cargo-deny check bans licenses sources
+
+      # Names every licence resolved across the graph and the crates carrying
+      # it, so the log shows what the allowlist actually admitted rather than
+      # only that it admitted everything.
+      #
+      # `!cancelled()` for the same reason as the advisory step below: GitHub
+      # skips every remaining step of a job once one has failed. Unguarded,
+      # this mapping is absent from the one run that most needs it — the run
+      # where the allowlist just refused a licence and the reader wants to know
+      # which dependency carried it in.
+      - name: Licences resolved across the dependency graph
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          echo "::group::Licence to crate mapping"
+          cargo-deny list
+          echo "::endgroup::"
+
+      # `!cancelled()`: `continue-on-error` alone only stops this step from
+      # failing the job — GitHub still skips it once an earlier step has
+      # failed, so the advisory report evaporates exactly when a reader of a
+      # red job wants to know whether there is also a live vulnerability.
+      # Measured on `orchestrator`, one branch, three minutes apart: run
+      # 30628367309 (unguarded) reports the blocking step `failure` and this
+      # one `skipped`; run 30628546036 (guarded) reports the same `failure` and
+      # this one `success`.
+      #
+      # SIGNAL ON FINDINGS — settled here, since this template is the fleet's
+      # convergence target and its choice becomes the norm. Findings emit a
+      # `::warning` AND `exit 1`, so the step outcome is `failure` inside a job
+      # that stays green. The deployed variant that warns and exits 0 is
+      # rejected: it makes `continue-on-error` decorative, and leaves
+      # `steps.advisory.outcome == 'success'` whether the scan was clean or
+      # found a live CVE — no job summary, badge or downstream expression can
+      # then tell the two apart. A verdict nothing can read is the same defect
+      # as a policy nothing executes, which is the defect this gate exists to
+      # remove. `id` is declared so consumers can project that outcome.
+      - name: Advisory scan (reported, non-blocking)
+        id: advisory
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          deny_rc=0
+          # Also the only place [advisories] yanked = "deny" is exercised:
+          # cargo-deny folds yanked-crate detection into the advisories check.
+          cargo-deny check advisories || deny_rc=$?
+          audit_rc=0
+          cargo-audit audit || audit_rc=$?
+          echo "cargo-deny check advisories -> exit $deny_rc"
+          echo "cargo-audit audit           -> exit $audit_rc"
+          if [ "$deny_rc" -ne 0 ] || [ "$audit_rc" -ne 0 ]; then
+            echo "::warning::Advisory scan reported findings; see the log above."
+            exit 1
+          fi

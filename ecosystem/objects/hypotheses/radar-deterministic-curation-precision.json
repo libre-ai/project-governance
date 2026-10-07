@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Hypothesis",
+  "id": "urn:libre-ai:hypothesis:radar-deterministic-curation-precision",
+  "name": "Des règles déterministes suffisent à un briefing de veille utile",
+  "purpose": "Sur une douzaine de sources institutionnelles à flux natif, des règles de curation déterministes et explicables suffisent à produire un briefing hebdomadaire utile, sans étage de scoring opaque. SUCCÈS : sur quatre cycles, au moins 70 % des items retenus jugés pertinents, et aucun item pertinent manqué dans un échantillon de contrôle relu à la main. RÉFUTATION : sous 50 % de pertinence, les règles déterministes ne suffisent pas pour ce domaine ; l’ajout d’un étage de scoring devient alors une décision explicite, donc un amendement de contrat verrouillé relevant de la surface humaine fermée (I-17). Cette hypothèse teste le non-goal « silently generated opaque ranking » du cahier des charges de Radar sur un usage réel plutôt qu’en principe.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/hypotheses/radar-deterministic-curation-precision.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,85 @@
+# Registre d'oubli — contenu retiré de l'arbre de travail par décision propriétaire.
+#
+# Une doctrine morte qui reste greppable revient : un agent la retrouve, lit son
+# `status: final` et la ressuscite comme si elle était vivante. INVARIANTS.md porte
+# déjà cette primitive pour la doctrine (« ce qui n'y figure pas n'est pas doctrine ») ;
+# ce registre la porte pour le contenu. Autorité : ADR-0019.
+#
+# L'oubli est une éviction, pas une destruction : le contenu reste dans l'historique du
+# dépôt à `recoverable_at`. Ce qui disparaît est le vecteur de contamination réel —
+# `grep`, `find`, la lecture opportuniste d'un agent — pas l'existence.
+#
+# Restaurer exige une décision propriétaire et le retrait de l'entrée correspondante.
+# `bun run check:forgotten` interdit la résurrection et la citation.
+
+version: 1
+
+# Where `recoverable_at` commits resolve. Since the governance split
+# (ADR-0020), this repository's history is a filtered rewrite: the anchors
+# live in the hub archive, and the guard resolves them there (GitHub API)
+# when they are absent locally. Offline, that verification is explicitly
+# skipped with a warning — CI always has the network and always verifies.
+anchor_repository: libre-ai/libre-ai
+
+entries:
+  - id: forgotten.website-cdc-bmad
+    evicted_paths:
+      - docs/transformation/inputs/website/
+    file_count: 49
+    reason: >-
+      Jeu de spécification du site produit avec BMAD-METHOD et validé le 2026-07-14,
+      rapatrié du dépôt `website` gelé. Son implémentation cible était Dioxus, retirée
+      de la stack web par ADR-0001 et I-06. Les artefacts portaient `status: final`,
+      `status: ready-for-dev` et `Status: review` sans qualification historique : ouverts
+      directement, ils se présentaient comme des spécifications courantes. Zéro référence
+      entrante dans le dépôt.
+    decided_by: owner
+    decided_on: 2026-07-28
+    adr: ADR-0019
+    recoverable_at: 67571bf00593073d3bb121a7a08536f83b7c76b2
+    external_capture:
+      location: archives/pre-purge-2026-07-28/website-inputs-subtree.tar.gz
+      sha256: fc75c51565441fcd335ca7f9c64165c47360e3d7c58e4f8cbb2a60dc86facf40
+      note: >-
+        Première capture hors dépôt de ce contenu. Le dépôt `website` gelé
+        (`0318c92`) est absent des miroirs du 2026-07-19, de leurs SHA256SUMS et de
+        `org-reorg-2026-07` : il avait été retiré de GitHub avant la campagne de capture.
+    survives_as:
+      - docs/positioning/website.md
+
+  - id: forgotten.completed-reconciliation-prompts
+    evicted_paths:
+      - prompts/design-system-reconciliation.md
+      - prompts/website-reconciliation.md
+    file_count: 2
+    reason: >-
+      Comptes rendus de travaux terminés et archivés (« completed and archived »), posés
+      dans le répertoire des prompts vivants aux côtés des phases 00 à 04. Le rangement
+      les présentait comme des consignes actives. Leur substance est déjà portée par
+      STATUS.md et docs/transformation/G0-FREEZE-EVIDENCE.md.
+    decided_by: owner
+    decided_on: 2026-07-28
+    adr: ADR-0019
+    recoverable_at: 67571bf00593073d3bb121a7a08536f83b7c76b2
+
+  - id: forgotten.legacy-reference-parity
+    evicted_paths:
+      - docs/parity/legacy-reference/
+    file_count: 4
+    reason: >-
+      Cartes de fonctionnalités des applications pré-freeze, décrivant des interfaces
+      Dioxus. ADR-0015 signalait qu'une ligne de FEATURES-boussole-politique.md était
+      fausse (« VAA statement layer + polarity » déclarée couverte alors qu'aucun contrat
+      ne porte la polarité) et laissait la correction à une pull request séparée : cette
+      réserve est close par l'éviction, sans correction possible ni nécessaire.
+    decided_by: owner
+    decided_on: 2026-07-28
+    adr: ADR-0019
+    recoverable_at: 67571bf00593073d3bb121a7a08536f83b7c76b2
+
+# Fichiers autorisés à nommer un chemin évincé. Toute autre citation échoue : c'est ce
+# qui empêche un document futur de ressusciter le contenu par référence. La liste est
+# une donnée, pas une exception codée en dur dans le garde-fou.
+citation_allowlist:
+  - ecosystem/FORGOTTEN.yaml
+  - docs/adr/0019-forgetting-primitive.md

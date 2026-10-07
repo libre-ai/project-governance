@@ -1,0 +1,74 @@
+name: Sovereignty report
+
+# Weekly execution of the sovereignty.v1 in-service checks (positioning L4):
+# SOV-01 adoption attestation read, SOV-02 forge restore from a git bundle,
+# SOV-03 dependency distribution-registry inventory. The report is published
+# as an artifact and in the job summary; committing evidence to main stays a
+# reviewed, human-driven act — this workflow never pushes and needs no secret.
+on:
+  schedule:
+    - cron: "23 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  sovereignty:
+    name: Run sovereignty.v1 checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # SOV-02 bundles the clone: git refuses to bundle a shallow repository.
+          fetch-depth: 0
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI Bun revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # The runner has zero external dependencies (Bun + node: builtins + git):
+      # no `bun install`, which keeps this scheduled job's supply-chain surface
+      # at the toolchain itself.
+      - name: Run sovereignty.v1 suite
+        run: bun verification/sovereignty/run-sovereignty.ts
+      - name: Publish report in job summary
+        if: ${{ always() }}
+        run: |
+          report_md=$(ls -t distribution/evidence/sovereignty/*.md | head -n 1)
+          cat "$report_md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload evidence artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sovereignty-report
+          path: distribution/evidence/sovereignty/
+      # A red run here is only visible to someone who opens the Actions tab
+      # (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique" — "absence
+      # de ligne récente" is its own failure mode). One red run stays a run;
+      # two in a row files a deduplicated governance issue.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Sovereignty report
+          WORKFLOW_FILE: sovereignty-report.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Sovereignty report
+          WORKFLOW_FILE: sovereignty-report.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

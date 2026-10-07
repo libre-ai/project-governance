@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Evidence",
+  "id": "urn:libre-ai:evidence:reproducible-reference-chain",
+  "name": "Chaîne de référence reproductible et lecture en salle blanche",
+  "purpose": "Le socle expose une chaîne de vérification dont le digest attendu est fixe et re-vérifié à l'identique, doublée d'une reproduction en salle blanche depuis un clone anonyme et d'un journal de friction consignant ce qui a résisté. S'y ajoutent des contrôles de souveraineté exécutables et un inventaire de verrous, avec leurs rapports datés. La propriété visée n'est pas « ça marche chez nous » mais « un tiers obtient le même artefact sans nous parler » — condition sans laquelle une évidence publiée n'est qu'une affirmation. Chemins : `verification/harness/`, `verification/adoption/`, `distribution/evidence/`.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/evidence/reproducible-reference-chain.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "proves",
+      "target": "urn:libre-ai:capability:sovereign-supply-chain",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

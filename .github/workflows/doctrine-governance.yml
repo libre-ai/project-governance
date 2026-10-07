@@ -1,0 +1,176 @@
+name: Doctrine governance
+
+# Hard backstop for ADR-0008 §7: doctrine exists only in the invariants
+# register, every accepted ADR carries its owner-arbitration trace, and the
+# superseded doctrine or retired brands cannot silently resurface in living
+# documents. Introduced by the 2026-07-19 quality pass.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  doctrine-governance:
+    name: Doctrine governance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Product paths require a work-package reference (pull requests)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin "$GITHUB_BASE_REF"
+          touched=$(git diff --name-only "origin/$GITHUB_BASE_REF"...HEAD -- 'apps/**' || true)
+          if [ -z "$touched" ]; then
+            echo "no product paths touched"
+            exit 0
+          fi
+          if git log "origin/$GITHUB_BASE_REF"..HEAD --format=%B | grep -qE 'WP-G[0-9]-[A-Z][0-9]+'; then
+            echo "work-package reference found in branch commits"
+            exit 0
+          fi
+          echo "$touched"
+          echo "apps/** touched without a WP-G<phase>-<letter><NN> work-package reference in the branch commits (invariant I-08)."
+          exit 1
+
+      - name: ADR numbering is unique
+        run: |
+          set -euo pipefail
+          # Grandfathered collision: the two 0004 files predate this gate
+          # (0004-licensing-governance + 0004-agent-orchestration-option-b).
+          # Any other duplicate number fails.
+          dups=$(ls docs/adr | grep -oE '^[0-9]{4}' | sort | uniq -d | grep -v '^0004$' || true)
+          if [ -n "$dups" ]; then
+            echo "Duplicate ADR numbers: $dups"
+            exit 1
+          fi
+
+      - name: Accepted ADRs from 0008 onward carry an owner-arbitration line
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in docs/adr/*.md; do
+            num=$(basename "$f" | cut -c1-4)
+            if [ "$((10#$num))" -lt 8 ]; then continue; fi
+            if grep -qiE 'Statut.*accepted' "$f" && ! grep -qiE 'Arbitrage' "$f"; then
+              echo "$f: accepted without an Arbitrage line"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      # Domain I (Process & CI), chantier 5b: an accepted ADR is doctrine
+      # (AGENTS.md, "doctrine absent from it does not exist"), and doctrine
+      # belongs in the invariants register (ADR-0008 point 7) — so an
+      # accepted ADR either fed the register or explicitly did not, on the
+      # record, rather than leaving the question to a reader's inference.
+      # Permanent backfill, not a dated grandfathering window: the three
+      # pre-existing accepted ADRs with neither citation (0008, 0010, 0011)
+      # were each given the honest one of the two — 0008 a real I-01/I-04
+      # citation (it already sources both in INVARIANTS.md), 0010 and 0011
+      # a literal "No invariant" line quoting what each already said about
+      # its own scope — so the rule holds without exception from here on.
+      - name: Accepted ADRs from 0008 onward cite an invariant or state they carry none
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in docs/adr/*.md; do
+            num=$(basename "$f" | cut -c1-4)
+            if [ "$((10#$num))" -lt 8 ]; then continue; fi
+            if ! grep -qiE 'Statut.*accepted' "$f"; then continue; fi
+            if grep -qE 'I-[0-9]{2}' "$f"; then continue; fi
+            if grep -qF 'No invariant' "$f"; then continue; fi
+            echo "$f: accepted, cites no I-## invariant, and carries no 'No invariant' line"
+            fail=1
+          done
+          exit $fail
+
+      - name: Invariants register citations resolve
+        run: |
+          set -euo pipefail
+          fail=0
+          for n in $(grep -oE 'ADR-[0-9]{4}' docs/decisions/INVARIANTS.md | sort -u | cut -d- -f2); do
+            if ! ls docs/adr/${n}-*.md >/dev/null 2>&1; then
+              echo "INVARIANTS.md cites ADR-${n} but docs/adr/${n}-*.md does not exist"
+              fail=1
+            fi
+          done
+          if grep -E 'ADR 0047' docs/decisions/INVARIANTS.md | grep -qv 'control-plane'; then
+            echo "INVARIANTS.md: cross-repo ADR citation without the control-plane qualifier"
+            fail=1
+          fi
+          for f in docs/specifications/IDENTITY-AUTHORIZATION.md docs/specifications/DATA-LIFECYCLE.md docs/transformation/G1-WORK-PACKAGES.md; do
+            test -s "$f" || { echo "missing cited source: $f"; fail=1; }
+          done
+          exit $fail
+
+      - name: Superseded doctrine and retired brands stay out of living documents
+        run: |
+          set -euo pipefail
+          # "Libre IA" (brand-name variant) added 2026-07-24 after the owner
+          # confirmed the ADR-0008 verdict trans-surface: the brand is
+          # "Libre AI" everywhere. The frozen-inputs and legacy-reference
+          # exemptions were removed on 2026-07-28: ADR-0019 evicted both trees,
+          # so the gate no longer needs a hole where they used to sit.
+          # ADR-0020 (2026-07-28) extends the motifs to newly superseded doctrine
+          # statements; the superseding acts, the origin ADRs and the bannered
+          # historical sequencing document may cite them, nothing else may.
+          # Two families, one deny-list (2026-07-29, K4 finding on inert
+          # motifs). SUPERSEDED motifs are derived from origin texts still
+          # carried by a conserved normative register (ADR-0008 line 7,
+          # ADR-0009 §7) and must keep matching them there —
+          # tools/quality/check-doctrine-patterns.test.ts fails on any motif
+          # with no normative match (an inert paraphrase protects nothing,
+          # and a motif alive only through the superseding acts or a review
+          # artefact proves nothing). PREVENTIVE motifs guard against the
+          # resurgence of purged texts (the pre-2026-07-19 vision wording,
+          # the pre-amendment D07 titles) and banned brands/domains: zero
+          # matches outside the excluded citers is their healthy state.
+          superseded="projections (générées )?à sens unique|repositories spécialisés (=|sont des) projections|partagé par plusieurs produits vit au socle|source unique(\*\*)? de la topologie publique"
+          preventive="unique source modifiable|One .?bun\.lock.?, one Cargo workspace|One Bun and one Cargo workspace|Daidalos|free-ai\.fr|libre-ia\.fr|Libre IA"
+          matches=$(grep -rn -E "$superseded|$preventive" \
+            --include='*.md' . \
+            | grep -v 'docs/reviews/' \
+            | grep -v 'docs/adr/0008-' \
+            | grep -v 'docs/adr/0009-' \
+            | grep -v 'docs/adr/0020-' \
+            | grep -v 'docs/superpowers/specs/2026-07-28-multi-repo-activation-design.md' \
+            | grep -v 'docs/transformation/EXECUTION-SEQUENCING.md' \
+            | grep -v 'docs/decisions/LEXICON.md' \
+            | grep -v 'node_modules/' || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo "Superseded doctrine or a retired brand resurfaced in a living document."
+            exit 1
+          fi
+
+      - name: Retired ecosystem brands stay out of living documents (LEXICON §6.3)
+        run: |
+          set -euo pipefail
+          # Word-bounded, case-insensitive dead-brand motifs from the signed
+          # Lexicon map (PR #130). Exclusions are the historical registers the
+          # map itself lists in §6.2, file by file — never whole directories
+          # beyond the gate's existing ones.
+          matches=$(grep -rniE '\brumble\b|\bbolt\b|\bwrench\b|\bgear\b|\bportal\b|\bcos-matic\b|\bcosmatic\b' \
+            --include='*.md' . \
+            | grep -v 'docs/reviews/' \
+            | grep -v 'node_modules/' \
+            | grep -v 'docs/adr/0008-' \
+            | grep -v 'docs/decisions/LEXICON.md' \
+            | grep -v 'docs/decisions/DECISION-REGISTER.md' \
+            | grep -v 'docs/architecture/DETAILED-TARGET.md' \
+            | grep -v 'docs/transformation/G0-FREEZE-EVIDENCE.md' \
+            | grep -v 'docs/transformation/REPOSITORY-MAP.md' \
+            | grep -v 'docs/transformation/PROGRAM.md' \
+            | grep -vE '^(\./)?vision\.md:' || true)
+          if [ -n "$matches" ]; then
+            echo "$matches"
+            echo "A retired ecosystem brand resurfaced in a living document (LEXICON §6.1)."
+            exit 1
+          fi

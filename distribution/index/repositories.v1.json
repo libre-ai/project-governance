@@ -1,0 +1,208 @@
+{
+  "schema_version": "libre-ai.repository-index.v2",
+  "source": "ecosystem/repositories.v1.yaml",
+  "source_schema_version": "libre-ai.repositories.v2",
+  "source_updated_on": "2026-10-07",
+  "repositories": [
+    {
+      "repository": "libre-ai/.github",
+      "name": ".github",
+      "layer": "transverse",
+      "role": "org-profile",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/ai-model-policy",
+      "name": "ai-model-policy",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/ai-practice-workbench",
+      "name": "ai-practice-workbench",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/ai-work-supervision",
+      "name": "ai-work-supervision",
+      "layer": "couche-2",
+      "role": "reserved-application-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/application-development-toolkit",
+      "name": "application-development-toolkit",
+      "layer": "couche-4",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/artifact-verification",
+      "name": "artifact-verification",
+      "layer": "couche-3",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/capability-authorization",
+      "name": "capability-authorization",
+      "layer": "couche-3",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/collaborative-data-sync",
+      "name": "collaborative-data-sync",
+      "layer": "couche-4",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/database-policy-inspector",
+      "name": "database-policy-inspector",
+      "layer": "transverse",
+      "role": "standalone-tool",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/execution-continuity-evaluator",
+      "name": "execution-continuity-evaluator",
+      "layer": "couche-2",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/execution-sandbox",
+      "name": "execution-sandbox",
+      "layer": "couche-2",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/information-feed-filter",
+      "name": "information-feed-filter",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/learning-session-facilitation",
+      "name": "learning-session-facilitation",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/libre-ai",
+      "name": "libre-ai",
+      "layer": "moyeu",
+      "role": "hub",
+      "visibility": "public",
+      "lifecycle": "archived",
+      "card": "ecosystem/cards/libre-ai.project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/organization-data-lifecycle",
+      "name": "organization-data-lifecycle",
+      "layer": "couche-4",
+      "role": "satellite",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/personal-knowledge-notebook",
+      "name": "personal-knowledge-notebook",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/pi-evidence",
+      "name": "pi-evidence",
+      "layer": "transverse",
+      "role": "standalone-tool",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/product-research",
+      "name": "product-research",
+      "layer": "transverse",
+      "role": "administrative-private",
+      "visibility": "private",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/project-governance",
+      "name": "project-governance",
+      "layer": "transverse",
+      "role": "authority",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/project-website",
+      "name": "project-website",
+      "layer": "transverse",
+      "role": "active-application",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/public-vote-comparison",
+      "name": "public-vote-comparison",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/schemas-and-contracts",
+      "name": "schemas-and-contracts",
+      "layer": "transverse",
+      "role": "authority",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/signalement",
+      "name": "signalement",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/travel-itinerary-planner",
+      "name": "travel-itinerary-planner",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active"
+    }
+  ]
+}

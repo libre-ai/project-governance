@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:libre-ai:schema:project:v1",
+  "title": "libre-ai.project.v1 \u2014 per-repository project card",
+  "description": "The single state authority of a project (ADR-0020, design \u00a76): plain-language statement, scope, dependencies, maturity \u2260 progress \u2260 confidence \u2260 freshness, phases with weighted exit criteria and dated evidence. Progress is never declared: it is computed from accepted criteria with evidence by the governance aggregator. No percent field exists by construction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project",
+    "repository",
+    "kind",
+    "layer",
+    "statement",
+    "summary",
+    "current_situation",
+    "scope",
+    "non_goals",
+    "dependencies",
+    "maturity",
+    "confidence",
+    "exposure",
+    "freshness",
+    "scope_stability",
+    "phases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "libre-ai.project.v1"
+    },
+    "project": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "description": "Repository-name slug; never invented \u2014 LEXICON owns the map."
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^libre-ai/[a-z0-9.][a-z0-9.-]*$"
+    },
+    "kind": {
+      "enum": ["product", "satellite", "application", "authority", "tool", "site", "org-profile"]
+    },
+    "layer": {
+      "enum": ["couche-1", "couche-2", "couche-3", "couche-4", "transverse", "moyeu"]
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["for", "who_faces", "enables", "producing", "without_depending_on"],
+      "description": "The mission structure: \u00ab Pour [utilisateur], qui rencontre [probl\u00e8me], ce projet permet de [r\u00e9sultat observable], en produisant [sorties], sans d\u00e9pendre de [contrainte] \u00bb. Accessible vocabulary, no jargon.",
+      "properties": {
+        "for": {
+          "type": "string",
+          "minLength": 3
+        },
+        "who_faces": {
+          "type": "string",
+          "minLength": 3
+        },
+        "enables": {
+          "type": "string",
+          "minLength": 3
+        },
+        "producing": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 3
+          }
+        },
+        "without_depending_on": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 10
+    },
+    "users": {
+      "type": "array",
+      "description": "Optional refinement only: the required statement.for already names the user, and the final coherence report (design §7.3) reads statement.for — a card without this field is NOT « sans utilisateur ».",
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "current_situation": {
+      "type": "string",
+      "minLength": 10,
+      "description": "Honest present state \u2014 planned capability is never written in the present tense."
+    },
+    "target_outcome": {
+      "type": "string",
+      "description": "Optional refinement only: the required statement.enables already names the observable outcome, and the final coherence report (design §7.3) reads statement.enables — a card without this field is NOT « sans résultat »."
+    },
+    "scope": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "non_goals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["on", "why"],
+        "properties": {
+          "on": {
+            "type": "string",
+            "minLength": 2
+          },
+          "why": {
+            "type": "string",
+            "minLength": 3
+          },
+          "pinned": {
+            "type": "string",
+            "description": "SHA or version pin when applicable."
+          }
+        }
+      }
+    },
+    "maturity": {
+      "enum": ["idea", "specified", "usable", "proven"],
+      "description": "How far the artefact itself is \u2014 distinct from progress (computed) and confidence."
+    },
+    "confidence": {
+      "enum": ["low", "medium", "high"],
+      "description": "Confidence in the declared state, given the evidence."
+    },
+    "exposure": {
+      "enum": ["idea", "spec-published", "usable-verifiable", "proven"],
+      "description": "I-15 proof scale \u2014 carried by the card since ADR-0020."
+    },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last_verified_on"],
+      "properties": {
+        "last_verified_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Date the evidence below was last re-verified. Real calendar date (ajv-formats full mode); the validator additionally refuses future dates."
+        }
+      }
+    },
+    "hypothesis": {
+      "type": "string",
+      "minLength": 10,
+      "description": "The falsifiable bet the product exists to test (products)."
+    },
+    "evidence_required": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3
+      }
+    },
+    "promotion_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["to", "when"],
+        "properties": {
+          "to": {
+            "enum": ["spec-published", "usable-verifiable", "proven"]
+          },
+          "when": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "kill_predicates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "predicate", "source"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "predicate": {
+            "type": "string",
+            "minLength": 3
+          },
+          "window": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "minLength": 3
+          }
+        }
+      }
+    },
+    "benchmark": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["product"],
+          "properties": {
+            "product": {
+              "type": "string",
+              "minLength": 2
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^https://"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["none"],
+          "properties": {
+            "none": {
+              "type": "string",
+              "minLength": 3
+            }
+          }
+        }
+      ]
+    },
+    "scope_stability": {
+      "enum": ["stable", "unstable"],
+      "description": "unstable \u2192 the aggregator reports \u00ab Avancement non calculable \u2014 p\u00e9rim\u00e8tre \u00e0 clarifier \u00bb instead of a ratio. Information, not a defect."
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "exit_criteria"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 3
+          },
+          "note": {
+            "type": "string"
+          },
+          "exit_criteria": {
+            "type": "array",
+            "minItems": 1,
+            "description": "A phase without an exit criterion is forbidden (\u03b3 prompt \u00a73.6).",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "text", "weight", "status"],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]*$"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 5
+                },
+                "weight": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100
+                },
+                "status": {
+                  "enum": ["pending", "accepted"]
+                },
+                "evidence": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["date", "reference"],
+                  "properties": {
+                    "date": {
+                      "type": "string",
+                      "format": "date",
+                      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                      "description": "Real calendar date (ajv-formats full mode); the validator additionally refuses future dates."
+                    },
+                    "reference": {
+                      "type": "string",
+                      "minLength": 3,
+                      "description": "PR, evidence file, gate-log row \u2014 something a reader can open."
+                    }
+                  }
+                }
+              },
+              "if": {
+                "properties": {
+                  "status": {
+                    "const": "accepted"
+                  }
+                }
+              },
+              "then": {
+                "required": ["evidence"],
+                "properties": {
+                  "evidence": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "product"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "hypothesis",
+          "evidence_required",
+          "promotion_criteria",
+          "kill_predicates",
+          "benchmark"
+        ],
+        "properties": {
+          "hypothesis": true,
+          "evidence_required": true,
+          "promotion_criteria": true,
+          "kill_predicates": true,
+          "benchmark": true
+        }
+      }
+    }
+  ]
+}

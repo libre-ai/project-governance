@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:data-subject-rights",
+  "name": "Droits des personnes concernées, typés et exerçables",
+  "purpose": "Brique transverse `packages/rgpd-kit` exposant les droits d'accès, d'effacement, de limitation et de portabilité derrière un port unique, `DataSubjectRightsPort`. L'identifiant en clair n'apparaît que dans `verifySubject` : au-delà, tout parle en digests opaques dérivés avec séparation de domaine et verrouillés par un vecteur golden. La limitation de l'Article 18 est implémentée en table append-only avec levée en deux temps — demande, notification attestée, puis confirmation — et croise la rétention par une exclusion explicite : un sujet en limitation n'est pas balayé, puisque supprimer est un traitement. Registre des activités et canevas d'analyse d'impact sont générés par la même brique.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/data-subject-rights.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "depends-on",
+      "target": "urn:libre-ai:capability:executable-retention",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

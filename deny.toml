@@ -1,0 +1,46 @@
+# Base dependency policy of the constellation, inherited by every Rust
+# repository; a Rust repository adds `[sources.allow-org] github = ["libre-ai"]`
+# to it (ADR-0020 §2.5), which is what bounds git-dep trust to the
+# organisation.
+#
+# NOT enforced here, and cannot be: this repository has no Cargo workspace
+# (AGENTS.md, Stack), so `cargo deny check` exits 1 on a missing Cargo.toml.
+# The gate that executes this policy is published as the reusable workflow
+# `.github/workflows/reusable-dependency-policy.yml` and runs in the
+# repositories that own a Cargo graph. Editing the allowlist below changes
+# nothing on its own — it reaches a graph only through a repository that
+# inherits it.
+
+[graph]
+all-features = true
+
+[advisories]
+yanked = "deny"
+
+[licenses]
+confidence-threshold = 0.8
+unused-allowed-license = "allow"
+# Outbound workspace licences are governed by LICENSING.md; this allowlist is
+# intentionally restricted to inbound dependencies.
+private = { ignore = true }
+allow = [
+  "MIT",
+  "MIT-0",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MPL-2.0",
+  # OSI-approved permissive licenses required by the pinned JSON Schema toolchain.
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

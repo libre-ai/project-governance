@@ -1,0 +1,52 @@
+name: Feeds freshness
+
+# Evidence surfaces are projected, never hand-written (positioning L5): the
+# committed distribution/feeds/* must match a fresh regeneration from the
+# evidence sources. An evidence event merged without regenerating the feeds
+# (gate log row, adoption attestation, sovereignty report, coverage report)
+# turns this gate red the same day — evidence becomes visible without a
+# human gesture. Separate from inventory-drift on purpose: that workflow
+# guards the organization topology and runs a weekly GitHub reconciliation,
+# a failure domain unrelated to evidence projections.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: feeds-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  feeds-freshness:
+    name: Regenerate evidence feeds and fail on drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # build-feeds.ts uses Bun built-ins only — no `bun install`, which keeps
+      # this gate independent from the dependency supply chain.
+      - name: Regenerate the evidence feeds and fail on drift
+        run: |
+          bun distribution/build-feeds.ts
+          # intent-to-add makes a NEW generated feed file visible to git diff;
+          # without it, an uncommitted new surface would pass silently.
+          git add --intent-to-add distribution/feeds
+          if ! git diff --exit-code -- distribution/feeds; then
+            echo "::error::distribution/feeds is stale — run 'bun distribution/build-feeds.ts' and commit the result"
+            exit 1
+          fi

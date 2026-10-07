@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:device-local-encryption",
+  "name": "Chiffrement local sur appareil, sans capacité réseau",
+  "purpose": "Composant WASM **sans aucune capacité** — vérifié par un contrôle des imports du module compilé — assurant le chiffrement de sauvegarde en AES-256-GCM avec dérivation Argon2id, canonicalisation et validation, plus un harnais de qualification qui éprouve les fautes et l'épuisement mémoire. La clé d'appareil est non exportable et un code de récupération distinct permet la restauration. La reproductibilité du binaire est vérifiée en CI par une reconstruction comparée octet à octet. Crate `crates/notebook-core`. Le principe : la donnée personnelle ne quitte pas l'appareil, et l'absence de capacité rend la promesse structurelle plutôt que déclarative.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/device-local-encryption.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

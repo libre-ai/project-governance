@@ -1,0 +1,130 @@
+schema_version: libre-ai.portfolio.v1
+authority: >
+  Target-portfolio growth backlog (ADR-0009 §4 growth laws). Tracks products and
+  product families BEFORE they earn a repository. Observable repositories live in
+  repositories.v1.yaml (validated against GitHub by truth-drift); an item moves
+  there when it has something verifiable to show (§4 loi d'exposition, "pas de
+  vitrine sans vérifiable"). The §2 count of seven couche-1 products is the
+  2026-07-19 state; the portfolio grows by owner decision. Repository creation and
+  product activation are on the human-touch surface (ADR-0009 §5).
+exposure_scale: [idea, spec-published, usable-verifiable, proven]
+updated_on: 2026-09-10
+
+families:
+  couche-1-apps:
+    # The seven locked couche-1 products live in repositories.v1.yaml. New additions:
+    - name: Carrière
+      exposure: idea
+      repo: libre-ai/carriere        # reserved, declared in repositories.v1.yaml
+      note: >
+        8th couche-1 product (owner decision 2026-07-23, ADR-0008 multi-repo).
+        Sovereign, explainable job-search assistant for cadres.
+      benchmark: TBD (owner to set)
+    - name: Signalement
+      exposure: idea
+      repo: libre-ai/signalement # planned; ADR-0038/I-30 private-first publication
+      note: >
+        Enrolled by owner decision on 2026-09-10. The LEXICON reserves the public
+        family name; private repository creation and later public exposure remain
+        separate human-touch actions under ADR-0038/I-30.
+      function: >
+        capture and qualify incidents or improvement requests, preserve approved
+        evidence, produce executable verification scenarios, and synchronize
+        projections with external work-management systems without becoming one
+
+  transverse:
+    - name: Website
+      exposure: spec-published
+      repo: libre-ai/website          # reserved, declared in repositories.v1.yaml
+      cdc: docs/apps/website.md
+      scope: static/SSR sourced citable projection of knowledge, product records, forge evidence; no CMS, no tracking
+
+  security-of-loops:
+    # ADR-0009 §6 — hard prerequisites that GATE couche-2 (Polaris) wave-3 execution.
+    - name: agent-identity
+      exposure: idea
+      layer: couche-3
+      gate: >
+        HARD GATE for wave-3 (couche-2 agent execution). ADR-0009 §6: "absente des
+        locks actuels, à spécifier et verrouiller avant toute exécution réelle
+        d'agents." Not optional.
+      scope: fleet/mission/capability taxonomy; per-mission token; per-agent revocation
+
+  candidates:
+    # Familles neuves issues de l'audit Run ε. No repository until verifiable (§4).
+    - name: rgpd-kit
+      exposure: idea
+      source: LINCnil/Guide-RGPD-du-developpeur
+      serves: all PII-handling products (boussole Art.9, sessions, carriere)
+      function: reusable AIPD (Art.35) + Art.30 register generation + data-subject-rights tooling
+      priority: high (required by the P1 AIPD boussole dossier)
+    - name: transcription
+      exposure: idea
+      source: meetily
+      serves: sessions
+      function: on-device meeting transcription into sourced, attributed notes
+    - name: model-routing
+      exposure: idea
+      source: OmniRoute
+      serves: model-policy
+      function: deterministic, explainable routing across models/providers by policy (cost, capability, sovereignty, latency)
+    - name: embedded-db
+      exposure: idea
+      source: stoolap
+      layer: rust-core
+      serves: local-first products (notebook, boussole)
+      function: Rust embedded database for rich local persistence beyond IndexedDB
+    - name: api-workbench
+      exposure: idea
+      source: hoppscotch
+      serves: forge-internal (dogfooding)
+      function: contract-testing UI over the hub OpenAPI contracts
+    - name: agentic-research
+      exposure: idea
+      source: pi-autoresearch
+      layer: couche-2
+      function: bounded, sourced auto-research capability for the Polaris method
+    - name: patterns-skills
+      exposure: idea
+      source: Fabric
+      layer: couche-2
+      function: reusable agent patterns/skills library for Polaris
+    - name: desktop-shells
+      exposure: idea
+      source: adhd, Handy
+      layer: couche-4
+      function: native desktop runtime for local-first products (notebook, boussole beyond the browser)
+
+promotion_rule: >
+  An item earns a repository (moving to repositories.v1.yaml) when it reaches
+  something verifiable (ADR-0009 §4). Until then it stays here at idea/spec-published
+  exposure. Enrolling a candidate, creating a repository, and activating a product
+  are owner decisions (ADR-0009 §5 human-touch surface).
+
+enrollment:
+  # Owner decision 2026-07-23. Enrolled = committed to the pipeline; not the same as
+  # having a repository (an item earns a repo when verifiable, §4).
+  enrolled_candidates: [rgpd-kit, transcription, model-routing, embedded-db, api-workbench]
+  enrolled_products: [signalement]
+  accepted_suggestions: [agent-identity, agentic-research, patterns-skills, desktop-shells]
+
+production_order:
+  # Repo activation / productization order. Distinct from the feature-completion loop,
+  # which completes already-scaffolded apps in the hub in parallel.
+  authority: ADR-0009 §8 (owner-confirmed 2026-07-23)
+  waves:
+    - wave: 0
+      target: pre-migration
+      note: main=truth, inventory up to date, first forge-evidence (traceur iteration 1)
+    - wave: 1
+      target: couche-4 (atelier applicatif)
+      note: most mature, built in G2
+    - wave: 2
+      target: couche-3 (infrastructure de confiance)
+      note: trust infrastructure before agents execute
+    - wave: 3
+      target: couche-2 (Polaris — la méthode incarnée)
+      note: under orchestrator lock; HARD GATE = security-of-loops core (§6), incl. agent-identity
+    - wave: 4
+      target: couche-1 (apps)
+      note: Notebook pilot, then the rest via Polaris

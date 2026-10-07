@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Evidence",
+  "id": "urn:libre-ai:evidence:parity-notebook-siyuan",
+  "name": "Audit de parité Notebook contre SiYuan",
+  "purpose": "Audit de 143 fonctionnalités du produit de référence : 29 couvertes, 42 réalisables sans rupture, 43 lourdes, et **29 conflits volontaires** — c'est-à-dire des fonctionnalités que le cahier des charges refuse par principe et non par manque de moyens. Il propose par ailleurs quatre amendements identifiés comme peu coûteux, dont la visualisation du graphe de relations et les attributs personnalisés sur les blocs. Chemin : `docs/parity/audits/PARITY-notebook-siyuan.md`.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/evidence/parity-notebook-siyuan.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-22T00:00:00Z",
+    "reviewedAt": "2026-07-22T00:00:00Z"
+  }
+}

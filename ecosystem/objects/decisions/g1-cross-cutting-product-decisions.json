@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+  "name": "Décisions produit transverses G1",
+  "purpose": "ADR-0002 (`docs/adr/0002-g1-cross-cutting-product-decisions.md`) tranche cinq questions qui, laissées ouvertes, auraient été retranchées différemment par chaque produit : le modèle de tenant, la frontière OIDC, la rétention, le caractère strictement local de Notebook, et l'autorité de publication de Boussole. La rétention y devient une politique **exécutable** plutôt qu'un paragraphe, avec sa matrice de propriété par tenant, ses reçus de suppression et ses règles de restauration.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/g1-cross-cutting-product-decisions.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-16T00:00:00Z",
+    "reviewedAt": "2026-07-16T00:00:00Z"
+  }
+}

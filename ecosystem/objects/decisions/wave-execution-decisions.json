@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:wave-execution-decisions",
+  "name": "Décisions d'exécution des vagues et politiques de gate autonome",
+  "purpose": "ADR-0011 (`docs/adr/0011-wave-execution-decisions.md`) arme l'exécution autonome en tranchant d'avance les gates qui dépendent d'un arbitrage humain. Deux régimes distincts y sont posés : le Specification Lock de l'orchestrateur est un **arrêt dur permanent**, jamais prononcé en autonome à aucune occurrence, parce qu'il démarre la boucle auto-alimentée ; la confiance graduée est un arrêt d'amorçage **unique par couche**, l'humain validant le patron de revue une fois sur pièce avant que les répétitions se prononcent automatiquement. S'y ajoutent des plafonds chiffrés de liveness et de coût, dont le dépassement produit un dossier et jamais un arrêt silencieux.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/wave-execution-decisions.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-20T00:00:00Z",
+    "reviewedAt": "2026-07-20T00:00:00Z"
+  }
+}

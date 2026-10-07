@@ -1,0 +1,36 @@
+{
+  "schema_version": "libre-ai.repository-index.v2",
+  "source": "ecosystem/repositories.v1.yaml",
+  "source_schema_version": "libre-ai.repositories.v2",
+  "source_updated_on": "2026-07-24",
+  "repositories": [
+    {
+      "repository": "libre-ai/alpha-hub",
+      "name": "alpha-hub",
+      "layer": "moyeu",
+      "role": "hub",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/product-research",
+      "name": "product-research",
+      "layer": "transverse",
+      "role": "administrative-private",
+      "visibility": "private",
+      "lifecycle": "active"
+    },
+    {
+      "repository": "libre-ai/zeta-product",
+      "name": "Zeta",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active",
+      "card": "project.v1.yaml",
+      "canonical_paths": [
+        "apps/zeta"
+      ]
+    }
+  ]
+}

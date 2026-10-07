@@ -1,0 +1,448 @@
+{
+  "schema_version": "libre-ai.evidence-feed.v1",
+  "repository": "libre-ai/libre-ai",
+  "events": [
+    {
+      "id": "coverage-2026-08-19",
+      "date": "2026-08-19",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 100 commit(s) inspected per active repository)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-2026-08-19.json"
+    },
+    {
+      "id": "sovereignty-2026-08-18-130738b",
+      "date": "2026-08-18",
+      "type": "sovereignty",
+      "title": "Sovereignty report (commit 130738b) — 3 pass, 0 fail, 4 pending",
+      "status": "pass",
+      "artifact": "distribution/evidence/sovereignty/2026-08-18-130738b.json"
+    },
+    {
+      "id": "coverage-2026-08-18",
+      "date": "2026-08-18",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 100 commit(s) inspected per active repository)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-2026-08-18.json"
+    },
+    {
+      "id": "gate-2026-07-30-jalon-phase-3-8-archivage-du-hub-acte-proprietaire-final",
+      "date": "2026-07-30",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.8 archivage du hub : acte propriétaire final",
+      "status": "PRONONCÉ SOUS GO PROPRIÉTAIRE DONNÉ PAR AVANCE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR hub #293, `ecosystem/check-hub-orphans.ts`, rapport final, cette ligne"
+    },
+    {
+      "id": "gate-2026-07-30-jalon-phase-3-7-coherence-le-hub-atteint-sa-forme-d-archive",
+      "date": "2026-07-30",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.7 cohérence : le hub atteint sa forme d'archive, gate d'orphelins vert, rapport final publié",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PRs hub #289/#291 (merges ba3761b4, 42dffb473c), governance @a3ee5826/@c1a3ac33/@d63daef0, `ecosystem/check-hub-orphans.ts`, `docs/reports/2026-07-30-general-activation-final-report.md`"
+    },
+    {
+      "id": "gate-2026-07-29-jalon-phase-3-4-satellites-les-dix-neuf-repos-de-code-partag",
+      "date": "2026-07-29",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.4 satellites : les dix-neuf repos de code partagé nés verts",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PRs #279, #280, #281, #282, #283, `ecosystem/migration-index.v1.yaml` (49 entrées), `governance/ecosystem/fleet-pins.v1.yaml`"
+    },
+    {
+      "id": "gate-2026-07-29-jalon-phase-3-3-autorites-governance-contracts-nes-verts-ind",
+      "date": "2026-07-29",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.3 autorités : governance + contracts nés verts, index de migration ouvert",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #277, `ecosystem/migration-index.v1.yaml`, verdicts K4 sur la PR"
+    },
+    {
+      "id": "gate-2026-07-29-jalon-phase-3-2-systeme-de-fiches-project-v1",
+      "date": "2026-07-29",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.2 système de fiches (`project.v1`)",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #274, PR #275, `ecosystem/schemas/project.v1.schema.json`, `ecosystem/cards/`"
+    },
+    {
+      "id": "gate-2026-07-29-jalon-3-2-banc-d-essai-des-mecanismes-de-dependance-design-5",
+      "date": "2026-07-29",
+      "type": "gate",
+      "title": "Jalon γ — 3.2 banc d'essai des mécanismes de dépendance (design §5.2.6)",
+      "status": "EXÉCUTÉ puis rendu reproductible sous revue K4",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`distribution/evidence/2026-07-29-dependency-bench.md`"
+    },
+    {
+      "id": "gate-2026-07-28-jalon-3-1-acte-doctrinal-adr-0020-activation-generale-amende",
+      "date": "2026-07-28",
+      "type": "gate",
+      "title": "Jalon γ — 3.1 acte doctrinal : ADR-0020 (activation générale) + amendement LEXICON §8",
+      "status": "SIGNÉ AU MERGE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #273, `docs/adr/0020-general-activation-and-hub-dismantling.md`, `docs/decisions/LEXICON.md` §8"
+    },
+    {
+      "id": "gate-2026-07-28-jalon-phase-3-0-housekeeping-activation-generale-reliquats-s",
+      "date": "2026-07-28",
+      "type": "gate",
+      "title": "Jalon γ — phase 3.0 housekeeping (activation générale : reliquats statués, chaîne finale)",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`distribution/evidence/2026-07-28-milestone-gamma-housekeeping.md`, PRs #261/#265–#271"
+    },
+    {
+      "id": "adoption-2026-07-24-d0c5745",
+      "date": "2026-07-24T13:47:05.053Z",
+      "type": "adoption",
+      "title": "Adoption attestation 2026-07-24-d0c5745 — blank-room reproduction",
+      "status": "pass",
+      "artifact": "distribution/evidence/adoption/2026-07-24-d0c5745.json"
+    },
+    {
+      "id": "sovereignty-2026-07-24-f942f52",
+      "date": "2026-07-24",
+      "type": "sovereignty",
+      "title": "Sovereignty report (commit f942f52) — 2 pass, 0 fail, 5 pending",
+      "status": "pass",
+      "artifact": "distribution/evidence/sovereignty/2026-07-24-f942f52.json"
+    },
+    {
+      "id": "sovereignty-2026-07-24-15dc102",
+      "date": "2026-07-24",
+      "type": "sovereignty",
+      "title": "Sovereignty report (commit 15dc102) — 3 pass, 0 fail, 4 pending",
+      "status": "pass",
+      "artifact": "distribution/evidence/sovereignty/2026-07-24-15dc102.json"
+    },
+    {
+      "id": "coverage-2026-07-24",
+      "date": "2026-07-24",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 50 merges)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-2026-07-24.json"
+    },
+    {
+      "id": "gate-2026-07-24-vague-1-couche-4-publish-readiness-des-4-satellites-re-prouv",
+      "date": "2026-07-24",
+      "type": "gate",
+      "title": "Vague 1 couche 4 — publish-readiness des 4 satellites re-prouvée sur le main courant",
+      "status": "RE-VÉRIFIÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`distribution/evidence/coverage-2026-07-24.json`, PR #191, `tools/release/publish-preflight.ts`"
+    },
+    {
+      "id": "coverage-2026-07-22",
+      "date": "2026-07-22",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 50 merges)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-2026-07-22.json"
+    },
+    {
+      "id": "gate-2026-07-22-vague-2-couche-3-k3-in-service-envelope-v1-candidate-locked",
+      "date": "2026-07-22",
+      "type": "gate",
+      "title": "Vague 2 couche 3 — K3 in service : `envelope-v1` `candidate → locked`",
+      "status": "PROMU",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR de promotion (branche `feat/envelope-k3-dogfooding`), `docs/reviews/envelope-v1/PROMOTION-DOSSIER.md`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-3-couche-2-polaris-k1-in-service-authority-v2-agent-ru",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 3 couche 2 (Polaris) — K1 in service : `authority-v2` + `agent-runs-v2` `candidate → locked`",
+      "status": "PROMU",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR de promotion, `docs/reviews/authority-v2/PROMOTION-DOSSIER.md`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-3-couche-2-polaris-revocation-per-agent-id-a-l-emissio",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 3 couche 2 (Polaris) — révocation per-agent_id à l'émission",
+      "status": "EN SERVICE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #149"
+    },
+    {
+      "id": "gate-2026-07-20-vague-3-couche-2-polaris-wiring-d-enforcement-k1-fermeture-d",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 3 couche 2 (Polaris) — wiring d'enforcement K1 (fermeture du gap différé)",
+      "status": "EN SERVICE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #145 (a), #146 (b2), #147 (b1) ; `docs/reviews/agent-runs-v2/`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-3-couche-2-polaris-identite-d-agent-k1-amorcage-d4-de",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 3 couche 2 (Polaris) — identité d'agent K1 (amorçage D4 de la couche 2)",
+      "status": "AMORÇAGE PRONONCÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #143 (merge = amorçage), `docs/reviews/authority-v2/` (BOOTSTRAP-DOSSIER + 2 verdicts)"
+    },
+    {
+      "id": "gate-2026-07-20-specification-lock-orchestrateur-porte-v3-prononce",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Specification Lock orchestrateur (porte V3) — PRONONCÉ",
+      "status": "PRONONCÉ PROPRIÉTAIRE en session (« J'ai prononcé le lock orchestrateur, lance β »)",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "merge du verrou K1-K5 + cette entrée, `docs/reviews/loop-security-kernel/PORTE-V3-DOSSIER.md`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-4a-notebook-pilote-pattern-app-de-bout-en-bout",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 4a — Notebook pilote (pattern app de bout en bout)",
+      "status": "VALIDÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`distribution/evidence/2026-07-20-wave4a-notebook-pilot.md`"
+    },
+    {
+      "id": "gate-2026-07-20-porte-v3-noyau-k1-k5-verrouille-au-socle-dossier-de-lock",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Porte V3 — noyau K1-K5 verrouillé au socle (dossier de lock)",
+      "status": "DOSSIER PRODUIT",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #139 (draft), `docs/reviews/loop-security-kernel/PORTE-V3-DOSSIER.md`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-2-couche-3-classification-k2",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 2 couche 3 — classification K2",
+      "status": "AUTO-MERGÉ sur revue propre (répétition du pattern couche-3)",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #138, `docs/reviews/classification-v1/`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-2-couche-3-envelope-k3-amorcage-d4-de-la-couche-3",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 2 couche 3 — envelope K3 (amorçage D4 de la couche 3)",
+      "status": "AMORÇAGE PRONONCÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #137 (merge = amorçage couche 3), `docs/reviews/envelope-v1/`"
+    },
+    {
+      "id": "gate-2026-07-20-vague-1-couche-4-renommage-exposition-satellites-interne",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Vague 1 couche 4 — renommage + exposition satellites (interne)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #134/#135/#136"
+    },
+    {
+      "id": "gate-2026-07-20-wp-g2-q01-harness-qualite-de-foundation-g2-foundation-accept",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "WP-G2-Q01 — harness qualité de foundation (g2-foundation-acceptance)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #132 (merge = clôture G2), `docs/reviews/wp-g2-q01/`, `verification/harness/wp-g2-q01-reference-chain-evidence.md`"
+    },
+    {
+      "id": "gate-2026-07-20-wp-g2-d01-premiere-barriere-rls-de-la-couche-donnees-amorcag",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "WP-G2-D01 — première barrière RLS de la couche données (amorçage D4)",
+      "status": "AMORÇAGE PRONONCÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #123 (merge = amorçage), `docs/reviews/wp-g2-d01/` (BOOTSTRAP-DOSSIER + 2 verdicts K4)"
+    },
+    {
+      "id": "gate-2026-07-20-phase-0-lexicon-lock-carte-de-noms-glossaire-produit",
+      "date": "2026-07-20",
+      "type": "gate",
+      "title": "Phase 0 — Lexicon Lock (carte de noms + glossaire produit)",
+      "status": "SIGNÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #130 (merge = signature), `docs/decisions/LEXICON.md`, `docs/reviews/lexicon-lock/`"
+    },
+    {
+      "id": "coverage-baseline-2026-07-19",
+      "date": "2026-07-19",
+      "type": "coverage",
+      "title": "Automation coverage measurement (last 50 merges)",
+      "status": "0% genuine automation",
+      "artifact": "distribution/evidence/coverage-baseline-2026-07-19.json"
+    },
+    {
+      "id": "gate-2026-07-19-vague-0-test-de-l-agent-froid-gate-de-sortie",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Vague 0 — test de l'agent froid (gate de sortie)",
+      "status": "RÉUSSI",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`2026-07-19-wave0-evidence.md`"
+    },
+    {
+      "id": "gate-2026-07-19-vague-0-option-b-control-plane-main-verite-courante",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Vague 0 — option B control plane (main = vérité courante)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "constantin-jais/constantin-jais PR #115, tag `archive/pre-constellation-2026-07-19`"
+    },
+    {
+      "id": "gate-2026-07-19-vague-0-carte-d-autorite-decomposition-de-vision-md",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Vague 0 — carte d'autorité + décomposition de vision.md",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #120"
+    },
+    {
+      "id": "gate-2026-07-19-vague-0-inventaire-machine-lisible-drift-bidirectionnel",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Vague 0 — inventaire machine-lisible + drift bidirectionnel",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #119, `ecosystem/repositories.v1.yaml`"
+    },
+    {
+      "id": "gate-2026-07-19-goals-des-vagues-autorite-de-sequencement",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Goals des vagues (autorité de séquencement)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #118, `docs/transformation/EXECUTION-SEQUENCING.md`"
+    },
+    {
+      "id": "gate-2026-07-19-adr-0009-constellation-portefeuille-geree-par-la-methode",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "ADR-0009 — constellation-portefeuille gérée par la méthode",
+      "status": "RATIFIÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #117 (merge = trace d'arbitrage) ; relecture indépendante : « prêt à ratifier », zéro écart"
+    },
+    {
+      "id": "gate-2026-07-19-candidat-8ede2ba-bounded-payloads-reconciliation",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Candidat 8ede2ba (bounded payloads) — réconciliation",
+      "status": "CLOS",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #115, PR #116, `docs/reviews/specialized-engine-v2/CANDIDATE-RECORDED-8EDE2BA.md`"
+    },
+    {
+      "id": "gate-2026-07-19-gate-work-package-sur-apps",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Gate work-package sur `apps/`",
+      "status": "EN SERVICE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #114"
+    },
+    {
+      "id": "gate-2026-07-19-gates-doctrine-unicite-adr-ligne-arbitrage-citations-registr",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Gates doctrine (unicité ADR, ligne Arbitrage, citations registre, deny-list)",
+      "status": "EN SERVICE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #113"
+    },
+    {
+      "id": "gate-2026-07-19-cleanup-github-manifest-aligne-sur-l-observable",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Cleanup GitHub — manifest aligné sur l'observable",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #112, `ecosystem/LEGACY-MANIFEST.yaml` §github_cleanup"
+    },
+    {
+      "id": "gate-2026-07-19-adr-0008-topologie-multi-repository-et-marque",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "ADR-0008 — topologie multi-repository et marque",
+      "status": "RATIFIÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #110 (merge = trace d'arbitrage propriétaire)"
+    },
+    {
+      "id": "gate-2026-07-19-gate-dco-des-merge-commits-sur-main",
+      "date": "2026-07-19",
+      "type": "gate",
+      "title": "Gate DCO des merge commits sur main",
+      "status": "EN SERVICE",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #107"
+    },
+    {
+      "id": "gate-2026-07-18-notebook-core-v2-gate-b-host-qualification",
+      "date": "2026-07-18",
+      "date_raw": "2026-07-18/19",
+      "type": "gate",
+      "title": "Notebook Core v2 — Gate B (host qualification)",
+      "status": "APPROUVÉ (périmètre borné)",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #106, candidat immuable `9ee3f8d`, ADR-0005/0006/0007"
+    },
+    {
+      "id": "gate-2026-07-18-wp-g2-z01-capability-biscuit-cloture-governance",
+      "date": "2026-07-18",
+      "type": "gate",
+      "title": "WP-G2-Z01 — capability Biscuit + clôture governance",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "PR #101, PR #104"
+    },
+    {
+      "id": "gate-2026-07-17-gouvernance-des-licences-eupl-apache-2-0-cc-by-dco-reuse",
+      "date": "2026-07-17",
+      "type": "gate",
+      "title": "Gouvernance des licences (EUPL/Apache-2.0/CC BY, DCO, REUSE)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "ADR-0004 licensing"
+    },
+    {
+      "id": "gate-2026-07-17-amendement-borne-wp-g2-s01-85-autorites-relockees",
+      "date": "2026-07-17",
+      "type": "gate",
+      "title": "Amendement borné WP-G2-S01 (85 autorités relockées)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "ADR-0003"
+    },
+    {
+      "id": "gate-2026-07-16-g1-specification-lock-catalogue-d-autorites",
+      "date": "2026-07-16",
+      "type": "gate",
+      "title": "G1 — Specification Lock (catalogue d'autorités)",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`contracts/catalog.v1.json`, ADR-0001/0002"
+    },
+    {
+      "id": "gate-2026-07-16-g0-freeze-des-18-repositories-historiques",
+      "date": "2026-07-16",
+      "type": "gate",
+      "title": "G0 — freeze des 18 repositories historiques",
+      "status": "ACCEPTÉ",
+      "artifact": "distribution/evidence/gate-acceptance-log.md",
+      "reference": "`docs/transformation/G0-FREEZE-EVIDENCE.md`, `ecosystem/LEGACY-MANIFEST.yaml`"
+    }
+  ]
+}

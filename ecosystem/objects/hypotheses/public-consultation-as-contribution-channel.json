@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Hypothesis",
+  "id": "urn:libre-ai:hypothesis:public-consultation-as-contribution-channel",
+  "name": "La consultation publique est le canal de contribution défendable",
+  "purpose": "Un message identique adressé à N organisations est du démarchage, quelle que soit l’intention déclarée, et contredit la posture qu’il prétend servir. La consultation publique ouverte est le seul canal où la demande précède la réponse : contribuer n’y suppose aucune sollicitation non désirée. SUCCÈS : une contribution publiée sous licence ouverte, avec sa provenance complète et son évidence, issue d’une consultation détectée par la veille et préparée depuis un export de contexte. RÉFUTATION : si aucune consultation pertinente n’apparaît sur un cycle d’observation complet, le canal est trop étroit et la posture de contribution doit être reformulée — pas élargie en démarchage. Corollaire de régime : zéro message non sollicité ; les deux canaux admis sont la publication publique et la réponse à sollicitation formelle.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/hypotheses/public-consultation-as-contribution-channel.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

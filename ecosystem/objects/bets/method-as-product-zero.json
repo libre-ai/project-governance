@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Bet",
+  "id": "urn:libre-ai:bet:method-as-product-zero",
+  "name": "Le produit zéro est la méthode",
+  "purpose": "Invariant I-13, ratifié par ADR-0009 §1 : le produit premier n'est aucune application mais la méthode de gestion agentique d'une constellation — des boucles d'agents qui opèrent, maintiennent et améliorent la flotte sous des gates vérifiables, la touche humaine étant réduite aux invariants. Les applications sont à la fois des produits de plein droit et les bancs d'essai qui prouvent que la méthode fonctionne. Le pari est que cette inversion produit un avantage durable là où l'accumulation d'applications n'en produit pas.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/bets/method-as-product-zero.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "implemented-by",
+      "target": "urn:libre-ai:decision:constellation-portfolio-and-method",
+      "status": "accepted"
+    },
+    {
+      "type": "implemented-by",
+      "target": "urn:libre-ai:decision:wave-execution-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-19T00:00:00Z",
+    "reviewedAt": "2026-07-19T00:00:00Z"
+  }
+}

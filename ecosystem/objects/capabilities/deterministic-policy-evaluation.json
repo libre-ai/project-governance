@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:deterministic-policy-evaluation",
+  "name": "Évaluation de politique déterministe et explicable",
+  "purpose": "Moteur d'évaluation dont deux implémentations — une référence TypeScript et un moteur Rust compilé en WASM — doivent produire des sorties identiques sur un jeu de vecteurs golden, la conformité étant vérifiée en intégration continue. Le déterminisme repose sur la canonicalisation JSON RFC 8785 et un digest SHA-256, avec un analyseur JSON strict qui refuse ce qu'un analyseur permissif accepterait. Les décisions sont explicables par construction : la règle décidante est nommée dans la sortie. Paquets `packages/policy-core-ref` et `crates/policy-core`. C'est le patron réutilisable pour toute décision automatisée qui doit être contestable.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/deterministic-policy-evaluation.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

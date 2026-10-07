@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.adoption-reproduction.v1",
+  "runId": "2026-01-02-abc1234",
+  "generatedAt": "2026-01-02T10:00:00.000Z",
+  "repository": "https://github.com/libre-ai/libre-ai",
+  "clonedSha": "abc1234abc1234abc1234abc1234abc1234abc12",
+  "verdict": "pass",
+  "steps": [
+    {
+      "id": "clone",
+      "label": "Anonymous shallow clone (public HTTPS)",
+      "status": "passed",
+      "durationMs": 1000
+    }
+  ],
+  "frictionLog": []
+}

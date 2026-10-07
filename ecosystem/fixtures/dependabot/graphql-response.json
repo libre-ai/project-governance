@@ -1,0 +1,20 @@
+{
+  "data": {
+    "repo0": {
+      "config": { "text": "<TEMPLATE:github-actions>" },
+      "cargoToml": null,
+      "workflows": { "id": "tree-workflows" }
+    },
+    "repo1": {
+      "config": null,
+      "cargoToml": { "id": "blob-cargo-toml" },
+      "workflows": { "id": "tree-workflows" }
+    },
+    "repo2": {
+      "config": { "text": "<FIXTURE:drifted>" },
+      "cargoToml": { "id": "blob-cargo-toml" },
+      "workflows": { "id": "tree-workflows" }
+    },
+    "repo3": null
+  }
+}

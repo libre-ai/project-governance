@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "libre-ai.adoption-reproduction.v1",
+  "runId": "2026-07-24-d0c5745",
+  "generatedAt": "2026-07-24T13:47:05.053Z",
+  "repository": "https://github.com/libre-ai/libre-ai",
+  "clonedSha": "d0c574542edc27fac2b77f12f2cd569dc4eb21d4",
+  "verdict": "pass",
+  "environment": {
+    "bunVersion": "1.4.0",
+    "os": "darwin",
+    "arch": "arm64"
+  },
+  "steps": [
+    {
+      "id": "clone",
+      "label": "Anonymous shallow clone (public HTTPS)",
+      "status": "passed",
+      "durationMs": 1040
+    },
+    {
+      "id": "install",
+      "label": "Dependency install from the committed lockfile",
+      "status": "passed",
+      "durationMs": 15266
+    },
+    {
+      "id": "reference-chain",
+      "label": "Foundation reference chain (WP-G2-Q01)",
+      "status": "passed",
+      "durationMs": 31384
+    },
+    {
+      "id": "contract-conformance",
+      "label": "Contract validation via existing conformance tooling (policy-core v1 golden vectors)",
+      "status": "passed",
+      "durationMs": 69
+    }
+  ],
+  "referenceChain": {
+    "expectedDigest": "f45dfad03581f3d56ea53ca74a7b9ac3034ef7ce7013eebe6eac71cc3959a89f",
+    "obtainedDigest": "f45dfad03581f3d56ea53ca74a7b9ac3034ef7ce7013eebe6eac71cc3959a89f",
+    "matches": true
+  },
+  "frictionLog": [
+    {
+      "step": "install",
+      "kind": "implicit-prerequisite",
+      "description": "Dependency installation is undocumented: neither README.md nor CONTRIBUTING.md states that `bun install` must run before the gates."
+    },
+    {
+      "step": "reference-chain",
+      "kind": "implicit-prerequisite",
+      "description": "Playwright browsers are an implicit prerequisite: the reference chain runs three browser engines but no public document states how to install them (`bunx playwright install`)."
+    },
+    {
+      "step": "reference-chain",
+      "kind": "implicit-prerequisite",
+      "description": "The Rust toolchain is an implicit prerequisite: the reference chain runs `cargo test` but no public document states that Rust (rustup) must be installed."
+    }
+  ]
+}

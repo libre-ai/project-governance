@@ -1,0 +1,87 @@
+name: Context conformance
+
+# Domaine D (remise à plat, 2026-08-18): measures every repository in
+# ecosystem/repositories.v1.yaml against docs/method/CONTEXT-TEMPLATE.md
+# (ecosystem/check-context-conformance.ts). Deliberately NOT wired into
+# ci.yml — it is its own workflow, matching how every other required check in
+# this repository's branch protection is a standalone job, never folded into
+# the `bun run check` aggregate.
+#
+# The conformance wave that CONTEXT-TEMPLATE.md conditioned the required flip
+# on has passed (36/36 registry entries conform as of 2026-08-19). `push` and
+# `pull_request` below exist so this becomes eligible to be a required status
+# check at all: the branch-protection norm
+# (`tools/security/check-branch-protection.ts`, ADR-0021 domain I) forbids
+# requiring a check that never runs against a commit — a schedule- or
+# dispatch-only job can only ever be a phantom requirement, "Expected —
+# waiting for status" forever on a pull request, and invisible to the tool's
+# own default-ref audit (which reads `main` HEAD) on every push after a
+# squash-merge. Same pairing as every other required check in this
+# repository (`ci.yml`, `context-hygiene.yml`, `doctrine-governance.yml`,
+# `feeds-freshness.yml`, `inventory-drift.yml`) — this workflow was the one
+# outlier before this change. `schedule` stays so the baseline keeps being
+# measured even on a week with neither a push nor a pull request to this
+# repository; `workflow_dispatch` stays as the manual escape hatch `ci.yml`
+# documents for when GitHub fails to deliver an event.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "29 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The repeat-failure alert files and closes governance issues on the
+  # scheduled runs only (see the event guard on its steps).
+  issues: write
+
+jobs:
+  context-conformance:
+    name: Every repository's AGENTS.md matches its layer's template
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Measure context conformance against docs/method/CONTEXT-TEMPLATE.md
+        run: bun run check:context-conformance
+      # A red scheduled run here is only visible to someone who opens the
+      # Actions tab (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique"
+      # — "absence de ligne récente" is its own failure mode). One red run
+      # stays a run; two in a row files a deduplicated governance issue. The
+      # push/pull_request runs of this workflow belong to the CI gate and are
+      # excluded by the event guard: a branch failing twice is not the fleet
+      # drifting.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Context conformance
+          WORKFLOW_FILE: context-conformance.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Context conformance
+          WORKFLOW_FILE: context-conformance.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

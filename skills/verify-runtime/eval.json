@@ -1,0 +1,16 @@
+{
+  "skill": "verify-runtime",
+  "positive": [
+    "Verify this non-trivial functional change against its real exposed surface, not just the test suite.",
+    "Prove this CLI change actually works by running the real command with an adjacent probe.",
+    "I changed the public API — verify it at the real HTTP surface with evidence, not by importing the internal function."
+  ],
+  "negative": [
+    "Run the unit test suite and report pass or fail.",
+    "Write a code review of this diff for correctness bugs."
+  ],
+  "behavioral": {
+    "scenario": "An agent verifies a documentation-only change and is tempted to invent a runtime surface to exercise.",
+    "expected": "The skill returns SKIP immediately instead of fabricating a probe, because the change has no functional surface."
+  }
+}

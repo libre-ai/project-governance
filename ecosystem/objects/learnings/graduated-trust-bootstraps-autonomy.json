@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Learning",
+  "id": "urn:libre-ai:learning:graduated-trust-bootstraps-autonomy",
+  "name": "La confiance graduée amorce l'autonomie sans la brader",
+  "purpose": "Un régime binaire — tout automatique, ou tout arrêté — échoue des deux côtés : le premier laisse passer le franchissement initial, celui dont le coût d'erreur est le plus élevé ; le second impose un arrêt à chaque itération et se contourne. Le régime retenu distingue l'amorçage de la répétition : le premier passage d'un patron de gate produit son dossier et s'arrête pour prononcé humain, les répétitions du même patron se prononcent automatiquement sur revue propre. L'indépendance de la revue est préservée dans les deux cas. Le point de contrôle humain se place ainsi une fois par couche, là où il informe le plus.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/learnings/graduated-trust-bootstraps-autonomy.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "informs",
+      "target": "urn:libre-ai:decision:wave-execution-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,130 @@
+name: Inventory drift
+
+# Guards the two halves of the machine inventory (positioning L2):
+# (a) the committed distribution/index/repositories.v1.json must match a
+#     fresh regeneration from ecosystem/repositories.v1.yaml — a stale index
+#     means the "source unique" published a divergent projection;
+# (b) the inventory must match the observable GitHub organization in both
+#     directions (presence, name, visibility), so a repository created,
+#     renamed or re-exposed without an inventory update fails the same day
+#     instead of waiting for the weekly truth-drift audit.
+# The declared-private repository (policy) is handled by the checker itself:
+# private + not observable with the default token is consistent, not drift.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "43 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The repeat-failure alert files and closes governance issues on the
+  # scheduled runs only (see the event guard on its steps).
+  issues: write
+
+concurrency:
+  group: inventory-drift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inventory-drift:
+    name: Index freshness and GitHub reconciliation
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # Both scripts use Bun built-ins only — no `bun install` needed, which
+      # keeps this gate independent from the dependency supply chain.
+      - name: Regenerate the repository index and fail on drift
+        run: |
+          bun ecosystem/build-index.ts
+          if ! git diff --exit-code -- distribution/index/repositories.v1.json; then
+            echo "::error::distribution/index/repositories.v1.json is stale — run 'bun ecosystem/build-index.ts' and commit the result"
+            exit 1
+          fi
+      - name: Reconcile inventory with the observable organization
+        run: bun ecosystem/check-inventory-drift.ts
+      - name: Fleet template pins match the declared generations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-fleet-pins.ts
+      - name: Hub and destination copies stay identical during the pending window
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-migration-drift.ts
+      - name: Every repository card is valid and its README status matches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-fleet-presentation.ts
+      - name: Every hub path has a destination, replacement or eviction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-hub-orphans.ts
+      # The toolchain source is a fleet value with a single live declaration
+      # (toolchains/bun.json). Checking it per-repository is impossible: each
+      # repository reads that declaration through its PINNED git-dep, so a
+      # stale pin compares a stale workflow to a stale policy and stays green.
+      # Late in the job on purpose: this gate is knowingly red until the
+      # toolchain migration wave lands, and a step that fails early would mask
+      # every gate placed after it for the whole duration of the wave.
+      - name: Every workflow installs the Bun toolchain from the declared source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-toolchain-source.ts
+      # Owner decision 2026-09-07 ("restore Dependabot everywhere through a
+      # governance template"): every non-archived repository carries the
+      # byte-exact variant of distribution/templates/dependabot/ selected by
+      # its manifests at main. Reads the fleet in one GraphQL batch, like
+      # context-conformance; the report names each drifted repository and the
+      # first differing line, so the wave that fixes it needs no second look.
+      # Scheduled and dispatched runs only: this job is a required pull
+      # request check of this repository, and the fleet baseline is 0/35 by
+      # construction until the adoption wave lands — a required check that
+      # no governance pull request can turn green is the phantom requirement
+      # the branch-protection norm forbids. The weekly run stays red instead,
+      # and its second consecutive red files the governance issue below. Last
+      # of the job for the same reason as the toolchain step above.
+      - name: Every repository carries the canonical Dependabot configuration
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-dependabot-conformance.ts
+      # A red scheduled run here is only visible to someone who opens the
+      # Actions tab (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique"
+      # — "absence de ligne récente" is its own failure mode). One red run
+      # stays a run; two in a row files a deduplicated governance issue. The
+      # push/pull_request runs of this workflow belong to the CI gate and are
+      # excluded by the event guard: a branch failing twice is not the fleet
+      # drifting.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Inventory drift
+          WORKFLOW_FILE: inventory-drift.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Inventory drift
+          WORKFLOW_FILE: inventory-drift.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

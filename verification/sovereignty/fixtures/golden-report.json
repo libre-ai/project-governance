@@ -1,0 +1,191 @@
+{
+  "schemaVersion": "libre-ai.sovereignty.v1",
+  "run": {
+    "date": "2026-01-02",
+    "commit": "0123456789abcdef0123456789abcdef01234567"
+  },
+  "summary": {
+    "pass": 2,
+    "fail": 0,
+    "pending": 5
+  },
+  "checks": [
+    {
+      "id": "SOV-01",
+      "slug": "reconstruct-without-origin",
+      "status": "pending",
+      "reason": "adoption attestation not yet published (positioning L3 not landed)",
+      "attestation": null
+    },
+    {
+      "id": "SOV-02",
+      "slug": "forge-restore",
+      "status": "pass",
+      "reason": "bundle restored in a clean directory; HEAD commit and tree hashes match",
+      "restore": {
+        "sourceCommit": "1111111111111111111111111111111111111111",
+        "sourceTree": "2222222222222222222222222222222222222222",
+        "restoredCommit": "1111111111111111111111111111111111111111",
+        "restoredTree": "2222222222222222222222222222222222222222"
+      }
+    },
+    {
+      "id": "SOV-03",
+      "slug": "dependency-jurisdiction-inventory",
+      "status": "pass",
+      "reason": "lockfiles parsed; 7 external packages classified by distribution registry (v0 heuristic: registry is not code jurisdiction)",
+      "inventory": {
+        "bun": {
+          "ecosystem": "bun",
+          "totalExternal": 3,
+          "directExternal": 2,
+          "firstParty": 2,
+          "byRegistry": [
+            {
+              "registry": "npm",
+              "count": 3
+            },
+            {
+              "registry": "workspace",
+              "count": 2
+            }
+          ],
+          "nonStandard": [],
+          "packages": [
+            {
+              "name": "@libre-ai/notebook",
+              "version": "workspace:apps/notebook",
+              "ecosystem": "bun",
+              "registry": "workspace",
+              "direct": false
+            },
+            {
+              "name": "@libre-ai/ui",
+              "version": "workspace:packages/ui",
+              "ecosystem": "bun",
+              "registry": "workspace",
+              "direct": false
+            },
+            {
+              "name": "react",
+              "version": "19.2.7",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "scheduler",
+              "version": "0.27.0",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "typescript",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            }
+          ]
+        },
+        "cargo": {
+          "ecosystem": "cargo",
+          "totalExternal": 4,
+          "directExternal": 2,
+          "firstParty": 1,
+          "byRegistry": [
+            {
+              "registry": "crates-io",
+              "count": 3
+            },
+            {
+              "registry": "git",
+              "count": 1
+            },
+            {
+              "registry": "path-or-vendored",
+              "count": 1
+            }
+          ],
+          "nonStandard": [
+            {
+              "name": "somegit",
+              "version": "1.0.0",
+              "ecosystem": "cargo",
+              "registry": "git",
+              "direct": true,
+              "source": "git+https://example.org/some/repo?rev=abc123#abc123"
+            }
+          ],
+          "packages": [
+            {
+              "name": "aead",
+              "version": "0.5.2",
+              "ecosystem": "cargo",
+              "registry": "crates-io",
+              "direct": true
+            },
+            {
+              "name": "crypto-common",
+              "version": "0.1.7",
+              "ecosystem": "cargo",
+              "registry": "crates-io",
+              "direct": false
+            },
+            {
+              "name": "generic-array",
+              "version": "0.14.9",
+              "ecosystem": "cargo",
+              "registry": "crates-io",
+              "direct": false
+            },
+            {
+              "name": "libre-ai-core",
+              "version": "0.1.0",
+              "ecosystem": "cargo",
+              "registry": "path-or-vendored",
+              "direct": false
+            },
+            {
+              "name": "somegit",
+              "version": "1.0.0",
+              "ecosystem": "cargo",
+              "registry": "git",
+              "direct": true,
+              "source": "git+https://example.org/some/repo?rev=abc123#abc123"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "SOV-04",
+      "slug": "second-infrastructure-deploy",
+      "activation": "first runtime release publicly deployed",
+      "status": "pending",
+      "reason": "activation condition: first runtime release publicly deployed"
+    },
+    {
+      "id": "SOV-05",
+      "slug": "degraded-mode",
+      "activation": "first runtime release publicly deployed",
+      "status": "pending",
+      "reason": "activation condition: first runtime release publicly deployed"
+    },
+    {
+      "id": "SOV-06",
+      "slug": "data-export-restore",
+      "activation": "first application in service with product data",
+      "status": "pending",
+      "reason": "activation condition: first application in service with product data"
+    },
+    {
+      "id": "SOV-07",
+      "slug": "key-and-identity-rotation",
+      "activation": "operational secrets in service",
+      "status": "pending",
+      "reason": "activation condition: operational secrets in service"
+    }
+  ]
+}

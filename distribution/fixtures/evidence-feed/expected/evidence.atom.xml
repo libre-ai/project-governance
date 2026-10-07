@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:libre-ai.github.io,2026:evidence</id>
+  <title>Libre AI — evidence feed</title>
+  <subtitle>Gate verdicts, adoption attestations, sovereignty reports and coverage measurements, projected from the public evidence directory.</subtitle>
+  <updated>2026-01-13T00:00:00Z</updated>
+  <author><name>Libre AI</name></author>
+  <link rel="alternate" type="text/html" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/feeds/changelog.md"/>
+  <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/libre-ai/libre-ai/main/distribution/feeds/evidence.atom.xml"/>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-01-13-2026-01-13-ligne-incomplete-sans-les-quatre-cellules</id>
+    <title>Gate log entry (unparsed row)</title>
+    <updated>2026-01-13T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>unparsed — | 2026-01-13 ligne incomplète sans les quatre cellules |</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-01-11-g-y-plage-chevrons-guillemets-apostrophe</id>
+    <title>G-Y — plage &amp; &lt;chevrons&gt; &quot;guillemets&quot; &apos;apostrophe&apos;</title>
+    <updated>2026-01-11T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>APPROUVÉ (périmètre borné) — PR #2, `docs/adr/0001.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-01-10-g-x-gate-simple-accentuee</id>
+    <title>G-X — gate simple accentuée</title>
+    <updated>2026-01-10T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #1</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/sovereignty-2026-01-03-def5678</id>
+    <title>Sovereignty report (commit def5678) — 1 pass, 1 fail, 2 pending</title>
+    <updated>2026-01-03T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/sovereignty/2026-01-03-def5678.json"/>
+    <category term="sovereignty"/>
+    <summary>fail</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/adoption-2026-01-02-abc1234</id>
+    <title>Adoption attestation 2026-01-02-abc1234 — blank-room reproduction</title>
+    <updated>2026-01-02T10:00:00.000Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/adoption/2026-01-02-abc1234.json"/>
+    <category term="adoption"/>
+    <summary>pass</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-2026-01-01</id>
+    <title>Automation coverage measurement (last 10 merges)</title>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-2026-01-01.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+</feed>

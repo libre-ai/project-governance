@@ -1,0 +1,184 @@
+# Falsifiable card of product zero — the method itself (I-13, ADR-0023 §c,
+# owner arbitration 2026-08-18). Product zero has no repository of its own:
+# it is incarnated by the governance authority, the fleet gates, and the
+# couche-2 tooling (orchestrator, harness). Like the hub card, it therefore
+# lives under ecosystem/cards/ rather than in a repository it would own.
+#
+# The founding thesis is held to the same evidentiary regime it imposes on
+# every product it governs (vision.md §3: every initiative answers an
+# explicit, refutable question). A fired kill predicate forces a re-examination
+# ADR — it never self-destructs anything.
+schema_version: libre-ai.project.v1
+project: method
+repository: libre-ai/project-governance
+kind: product
+layer: couche-2
+statement:
+  for: "the owner of a fully agent-operated constellation of public repositories"
+  who_faces: >-
+    fleets whose doctrine is declarative rather than mechanized: guardrails
+    that cannot prove they ran, context that drifts per repository, and
+    automation claims that no measurement can falsify
+  enables: >-
+    operating the whole constellation through gates that prove their own
+    execution, per-repository agent context that passes a mechanical
+    conformance check, and an automation coverage figure that is honest by
+    construction
+  producing:
+    - "a fleet-wide context template and its conformance gate"
+    - "a loop-security kernel (K1-K5) with a single proven status source"
+    - "a governed skills collection with deterministic routing checks"
+    - "an authentic automation coverage measurement over the whole fleet"
+  without_depending_on:
+    - "any US hyperscaler for application runtime or data"
+    - "any human-bandwidth criterion: every gate is machine-verifiable"
+summary: >-
+  Product zero is the method: the constellation is operated by agents under
+  mechanized doctrine, and the method itself carries the falsifiable card it
+  imposes on everything it governs.
+current_situation: >-
+  All nine doctrine domains were re-ratified or amended by owner arbitration
+  on 2026-08-18 (ADR-0023 onward). The reliability criteria below were
+  created during that pass and are being driven to green; authentic
+  automation coverage measures 0% (no agent loop merges under its own
+  identity yet — coverage-2026-08-18.json).
+scope:
+  - "Mechanized doctrine: every fleet invariant is enforced or measured by a gate."
+  - "Agent context layer: template, ceilings, conformance gate, fleet-wide."
+  - "Agent tooling: orchestrator decision core, harness capability boundary, review fan-out."
+  - "Honest measurement: coverage and evidence loops that prove their own execution."
+non_goals:
+  - "Shipping any couche-1 product: products are governed by, not part of, product zero."
+  - "Human-process ceremony: no criterion may rest on human bandwidth (I-13, no-human-limitation)."
+dependencies:
+  - on: libre-ai/governance
+    why: "hosts the doctrine, the gates and this card"
+  - on: libre-ai/orchestrator
+    why: "decision core and review fan-out of the method's agent loops"
+    pinned: "consumed by SHA where used"
+  - on: libre-ai/harness
+    why: "capability boundary of the method's future runtime"
+maturity: usable
+confidence: medium
+exposure: usable-verifiable
+freshness:
+  last_verified_on: "2026-08-18"
+scope_stability: stable
+hypothesis: >-
+  The method — mechanized doctrine plus a gated agent harness — can operate
+  and maintain the constellation with a reliability that gates prove and an
+  authentic automation coverage that grows from zero, without any criterion
+  resting on human bandwidth.
+evidence_required:
+  - "context-conformance gate green across the whole active fleet AND required on governance"
+  - "K1-K5 single status table proven, with its drift gate green"
+  - "review fan-out proven on a real campaign (not only a dry-run)"
+  - "orchestrator compat-policy criterion accepted (public-surface snapshot test)"
+  - "skills collection admitted with T1 structural and T2 routing gates green in CI"
+  - "branch protections normalized fleet-wide by the check-branch-protection tool, green"
+  - "weekly evidence loops (adoption, sovereignty, truth-drift, fleet-advisories) green two consecutive cycles"
+  - "authentic automation coverage above zero: at least one agent loop merging under its own identity"
+promotion_criteria:
+  - to: proven
+    when: >-
+      all eight evidence items hold simultaneously and have held across two
+      consecutive weekly cycles
+kill_predicates:
+  - id: harness-not-reliable
+    predicate: >-
+      on 2026-10-31, evidence items 1 through 7 are not all green — the
+      harness was not finished and made reliable in time; a re-examination
+      ADR of the product-zero thesis becomes mandatory
+    window: "2026-10-31"
+    source: docs/adr/0023-domain-a-re-ratification.md
+  - id: automation-never-authentic
+    predicate: >-
+      on 2026-12-31, authentic automation coverage still measures 0% — the
+      method operates nothing under agent identity; a re-examination ADR of
+      the product-zero thesis becomes mandatory
+    window: "2026-12-31"
+    source: distribution/evidence/coverage-2026-08-19.json
+benchmark:
+  product: "agentic fleet-engineering methods (industry practice: declarative doctrine, unproven guardrails)"
+phases:
+  - id: harness-reliable
+    title: The harness is finished and made reliable, gates prove it
+    note: >-
+      Owner arbitration 2026-08-18: products wait; the harness is finished
+      and made reliable first, then each product horizon is cut into phases
+      cut into deliverables.
+    exit_criteria:
+      - id: context-conformance-fleet-green
+        text: "Evidence item 1: conformance gate green fleet-wide and required."
+        weight: 5
+        status: accepted
+        evidence:
+          date: "2026-08-19"
+          reference: >-
+            governance #71/#73/#77/#80 — the AGENTS.md-template check is a
+            required status on governance main, self-sustaining (push:main
+            trigger), 36/36 assertions hold via the GraphQL batch gates
+      - id: kernel-single-source
+        text: "Evidence item 2: K1-K5 single status table with drift gate."
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-08-18"
+          reference: >-
+            docs/specifications/LOOP-SECURITY-KERNEL.md single status table +
+            tools/quality/check-kernel-status-authority.ts wired into the
+            required Bun quality chain
+      - id: fanout-real-campaign
+        text: "Evidence item 3: review fan-out proven on a real campaign."
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-08-19"
+          reference: >-
+            https://github.com/libre-ai/orchestrator/pull/22 (aa219c3) — the
+            evidence file 2026-08-19-first-real-fanout-campaign.md in that
+            repository: 2/2 jobs, schema-valid cross-checked verdicts, no
+            --dry-run; both roles independently rendered an honest reject on
+            a real finding
+      - id: compat-policy-accepted
+        text: "Evidence item 4: orchestrator compat-policy accepted."
+        weight: 3
+        status: accepted
+        evidence:
+          date: "2026-08-19"
+          reference: >-
+            https://github.com/libre-ai/orchestrator/pull/15 merged —
+            public-surface and refusal-code snapshots, breaking changes
+            rehearsed blank
+      - id: skills-gates-green
+        text: "Evidence item 5: skills collection T1/T2 gates green in CI."
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-08-19"
+          reference: >-
+            governance #67/#69/#79 — T1 84/84, T2 33/33 (max pairwise overlap
+            8.2%), wired into the required Bun quality check
+      - id: protections-normalized
+        text: "Evidence item 6: branch protections normalized and green."
+        weight: 4
+        status: accepted
+        evidence:
+          date: "2026-08-19"
+          reference: >-
+            final check-branch-protection audit on main (post-#76): 7/7
+            required checks match observed CI, 0 phantom, 0 decorative;
+            --fix is the only mutation path (ADR-0029)
+      - id: weekly-loops-green
+        text: "Evidence item 7: weekly evidence loops green two consecutive cycles."
+        weight: 5
+        status: pending
+  - id: authentic-automation
+    title: The method operates something under agent identity
+    exit_criteria:
+      - id: coverage-above-zero
+        text: >-
+          Evidence item 8: authentic automation coverage above zero — at
+          least one recurring agent loop merges under its own identity.
+        weight: 5
+        status: pending

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:constellation-portfolio-and-method",
+  "name": "La constellation comme portefeuille total, gérée par la méthode",
+  "purpose": "ADR-0009 (`docs/adr/0009-constellation-portfolio-and-method.md`) organise le portefeuille en quatre couches autour d'un moyeu et pose deux lois de croissance indépendantes : la loi d'exposition — pas de vitrine publique sans quelque chose de vérifiable à montrer — et la loi de couverture — une brique ne devient surface vivante que si son contrat est stable et son exploitation couverte par une automatisation **prouvée**, les métriques étant publiées. Il ferme la surface à touche humaine sur cinq items extensibles par ADR seul, et pose le dogfooding comme client prioritaire de chaque brique.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/constellation-portfolio-and-method.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-19T00:00:00Z",
+    "reviewedAt": "2026-07-19T00:00:00Z"
+  }
+}

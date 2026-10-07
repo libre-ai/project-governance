@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:local-first-no-transmission",
+  "name": "Applications local-first à garantie de non-transmission",
+  "purpose": "Deux applications réelles — questionnaire de positionnement et suivi de pratiques — où la donnée de l'utilisateur ne quitte jamais l'appareil : stockage en IndexedDB, chiffrement symétrique derrière une phrase de passe, export uniquement par une opération de fichier locale et explicite. La garantie n'est pas laissée à la revue : un scanner d'intégration continue refuse toute primitive de transmission dans le code de ces applications, y compris les sources d'alias, et sur-bloque délibérément — les rares exceptions, des générateurs de service worker dont le seul appel réseau sert la coquille applicative, sont nommées une par une avec leur justification.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/local-first-no-transmission.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "depends-on",
+      "target": "urn:libre-ai:capability:device-local-encryption",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

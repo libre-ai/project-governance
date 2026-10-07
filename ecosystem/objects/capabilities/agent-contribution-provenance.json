@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:agent-contribution-provenance",
+  "name": "Provenance signée des contributions d'agents",
+  "purpose": "Lignage vérifiable de qui a produit quoi dans une chaîne agentique : identifiant d'agent, rôles tenus (auteur, exécutant, correcteur, éditeur), digest de contribution et références d'observation, le tout scellé en Ed25519 — signature asymétrique d'origine, à la différence du HMAC symétrique de l'enveloppe, parce qu'un tiers doit pouvoir vérifier sans détenir de secret. Digest préfixé en longueur, fail-closed sur altération ou mauvaise clé. Brique `packages/provenance`, contrat `contracts/schemas/agent-contributor-lineage.v1.schema.json`. La clé de production relève d'une cérémonie propriétaire distincte, la brique prenant la clé en paramètre.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/agent-contribution-provenance.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:loop-security-kernel",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "libre-ai.sovereignty.v1",
+  "run": {
+    "date": "2026-01-03",
+    "commit": "def5678900aabbccddeeff00112233445566"
+  },
+  "summary": {
+    "pass": 1,
+    "fail": 1,
+    "pending": 2
+  },
+  "checks": []
+}

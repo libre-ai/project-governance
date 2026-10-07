@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:sovereign-supply-chain",
+  "name": "Chaîne d'approvisionnement souveraine et vérifiable",
+  "purpose": "Posture de dépendance tenue par des instruments plutôt que par une intention : chaîne d'outils épinglée à une révision exacte et vérifiée par empreinte au téléchargement, verrou de dépendances gelé en intégration, audit de vulnérabilités bloquant, allowlist de licences pour les dépendances, et refus d'un hyperscaler non européen pour le runtime applicatif et les données — les deux exceptions, la forge de collaboration et l'hébergeur européen, étant nommées plutôt que tolérées. La publication de paquets passe par une préparation fail-closed qui inspecte l'archive réelle et par une attestation de provenance signée à la construction.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/sovereign-supply-chain.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:differentiated-licensing-governance",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

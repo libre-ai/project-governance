@@ -1,0 +1,96 @@
+name: Org README drift
+
+# Domain I (Process & CI), chantier 3. tools/presentation/render-org-readme.ts
+# computes libre-ai/.github's status section from a fresh fleet-status
+# projection, but the two live in different repositories: nothing verified
+# that a change to ecosystem/repositories.v1.yaml here ever reached the
+# published README there. A cross-repo push was judged too invasive (a
+# second credential, a cross-repo write path, a second branch protection to
+# reason about) for what a manual render-and-paste already fixes in one
+# command — this workflow takes the simpler path that still makes the drift
+# impossible to miss in silence: read the live README back and fail named
+# when it diverges from a fresh render. The fix stays manual; the gap does
+# not stay invisible.
+on:
+  schedule:
+    - cron: "51 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The repeat-failure alert files and closes governance issues.
+  issues: write
+
+jobs:
+  org-readme-drift:
+    name: libre-ai/.github README matches a fresh render
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI Bun revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # Reads every declared card, the hub's migration index and the live
+      # .github README over `gh api` — no `bun install` needed.
+      - name: Compare a fresh render against the published org README
+        run: bun tools/presentation/check-org-readme-drift.ts
+      # Owner decision 2026-09-07: a mechanical correction gets its pull
+      # request opened by the gate. The correction lives in libre-ai/.github,
+      # which the default token cannot write (its permissions are limited to
+      # the repository containing the workflow), and a pull request opened
+      # with it would leave .github's required checks in an approval-required
+      # state — so the write path is gated on the ORG_README_HEAL_TOKEN secret
+      # (tools/presentation/heal-org-readme.ts documents both limits and the
+      # minimal token). Without the secret the step still writes the healed
+      # README to the artifact below and says "skipped: secret ... absent" —
+      # never a silent green; the run is red from the step above regardless.
+      - name: Heal — open the sync pull request in libre-ai/.github, or say why not
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ORG_README_HEAL_TOKEN: ${{ secrets.ORG_README_HEAL_TOKEN }}
+          HEAL_OUT: ${{ runner.temp }}/org-readme-healed
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/presentation/heal-org-readme.ts
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: org-readme-healed
+          path: ${{ runner.temp }}/org-readme-healed/
+          # Nothing to upload when the live state was unreadable or the
+          # README needs no heal — the heal step's own log already says so.
+          if-no-files-found: ignore
+      # A red run here is only visible to someone who opens the Actions tab
+      # (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique" — "absence
+      # de ligne récente" is its own failure mode). This workflow was red on
+      # 2026-08-24, 08-31 and 09-07 without an issue ever opening, because
+      # this step was deferred to "a follow-up" that never came. One red run
+      # stays a run; two in a row files a deduplicated governance issue.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Org README drift
+          WORKFLOW_FILE: org-readme-drift.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Org README drift
+          WORKFLOW_FILE: org-readme-drift.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve
