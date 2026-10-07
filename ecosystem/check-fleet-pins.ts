@@ -263,7 +263,7 @@ async function readSourcesViaRest(
   repository: string,
   cardPath: string,
 ): Promise<RepositorySources | { readonly error: string }> {
-  const listing = await ghApi(`repos/${repository}/contents/.github/workflows?ref=main`, false);
+  const listing = await ghApi(`repos/${repository}/contents/.github/workflows`, false);
   if (listing.error !== null) {
     return { error: `${repository}: cannot list .github/workflows — ${listing.error}` };
   }
@@ -275,20 +275,17 @@ async function readSourcesViaRest(
         );
   const workflows = new Map<string, string>();
   for (const entry of entries) {
-    const file = await ghApi(
-      `repos/${repository}/contents/.github/workflows/${entry.name}?ref=main`,
-      true,
-    );
+    const file = await ghApi(`repos/${repository}/contents/.github/workflows/${entry.name}`, true);
     if (file.error !== null) {
       return { error: `${repository}: cannot read ${entry.name} — ${file.error}` };
     }
     if (file.text !== null) workflows.set(entry.name, file.text);
   }
-  const manifest = await ghApi(`repos/${repository}/contents/package.json?ref=main`, true);
+  const manifest = await ghApi(`repos/${repository}/contents/package.json`, true);
   if (manifest.error !== null) {
     return { error: `${repository}: cannot read package.json — ${manifest.error}` };
   }
-  const card = await ghApi(`repos/${repository}/contents/${cardPath}?ref=main`, true);
+  const card = await ghApi(`repos/${repository}/contents/${cardPath}`, true);
   if (card.error !== null) {
     return { error: `${repository}: cannot read ${cardPath} — ${card.error}` };
   }
@@ -340,13 +337,13 @@ export function buildFleetPinsQuery(targets: readonly FleetPinTarget[]): string 
     }
     const owner = JSON.stringify(target.repository.slice(0, separator));
     const name = JSON.stringify(target.repository.slice(separator + 1));
-    const cardExpression = JSON.stringify(`main:${target.card}`);
+    const cardExpression = JSON.stringify(`HEAD:${target.card}`);
     return [
       `  repo${index}: repository(owner: ${owner}, name: ${name}) {`,
-      `    workflowsTree: object(expression: "main:.github/workflows") {`,
+      `    workflowsTree: object(expression: "HEAD:.github/workflows") {`,
       `      ... on Tree { entries { name type object { ... on Blob { text } } } }`,
       `    }`,
-      `    manifest: object(expression: "main:package.json") { ... on Blob { text } }`,
+      `    manifest: object(expression: "HEAD:package.json") { ... on Blob { text } }`,
       `    card: object(expression: ${cardExpression}) { ... on Blob { text } }`,
       `  }`,
     ].join("\n");

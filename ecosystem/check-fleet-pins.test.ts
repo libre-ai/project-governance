@@ -310,12 +310,25 @@ describe("buildFleetPinsQuery", () => {
 
   test("reads the tree for .github/workflows and blobs for package.json and the repository's own card path", () => {
     const query = buildFleetPinsQuery([{ repository: "libre-ai/demo", card: "cards/demo.yaml" }]);
-    expect(query).toContain('object(expression: "main:.github/workflows")');
+    expect(query).toContain('object(expression: "HEAD:.github/workflows")');
     expect(query).toContain(
       "... on Tree { entries { name type object { ... on Blob { text } } } }",
     );
-    expect(query).toContain('object(expression: "main:package.json")');
-    expect(query).toContain('object(expression: "main:cards/demo.yaml")');
+    expect(query).toContain('object(expression: "HEAD:package.json")');
+    expect(query).toContain('object(expression: "HEAD:cards/demo.yaml")');
+  });
+
+  // The seventh instance of one defect class, and the costliest: this gate read
+  // the documentary `main` of the nineteen destinations, whose served branch is
+  // `migrate/recover-code`. `main:project.v1.yaml` answered null where
+  // `HEAD:project.v1.yaml` answers 8153 bytes, so every destination returned an
+  // empty tree, produced zero sightings, and was skipped in silence -- the gate
+  // reported "2 assertion(s) hold" over a fleet carrying twenty-four drifts,
+  // three of them pins on the authority this consolidation is retiring.
+  test("never names a branch: HEAD resolves whatever branch each repository serves", () => {
+    const query = buildFleetPinsQuery([{ repository: "libre-ai/demo", card: "project.v1.yaml" }]);
+    expect(query).not.toContain("main:");
+    expect(query.match(/HEAD:/g)).toHaveLength(3);
   });
 });
 

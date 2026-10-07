@@ -29,9 +29,16 @@ scope:
 non_goals:
   - "aucune seconde implémentation durable de ce domaine ailleurs dans la constellation"
 dependencies:
-  - on: libre-ai/governance
-    why: "gabarit de flotte et gates de qualité"
-    pinned: "épinglée par SHA (ou release pour les outils) là où elle est consommée"
+  # 2026-10-07 : l'entrée précédente déclarait `libre-ai/governance`, le dépôt
+  # que cette autorité remplace (ADR-0041). Elle ne dépendait pas de lui : elle
+  # EST désormais le gabarit de flotte et les gates de qualité. Restent ses deux
+  # dépendances réelles, aux pins qu'elle porte effectivement.
+  - on: libre-ai/schemas-and-contracts
+    why: "autorité des contrats publics, consommée par les tests d'autorisation"
+    pinned: "github:libre-ai/schemas-and-contracts#d2767988c7b1a00b304b76c5d5ac92b93898bf30"
+  - on: libre-ai/capability-authorization
+    why: "seul foyer du patch biscuit-auth vendorisé (I-28), consommé sous [patch.crates-io]"
+    pinned: "7ce06366663ff8b4329d0bc25f589c8ef830aef0"
 maturity: usable
 confidence: medium
 exposure: usable-verifiable
