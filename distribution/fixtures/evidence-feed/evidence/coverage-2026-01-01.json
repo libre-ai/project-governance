@@ -1,0 +1,9 @@
+{
+  "repository": "libre-ai/libre-ai",
+  "window": "last 10 merges",
+  "merges_with_maintainer_signoff": 5,
+  "merges_without_signoff_trailer": 5,
+  "genuine_automation_coverage_pct": 0,
+  "definition": "genuine automation = a merge performed by an agent loop with no human decision in the loop",
+  "measurement_note": "fixture"
+}

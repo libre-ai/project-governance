@@ -1,0 +1,89 @@
+{
+  "schema_version": "libre-ai.public-brand.v1",
+  "generated_from": ["brand/README.md", "brand/README.en.md", "brand/proof-matrix.md"],
+  "copy": {
+    "fr": {
+      "tension": "Les plateformes propriétaires vous louent le produit.",
+      "promise": "Possédez la fabrique.",
+      "explanation": "Libre AI réunit les logiciels, la méthode et les preuves pour construire des outils d'IA que vous pouvez vérifier, modifier et déployer où vous le décidez.",
+      "qualification": "Ouverts, souverains et explicables.",
+      "reasonToBelieve": "Conçus dans une fabrique ouverte où la preuve fait partie du produit.",
+      "primaryCta": "Prenez les clés.",
+      "secondaryCta": "Voir les preuves."
+    },
+    "en": {
+      "tension": "Proprietary platforms rent you the product.",
+      "promise": "Own the factory.",
+      "explanation": "Libre AI brings together the software, method, and evidence to build AI tools you can inspect, modify, and deploy where you choose.",
+      "qualification": "Open, sovereign, and explainable.",
+      "reasonToBelieve": "Built in an open factory where evidence is part of the product.",
+      "primaryCta": "Take the keys.",
+      "secondaryCta": "See the evidence."
+    }
+  },
+  "products": [
+    {
+      "repository": "libre-ai/feed-radar",
+      "publicName": "Libre AI Radar"
+    },
+    {
+      "repository": "libre-ai/notebook",
+      "publicName": "Libre AI Notebook"
+    },
+    {
+      "repository": "libre-ai/ai-practices",
+      "publicName": "Libre AI Practices"
+    },
+    {
+      "repository": "libre-ai/sessions",
+      "publicName": "Libre AI Sessions"
+    },
+    {
+      "repository": "libre-ai/boussole-politique",
+      "publicName": "Libre AI Boussole Politique"
+    },
+    {
+      "repository": "libre-ai/spec-studio",
+      "publicName": "Libre AI Spec Studio"
+    },
+    {
+      "repository": "libre-ai/policy",
+      "publicName": "Libre AI Model Policy"
+    },
+    {
+      "repository": "libre-ai/carriere",
+      "publicName": "Libre AI Carrière"
+    },
+    {
+      "repository": "libre-ai/travel-agent",
+      "publicName": "Libre AI Travel Agent"
+    },
+    {
+      "repository": "libre-ai/website",
+      "publicName": "Libre AI Website"
+    }
+  ],
+  "proofs": [
+    {
+      "claim": "Logiciels ouverts",
+      "mechanism": "Code et licences sont publics, versionnés et inspectables.",
+      "source": "https://github.com/libre-ai",
+      "verifiedOn": "2026-09-09",
+      "limitation": "La présence d'un dépôt ne prouve ni disponibilité ni parité fonctionnelle."
+    },
+    {
+      "claim": "Souveraineté",
+      "mechanism": "Les choix d'hébergement, dépendances et mécanismes de réversibilité sont publiés.",
+      "source": "https://github.com/libre-ai/governance/blob/main/docs/decisions/INVARIANTS.md",
+      "verifiedOn": "2026-09-09",
+      "limitation": "La cible runtime est documentée ; aucun déploiement non prouvé n'est présenté comme actif."
+    },
+    {
+      "claim": "Explicabilité",
+      "mechanism": "Décisions, états et limites sont reliés à des sources versionnées.",
+      "source": "https://github.com/libre-ai/governance",
+      "verifiedOn": "2026-09-09",
+      "limitation": "Cette traçabilité n'implique pas que toute sortie de modèle soit causalement explicable."
+    }
+  ]
+}

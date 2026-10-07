@@ -1,0 +1,237 @@
+schema_version: libre-ai.legacy-manifest.v1
+observed_at: 2026-07-16
+policy:
+  import_git_history: false
+  canonical_after_freeze: libre-ai/libre-ai
+  preserve_archives: true
+  # Amended 2026-07-19 (ADR-0008): preservation of the removed repositories
+  # moved off GitHub to owner-held full mirrors and verified `git bundle --all`
+  # snapshots plus a complete export of the non-git GitHub data (issues, pull
+  # request conversations, reviews, releases and their uploaded assets),
+  # captured immediately before removal. Retained product repositories stay
+  # frozen on GitHub as reserved future product homes.
+  archive_medium: owner-held-mirrors-bundles-and-metadata-exports
+github_cleanup:
+  performed_on: 2026-07-19
+  authorized_by: owner
+  reference: docs/adr/0008-multi-repo-target-topology-and-brand.md
+  rationale: >-
+    Public-presence cleanup. The frozen repositories surfaced stale product
+    visions as the organization's first search results. Per ADR-0008 the
+    product repositories are retained as reserved future product homes with a
+    freeze-notice banner, and the legacy tooling repositories are removed;
+    their responsibilities live in the canonical base repository.
+  retained_product_repositories:
+    treatment: >-
+      One docs-only freeze-notice commit (banner and description) added on top
+      of each freeze revision through a checked pull request on 2026-07-19,
+      then re-archived. The recorded freeze revisions below remain the freeze
+      record.
+  removed_repositories:
+    capture_verified: >-
+      Every freeze revision below confirmed present in its mirror before
+      removal; every mirror HEAD equalled the live remote HEAD at capture; all
+      bundles pass `git bundle verify`; 86 pull requests, 5 issues, reviews,
+      10 releases and 70 uploaded release assets exported. The agent-factory
+      post-freeze candidate f52dc5a (legacy PR #32) is captured in its mirror;
+      the proof-kit post-freeze candidate 5bd48f3 was never pushed to GitHub
+      and is preserved as a patch in the 2026-07-18 candidate archive.
+reactivation:
+  performed_on: 2026-07-23
+  authorized_by: owner
+  reference: docs/adr/0008-multi-repo-target-topology-and-brand.md
+  rationale: >-
+    The reserved product homes move from frozen (archived, freeze-notice banner)
+    to reserved-active: unarchived, issues disabled, each carrying a living
+    bilingual README that states what the product is, what already exists in the
+    base repository (with links), and where the work happens. The recorded freeze
+    revisions below remain the freeze record; the github_status
+    frozen-reserved-product-home becomes reserved-active-product-home, and
+    agent-board is renamed to missions (its URL redirects).
+repositories:
+  - id: legacy.missions
+    # Renamed agent-board -> missions (ADR-0008 amended 2026-07-23): the repo name
+    # now follows the architecture — Missions is the mission AUTHORITY, Agent Board
+    # is only its read-only projection. The agent-board URL redirects to missions.
+    remote: https://github.com/libre-ai/missions.git
+    revision: 6fc9f2068b9a5319495999db4900560cc02d8975
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.agent-factory
+    remote: https://github.com/libre-ai/agent-factory.git
+    revision: ec38d4af2bea8a39de7daed2a2800f94c26588b4
+    dirty_entries: 0
+    freeze_status: archived
+    # Post-freeze engine work (candidate f52dc5a, legacy PR #32) is captured
+    # in the 2026-07-19 mirror; not reverted, not canonical. Orchestration
+    # returns only under canonical orchestrator authority after its dedicated
+    # Specification Lock (see docs/transformation/REPOSITORY-MAP.md).
+    github_status: removed-2026-07-19
+  - id: legacy.ai-practices
+    remote: https://github.com/libre-ai/ai-practices.git
+    revision: b2fe67b48a77a192f7e920d98b4e0596ad1e90fb
+    dirty_entries: 0
+    preserved_unmerged_refs: 10
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.artifact-supply
+    remote: https://github.com/libre-ai/artifact-supply.git
+    revision: 85598ba380ef7b10b5a0398181910e1f6627fe41
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.benchmarks
+    remote: https://github.com/libre-ai/benchmarks.git
+    revision: cba052256fc2edad7d02ffbfa7e795a8ebd40893
+    dirty_entries: 0
+    preserved_unmerged_refs: 3
+    freeze_status: archived
+    github_status: removed-before-2026-07-19
+  - id: legacy.boussole-politique
+    remote: https://github.com/libre-ai/boussole-politique.git
+    revision: 18f011df333a81fd4dfcfc048f6b9a3d8d9f17b4
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.client-kit
+    remote: https://github.com/libre-ai/client-kit.git
+    revision: d0d22998f571a13802686099198514b9c063b885
+    dirty_entries: 0
+    preserved_unmerged_refs: 1
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.context-kit
+    remote: https://github.com/libre-ai/context-kit.git
+    revision: 18a3ca170afe359d5c9e5ac88fb13d15e807fed5
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.design-system
+    remote: https://github.com/libre-ai/design-system.git
+    revision: c8fb246c213b2ac962491c316ce807322d692a6e
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.dioxus-app-template
+    remote: https://github.com/libre-ai/dioxus-app-template.git
+    revision: b93ee56a40b04099f6b4cd39fba67fcf61652e47
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: removed-before-2026-07-19
+  - id: legacy.feed-radar
+    remote: https://github.com/libre-ai/feed-radar.git
+    revision: b81b269b0610a9143ad5372928974aee533df1c5
+    dirty_entries: 0
+    preserved_unmerged_refs: 7
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.gear
+    remote: https://github.com/libre-ai/gear.git
+    revision: 0c7f35f8dc511d5d4f6a81ccdd8ee323a70b7bde
+    dirty_entries: 0
+    preserved_unmerged_refs: 3
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.local-agent-harness-hardening
+    # Local-only research repository, never published to GitHub (agent
+    # command-risk classification, sandbox evaluation, anti-injection
+    # fixtures) — `remote` and `freeze_status` (a GitHub archive/removal
+    # lifecycle) do not apply here: there was nothing to freeze or unfreeze
+    # on a forge. Research closed 2026-08-18 (owner arbitration, domain B
+    # re-ratification, docs/adr/0024-domain-b-re-ratification.md). Withdrawn
+    # from local disk only after preservation was proved, not merely
+    # asserted: a `git bundle --all` verified with `git bundle verify`, a
+    # real clone from that bundle with `git fsck --full` clean and a
+    # matching tracked-file count, plus a separate tarball preserving the
+    # one dirty feature-branch worktree found at capture — all hashed in a
+    # SHA256SUMS manifest, owner-held, outside this repository (see
+    # policy.archive_medium above). Reusable elements identified before
+    # withdrawal (a command-risk taxonomy, a fail-closed capability
+    # registry, a runtime-verification skill, an anti-injection fixture, a
+    # benign-command corpus, a non-negotiable sandbox checklist, a
+    # proof-linked-to-verdict review method) are versed as inputs to the
+    # skills and agent-tooling domains of the ecosystem rewrite — see the
+    # ADR above, not restated here.
+    revision: 36fef260bb5fde9f88b046b2339da2fd2f75cf42
+    dirty_entries: 0
+    preserved_unmerged_refs: 2
+    github_status: never-published
+  - id: legacy.notebook
+    remote: https://github.com/libre-ai/notebook.git
+    revision: dde02ed8e9a02381518c71cedf447c684b82d2de
+    dirty_entries: 0
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.policy
+    remote: https://github.com/libre-ai/policy.git
+    revision: f97b3b2e8d59e2bf3d9d1e351461559c938db154
+    dirty_entries: 0
+    preserved_unmerged_refs: 1
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.proof-kit
+    remote: https://github.com/libre-ai/proof-kit.git
+    revision: 04cae1130f45d2f0638349a9cd2208e88a87d730
+    dirty_entries: 0
+    preserved_unmerged_refs: 1
+    freeze_status: archived
+    github_status: removed-2026-07-19
+  - id: legacy.sessions
+    remote: https://github.com/libre-ai/sessions.git
+    revision: 541a2f61ac97a9848d01e7c4b706e33cf8cb9b68
+    dirty_entries: 0
+    preserved_unmerged_refs: 6
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.spec-studio
+    remote: https://github.com/libre-ai/spec-studio.git
+    revision: e8eb1fbadc35021d21e01e345b8162e38060ff5d
+    dirty_entries: 0
+    preserved_unmerged_refs: 1
+    freeze_status: archived
+    github_status: reserved-active-product-home
+  - id: legacy.website
+    remote: https://github.com/libre-ai/website.git
+    revision: 0318c92b5b0f4fed82cc64b75e5132db04ea04e3
+    dirty_entries: 0
+    freeze_status: archived
+    # The legacy website (revision above) was removed before 2026-07-19. The name
+    # was re-created 2026-07-23 as a NEW reserved product home for the CDC-locked
+    # Website product (tracked in repositories.v1.yaml); the removed legacy content
+    # is NOT restored. Status transitions removed -> reserved-active-product-home.
+    github_status: reserved-active-product-home
+hub_archive:
+  # The hub was archived on 2026-07-30 (ADR-0020 general activation; owner
+  # act recorded at gate-acceptance-log line 3.8). GitHub refuses every write
+  # on an archived repository — no merge, no close, no comment, no branch
+  # deletion — so whatever was open at that instant stays open, frozen with
+  # the archive, for as long as the repository stays archived. Recorded so a
+  # pull-request sweep or a truth audit does not read that open state as
+  # pending work: the hub is history, never a live surface (docs/README.md).
+  repository: libre-ai/libre-ai
+  archived_on: 2026-07-30
+  reference: docs/adr/0020-general-activation-and-hub-dismantling.md
+  observed_on: 2026-09-07
+  open_pull_requests:
+    - number: 290
+      url: https://github.com/libre-ai/libre-ai/pull/290
+      title: Replace Dioxus with Bun in vision.md
+      author: constantin-jais
+      opened_on: 2026-07-30
+      draft: true
+      files:
+        - vision.md
+      state: open-frozen-by-archive
+      # The document it edits is carried by governance: vision.md at this
+      # repository's root is the single authority for the durable vision
+      # (docs/README.md, "Vision durable"); the hub copy is its history. The
+      # three hunks of the pull request are NOT applied here as they stand:
+      # the retrospective wording ("Dioxus, Axum, Tokio et SQLx … présents
+      # dans des produits") already exists in governance's vision.md in a
+      # rephrased past-tense form; the explored-path line ("Rust-first et
+      # Dioxus") and the two non-goals ("conserver Dioxus dans la cible",
+      # "rouvrir Bun vs Dioxus") stand unchanged in governance — the first
+      # is history, the two others still hold. Any change to that text is a
+      # governance pull request, never a hub write.
+      disposition: carried-by-governance-vision-md

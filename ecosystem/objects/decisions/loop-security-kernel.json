@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:loop-security-kernel",
+  "name": "Noyau de sécurité des boucles agentiques (K1–K5)",
+  "purpose": "Invariant I-18, spécifié par `docs/specifications/LOOP-SECURITY-KERNEL.md` et verrouillé au socle : cinq garanties conditionnant l'ouverture d'une flotte d'agents. K1, identité d'agent portant flotte, mission et capacités, révocable individuellement. K2, classification interdisant qu'une donnée d'exploitation fasse autorité. K3, enveloppe d'intégrité signée sur tout rappel de contenu non fiable. K4, revue des mutations sensibles par des relecteurs **distincts de l'implémenteur**. K5, registre immuable hors pull request revue. Le jeton porte le fait, mais c'est au runtime de le vérifier — la distinction est explicite et reste à honorer côté exécution.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/loop-security-kernel.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-20T00:00:00Z",
+    "reviewedAt": "2026-07-20T00:00:00Z"
+  }
+}

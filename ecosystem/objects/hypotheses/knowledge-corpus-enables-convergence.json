@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Hypothesis",
+  "id": "urn:libre-ai:hypothesis:knowledge-corpus-enables-convergence",
+  "name": "Sans corpus d’expertise déclaré, tout rapprochement invente",
+  "purpose": "Un moteur de rapprochement ne peut relier un besoin observé à une expertise disponible que si cette expertise est déclarée quelque part. Aujourd’hui le graphe ne contient que deux objets : il n’y a rien à comparer. SUCCÈS : au moins trente Knowledge Objects décrivant les artefacts réellement publiés (décisions, briques, contrats, évidences, audits de parité), permettant de répondre à « que sait-on réellement sur ce sujet ? » en citant des artefacts vérifiables plutôt qu’une mémoire. RÉFUTATION : si déclarer un artefact coûte plus que le relire, le corpus ne se maintiendra pas ; le rapprochement devra alors se faire directement sur les sources publiées, et le graphe rester un index de décisions.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/hypotheses/knowledge-corpus-enables-convergence.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:delegated-authorization-biscuit",
+  "name": "Autorisation déléguée atténuable et révocable",
+  "purpose": "Autorisation deny-by-default fondée sur Biscuit : émission d'un jeton d'autorité, atténuation hors ligne par le porteur sans contact avec l'émetteur, révocation par identifiant, et rotation Ed25519 à deux clés permettant d'accepter l'ancienne et la nouvelle pendant la fenêtre de bascule. Les faits de tenant sont obligatoires dans le jeton, ce qui rend l'isolation vérifiable au point d'autorisation et non seulement au stockage. Implémentation Rust `crates/authz-biscuit`, contrats sous `contracts/authz/`. C'est la réponse au problème que les jetons opaques ne résolvent pas : déléguer moins de droits que l'on détient, sans serveur d'autorisation au milieu.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/delegated-authorization-biscuit.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

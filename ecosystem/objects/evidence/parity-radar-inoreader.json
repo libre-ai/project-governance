@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Evidence",
+  "id": "urn:libre-ai:evidence:parity-radar-inoreader",
+  "name": "Audit de parité Radar contre Inoreader",
+  "purpose": "Audit cartographiant 105 traits du produit de référence en trois verdicts — couvert, absent du cahier des charges, ou en conflit délibéré avec un non-goal — dont 32 couverts au périmètre minimal. Sa valeur méthodologique dépasse le produit : il nomme ce qui ne sera **jamais** fait et pourquoi, plutôt que de laisser un écart passer pour un retard. L'inventaire en tire des prédicats de mort explicites : stagnation de parité sous un seuil chiffré, ou entrée d'un seul trait en conflit dans l'ensemble couvert. Chemin : `docs/parity/audits/PARITY-radar-inoreader.md`.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/evidence/parity-radar-inoreader.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-22T00:00:00Z",
+    "reviewedAt": "2026-07-22T00:00:00Z"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Learning",
+  "id": "urn:libre-ai:learning:structural-guarantees-beat-declared-ones",
+  "name": "Une garantie structurelle bat une garantie déclarée",
+  "purpose": "Trois cas de ce socle se ressemblent et forment une règle. Le composant de chiffrement local ne promet pas de ne rien émettre : il est compilé **sans aucune capacité**, et un contrôle des imports le vérifie. Le sceau de classification n'est pas une propriété que l'on pourrait recopier : c'est un ensemble faible privé au module, donc infalsifiable par sérialisation. L'enveloppe n'est pas un délimiteur textuel que le contenu pourrait forger : la sérialisation est préfixée en longueur champ par champ. À chaque fois, la propriété tient par ce que le système rend impossible, et non par ce qu'il s'engage à ne pas faire.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/learnings/structural-guarantees-beat-declared-ones.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "informs",
+      "target": "urn:libre-ai:capability:device-local-encryption",
+      "status": "accepted"
+    },
+    {
+      "type": "informs",
+      "target": "urn:libre-ai:capability:untrusted-content-envelope",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

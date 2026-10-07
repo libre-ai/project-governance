@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Experience",
+  "id": "urn:libre-ai:experience:dogfooding-veille-contribution",
+  "name": "Dogfooding veille-contribution",
+  "purpose": "Le besoin propre du porteur du portefeuille — observer les publications d’organisations d’intérêt général, repérer où une expertise technique indépendante est utile, préparer puis publier des contributions — devient le premier client réel de Radar, Notebook et memory. Le démonstrateur ne crée aucun produit, aucune brique et aucune marque : il pilote les spécifications d’objets existants et éprouve la méthode sur un usage que son auteur subit lui-même (I-19). Il porte cinq hypothèses réfutables, chacune avec son critère de succès et sa décision en cas d’échec.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/experiences/dogfooding-veille-contribution.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "tests",
+      "target": "urn:libre-ai:hypothesis:radar-deterministic-curation-precision",
+      "status": "proposed"
+    },
+    {
+      "type": "tests",
+      "target": "urn:libre-ai:hypothesis:knowledge-corpus-enables-convergence",
+      "status": "proposed"
+    },
+    {
+      "type": "tests",
+      "target": "urn:libre-ai:hypothesis:convergence-requires-verbatim-anchoring",
+      "status": "proposed"
+    },
+    {
+      "type": "tests",
+      "target": "urn:libre-ai:hypothesis:public-consultation-as-contribution-channel",
+      "status": "proposed"
+    },
+    {
+      "type": "tests",
+      "target": "urn:libre-ai:hypothesis:sourced-facts-only-person-record",
+      "status": "proposed"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

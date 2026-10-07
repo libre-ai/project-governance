@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Evidence",
+  "id": "urn:libre-ai:evidence:wave-one-satellite-coverage",
+  "name": "Couverture publiée des satellites de la vague 1",
+  "purpose": "Instantané de couverture et flux d'évidence publiés pour les briques exposées en satellites, avec une garde de fraîcheur qui échoue si la projection dérive de sa source. La préparation de publication est fail-closed : elle empaquette réellement l'archive et l'inspecte — licence SPDX exacte attendue par paquet, aucun résidu de référence d'espace de travail, aucun fichier de test — puis une preuve d'usage réinstalle le modèle de départ depuis le registre. Rien n'a été publié à ce stade : l'outillage est complet, l'acte de publication reste propriétaire. Chemin : `distribution/evidence/`.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/evidence/wave-one-satellite-coverage.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "proves",
+      "target": "urn:libre-ai:decision:constellation-portfolio-and-method",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-24T00:00:00Z",
+    "reviewedAt": "2026-07-24T00:00:00Z"
+  }
+}

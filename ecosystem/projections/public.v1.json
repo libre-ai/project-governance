@@ -1,0 +1,886 @@
+{
+  "objects": [
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/bets/bun-fullstack.json"
+      },
+      "id": "urn:libre-ai:bet:bun-fullstack",
+      "kind": "Bet",
+      "name": "Bun fullstack pour les applications web",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-16T00:00:00Z",
+        "reviewedAt": "2026-07-16T00:00:00Z"
+      },
+      "purpose": "Réduire la fragmentation de la stack web et accélérer la livraison d’expériences IA-native.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:bun-react-rust-big-bang",
+          "type": "implemented-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/bets/method-as-product-zero.json"
+      },
+      "id": "urn:libre-ai:bet:method-as-product-zero",
+      "kind": "Bet",
+      "name": "Le produit zéro est la méthode",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-19T00:00:00Z",
+        "reviewedAt": "2026-07-19T00:00:00Z"
+      },
+      "purpose": "Invariant I-13, ratifié par ADR-0009 §1 : le produit premier n'est aucune application mais la méthode de gestion agentique d'une constellation — des boucles d'agents qui opèrent, maintiennent et améliorent la flotte sous des gates vérifiables, la touche humaine étant réduite aux invariants. Les applications sont à la fois des produits de plein droit et les bancs d'essai qui prouvent que la méthode fonctionne. Le pari est que cette inversion produit un avantage durable là où l'accumulation d'applications n'en produit pas.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:constellation-portfolio-and-method",
+          "type": "implemented-by"
+        },
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:wave-execution-decisions",
+          "type": "implemented-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/agent-contribution-provenance.json"
+      },
+      "id": "urn:libre-ai:capability:agent-contribution-provenance",
+      "kind": "Capability",
+      "name": "Provenance signée des contributions d'agents",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Lignage vérifiable de qui a produit quoi dans une chaîne agentique : identifiant d'agent, rôles tenus (auteur, exécutant, correcteur, éditeur), digest de contribution et références d'observation, le tout scellé en Ed25519 — signature asymétrique d'origine, à la différence du HMAC symétrique de l'enveloppe, parce qu'un tiers doit pouvoir vérifier sans détenir de secret. Digest préfixé en longueur, fail-closed sur altération ou mauvaise clé. Brique `packages/provenance`, contrat `contracts/schemas/agent-contributor-lineage.v1.schema.json`. La clé de production relève d'une cérémonie propriétaire distincte, la brique prenant la clé en paramètre.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:loop-security-kernel",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/contract-first-validation.json"
+      },
+      "id": "urn:libre-ai:capability:contract-first-validation",
+      "kind": "Capability",
+      "name": "Contrats canoniques et validateurs de frontière générés",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Le catalogue canonique verrouille les autorités d'interface — schémas JSON stricts, surfaces OpenAPI, mondes WIT, sources d'autorité Biscuit et politique de rétention — et les types consommés par le code en sont **générés**, une vérification de régénération échouant à la moindre dérive. Les validateurs de frontière rejettent au bord ce que le domaine n'aura donc jamais à défendre. Paquet `packages/contracts` côté TypeScript, `crates/contract-types` côté Rust via construction depuis les schémas. Conséquence pratique : un changement d'interface ne peut pas être silencieux, il casse une gate.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:multi-repo-target-topology",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/data-subject-rights.json"
+      },
+      "id": "urn:libre-ai:capability:data-subject-rights",
+      "kind": "Capability",
+      "name": "Droits des personnes concernées, typés et exerçables",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Brique transverse `packages/rgpd-kit` exposant les droits d'accès, d'effacement, de limitation et de portabilité derrière un port unique, `DataSubjectRightsPort`. L'identifiant en clair n'apparaît que dans `verifySubject` : au-delà, tout parle en digests opaques dérivés avec séparation de domaine et verrouillés par un vecteur golden. La limitation de l'Article 18 est implémentée en table append-only avec levée en deux temps — demande, notification attestée, puis confirmation — et croise la rétention par une exclusion explicite : un sujet en limitation n'est pas balayé, puisque supprimer est un traitement. Registre des activités et canevas d'analyse d'impact sont générés par la même brique.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:executable-retention",
+          "type": "depends-on"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/delegated-authorization-biscuit.json"
+      },
+      "id": "urn:libre-ai:capability:delegated-authorization-biscuit",
+      "kind": "Capability",
+      "name": "Autorisation déléguée atténuable et révocable",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Autorisation deny-by-default fondée sur Biscuit : émission d'un jeton d'autorité, atténuation hors ligne par le porteur sans contact avec l'émetteur, révocation par identifiant, et rotation Ed25519 à deux clés permettant d'accepter l'ancienne et la nouvelle pendant la fenêtre de bascule. Les faits de tenant sont obligatoires dans le jeton, ce qui rend l'isolation vérifiable au point d'autorisation et non seulement au stockage. Implémentation Rust `crates/authz-biscuit`, contrats sous `contracts/authz/`. C'est la réponse au problème que les jetons opaques ne résolvent pas : déléguer moins de droits que l'on détient, sans serveur d'autorisation au milieu.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/deterministic-policy-evaluation.json"
+      },
+      "id": "urn:libre-ai:capability:deterministic-policy-evaluation",
+      "kind": "Capability",
+      "name": "Évaluation de politique déterministe et explicable",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Moteur d'évaluation dont deux implémentations — une référence TypeScript et un moteur Rust compilé en WASM — doivent produire des sorties identiques sur un jeu de vecteurs golden, la conformité étant vérifiée en intégration continue. Le déterminisme repose sur la canonicalisation JSON RFC 8785 et un digest SHA-256, avec un analyseur JSON strict qui refuse ce qu'un analyseur permissif accepterait. Les décisions sont explicables par construction : la règle décidante est nommée dans la sortie. Paquets `packages/policy-core-ref` et `crates/policy-core`. C'est le patron réutilisable pour toute décision automatisée qui doit être contestable.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/device-local-encryption.json"
+      },
+      "id": "urn:libre-ai:capability:device-local-encryption",
+      "kind": "Capability",
+      "name": "Chiffrement local sur appareil, sans capacité réseau",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Composant WASM **sans aucune capacité** — vérifié par un contrôle des imports du module compilé — assurant le chiffrement de sauvegarde en AES-256-GCM avec dérivation Argon2id, canonicalisation et validation, plus un harnais de qualification qui éprouve les fautes et l'épuisement mémoire. La clé d'appareil est non exportable et un code de récupération distinct permet la restauration. La reproductibilité du binaire est vérifiée en CI par une reconstruction comparée octet à octet. Crate `crates/notebook-core`. Le principe : la donnée personnelle ne quitte pas l'appareil, et l'absence de capacité rend la promesse structurelle plutôt que déclarative.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/executable-retention.json"
+      },
+      "id": "urn:libre-ai:capability:executable-retention",
+      "kind": "Capability",
+      "name": "Rétention exécutable et suppression prouvable",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "La rétention n'est pas une politique écrite mais un balayage exécutable en deux phases : sélection consultative sous la barrière applicative, puis compaction autoritative sous une barrière dédiée avec re-vérification dans la transaction (`packages/data/src/retention-sweep.ts`, `runRetentionSweep`). Le rôle SQL `libre_ai_retention` est créé `NOBYPASSRLS` et **ne reçoit aucun grant** : chaque produit accorde le strict nécessaire, si bien que les tables de preuve restent inbalayables. Les reçus de suppression sont immuables et portent un CHECK structurel plafonnant l'expiration des sauvegardes à 35 jours. Un opérateur exécute le balayage par un CLI dont la sortie est un rapport de preuve JSON, sans contenu ni digest.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:tenant-isolation-rls",
+          "type": "depends-on"
+        },
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/local-first-no-transmission.json"
+      },
+      "id": "urn:libre-ai:capability:local-first-no-transmission",
+      "kind": "Capability",
+      "name": "Applications local-first à garantie de non-transmission",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Deux applications réelles — questionnaire de positionnement et suivi de pratiques — où la donnée de l'utilisateur ne quitte jamais l'appareil : stockage en IndexedDB, chiffrement symétrique derrière une phrase de passe, export uniquement par une opération de fichier locale et explicite. La garantie n'est pas laissée à la revue : un scanner d'intégration continue refuse toute primitive de transmission dans le code de ces applications, y compris les sources d'alias, et sur-bloque délibérément — les rares exceptions, des générateurs de service worker dont le seul appel réseau sert la coquille applicative, sont nommées une par une avec leur justification.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:device-local-encryption",
+          "type": "depends-on"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/oidc-opaque-browser-session.json"
+      },
+      "id": "urn:libre-ai:capability:oidc-opaque-browser-session",
+      "kind": "Capability",
+      "name": "Session navigateur opaque sur OIDC neutre",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Frontière d'authentification web sans dépendance à un fournisseur : Authorization Code avec PKCE S256, session navigateur **opaque** en cookie préfixé `__Host-` plutôt qu'un jeton porteur exposé au JavaScript, protection CSRF, et vérification JWS. Le principe structurant est que le navigateur ne détient jamais de capacité : il détient une référence de session, l'autorisation restant serveur. Implémentation `packages/auth-web`, couverte par des tests de bout en bout. Publiée sous EUPL-1.2, ce qui la range parmi les moteurs stratégiques plutôt que parmi les briques d'interopérabilité.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/reliability-classification.json"
+      },
+      "id": "urn:libre-ai:capability:reliability-classification",
+      "kind": "Capability",
+      "name": "Classification de fiabilité — les faits ne sont pas des ordres",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Trois niveaux — `authoritative`, `derived`, `operational` — et un invariant qu'aucune écriture vers une source de vérité ne peut être justifiée par de la donnée opérationnelle seule. La donnée d'exploitation entre dans un plan comme preuve, jamais comme directive. Le détail d'implémentation qui rend la garantie réelle plutôt que déclarative : le sceau est un `WeakSet` privé au module, non une propriété symbolique — donc infalsifiable par copie structurelle ou par aller-retour JSON, et les objets sont gelés. Brique `packages/classification`. C'est la parade structurelle à l'injection par contenu ingéré, complémentaire de l'enveloppe.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:loop-security-kernel",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/sovereign-supply-chain.json"
+      },
+      "id": "urn:libre-ai:capability:sovereign-supply-chain",
+      "kind": "Capability",
+      "name": "Chaîne d'approvisionnement souveraine et vérifiable",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Posture de dépendance tenue par des instruments plutôt que par une intention : chaîne d'outils épinglée à une révision exacte et vérifiée par empreinte au téléchargement, verrou de dépendances gelé en intégration, audit de vulnérabilités bloquant, allowlist de licences pour les dépendances, et refus d'un hyperscaler non européen pour le runtime applicatif et les données — les deux exceptions, la forge de collaboration et l'hébergeur européen, étant nommées plutôt que tolérées. La publication de paquets passe par une préparation fail-closed qui inspecte l'archive réelle et par une attestation de provenance signée à la construction.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:differentiated-licensing-governance",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/tenant-isolation-rls.json"
+      },
+      "id": "urn:libre-ai:capability:tenant-isolation-rls",
+      "kind": "Capability",
+      "name": "Isolation multi-tenant PostgreSQL par RLS forcée",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Barrière d'isolation où le tenant n'est jamais un paramètre applicatif mais une propriété de la transaction. Chaque table porte `ENABLE` et `FORCE ROW LEVEL SECURITY` avec une policy sur `current_setting('app.tenant_id')`, un CHECK de format `^ten_[a-z0-9]{16,64}$`, et l'accès passe obligatoirement par `withTenantDbTransaction` (`packages/data/src/adapters/tenant-transaction.ts`), qui pose le réglage local et vide la session du pool à la sortie. `guardTenantRow` lève `CrossTenantAccessError` sur toute ligne étrangère. Prouvé par un test d'intégration deux tenants avec deny croisé (`rls-barrier.integration.test.ts`). Douze migrations appliquent le patron sans exception.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/capabilities/untrusted-content-envelope.json"
+      },
+      "id": "urn:libre-ai:capability:untrusted-content-envelope",
+      "kind": "Capability",
+      "name": "Enveloppe d'intégrité pour contenu non fiable",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Séparation données/instructions rendue vérifiable, et non seulement conventionnelle. Tout contenu d'origine externe — web, courriel, mémoire, sortie d'outil, description d'outil ou de serveur MCP — est enveloppé avec une sérialisation canonique **préfixée en longueur champ par champ**, si bien qu'aucune frontière de champ n'est déplaçable par le contenu, puis scellé par HMAC-SHA256 vérifié en temps constant. Le rendu échappe les délimiteurs pour que la charge utile ne puisse pas forger le marqueur fermant. Fail-closed sur toute altération. Brique `packages/envelope`, en service réel dans l'orchestrateur de revue, qui enveloppe chaque fichier de preuve avant de l'exposer à un modèle.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:loop-security-kernel",
+          "type": "governed-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "docs/adr/0001-bun-fullstack-rust-specialized-big-bang.md"
+      },
+      "id": "urn:libre-ai:decision:bun-react-rust-big-bang",
+      "kind": "Decision",
+      "name": "Bun/React, Rust spécialisé et reconstruction Big Bang",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-16T00:00:00Z",
+        "reviewedAt": "2026-07-16T00:00:00Z"
+      },
+      "purpose": "Établir la stack et le mode de migration canoniques de Libre AI.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:bet:bun-fullstack",
+          "type": "implements"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative",
+      "version": "1.0.0"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/constellation-portfolio-and-method.json"
+      },
+      "id": "urn:libre-ai:decision:constellation-portfolio-and-method",
+      "kind": "Decision",
+      "name": "La constellation comme portefeuille total, gérée par la méthode",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-19T00:00:00Z",
+        "reviewedAt": "2026-07-19T00:00:00Z"
+      },
+      "purpose": "ADR-0009 (`docs/adr/0009-constellation-portfolio-and-method.md`) organise le portefeuille en quatre couches autour d'un moyeu et pose deux lois de croissance indépendantes : la loi d'exposition — pas de vitrine publique sans quelque chose de vérifiable à montrer — et la loi de couverture — une brique ne devient surface vivante que si son contrat est stable et son exploitation couverte par une automatisation **prouvée**, les métriques étant publiées. Il ferme la surface à touche humaine sur cinq items extensibles par ADR seul, et pose le dogfooding comme client prioritaire de chaque brique.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/differentiated-licensing-governance.json"
+      },
+      "id": "urn:libre-ai:decision:differentiated-licensing-governance",
+      "kind": "Decision",
+      "name": "Gouvernance différenciée des licences et de la marque",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-17T00:00:00Z",
+        "reviewedAt": "2026-07-17T00:00:00Z"
+      },
+      "purpose": "ADR-0004 licensing (`docs/adr/0004-licensing-governance.md`) refuse la licence unique : les moteurs stratégiques et le code applicatif sont sous EUPL-1.2, dont la réciprocité réseau oblige un opérateur à fournir la source couverte ; les SDK, contrats d'interopérabilité et harnais sont sous Apache-2.0 pour ne pas entraver l'adoption ; la documentation éditoriale est sous CC-BY-4.0. Trois conséquences opposables : les données réelles n'ont **aucune licence par défaut** et exigent un audit de provenance avant publication ; REUSE et SPDX font autorité en lecture machine avec une gate obligatoire ; les contributions exigent un sign-off DCO et aucun accord de relicence propriétaire n'est introduit.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/g1-cross-cutting-product-decisions.json"
+      },
+      "id": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "kind": "Decision",
+      "name": "Décisions produit transverses G1",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-16T00:00:00Z",
+        "reviewedAt": "2026-07-16T00:00:00Z"
+      },
+      "purpose": "ADR-0002 (`docs/adr/0002-g1-cross-cutting-product-decisions.md`) tranche cinq questions qui, laissées ouvertes, auraient été retranchées différemment par chaque produit : le modèle de tenant, la frontière OIDC, la rétention, le caractère strictement local de Notebook, et l'autorité de publication de Boussole. La rétention y devient une politique **exécutable** plutôt qu'un paragraphe, avec sa matrice de propriété par tenant, ses reçus de suppression et ses règles de restauration.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/loop-security-kernel.json"
+      },
+      "id": "urn:libre-ai:decision:loop-security-kernel",
+      "kind": "Decision",
+      "name": "Noyau de sécurité des boucles agentiques (K1–K5)",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-20T00:00:00Z",
+        "reviewedAt": "2026-07-20T00:00:00Z"
+      },
+      "purpose": "Invariant I-18, spécifié par `docs/specifications/LOOP-SECURITY-KERNEL.md` et verrouillé au socle : cinq garanties conditionnant l'ouverture d'une flotte d'agents. K1, identité d'agent portant flotte, mission et capacités, révocable individuellement. K2, classification interdisant qu'une donnée d'exploitation fasse autorité. K3, enveloppe d'intégrité signée sur tout rappel de contenu non fiable. K4, revue des mutations sensibles par des relecteurs **distincts de l'implémenteur**. K5, registre immuable hors pull request revue. Le jeton porte le fait, mais c'est au runtime de le vérifier — la distinction est explicite et reste à honorer côté exécution.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/multi-repo-target-topology.json"
+      },
+      "id": "urn:libre-ai:decision:multi-repo-target-topology",
+      "kind": "Decision",
+      "name": "Topologie cible multi-repository et autorité unique du socle",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-19T00:00:00Z",
+        "reviewedAt": "2026-07-19T00:00:00Z"
+      },
+      "purpose": "ADR-0008 (`docs/adr/0008-multi-repo-target-topology-and-brand.md`) fixe un socle portant l'autorité unique des contrats, spécifications et fondations partagées, et des repositories produits réels qui le consomment en dépendance versionnée sans jamais héberger une seconde autorité. Il fixe aussi la règle qui gouverne toute la doctrine : le registre des invariants est la liste **exhaustive**, ce qui n'y figure pas n'est pas doctrine, et toute doctrine rédigée sans trace d'arbitrage est nulle. Enfin, « projection » y désigne exclusivement un artefact généré — jamais un repository.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/decisions/wave-execution-decisions.json"
+      },
+      "id": "urn:libre-ai:decision:wave-execution-decisions",
+      "kind": "Decision",
+      "name": "Décisions d'exécution des vagues et politiques de gate autonome",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-20T00:00:00Z",
+        "reviewedAt": "2026-07-20T00:00:00Z"
+      },
+      "purpose": "ADR-0011 (`docs/adr/0011-wave-execution-decisions.md`) arme l'exécution autonome en tranchant d'avance les gates qui dépendent d'un arbitrage humain. Deux régimes distincts y sont posés : le Specification Lock de l'orchestrateur est un **arrêt dur permanent**, jamais prononcé en autonome à aucune occurrence, parce qu'il démarre la boucle auto-alimentée ; la confiance graduée est un arrêt d'amorçage **unique par couche**, l'humain validant le patron de revue une fois sur pièce avant que les répétitions se prononcent automatiquement. S'y ajoutent des plafonds chiffrés de liveness et de coût, dont le dépassement produit un dossier et jamais un arrêt silencieux.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/evidence/k4-adversarial-review-findings.json"
+      },
+      "id": "urn:libre-ai:evidence:k4-adversarial-review-findings",
+      "kind": "Evidence",
+      "name": "Trois défauts réels trouvés par la revue adversariale K4",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-20T00:00:00Z",
+        "reviewedAt": "2026-07-20T00:00:00Z"
+      },
+      "purpose": "Sur le jalon qui a conduit au verrouillage du noyau de sécurité, chaque surface sensible a été relue par des agents lancés séparément de l'implémenteur. Trois relectures ont trouvé de vrais défauts, corrigés avant fusion : un outil de test de bout en bout absent du harnais de qualité, un défaut de canonicalisation dans l'enveloppe d'intégrité, et un contournement du sceau de classification par aller-retour JSON. C'est la preuve mesurée que l'indépendance relecteur/implémenteur n'est pas une formalité de procédure — les trois défauts étaient invisibles à l'auteur.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:reliability-classification",
+          "type": "proves"
+        },
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:loop-security-kernel",
+          "type": "proves"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/evidence/parity-notebook-siyuan.json"
+      },
+      "id": "urn:libre-ai:evidence:parity-notebook-siyuan",
+      "kind": "Evidence",
+      "name": "Audit de parité Notebook contre SiYuan",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-22T00:00:00Z",
+        "reviewedAt": "2026-07-22T00:00:00Z"
+      },
+      "purpose": "Audit de 143 fonctionnalités du produit de référence : 29 couvertes, 42 réalisables sans rupture, 43 lourdes, et **29 conflits volontaires** — c'est-à-dire des fonctionnalités que le cahier des charges refuse par principe et non par manque de moyens. Il propose par ailleurs quatre amendements identifiés comme peu coûteux, dont la visualisation du graphe de relations et les attributs personnalisés sur les blocs. Chemin : `docs/parity/audits/PARITY-notebook-siyuan.md`.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/evidence/parity-radar-inoreader.json"
+      },
+      "id": "urn:libre-ai:evidence:parity-radar-inoreader",
+      "kind": "Evidence",
+      "name": "Audit de parité Radar contre Inoreader",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-22T00:00:00Z",
+        "reviewedAt": "2026-07-22T00:00:00Z"
+      },
+      "purpose": "Audit cartographiant 105 traits du produit de référence en trois verdicts — couvert, absent du cahier des charges, ou en conflit délibéré avec un non-goal — dont 32 couverts au périmètre minimal. Sa valeur méthodologique dépasse le produit : il nomme ce qui ne sera **jamais** fait et pourquoi, plutôt que de laisser un écart passer pour un retard. L'inventaire en tire des prédicats de mort explicites : stagnation de parité sous un seuil chiffré, ou entrée d'un seul trait en conflit dans l'ensemble couvert. Chemin : `docs/parity/audits/PARITY-radar-inoreader.md`.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/evidence/reproducible-reference-chain.json"
+      },
+      "id": "urn:libre-ai:evidence:reproducible-reference-chain",
+      "kind": "Evidence",
+      "name": "Chaîne de référence reproductible et lecture en salle blanche",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Le socle expose une chaîne de vérification dont le digest attendu est fixe et re-vérifié à l'identique, doublée d'une reproduction en salle blanche depuis un clone anonyme et d'un journal de friction consignant ce qui a résisté. S'y ajoutent des contrôles de souveraineté exécutables et un inventaire de verrous, avec leurs rapports datés. La propriété visée n'est pas « ça marche chez nous » mais « un tiers obtient le même artefact sans nous parler » — condition sans laquelle une évidence publiée n'est qu'une affirmation. Chemins : `verification/harness/`, `verification/adoption/`, `distribution/evidence/`.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:sovereign-supply-chain",
+          "type": "proves"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/evidence/wave-one-satellite-coverage.json"
+      },
+      "id": "urn:libre-ai:evidence:wave-one-satellite-coverage",
+      "kind": "Evidence",
+      "name": "Couverture publiée des satellites de la vague 1",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-24T00:00:00Z",
+        "reviewedAt": "2026-07-24T00:00:00Z"
+      },
+      "purpose": "Instantané de couverture et flux d'évidence publiés pour les briques exposées en satellites, avec une garde de fraîcheur qui échoue si la projection dérive de sa source. La préparation de publication est fail-closed : elle empaquette réellement l'archive et l'inspecte — licence SPDX exacte attendue par paquet, aucun résidu de référence d'espace de travail, aucun fichier de test — puis une preuve d'usage réinstalle le modèle de départ depuis le registre. Rien n'a été publié à ce stade : l'outillage est complet, l'acte de publication reste propriétaire. Chemin : `distribution/evidence/`.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:constellation-portfolio-and-method",
+          "type": "proves"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/learnings/graduated-trust-bootstraps-autonomy.json"
+      },
+      "id": "urn:libre-ai:learning:graduated-trust-bootstraps-autonomy",
+      "kind": "Learning",
+      "name": "La confiance graduée amorce l'autonomie sans la brader",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Un régime binaire — tout automatique, ou tout arrêté — échoue des deux côtés : le premier laisse passer le franchissement initial, celui dont le coût d'erreur est le plus élevé ; le second impose un arrêt à chaque itération et se contourne. Le régime retenu distingue l'amorçage de la répétition : le premier passage d'un patron de gate produit son dossier et s'arrête pour prononcé humain, les répétitions du même patron se prononcent automatiquement sur revue propre. L'indépendance de la revue est préservée dans les deux cas. Le point de contrôle humain se place ainsi une fois par couche, là où il informe le plus.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:decision:wave-execution-decisions",
+          "type": "informs"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/learnings/parity-audits-name-deliberate-conflicts.json"
+      },
+      "id": "urn:libre-ai:learning:parity-audits-name-deliberate-conflicts",
+      "kind": "Learning",
+      "name": "Un audit de parité vaut par les conflits qu'il nomme",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Comparer un produit à une référence établie sert moins à mesurer un retard qu'à séparer deux choses qu'on confond : ce qui n'est pas encore fait, et ce qui ne sera jamais fait. Les deux audits menés ici classent explicitement une part importante des fonctionnalités de référence en **conflit délibéré** — 29 sur 143 pour l'un, 15 traits opposables pour l'autre. Sans cette catégorie, chaque absence se lit comme une dette et la pression d'adoption pousse à trahir un non-goal. Avec elle, l'inventaire peut porter des prédicats de mort chiffrés : un produit meurt s'il stagne sous un seuil, ou s'il couvre un trait qu'il s'était interdit.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:evidence:parity-notebook-siyuan",
+          "type": "informs"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/learnings/policy-needs-an-instrument.json"
+      },
+      "id": "urn:libre-ai:learning:policy-needs-an-instrument",
+      "kind": "Learning",
+      "name": "Une politique sans instrument est une convention, et les conventions cèdent",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Constat répété sur ce socle : chaque garantie qui compte a fini par recevoir un scanner d'intégration continue plutôt qu'un paragraphe. Non-transmission des applications local-first, absence de secret, absence de ressource d'hébergement avant la phase prévue, chemins machine-locaux, marques retirées, dérive entre documents vivants et inventaire observable — toutes ces règles existaient d'abord comme conventions, et toutes ont eu besoin d'une gate. Le corollaire pratique est une règle de conception : écrire la politique **et** son instrument dans le même incrément, l'instrument échouant fermé, chaque exemption étant nommée avec sa raison plutôt que la règle assouplie jusqu'au silence.",
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/learnings/structural-guarantees-beat-declared-ones.json"
+      },
+      "id": "urn:libre-ai:learning:structural-guarantees-beat-declared-ones",
+      "kind": "Learning",
+      "name": "Une garantie structurelle bat une garantie déclarée",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-25T00:00:00Z",
+        "reviewedAt": "2026-07-25T00:00:00Z"
+      },
+      "purpose": "Trois cas de ce socle se ressemblent et forment une règle. Le composant de chiffrement local ne promet pas de ne rien émettre : il est compilé **sans aucune capacité**, et un contrôle des imports le vérifie. Le sceau de classification n'est pas une propriété que l'on pourrait recopier : c'est un ensemble faible privé au module, donc infalsifiable par sérialisation. L'enveloppe n'est pas un délimiteur textuel que le contenu pourrait forger : la sérialisation est préfixée en longueur champ par champ. À chaque fois, la propriété tient par ce que le système rend impossible, et non par ce qu'il s'engage à ne pas faire.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:device-local-encryption",
+          "type": "informs"
+        },
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:capability:untrusted-content-envelope",
+          "type": "informs"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "reviewed"
+    },
+    {
+      "authority": {
+        "owners": [
+          "libre-ai/architecture"
+        ],
+        "path": "ecosystem/objects/theses/saas-reconstructible-from-intent.json"
+      },
+      "id": "urn:libre-ai:thesis:saas-reconstructible-from-intent",
+      "kind": "Thesis",
+      "name": "Une part du SaaS des années 2020 est reconstructible à la demande",
+      "provenance": {
+        "authors": [
+          "libre-ai"
+        ],
+        "createdAt": "2026-07-16T00:00:00Z",
+        "reviewedAt": "2026-07-16T00:00:00Z"
+      },
+      "purpose": "Pari à dix ans énoncé par `vision.md` §2 : une part importante des services SaaS caractéristiques des années 2020 pourra être reconstruite ou profondément adaptée à la demande, à partir d'intentions, de connaissances, de contraintes, de contrats et de critères de vérification explicites. Le corollaire est la thèse opérante : générer du code ne suffit pas à produire un service durable, et la valeur se déplace vers la formulation d'intention, la structuration des connaissances, les contrats exécutables, la maîtrise des données et des autorisations, et la vérification. Toute la constellation existe pour éprouver ce pari sur des usages réels plutôt que pour l'affirmer.",
+      "relationships": [
+        {
+          "status": "accepted",
+          "target": "urn:libre-ai:bet:method-as-product-zero",
+          "type": "pursued-by"
+        }
+      ],
+      "schemaVersion": "libre-ai.knowledge-object.v1",
+      "status": "accepted",
+      "trust": "normative"
+    }
+  ],
+  "schemaVersion": "libre-ai.knowledge-projection.v1",
+  "selectionDigest": "0bb7418950ee0814088936d647c628943be1feba81586c3b44f1e61685c6f47c",
+  "sourceSchemaVersion": "libre-ai.knowledge-object.v1"
+}

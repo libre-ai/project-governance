@@ -1,0 +1,227 @@
+{
+  "schema_version": "libre-ai.coverage-metrics.v2",
+  "captured_on": "2026-08-19",
+  "window": "last 100 commit(s) inspected per active repository",
+  "repositories_inspected": 35,
+  "repositories_unreachable": 0,
+  "repositories": [
+    {
+      "repository": "libre-ai/.github",
+      "window": "last 13 commit(s) inspected",
+      "merges_with_maintainer_signoff": 11,
+      "merges_without_signoff_trailer": 2
+    },
+    {
+      "repository": "libre-ai/ai-practices",
+      "window": "last 100 commit(s) inspected",
+      "merges_with_maintainer_signoff": 34,
+      "merges_without_signoff_trailer": 66
+    },
+    {
+      "repository": "libre-ai/artifacts",
+      "window": "last 11 commit(s) inspected",
+      "merges_with_maintainer_signoff": 11,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/auth",
+      "window": "last 18 commit(s) inspected",
+      "merges_with_maintainer_signoff": 18,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/authz-biscuit",
+      "window": "last 16 commit(s) inspected",
+      "merges_with_maintainer_signoff": 16,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/boussole-politique",
+      "window": "last 70 commit(s) inspected",
+      "merges_with_maintainer_signoff": 34,
+      "merges_without_signoff_trailer": 36
+    },
+    {
+      "repository": "libre-ai/carriere",
+      "window": "last 10 commit(s) inspected",
+      "merges_with_maintainer_signoff": 7,
+      "merges_without_signoff_trailer": 3
+    },
+    {
+      "repository": "libre-ai/classification",
+      "window": "last 8 commit(s) inspected",
+      "merges_with_maintainer_signoff": 8,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/collab-core",
+      "window": "last 8 commit(s) inspected",
+      "merges_with_maintainer_signoff": 8,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/collab-relay",
+      "window": "last 11 commit(s) inspected",
+      "merges_with_maintainer_signoff": 11,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/contracts",
+      "window": "last 100 commit(s) inspected",
+      "merges_with_maintainer_signoff": 31,
+      "merges_without_signoff_trailer": 69
+    },
+    {
+      "repository": "libre-ai/data",
+      "window": "last 10 commit(s) inspected",
+      "merges_with_maintainer_signoff": 10,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/db-inspect",
+      "window": "last 6 commit(s) inspected",
+      "merges_with_maintainer_signoff": 6,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/ecosystem-engine",
+      "window": "last 25 commit(s) inspected",
+      "merges_with_maintainer_signoff": 9,
+      "merges_without_signoff_trailer": 16
+    },
+    {
+      "repository": "libre-ai/envelope",
+      "window": "last 13 commit(s) inspected",
+      "merges_with_maintainer_signoff": 13,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/feed-radar",
+      "window": "last 100 commit(s) inspected",
+      "merges_with_maintainer_signoff": 32,
+      "merges_without_signoff_trailer": 68
+    },
+    {
+      "repository": "libre-ai/governance",
+      "window": "last 100 commit(s) inspected",
+      "merges_with_maintainer_signoff": 100,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/harness",
+      "window": "last 3 commit(s) inspected",
+      "merges_with_maintainer_signoff": 3,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/knowledge",
+      "window": "last 14 commit(s) inspected",
+      "merges_with_maintainer_signoff": 9,
+      "merges_without_signoff_trailer": 5
+    },
+    {
+      "repository": "libre-ai/missions",
+      "window": "last 53 commit(s) inspected",
+      "merges_with_maintainer_signoff": 26,
+      "merges_without_signoff_trailer": 27
+    },
+    {
+      "repository": "libre-ai/notebook",
+      "window": "last 86 commit(s) inspected",
+      "merges_with_maintainer_signoff": 31,
+      "merges_without_signoff_trailer": 55
+    },
+    {
+      "repository": "libre-ai/orchestrator",
+      "window": "last 28 commit(s) inspected",
+      "merges_with_maintainer_signoff": 23,
+      "merges_without_signoff_trailer": 5
+    },
+    {
+      "repository": "libre-ai/policy",
+      "window": "last 79 commit(s) inspected",
+      "merges_with_maintainer_signoff": 35,
+      "merges_without_signoff_trailer": 44
+    },
+    {
+      "repository": "libre-ai/provenance",
+      "window": "last 10 commit(s) inspected",
+      "merges_with_maintainer_signoff": 10,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/rgpd-kit",
+      "window": "last 9 commit(s) inspected",
+      "merges_with_maintainer_signoff": 9,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/sdk-rs",
+      "window": "last 29 commit(s) inspected",
+      "merges_with_maintainer_signoff": 9,
+      "merges_without_signoff_trailer": 20
+    },
+    {
+      "repository": "libre-ai/sdk-ts",
+      "window": "last 59 commit(s) inspected",
+      "merges_with_maintainer_signoff": 13,
+      "merges_without_signoff_trailer": 46
+    },
+    {
+      "repository": "libre-ai/sessions",
+      "window": "last 100 commit(s) inspected",
+      "merges_with_maintainer_signoff": 33,
+      "merges_without_signoff_trailer": 67
+    },
+    {
+      "repository": "libre-ai/spec-studio",
+      "window": "last 63 commit(s) inspected",
+      "merges_with_maintainer_signoff": 28,
+      "merges_without_signoff_trailer": 35
+    },
+    {
+      "repository": "libre-ai/starter",
+      "window": "last 15 commit(s) inspected",
+      "merges_with_maintainer_signoff": 9,
+      "merges_without_signoff_trailer": 6
+    },
+    {
+      "repository": "libre-ai/testing",
+      "window": "last 10 commit(s) inspected",
+      "merges_with_maintainer_signoff": 10,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/travel-agent",
+      "window": "last 3 commit(s) inspected",
+      "merges_with_maintainer_signoff": 3,
+      "merges_without_signoff_trailer": 0
+    },
+    {
+      "repository": "libre-ai/ui",
+      "window": "last 20 commit(s) inspected",
+      "merges_with_maintainer_signoff": 14,
+      "merges_without_signoff_trailer": 6
+    },
+    {
+      "repository": "libre-ai/web-platform",
+      "window": "last 15 commit(s) inspected",
+      "merges_with_maintainer_signoff": 10,
+      "merges_without_signoff_trailer": 5
+    },
+    {
+      "repository": "libre-ai/website",
+      "window": "last 23 commit(s) inspected",
+      "merges_with_maintainer_signoff": 20,
+      "merges_without_signoff_trailer": 3
+    }
+  ],
+  "fleet_totals": {
+    "merges_with_maintainer_signoff": 654,
+    "merges_without_signoff_trailer": 584,
+    "total_commits": 1238
+  },
+  "genuine_automation_coverage_pct": 0,
+  "definition": "genuine automation = a merge performed by an agent loop with no human decision in the loop",
+  "measurement_note": "the sign-off trailer proxies human touch only after each repository's DCO gate went live (governance: 2026-07-19); pre-gate commits lack it but were human-driven, so trailer-absence does not mean automated. Every commit reaching main already passed DCO — branch protection forbids a direct push — so the split above is diagnostic, not yet a live automation signal: the same Signed-off-by trailer is stamped whether a human or an agent acting on the owner's behalf performed the git operation (git commit -s carries the owner's identity either way). Genuine automation coverage only starts to move once an agent loop merges under its own identity with no human decision in the loop (Polaris orchestrator runtime, SPECIFIED-PENDING per docs/method/POLARIS.md) — until then this figure is honestly 0 by construction, the floor waves 1-3 raise."
+}

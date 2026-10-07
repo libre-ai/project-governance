@@ -1,0 +1,9 @@
+{
+  "repository": "libre-ai/libre-ai",
+  "window": "last 50 merges",
+  "merges_with_maintainer_signoff": 22,
+  "merges_without_signoff_trailer": 28,
+  "genuine_automation_coverage_pct": 0,
+  "definition": "genuine automation = a merge performed by an agent loop with no human decision in the loop",
+  "measurement_note": "the sign-off trailer proxies human touch only after the DCO gate (2026-07-19); pre-gate merges lack it but were human-driven, so trailer-absence does NOT mean automated. T0 baseline: 0% genuine automation — this is the honest floor waves 1-3 raise."
+}

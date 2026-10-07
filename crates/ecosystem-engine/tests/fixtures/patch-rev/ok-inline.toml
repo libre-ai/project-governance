@@ -1,0 +1,11 @@
+[package]
+name = "x"
+
+[dependencies]
+# a git dependency outside [patch.*] is not a patch entry
+foo = { git = "https://github.com/libre-ai/foo", rev = "81ce4b579d383f8368f06c8f4e6e3765b518225f" }
+
+[patch.crates-io]
+# comment mentioning https://github.com/libre-ai/authz-biscuit must not count
+aes = { path = "third_party/aes" }
+biscuit-auth = { git = "https://github.com/libre-ai/authz-biscuit.git", rev = "81ce4b579d383f8368f06c8f4e6e3765b518225f" }

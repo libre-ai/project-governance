@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Learning",
+  "id": "urn:libre-ai:learning:policy-needs-an-instrument",
+  "name": "Une politique sans instrument est une convention, et les conventions cèdent",
+  "purpose": "Constat répété sur ce socle : chaque garantie qui compte a fini par recevoir un scanner d'intégration continue plutôt qu'un paragraphe. Non-transmission des applications local-first, absence de secret, absence de ressource d'hébergement avant la phase prévue, chemins machine-locaux, marques retirées, dérive entre documents vivants et inventaire observable — toutes ces règles existaient d'abord comme conventions, et toutes ont eu besoin d'une gate. Le corollaire pratique est une règle de conception : écrire la politique **et** son instrument dans le même incrément, l'instrument échouant fermé, chaque exemption étant nommée avec sa raison plutôt que la règle assouplie jusqu'au silence.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/learnings/policy-needs-an-instrument.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

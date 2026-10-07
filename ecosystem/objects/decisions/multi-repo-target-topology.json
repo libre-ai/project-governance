@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:multi-repo-target-topology",
+  "name": "Topologie cible multi-repository et autorité unique du socle",
+  "purpose": "ADR-0008 (`docs/adr/0008-multi-repo-target-topology-and-brand.md`) fixe un socle portant l'autorité unique des contrats, spécifications et fondations partagées, et des repositories produits réels qui le consomment en dépendance versionnée sans jamais héberger une seconde autorité. Il fixe aussi la règle qui gouverne toute la doctrine : le registre des invariants est la liste **exhaustive**, ce qui n'y figure pas n'est pas doctrine, et toute doctrine rédigée sans trace d'arbitrage est nulle. Enfin, « projection » y désigne exclusivement un artefact généré — jamais un repository.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/multi-repo-target-topology.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-19T00:00:00Z",
+    "reviewedAt": "2026-07-19T00:00:00Z"
+  }
+}

@@ -1,0 +1,63 @@
+# Souveraineté testée — rapport sovereignty.v1
+
+Généré par `verification/sovereignty/run-sovereignty.ts` — registre des checks et
+méthodes : `verification/sovereignty/sovereignty.v1.md`. Ce rapport est de
+l'évidence : il prouve, il ne décide pas (`docs/README.md`).
+
+- Run : 2026-01-02, commit `0123456789abcdef0123456789abcdef01234567`
+- Synthèse : 2 pass, 0 fail, 5 pending
+
+## Résultats
+
+| Id | Check | Statut | Raison |
+| --- | --- | --- | --- |
+| SOV-01 | reconstruct-without-origin | pending | adoption attestation not yet published (positioning L3 not landed) |
+| SOV-02 | forge-restore | pass | bundle restored in a clean directory; HEAD commit and tree hashes match |
+| SOV-03 | dependency-jurisdiction-inventory | pass | lockfiles parsed; 7 external packages classified by distribution registry (v0 heuristic: registry is not code jurisdiction) |
+| SOV-04 | second-infrastructure-deploy | pending | activation condition: first runtime release publicly deployed |
+| SOV-05 | degraded-mode | pending | activation condition: first runtime release publicly deployed |
+| SOV-06 | data-export-restore | pending | activation condition: first application in service with product data |
+| SOV-07 | key-and-identity-rotation | pending | activation condition: operational secrets in service |
+
+## SOV-02 — restauration de forge
+
+| Empreinte | Source | Restauration |
+| --- | --- | --- |
+| Commit HEAD | `1111111111111111111111111111111111111111` | `1111111111111111111111111111111111111111` |
+| Arbre HEAD | `2222222222222222222222222222222222222222` | `2222222222222222222222222222222222222222` |
+
+## SOV-03 — inventaire des dépendances par origine de distribution
+
+| Écosystème | Externes | Directes | Locales (workspace/chemin) |
+| --- | --- | --- | --- |
+| bun | 3 | 2 | 2 |
+| cargo | 4 | 2 | 1 |
+
+Répartition par registre :
+
+| Écosystème | Registre | Paquets |
+| --- | --- | --- |
+| bun | npm | 3 |
+| bun | workspace | 2 |
+| cargo | crates-io | 3 |
+| cargo | git | 1 |
+| cargo | path-or-vendored | 1 |
+
+Sources hors registres standards :
+
+- `somegit@1.0.0` (cargo) — `git+https://example.org/some/repo?rev=abc123#abc123`
+
+**Mise en garde (heuristique v0)** : le registre de distribution n'est pas la
+juridiction du code. npm et crates.io sont des infrastructures de distribution
+opérées depuis les États-Unis, mais le code distribué est sous licences libres —
+réplicable, miroirable, vendorable. Ce tableau mesure la concentration du canal de
+distribution (dimensionnement de miroirs et de vendoring), jamais une exposition
+juridique du code.
+
+## Part non couverte (pending)
+
+- SOV-01 — reconstruct-without-origin : adoption attestation not yet published (positioning L3 not landed)
+- SOV-04 — second-infrastructure-deploy : activation condition: first runtime release publicly deployed
+- SOV-05 — degraded-mode : activation condition: first runtime release publicly deployed
+- SOV-06 — data-export-restore : activation condition: first application in service with product data
+- SOV-07 — key-and-identity-rotation : activation condition: operational secrets in service

@@ -1,0 +1,16 @@
+{
+  "skill": "context-conformity",
+  "positive": [
+    "Before I call this task done on the feed-radar repo, check that its gates and identity files are conformant.",
+    "Verify this fleet repository consumes the pinned governance reusable workflows and its AGENTS.md is not empty.",
+    "Check conformity of this repository against the fleet baseline before opening the pull request."
+  ],
+  "negative": [
+    "Deploy this application to Clever Cloud now.",
+    "Run the DPIA screening questions for this new data flow."
+  ],
+  "behavioral": {
+    "scenario": "An agent is about to declare a repo-scoped task complete without having checked the fleet baseline.",
+    "expected": "The skill reads the target repo's own environment (package.json scripts, .github/workflows, AGENTS.md/REUSE.toml/project.v1.yaml) rather than asserting a copied checklist, and reports drift with exact paths instead of silently fixing it."
+  }
+}

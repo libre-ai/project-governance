@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:oidc-opaque-browser-session",
+  "name": "Session navigateur opaque sur OIDC neutre",
+  "purpose": "Frontière d'authentification web sans dépendance à un fournisseur : Authorization Code avec PKCE S256, session navigateur **opaque** en cookie préfixé `__Host-` plutôt qu'un jeton porteur exposé au JavaScript, protection CSRF, et vérification JWS. Le principe structurant est que le navigateur ne détient jamais de capacité : il détient une référence de session, l'autorisation restant serveur. Implémentation `packages/auth-web`, couverte par des tests de bout en bout. Publiée sous EUPL-1.2, ce qui la range parmi les moteurs stratégiques plutôt que parmi les briques d'interopérabilité.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/oidc-opaque-browser-session.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://libre-ai.fr/schemas/knowledge-projection.v1.json",
+  "title": "Libre AI Public Knowledge Projection v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sourceSchemaVersion", "selectionDigest", "objects"],
+  "properties": {
+    "schemaVersion": { "const": "libre-ai.knowledge-projection.v1" },
+    "sourceSchemaVersion": { "const": "libre-ai.knowledge-object.v1" },
+    "selectionDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "objects": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "allOf": [
+          { "$ref": "https://libre-ai.fr/schemas/knowledge-object.v1.json" },
+          {
+            "type": "object",
+            "properties": {
+              "status": { "const": "accepted" },
+              "trust": { "enum": ["reviewed", "normative"] },
+              "relationships": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": { "status": { "const": "accepted" } },
+                  "required": ["status"]
+                }
+              },
+              "provenance": {
+                "type": "object",
+                "propertyNames": { "not": { "enum": ["model", "harness"] } }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

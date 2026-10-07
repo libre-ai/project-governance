@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Decision",
+  "id": "urn:libre-ai:decision:differentiated-licensing-governance",
+  "name": "Gouvernance différenciée des licences et de la marque",
+  "purpose": "ADR-0004 licensing (`docs/adr/0004-licensing-governance.md`) refuse la licence unique : les moteurs stratégiques et le code applicatif sont sous EUPL-1.2, dont la réciprocité réseau oblige un opérateur à fournir la source couverte ; les SDK, contrats d'interopérabilité et harnais sont sous Apache-2.0 pour ne pas entraver l'adoption ; la documentation éditoriale est sous CC-BY-4.0. Trois conséquences opposables : les données réelles n'ont **aucune licence par défaut** et exigent un audit de provenance avant publication ; REUSE et SPDX font autorité en lecture machine avec une gate obligatoire ; les contributions exigent un sign-off DCO et aucun accord de relicence propriétaire n'est introduit.",
+  "status": "accepted",
+  "trust": "normative",
+  "authority": {
+    "path": "ecosystem/objects/decisions/differentiated-licensing-governance.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-17T00:00:00Z",
+    "reviewedAt": "2026-07-17T00:00:00Z"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "skill": "review-fanout",
+  "positive": [
+    "Launch a parallel review fan-out with security, architecture and quality roles before merging this candidate branch.",
+    "I need independent role-separated review passes on this commit, not a single solo review.",
+    "Run the review orchestrator across multiple roles in parallel on the pinned commit before promotion."
+  ],
+  "negative": [
+    "Run a quick solo review checklist on my current diff before I commit.",
+    "Review this single pull request and leave inline comments."
+  ],
+  "behavioral": {
+    "scenario": "An agent is asked to review a candidate branch before merge and reaches for review-fanout.",
+    "expected": "The skill points to docs/reviews/AGENT-REVIEW-PROTOCOL.md and tools/review/fanout.ts instead of restating the protocol's rules inline; it never invents review roles outside contracts/catalog.v1.json and never performs the merge itself."
+  }
+}

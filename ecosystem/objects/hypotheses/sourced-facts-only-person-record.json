@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Hypothesis",
+  "id": "urn:libre-ai:hypothesis:sourced-facts-only-person-record",
+  "name": "Une fiche restreinte aux faits sourcés reste utile",
+  "purpose": "ADR-0012 restreint toute fiche portant sur une personne physique aux faits sourcés qu’elle a elle-même publiés — URL, date, citation verbatim — et renvoie toute analyse vers un bloc rattaché au sujet, jamais à la personne. Cette restriction est juridiquement nécessaire ; l’hypothèse est qu’elle est aussi suffisante à l’usage. SUCCÈS : la gate de conformité refuse une fiche dont un champ n’a pas de source résolvable, et l’export de ce qui est détenu sur une personne se produit sans intervention manuelle ni développement supplémentaire. RÉFUTATION : si l’usage réel exige systématiquement des appréciations pour être utile, alors la fiche personne n’a pas de forme défendable et la strate reste fermée — la contrainte n’est pas relâchée pour rendre l’outil agréable.",
+  "status": "draft",
+  "trust": "observed",
+  "authority": {
+    "path": "ecosystem/objects/hypotheses/sourced-facts-only-person-record.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z"
+  }
+}

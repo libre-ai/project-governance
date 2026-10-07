@@ -1,0 +1,241 @@
+schema_version: libre-ai.repositories.v2
+authority: >
+  single source of the public topology (ADR-0009 §7 as amended by ADR-0020 —
+  project STATE lives in each repository's project.v1.yaml card; this index
+  carries topology only). Rebuilt on 2026-10-07 to execute the owner-approved
+  consolidation direction of 2026-09-29 (docs/adr/2026-09-29-portfolio-consolidation.md):
+  the portfolio is the twenty observed destinations plus the four repositories
+  kept outside the migration lot. The historical short-name generation is
+  preserved as verified archive bundles and is no longer the public topology.
+updated_on: 2026-10-07
+# 2026-10-07 : l'inventaire passe de 37 entrees (generation aux noms courts,
+# `updated_on: 2026-09-11`) a 24. Les 19 destinations exposent desormais leur
+# code : leur branche par defaut est `migrate/recover-code`, dont `main`
+# documentaire est un ancetre — aucun ruleset de protection n'a ete modifie
+# (ADR du 2026-09-29, §6). La doctrine et l'outillage de flotte ont ete
+# transferes de `governance` vers `project-governance` par transferts traces ;
+# le corpus historique (docs/reviews, la majorite de docs/superpowers) reste
+# dans l'archive verifiee et n'est pas declare superseda.
+repositories:
+  # --- Autorites -----------------------------------------------------------
+  - repository: libre-ai/project-governance
+    card: project.v1.yaml
+    role: authority
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - doctrine and decision registers (docs/adr, docs/decisions)
+      - ecosystem index, project-card schema and fleet gates (ecosystem/)
+      - reusable fleet workflows and the source-composition gate
+      - evidence and distribution (distribution/, verification/)
+  - repository: libre-ai/schemas-and-contracts
+    card: project.v1.yaml
+    role: authority
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - canonical contract authorities and vectors
+      - TypeScript and Rust SDK projections, integrity envelope
+      - contract catalog, compatibility policy and protocol authorities
+
+  # --- Produits et applications --------------------------------------------
+  - repository: libre-ai/ai-work-supervision
+    role: reserved-application-home
+    layer: couche-2
+    visibility: public
+    lifecycle: active
+    owns:
+      - human surface of agent missions, specifications and web authentication
+      - initial Forge product home (ADR 2026-09-29 §4)
+  - repository: libre-ai/ai-model-policy
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - model selection under explainable policy, with its byte-exact reference
+  - repository: libre-ai/ai-practice-workbench
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - professional training for sourced AI practice
+  - repository: libre-ai/learning-session-facilitation
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - source-grounded collective learning and facilitation
+  - repository: libre-ai/personal-knowledge-notebook
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - private local-first knowledge with controlled context export
+  - repository: libre-ai/information-feed-filter
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - explainable feed selection and portable curation
+  - repository: libre-ai/travel-itinerary-planner
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - itinerary planning over verified facts; trip instances stay local
+  - repository: libre-ai/public-vote-comparison
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - private civic comparison against sourced public votes
+  - repository: libre-ai/signalement
+    card: project.v1.yaml
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    owns:
+      - incident capture, executable verification and portable projections
+  - repository: libre-ai/carriere
+    role: reserved-product-home
+    layer: couche-1
+    visibility: public
+    lifecycle: active
+    # I-16 abrogated the coverage-law preconditions as conditions of a
+    # repository's existence, and ADR-0023 §2.2 confines the exposure law to the
+    # public showcase. A repository without code is therefore not a defect; an
+    # observable repository absent from this inventory is.
+    owns:
+      - >
+        sovereign, explainable job-search assistance for cadres — scope still to
+        be clarified by the owner, which its card states instead of showing a
+        percentage
+  - repository: libre-ai/project-website
+    role: active-application
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - public citable projection of reviewed knowledge, records and evidence
+
+  # --- Briques ---------------------------------------------------------------
+  - repository: libre-ai/application-development-toolkit
+    role: satellite
+    layer: couche-4
+    visibility: public
+    lifecycle: active
+    owns:
+      - shared UI, web platform, testing and starter foundations
+  - repository: libre-ai/collaborative-data-sync
+    role: satellite
+    layer: couche-4
+    visibility: public
+    lifecycle: active
+    owns:
+      - collaboration core and relay
+  - repository: libre-ai/organization-data-lifecycle
+    role: satellite
+    layer: couche-4
+    visibility: public
+    lifecycle: active
+    owns:
+      - data lifecycle and GDPR tooling
+  - repository: libre-ai/execution-continuity-evaluator
+    card: project.v1.yaml
+    role: satellite
+    layer: couche-2
+    visibility: public
+    lifecycle: active
+    owns:
+      - agent orchestration and its proof surface
+  - repository: libre-ai/execution-sandbox
+    card: project.v1.yaml
+    role: satellite
+    layer: couche-2
+    visibility: public
+    lifecycle: active
+    owns:
+      - attested execution confinement for agent workers (ADR-0018)
+  - repository: libre-ai/capability-authorization
+    card: project.v1.yaml
+    role: satellite
+    layer: couche-3
+    visibility: public
+    lifecycle: active
+    owns:
+      - deny-by-default capability authorization
+  - repository: libre-ai/artifact-verification
+    role: satellite
+    layer: couche-3
+    visibility: public
+    lifecycle: active
+    owns:
+      - artifact integrity and content provenance
+
+  # --- Outils et profil ------------------------------------------------------
+  - repository: libre-ai/database-policy-inspector
+    role: standalone-tool
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - fail-closed PostgreSQL schema inspection gate
+  - repository: libre-ai/pi-evidence
+    card: project.v1.yaml
+    role: standalone-tool
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - declared-check evidence dossiers and signed attestations
+  - repository: libre-ai/.github
+    role: org-profile
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - organization profile README and machine-readable portfolio declaration
+
+  # --- Prive et archive ------------------------------------------------------
+  - repository: libre-ai/product-research
+    role: administrative-private
+    layer: transverse
+    visibility: private
+    lifecycle: active
+    owns:
+      - sanitized non-authoritative product research
+  - repository: libre-ai/libre-ai
+    card: ecosystem/cards/libre-ai.project.v1.yaml
+    role: hub
+    layer: moyeu
+    visibility: public
+    lifecycle: archived # acte proprietaire du 2026-07-30
+    owns:
+      - its own history only; never a living source
+notes:
+  - The short-name generation (38 repositories) is preserved as verified
+    archive bundles with a real-clone restore proof; retiring its references
+    is a separate act under a confirmed manifest.
+  - >
+    The three short-name repositories that held a capability without a declared
+    destination were resolved on 2026-10-07 by absorption, not by deletion of the
+    capability. `ecosystem-engine` became `crates/ecosystem-engine` of this
+    authority, beside the objects it projects and the artefact it verifies.
+    `classification` became `packages/classification`, the K2 kernel, exported so
+    a protected write path links it in its own process, and it is now called by
+    `ecosystem/build-index.ts`. `knowledge` became
+    `ecosystem/knowledge-projection.ts`, kept as a second implementation of the
+    selection digest in another language. `carriere` is declared above and
+    conserved — the register forbids an implicit deletion, and no rule requires a
+    repository to carry code.
+  - No private personal repository belongs to this inventory (ADR-0009 §9).

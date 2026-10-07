@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Evidence",
+  "id": "urn:libre-ai:evidence:k4-adversarial-review-findings",
+  "name": "Trois défauts réels trouvés par la revue adversariale K4",
+  "purpose": "Sur le jalon qui a conduit au verrouillage du noyau de sécurité, chaque surface sensible a été relue par des agents lancés séparément de l'implémenteur. Trois relectures ont trouvé de vrais défauts, corrigés avant fusion : un outil de test de bout en bout absent du harnais de qualité, un défaut de canonicalisation dans l'enveloppe d'intégrité, et un contournement du sceau de classification par aller-retour JSON. C'est la preuve mesurée que l'indépendance relecteur/implémenteur n'est pas une formalité de procédure — les trois défauts étaient invisibles à l'auteur.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/evidence/k4-adversarial-review-findings.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "proves",
+      "target": "urn:libre-ai:decision:loop-security-kernel",
+      "status": "accepted"
+    },
+    {
+      "type": "proves",
+      "target": "urn:libre-ai:capability:reliability-classification",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-20T00:00:00Z",
+    "reviewedAt": "2026-07-20T00:00:00Z"
+  }
+}

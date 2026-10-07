@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>tag:libre-ai.github.io,2026:evidence</id>
+  <title>Libre AI — evidence feed</title>
+  <subtitle>Gate verdicts, adoption attestations, sovereignty reports and coverage measurements, projected from the public evidence directory.</subtitle>
+  <updated>2026-08-19T00:00:00Z</updated>
+  <author><name>Libre AI</name></author>
+  <link rel="alternate" type="text/html" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/feeds/changelog.md"/>
+  <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/libre-ai/libre-ai/main/distribution/feeds/evidence.atom.xml"/>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-2026-08-19</id>
+    <title>Automation coverage measurement (last 100 commit(s) inspected per active repository)</title>
+    <updated>2026-08-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-2026-08-19.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/sovereignty-2026-08-18-130738b</id>
+    <title>Sovereignty report (commit 130738b) — 3 pass, 0 fail, 4 pending</title>
+    <updated>2026-08-18T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/sovereignty/2026-08-18-130738b.json"/>
+    <category term="sovereignty"/>
+    <summary>pass</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-2026-08-18</id>
+    <title>Automation coverage measurement (last 100 commit(s) inspected per active repository)</title>
+    <updated>2026-08-18T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-2026-08-18.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-30-jalon-phase-3-8-archivage-du-hub-acte-proprietaire-final</id>
+    <title>Jalon γ — phase 3.8 archivage du hub : acte propriétaire final</title>
+    <updated>2026-07-30T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>PRONONCÉ SOUS GO PROPRIÉTAIRE DONNÉ PAR AVANCE — PR hub #293, `ecosystem/check-hub-orphans.ts`, rapport final, cette ligne</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-30-jalon-phase-3-7-coherence-le-hub-atteint-sa-forme-d-archive</id>
+    <title>Jalon γ — phase 3.7 cohérence : le hub atteint sa forme d&apos;archive, gate d&apos;orphelins vert, rapport final publié</title>
+    <updated>2026-07-30T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — PRs hub #289/#291 (merges ba3761b4, 42dffb473c), governance @a3ee5826/@c1a3ac33/@d63daef0, `ecosystem/check-hub-orphans.ts`, `docs/reports/2026-07-30-general-activation-final-report.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-29-jalon-phase-3-4-satellites-les-dix-neuf-repos-de-code-partag</id>
+    <title>Jalon γ — phase 3.4 satellites : les dix-neuf repos de code partagé nés verts</title>
+    <updated>2026-07-29T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — PRs #279, #280, #281, #282, #283, `ecosystem/migration-index.v1.yaml` (49 entrées), `governance/ecosystem/fleet-pins.v1.yaml`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-29-jalon-phase-3-3-autorites-governance-contracts-nes-verts-ind</id>
+    <title>Jalon γ — phase 3.3 autorités : governance + contracts nés verts, index de migration ouvert</title>
+    <updated>2026-07-29T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — PR #277, `ecosystem/migration-index.v1.yaml`, verdicts K4 sur la PR</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-29-jalon-phase-3-2-systeme-de-fiches-project-v1</id>
+    <title>Jalon γ — phase 3.2 système de fiches (`project.v1`)</title>
+    <updated>2026-07-29T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — PR #274, PR #275, `ecosystem/schemas/project.v1.schema.json`, `ecosystem/cards/`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-29-jalon-3-2-banc-d-essai-des-mecanismes-de-dependance-design-5</id>
+    <title>Jalon γ — 3.2 banc d&apos;essai des mécanismes de dépendance (design §5.2.6)</title>
+    <updated>2026-07-29T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EXÉCUTÉ puis rendu reproductible sous revue K4 — `distribution/evidence/2026-07-29-dependency-bench.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-28-jalon-3-1-acte-doctrinal-adr-0020-activation-generale-amende</id>
+    <title>Jalon γ — 3.1 acte doctrinal : ADR-0020 (activation générale) + amendement LEXICON §8</title>
+    <updated>2026-07-28T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>SIGNÉ AU MERGE — PR #273, `docs/adr/0020-general-activation-and-hub-dismantling.md`, `docs/decisions/LEXICON.md` §8</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-28-jalon-phase-3-0-housekeeping-activation-generale-reliquats-s</id>
+    <title>Jalon γ — phase 3.0 housekeeping (activation générale : reliquats statués, chaîne finale)</title>
+    <updated>2026-07-28T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — `distribution/evidence/2026-07-28-milestone-gamma-housekeeping.md`, PRs #261/#265–#271</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/adoption-2026-07-24-d0c5745</id>
+    <title>Adoption attestation 2026-07-24-d0c5745 — blank-room reproduction</title>
+    <updated>2026-07-24T13:47:05.053Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/adoption/2026-07-24-d0c5745.json"/>
+    <category term="adoption"/>
+    <summary>pass</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/sovereignty-2026-07-24-f942f52</id>
+    <title>Sovereignty report (commit f942f52) — 2 pass, 0 fail, 5 pending</title>
+    <updated>2026-07-24T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/sovereignty/2026-07-24-f942f52.json"/>
+    <category term="sovereignty"/>
+    <summary>pass</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/sovereignty-2026-07-24-15dc102</id>
+    <title>Sovereignty report (commit 15dc102) — 3 pass, 0 fail, 4 pending</title>
+    <updated>2026-07-24T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/sovereignty/2026-07-24-15dc102.json"/>
+    <category term="sovereignty"/>
+    <summary>pass</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-2026-07-24</id>
+    <title>Automation coverage measurement (last 50 merges)</title>
+    <updated>2026-07-24T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-2026-07-24.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-24-vague-1-couche-4-publish-readiness-des-4-satellites-re-prouv</id>
+    <title>Vague 1 couche 4 — publish-readiness des 4 satellites re-prouvée sur le main courant</title>
+    <updated>2026-07-24T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>RE-VÉRIFIÉ — `distribution/evidence/coverage-2026-07-24.json`, PR #191, `tools/release/publish-preflight.ts`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-2026-07-22</id>
+    <title>Automation coverage measurement (last 50 merges)</title>
+    <updated>2026-07-22T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-2026-07-22.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-22-vague-2-couche-3-k3-in-service-envelope-v1-candidate-locked</id>
+    <title>Vague 2 couche 3 — K3 in service : `envelope-v1` `candidate → locked`</title>
+    <updated>2026-07-22T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>PROMU — PR de promotion (branche `feat/envelope-k3-dogfooding`), `docs/reviews/envelope-v1/PROMOTION-DOSSIER.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-3-couche-2-polaris-k1-in-service-authority-v2-agent-ru</id>
+    <title>Vague 3 couche 2 (Polaris) — K1 in service : `authority-v2` + `agent-runs-v2` `candidate → locked`</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>PROMU — PR de promotion, `docs/reviews/authority-v2/PROMOTION-DOSSIER.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-3-couche-2-polaris-revocation-per-agent-id-a-l-emissio</id>
+    <title>Vague 3 couche 2 (Polaris) — révocation per-agent_id à l&apos;émission</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EN SERVICE — PR #149</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-3-couche-2-polaris-wiring-d-enforcement-k1-fermeture-d</id>
+    <title>Vague 3 couche 2 (Polaris) — wiring d&apos;enforcement K1 (fermeture du gap différé)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EN SERVICE — PR #145 (a), #146 (b2), #147 (b1) ; `docs/reviews/agent-runs-v2/`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-3-couche-2-polaris-identite-d-agent-k1-amorcage-d4-de</id>
+    <title>Vague 3 couche 2 (Polaris) — identité d&apos;agent K1 (amorçage D4 de la couche 2)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>AMORÇAGE PRONONCÉ — PR #143 (merge = amorçage), `docs/reviews/authority-v2/` (BOOTSTRAP-DOSSIER + 2 verdicts)</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-specification-lock-orchestrateur-porte-v3-prononce</id>
+    <title>Specification Lock orchestrateur (porte V3) — PRONONCÉ</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>PRONONCÉ PROPRIÉTAIRE en session (« J&apos;ai prononcé le lock orchestrateur, lance β ») — merge du verrou K1-K5 + cette entrée, `docs/reviews/loop-security-kernel/PORTE-V3-DOSSIER.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-4a-notebook-pilote-pattern-app-de-bout-en-bout</id>
+    <title>Vague 4a — Notebook pilote (pattern app de bout en bout)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>VALIDÉ — `distribution/evidence/2026-07-20-wave4a-notebook-pilot.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-porte-v3-noyau-k1-k5-verrouille-au-socle-dossier-de-lock</id>
+    <title>Porte V3 — noyau K1-K5 verrouillé au socle (dossier de lock)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>DOSSIER PRODUIT — PR #139 (draft), `docs/reviews/loop-security-kernel/PORTE-V3-DOSSIER.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-2-couche-3-classification-k2</id>
+    <title>Vague 2 couche 3 — classification K2</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>AUTO-MERGÉ sur revue propre (répétition du pattern couche-3) — PR #138, `docs/reviews/classification-v1/`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-2-couche-3-envelope-k3-amorcage-d4-de-la-couche-3</id>
+    <title>Vague 2 couche 3 — envelope K3 (amorçage D4 de la couche 3)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>AMORÇAGE PRONONCÉ — PR #137 (merge = amorçage couche 3), `docs/reviews/envelope-v1/`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-vague-1-couche-4-renommage-exposition-satellites-interne</id>
+    <title>Vague 1 couche 4 — renommage + exposition satellites (interne)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #134/#135/#136</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-wp-g2-q01-harness-qualite-de-foundation-g2-foundation-accept</id>
+    <title>WP-G2-Q01 — harness qualité de foundation (g2-foundation-acceptance)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #132 (merge = clôture G2), `docs/reviews/wp-g2-q01/`, `verification/harness/wp-g2-q01-reference-chain-evidence.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-wp-g2-d01-premiere-barriere-rls-de-la-couche-donnees-amorcag</id>
+    <title>WP-G2-D01 — première barrière RLS de la couche données (amorçage D4)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>AMORÇAGE PRONONCÉ — PR #123 (merge = amorçage), `docs/reviews/wp-g2-d01/` (BOOTSTRAP-DOSSIER + 2 verdicts K4)</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-20-phase-0-lexicon-lock-carte-de-noms-glossaire-produit</id>
+    <title>Phase 0 — Lexicon Lock (carte de noms + glossaire produit)</title>
+    <updated>2026-07-20T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>SIGNÉ — PR #130 (merge = signature), `docs/decisions/LEXICON.md`, `docs/reviews/lexicon-lock/`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/coverage-baseline-2026-07-19</id>
+    <title>Automation coverage measurement (last 50 merges)</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/coverage-baseline-2026-07-19.json"/>
+    <category term="coverage"/>
+    <summary>0% genuine automation</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-vague-0-test-de-l-agent-froid-gate-de-sortie</id>
+    <title>Vague 0 — test de l&apos;agent froid (gate de sortie)</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>RÉUSSI — `2026-07-19-wave0-evidence.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-vague-0-option-b-control-plane-main-verite-courante</id>
+    <title>Vague 0 — option B control plane (main = vérité courante)</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — constantin-jais/constantin-jais PR #115, tag `archive/pre-constellation-2026-07-19`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-vague-0-carte-d-autorite-decomposition-de-vision-md</id>
+    <title>Vague 0 — carte d&apos;autorité + décomposition de vision.md</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #120</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-vague-0-inventaire-machine-lisible-drift-bidirectionnel</id>
+    <title>Vague 0 — inventaire machine-lisible + drift bidirectionnel</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #119, `ecosystem/repositories.v1.yaml`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-goals-des-vagues-autorite-de-sequencement</id>
+    <title>Goals des vagues (autorité de séquencement)</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #118, `docs/transformation/EXECUTION-SEQUENCING.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-adr-0009-constellation-portefeuille-geree-par-la-methode</id>
+    <title>ADR-0009 — constellation-portefeuille gérée par la méthode</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>RATIFIÉ — PR #117 (merge = trace d&apos;arbitrage) ; relecture indépendante : « prêt à ratifier », zéro écart</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-candidat-8ede2ba-bounded-payloads-reconciliation</id>
+    <title>Candidat 8ede2ba (bounded payloads) — réconciliation</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>CLOS — PR #115, PR #116, `docs/reviews/specialized-engine-v2/CANDIDATE-RECORDED-8EDE2BA.md`</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-gate-work-package-sur-apps</id>
+    <title>Gate work-package sur `apps/`</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EN SERVICE — PR #114</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-gates-doctrine-unicite-adr-ligne-arbitrage-citations-registr</id>
+    <title>Gates doctrine (unicité ADR, ligne Arbitrage, citations registre, deny-list)</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EN SERVICE — PR #113</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-cleanup-github-manifest-aligne-sur-l-observable</id>
+    <title>Cleanup GitHub — manifest aligné sur l&apos;observable</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #112, `ecosystem/LEGACY-MANIFEST.yaml` §github_cleanup</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-adr-0008-topologie-multi-repository-et-marque</id>
+    <title>ADR-0008 — topologie multi-repository et marque</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>RATIFIÉ — PR #110 (merge = trace d&apos;arbitrage propriétaire)</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-19-gate-dco-des-merge-commits-sur-main</id>
+    <title>Gate DCO des merge commits sur main</title>
+    <updated>2026-07-19T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>EN SERVICE — PR #107</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-18-notebook-core-v2-gate-b-host-qualification</id>
+    <title>Notebook Core v2 — Gate B (host qualification)</title>
+    <updated>2026-07-18T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>APPROUVÉ (périmètre borné) — PR #106, candidat immuable `9ee3f8d`, ADR-0005/0006/0007</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-18-wp-g2-z01-capability-biscuit-cloture-governance</id>
+    <title>WP-G2-Z01 — capability Biscuit + clôture governance</title>
+    <updated>2026-07-18T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — PR #101, PR #104</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-17-gouvernance-des-licences-eupl-apache-2-0-cc-by-dco-reuse</id>
+    <title>Gouvernance des licences (EUPL/Apache-2.0/CC BY, DCO, REUSE)</title>
+    <updated>2026-07-17T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — ADR-0004 licensing</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-17-amendement-borne-wp-g2-s01-85-autorites-relockees</id>
+    <title>Amendement borné WP-G2-S01 (85 autorités relockées)</title>
+    <updated>2026-07-17T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — ADR-0003</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-16-g1-specification-lock-catalogue-d-autorites</id>
+    <title>G1 — Specification Lock (catalogue d&apos;autorités)</title>
+    <updated>2026-07-16T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — `contracts/catalog.v1.json`, ADR-0001/0002</summary>
+  </entry>
+  <entry>
+    <id>tag:libre-ai.github.io,2026:evidence/gate-2026-07-16-g0-freeze-des-18-repositories-historiques</id>
+    <title>G0 — freeze des 18 repositories historiques</title>
+    <updated>2026-07-16T00:00:00Z</updated>
+    <link rel="alternate" href="https://github.com/libre-ai/libre-ai/blob/main/distribution/evidence/gate-acceptance-log.md"/>
+    <category term="gate"/>
+    <summary>ACCEPTÉ — `docs/transformation/G0-FREEZE-EVIDENCE.md`, `ecosystem/LEGACY-MANIFEST.yaml`</summary>
+  </entry>
+</feed>

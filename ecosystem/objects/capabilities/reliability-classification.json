@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:reliability-classification",
+  "name": "Classification de fiabilité — les faits ne sont pas des ordres",
+  "purpose": "Trois niveaux — `authoritative`, `derived`, `operational` — et un invariant qu'aucune écriture vers une source de vérité ne peut être justifiée par de la donnée opérationnelle seule. La donnée d'exploitation entre dans un plan comme preuve, jamais comme directive. Le détail d'implémentation qui rend la garantie réelle plutôt que déclarative : le sceau est un `WeakSet` privé au module, non une propriété symbolique — donc infalsifiable par copie structurelle ou par aller-retour JSON, et les objets sont gelés. Brique `packages/classification`. C'est la parade structurelle à l'injection par contenu ingéré, complémentaire de l'enveloppe.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/reliability-classification.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:loop-security-kernel",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

@@ -1,0 +1,621 @@
+# Index de migration — institué par ADR-0020 §2.6 (activation générale).
+#
+# Chaque chemin qui quitte le hub est tracé ici : destination (repo cible) et
+# SHA du premier commit de destination portant le contenu migré. La règle dure
+# de bascule s'applique : un chemin ne quitte le hub qu'après preuve verte côté
+# destination — jamais de fenêtre où un contenu n'existe nulle part en vert.
+#
+# Le gate d'orphelins (à câbler avec le système de fiches, design §3.6/§7.2)
+# échoue si un chemin suivi du hub n'a ni entrée ici, ni place déclarée dans la
+# topologie cible (design §4), ni entrée au registre d'oubli. Migré ≠ oublié
+# (I-23) : ce fichier est l'inverse fonctionnel d'ecosystem/FORGOTTEN.yaml —
+# le contenu migré a une destination vivante.
+#
+# Entrées de forme :
+# Un hub_path peut apparaître dans PLUSIEURS entrées (une par couple
+# chemin × destination) : l'outillage partagé essaime — le gate d'orphelins
+# vérifie qu'un chemin a AU MOINS une destination, cette carte les liste
+# TOUTES pour décrire la topologie réelle (finding K4 AUTH-02).
+#   - hub_path: <chemin du hub, préfixe>
+#     destination: libre-ai/<repo>
+#     destination_commit: <SHA du PREMIER commit de destination portant le
+#       contenu migré — immuable une fois écrit>
+#     verified_at_commit: <dernier commit de destination dont les gates sont
+#       mesurés verts — avance avec les preuves (K4 AUTH-R2-01)>
+#     destination_path: <chemin du contenu à destination quand il diffère du
+#       hub_path — « . » pour un renommage à la racine ; absent = identique.
+#       Mapping MACHINE du gate de dérive hub↔destination (K4 AUTH-05)>
+#     hub_removal_commit: <SHA du commit du hub qui retire le chemin,
+#       ou `pending` — état intermédiaire : contenu porté et vert à
+#       destination, chemin pas encore retiré du hub (la règle dure de
+#       bascule autorise la double présence, jamais l'absence)>
+#     notes: <bornes, exemptions tracées — ex. borne DCO de greffe>
+#
+# Provenance (2026-08-18) : ce fichier est une synchronisation manuelle
+# depuis l'index d'autorité du hub (`libre-ai/libre-ai:ecosystem/migration-index.v1.yaml`,
+# blob `a66b0b49…`, dernier commit `3f03b94d…` du 2026-07-30T15:06:29Z), qui
+# est resté l'autorité vivante pendant le démantèlement (γ 3.3 à 3.8) et l'est
+# encore techniquement, même si le hub est désormais archivé (lecture seule
+# définitive) et ne peut donc plus avancer. La copie précédente ici datait de
+# γ 3.3 (56 entrées, toutes `pending`) ; `check-migration-drift.ts` lit déjà
+# l'index d'autorité en réseau et n'utilise pas cette copie pour ses
+# assertions — elle sert la lecture humaine. Re-synchroniser seulement si
+# l'archive du hub est elle-même amendée (ce qu'elle ne devrait plus être).
+
+schema_version: libre-ai.migration-index.v1
+
+hub_state: archived  # acte propriétaire du 2026-07-30 (GO donné par avance dans la session γ) — exécuté immédiatement après le merge de cette révision ; daté à la ligne 3.8 du gate-acceptance-log de governance
+
+entries:
+  # γ 3.3 — governance authority (CI 5/5 green at destination_commit).
+  # Perimeter refinements vs design §4.1, each traced in the destination
+  # history: product-proof surfaces returned to the hub pipeline
+  # (tools/qualification/notebook-core-v2 → notebook; tools/quality/
+  # build-policy-core-wasm.ts, policy-core-raw-inputs.ts and
+  # policy-core-wasm-conformance.ts → policy; tools/ops/run-retention* → data),
+  # contract-vector verifiers stay hub-owned until sdk-ts;
+  # verification/dependency-bench (born in γ 3.2) travels with governance.
+  - hub_path: docs/ # everything except docs/apps/ and docs/API-STABILITY.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+    notes: docs/apps/* migrate with their products (γ 3.5); docs/API-STABILITY.md with contracts
+  - hub_path: GOALS.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: STATUS.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: ROADMAP.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: vision.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: ecosystem/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: pending
+  - hub_path: tools/ # except tools/review/ (orchestrator) and the returned product surfaces
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: pending
+    notes: tools/review → orchestrator (γ 3.4); notebook-core-v2 qualification → notebook, build-policy-core-wasm → policy, run-retention → data; contract-vector verifiers → sdk-ts conformance
+  - hub_path: verification/adoption/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: verification/sovereignty/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: verification/harness/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: WP-G2-Q01 foundation harness (homonym of the couche-2 brick) — reference chain stays replayable from governance
+  - hub_path: verification/dependency-bench/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: verification/README.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: prompts/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: distribution/ # except distribution/templates/ (starter)
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+    notes: distribution/templates/* → starter (γ 3.4)
+  - hub_path: toolchains/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: pending
+    notes: Bun toolchain release asset still served from the hub archive — re-hosting under governance is the traced follow-up (design §5.4.3)
+  - hub_path: infrastructure/
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: LICENSING.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: TRADEMARKS.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: DATA-PROVENANCE.md
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: REUSE.toml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: pending
+    notes: each repository carries its own REUSE manifest; the hub keeps its own until archive
+  - hub_path: deny.toml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: the hub keeps its copy while its Rust workspace lives (until γ 3.4/3.5)
+  - hub_path: llms.txt
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: .github/workflows/doctrine-governance.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: .github/workflows/inventory-drift.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: .github/workflows/truth-drift.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: .github/workflows/feeds-freshness.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: .github/workflows/adoption-proof.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: .github/workflows/sovereignty-report.yml
+    destination: libre-ai/governance
+    destination_commit: b8b741c0ab39a0b806911110dfe7e3b84dc54a05
+    verified_at_commit: 6eae09b597be52800d462400d2b9ecf5479407fd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  # γ 3.3 — contracts authority (CI 2/2 green at destination_commit; the
+  # hub removal only happens after green proof, per the hard flip rule).
+  - hub_path: contracts/
+    destination: libre-ai/contracts
+    destination_commit: e3904c3e77dd471b71902b632f32889bfe185202
+    verified_at_commit: ee144f03cf7d3deeda02a9fcd5e10377c2e99cb4
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/API-STABILITY.md
+    destination: libre-ai/contracts
+    destination_commit: e3904c3e77dd471b71902b632f32889bfe185202
+    verified_at_commit: ee144f03cf7d3deeda02a9fcd5e10377c2e99cb4
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: tools/quality/ # the self-verification subset contracts carries
+    destination: libre-ai/contracts
+    destination_commit: e3904c3e77dd471b71902b632f32889bfe185202
+    verified_at_commit: ee144f03cf7d3deeda02a9fcd5e10377c2e99cb4
+    hub_removal_commit: pending
+    notes: >-
+      check-contracts, policy-core-raw-inputs, public-source-scanner(+test)
+      only — the repository's own gate. The bun floor, security scanners and
+      licensing gate are CONSUMED from governance (reusable workflows +
+      pinned git-dep, design §5.3), never duplicated (K4 AUTH-01 closed)
+
+  # γ 3.4 — wave-A Bun satellites (each verified green in its own CI).
+  - hub_path: packages/contracts/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/sdk-ts
+    destination_commit: c1c90491207bfdf24f78b91c7900596c9f05cbec
+    verified_at_commit: da9d510cce0c28283837bfb6c9efe82641cbe083
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: package renamed to the repository root (a pinned git-dep installs the root); vendored schemas re-proven byte-exact against the contracts authority pin
+  - hub_path: packages/envelope/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/envelope
+    destination_commit: 5571b6e5e75086a204798cda267d84d6c1ef5a1f
+    verified_at_commit: ad0e1a6d014ee531dd1938ed04c6b678c605dc9c
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/web-platform/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/web-platform
+    destination_commit: 9ee1c02fbe5fd52e0570335ef15b7b63766a7c03
+    verified_at_commit: a0754b69b4205e31a0c560f9729bd8d2d8556357
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/testing/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/testing
+    destination_commit: 2390b8cb9a30298fe3020ad8acf92fd15d3248f8
+    verified_at_commit: 28a317462660898f069974009ab4a1ff99bb9dac
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+
+  - hub_path: crates/contract-types/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/sdk-rs
+    destination_commit: c0e64450a721a6178eea9aabf97e1a241ae5e91f
+    verified_at_commit: 02214613c5cb0549d0618484d9b479c4cfb3c7ce
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: crate renamed to the repository root; authority schemas vendored under a byte-exact drift gate (61 files), vector fixtures from the pinned contracts git-dep — born green first try (CI 2/2)
+
+  # γ 3.4 — independent satellites, each born green FIRST TRY (CI 2/2).
+  - hub_path: packages/provenance/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/provenance
+    destination_commit: 684302633d68ad31bcac50e55c00ad9c93b73d6f
+    verified_at_commit: 684302633d68ad31bcac50e55c00ad9c93b73d6f
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/knowledge/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/knowledge
+    destination_commit: 5eca11029b46a36eb48c54fad10bbc502b4b7e0f
+    verified_at_commit: 5eca11029b46a36eb48c54fad10bbc502b4b7e0f
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root; canonical ecosystem schemas resolve from the pinned governance git-dep
+  - hub_path: packages/rgpd-kit/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/rgpd-kit
+    destination_commit: 64b9da3f5dd2ca7a35377e0206ff72a40b8240c5
+    verified_at_commit: 64b9da3f5dd2ca7a35377e0206ff72a40b8240c5
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/classification/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/classification
+    destination_commit: e6c1ef68f543d633aa9207f7023cc776ca3f9d65
+    verified_at_commit: e6c1ef68f543d633aa9207f7023cc776ca3f9d65
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/collab-core/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/collab-core
+    destination_commit: c9b10b03321eeebace7ec12b78563df277dae630
+    verified_at_commit: c9b10b03321eeebace7ec12b78563df277dae630
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+  - hub_path: packages/collab-relay/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/collab-relay
+    destination_commit: 995edc8e2142e25dabbaa15a9ee1027ca9bd5257
+    verified_at_commit: 995edc8e2142e25dabbaa15a9ee1027ca9bd5257
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root
+
+  # γ 3.4 — wave B/C and Rust satellites. Seventeen of the nineteen were
+  # born green first try; two (ui, ecosystem-engine) were greened at the
+  # next commit — nineteen green, no red masked (the destination/verified
+  # split states exactly which is which).
+  - hub_path: packages/auth-web/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/auth
+    destination_commit: d23fcb7edc6108429247fd9b52f9fdd3d62d07fe
+    verified_at_commit: bcbc011365fc0395961d073a73e7bd3f74eef584
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root; internal bricks consumed as peerDependencies after the minimally-reproduced bun same-pin dedupe limitation
+  - hub_path: packages/data/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/data
+    destination_commit: 57c163f5c1552f434712d5079dfb0697099c4cce
+    verified_at_commit: 338b55e7a57b7b594a2517f63b0eefa4f89479a0
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: renamed to the repository root; retention contract resolves from the contracts authority through module resolution (fix surfaced by the sessions graft, authority now an explicit peer dependency)
+  - hub_path: packages/ui/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/ui
+    destination_commit: 65455c3c2fa23c4ecad1c79a0c8d821fbcd2277d
+    verified_at_commit: 46fa2956fcc86731f40772bcd3dff129c3792c46
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: carries the packages/design-system ancestry (design §4.3); third_party/dtcg follows its consumer with its W3C licence
+  - hub_path: packages/design-system/
+    destination: libre-ai/ui
+    destination_commit: 65455c3c2fa23c4ecad1c79a0c8d821fbcd2277d
+    verified_at_commit: 46fa2956fcc86731f40772bcd3dff129c3792c46
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: history-only ancestry carried by the ui repository (§5.1)
+  - hub_path: crates/authz-biscuit/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/authz-biscuit
+    destination_commit: 73725a69f11abb4b5811e5bbb0c26f3705271412
+    verified_at_commit: 73725a69f11abb4b5811e5bbb0c26f3705271412
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: authz datalog policies vendored under a byte-exact drift gate (committed vendoring is the only correct form for include_str! sources consumed by git-dep)
+  - hub_path: crates/ecosystem-engine/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/ecosystem-engine
+    destination_commit: f87ff5343764f6a4f1663b645c10b1f7beb399fe
+    verified_at_commit: a55f57fead0b5e1a3f951c3cb609a01e58aae9f0
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: authz/wit/ecosystem artefacts vendored against two authority pins; knowledge objects resolve from the pinned governance git-dep
+  - hub_path: crates/artifact/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/artifacts
+    destination_commit: a285bc607be6c4f5a1d0ce546a44e9d5261781ee
+    verified_at_commit: a285bc607be6c4f5a1d0ce546a44e9d5261781ee
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: first intra-org Cargo git-dep — libre-ai-contract-types via github.com/libre-ai/sdk-rs under [sources.allow-org]
+  - hub_path: crates/agent-orchestrator/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: crate at the root; Cargo git-dep sdk-rs
+  - hub_path: tools/review/
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: review fan-out with @libre-ai/envelope as a sha-pinned git-dep; own chain link check:review-tools
+  - hub_path: verification/agent-orchestrator/
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: capability-boundary proof surface travels with its brick
+  - hub_path: docs/apps/harness.md
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/apps/memory.md
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/apps/orchestrator.md
+    destination: libre-ai/orchestrator
+    destination_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    verified_at_commit: fbfca74b17b655ae812a27b8dde43bd10ac6acfe
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: distribution/templates/
+    destination_path: . # renamed to the repository root
+    destination: libre-ai/starter
+    destination_commit: 0462e0a16d50c8db1702bf2f6ac2dcd7db8988dd
+    verified_at_commit: 0462e0a16d50c8db1702bf2f6ac2dcd7db8988dd
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: both templates consume the four workshop bricks as sha-pinned git-deps; auth's peerDependencies pattern fixed fleet-wide after the bun same-pin dedupe repro
+
+  # γ 3.5 — products. Each entry's destination_commit is the hub-content
+  # graft merge in the frozen-home repository (full history via git
+  # filter-repo split); that same SHA is the repository's reusable-licensing
+  # dco_boundary. verified_at_commit is the measured CI-green main.
+  - hub_path: apps/notebook/
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary 3b1c10d6; app pinned on ui and web-platform
+  - hub_path: crates/notebook-core/
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: notebook-core-v2 WIT vendored under the byte-exact drift gate
+  - hub_path: third_party/rustcrypto-aes-0.8.4/
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: audited aes fork consumed via [patch.crates-io] by the notebook workspace
+  - hub_path: third_party/dtcg-format-2025.10/
+    destination: libre-ai/ui
+    destination_commit: 65455c3c2fa23c4ecad1c79a0c8d821fbcd2277d
+    verified_at_commit: 46fa2956fcc86731f40772bcd3dff129c3792c46
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: entry was missing from the 3.4 wave (only noted under packages/ui); presence measured at both SHAs during the 3.5 index audit
+  - hub_path: third_party/dtcg-format-2025.10/
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: travelled with the notebook split; canonical consumer is ui
+  - hub_path: docs/apps/notebook.md
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/apps/notebook-resource-floor.md
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: tools/qualification/notebook-core-v2/
+    destination: libre-ai/notebook
+    destination_commit: 3b1c10d6c5a308256b16d99fd05c425a4d7f237b
+    verified_at_commit: 947f99e8d351b7a1f63903b1242fbda5517b7632
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: product-proof surface returned to its product (refinement traced in the 3.3 governance entry)
+  - hub_path: apps/model-policy/
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary 598aa0b2; phase-checker planning record required tracked (docs/apps/model-policy)
+  - hub_path: packages/policy-core-ref/
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: exposed to external consumers through the repository root exports facade (bun git-deps cannot target a subdirectory)
+  - hub_path: crates/policy-core/
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: policy-core-v1 WIT vendored under the byte-exact drift gate; conformance fixtures resolve through the contracts-authority git-dep
+  - hub_path: docs/apps/model-policy.md
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/apps/model-policy/
+    destination: libre-ai/policy
+    destination_commit: 1a1e99dc251d4f7676ae208c9e06825e591688a6
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+    notes: flat copy in the bootstrap commit; the filter-repo split missed the directory, its history stays readable in the hub
+  - hub_path: tools/quality/build-policy-core-wasm.ts
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: product-proof surface returned to its product (refinement traced in the 3.3 governance entry)
+  - hub_path: tools/quality/policy-core-raw-inputs.ts
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: tools/quality/policy-core-wasm-conformance.ts
+    destination: libre-ai/policy
+    destination_commit: 598aa0b2a977c3c027a94ff851b9441f0c5795dd
+    verified_at_commit: 3e92447b408d484075fec092c5ad60bcae89d6f8
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+  - hub_path: apps/radar/
+    destination: libre-ai/feed-radar
+    destination_commit: 4576b553d2072b83e7dd83105308335befe85904
+    verified_at_commit: 4f584e2eb420bb0877bd8d6e351397ab3e4de1db
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary 4576b553; policy-core-ref consumed through the policy repository exports facade, pinned by SHA
+  - hub_path: docs/apps/radar.md
+    destination: libre-ai/feed-radar
+    destination_commit: 4576b553d2072b83e7dd83105308335befe85904
+    verified_at_commit: 4f584e2eb420bb0877bd8d6e351397ab3e4de1db
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: apps/boussole/
+    destination: libre-ai/boussole-politique
+    destination_commit: c9286036260fd62a85c10c4d11785b8883bd3e51
+    verified_at_commit: 84e386325d05ab5d7d1eac4a79c90abec180786b
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary c9286036; local-only no-transmission guard travels with the app tests
+  - hub_path: docs/apps/boussole.md
+    destination: libre-ai/boussole-politique
+    destination_commit: c9286036260fd62a85c10c4d11785b8883bd3e51
+    verified_at_commit: 84e386325d05ab5d7d1eac4a79c90abec180786b
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: apps/practices/
+    destination: libre-ai/ai-practices
+    destination_commit: 85c2cb637233478af1c45cffeac3db9b1e202310
+    verified_at_commit: 311c6688f9c614118da65abd1bce0d94ae0cf563
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary 85c2cb63; local-only no-transmission guard travels with the app tests
+  - hub_path: docs/apps/practices.md
+    destination: libre-ai/ai-practices
+    destination_commit: 85c2cb637233478af1c45cffeac3db9b1e202310
+    verified_at_commit: 311c6688f9c614118da65abd1bce0d94ae0cf563
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: apps/sessions/
+    destination: libre-ai/sessions
+    destination_commit: b7b5e69b084747c00ceb8a7b7ed5f7c5dd1cd64c
+    verified_at_commit: d68bc96288f422e9e48e4bbaa6742ff0606e69b0
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary b7b5e69b; first consumer of the data brick as a git-dep, surfaced and consumed the module-resolution fix (libre-ai/data@338b55e7)
+  - hub_path: docs/apps/sessions.md
+    destination: libre-ai/sessions
+    destination_commit: b7b5e69b084747c00ceb8a7b7ed5f7c5dd1cd64c
+    verified_at_commit: d68bc96288f422e9e48e4bbaa6742ff0606e69b0
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: apps/specifications/
+    destination: libre-ai/spec-studio
+    destination_commit: cb55105d528d079b630a4c839f7bed5c53afdbcc
+    verified_at_commit: 894bc17921c27a2523dd36348dc6bd9e75efe933
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary cb55105d; integration tests close their PGlite instance, standalone bun test surfaces the leak the hub run masked
+  - hub_path: docs/apps/specifications.md
+    destination: libre-ai/spec-studio
+    destination_commit: cb55105d528d079b630a4c839f7bed5c53afdbcc
+    verified_at_commit: 894bc17921c27a2523dd36348dc6bd9e75efe933
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: apps/missions/
+    destination: libre-ai/missions
+    destination_commit: 36b322d66994a812af44e7576629f56027d25b4c
+    verified_at_commit: bd89fe3912013e71f1599c6f14bc3f1750c5ccb5
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: graft DCO boundary 36b322d6; datalog conformance reads missions-v1 through the contracts authority
+  - hub_path: docs/apps/missions.md
+    destination: libre-ai/missions
+    destination_commit: 36b322d66994a812af44e7576629f56027d25b4c
+    verified_at_commit: bd89fe3912013e71f1599c6f14bc3f1750c5ccb5
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+  - hub_path: docs/apps/agent-board.md
+    destination: libre-ai/missions
+    destination_commit: 36b322d66994a812af44e7576629f56027d25b4c
+    verified_at_commit: bd89fe3912013e71f1599c6f14bc3f1750c5ccb5
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+    notes: agent-board is the historical name (ADR-0008 as amended; LEXICON section 8)
+
+  # γ 3.6 — présentation.
+  - hub_path: docs/apps/website.md
+    destination: libre-ai/website
+    destination_commit: 89ebe44bfd6a66f2ff17b9e9ddced9d7fdbaa238
+    verified_at_commit: 89ebe44bfd6a66f2ff17b9e9ddced9d7fdbaa238
+    hub_removal_commit: 42dffb473c06f940c8873c2f7e9b6e875d9abd2f
+    notes: flat copy with the criteria-acceptance commit (K4 PIDX-02 closed); history stays readable in the hub archive
+
+  - hub_path: tools/ops/run-retention.ts
+    destination: libre-ai/data
+    destination_commit: 57c163f5c1552f434712d5079dfb0697099c4cce
+    verified_at_commit: 338b55e7a57b7b594a2517f63b0eefa4f89479a0
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: history-only — adapted into src/retention-sweep.ts at destination (returned product surface, γ 3.3 refinement); content not byte-identical by design
+  - hub_path: tools/ops/run-retention.test.ts
+    destination: libre-ai/data
+    destination_commit: 57c163f5c1552f434712d5079dfb0697099c4cce
+    verified_at_commit: 338b55e7a57b7b594a2517f63b0eefa4f89479a0
+    hub_removal_commit: ba3761b45901bb2c7f850aaac8c6539e2c407533
+    notes: history-only — adapted into the retention-sweep tests at destination; content not byte-identical by design
+
+# Remplacements tracés hors chemins (workflows et machineries éteints avec le
+# hub, jamais orphelins — design §4.5) :
+replacements:
+  - hub_paths: [CONTRIBUTING.md, SECURITY.md, README.fr.md]
+    replaced_by: the org-level CONTRIBUTING.md and SECURITY.md live in libre-ai/.github; the hub banner is monolingual by design (the constellation presentation is bilingual at the org profile)
+    removed_in: γ 3.7 removal wave 2
+  - hub_paths: [toolchains/notebook-qualification.json, toolchains/notebook-resource-classes.json]
+    replaced_by: the notebook qualification surfaces left with tools/qualification (wave 1); their policy files follow their consumers
+    removed_in: γ 3.7 removal wave 2
+  - hub_paths: [.github/workflows/doctrine-governance.yml, .github/workflows/feeds-freshness.yml, .github/workflows/truth-drift.yml, .github/workflows/inventory-drift.yml]
+    replaced_by: the fleet gates run from libre-ai/governance (inventory-drift with fleet pins, migration drift, fleet presentation, feeds freshness); the hub archive keeps ci and context-hygiene only
+    removed_in: γ 3.7 removal wave 2
+  - hub_paths: [apps/README.md, crates/README.md, packages/README.md]
+    replaced_by: the org profile README and the per-repository project cards (γ 3.6)
+    removed_in: γ 3.7 removal wave 1
+    notes: directory indexes of the hub workspaces — presentation surfaces, superseded by the constellation presentation system (K4 PIDX-03)
+  - hub_paths: [.github/workflows/release.yml]
+    replaced_by: nothing — manual npm release machinery for the departed packages; registry distribution was never required (git-deps, design §8)
+    removed_in: γ 3.7 removal wave 1
+  - hub_paths: [LICENSES/MIT.txt, LICENSES/W3C-20150513.txt]
+    replaced_by: nothing — licence texts whose last SPDX attribution left with wave 1 (REUSE flags unused grants); each repository carries its own LICENSES/
+    removed_in: γ 3.7 removal wave 1
+  - hub_paths: [.github/workflows/adoption-proof.yml, .github/workflows/sovereignty-report.yml]
+    replaced_by: governance carries verification/ (adoption, sovereignty) — the recurring proofs re-arm there when scheduled
+    removed_in: γ 3.7 removal wave 1
+  - hub_paths: [Cargo.toml, Cargo.lock, rust-toolchain.toml, deny.toml, .cargo/config.toml]
+    replaced_by: each Rust-bearing repository owns its workspace manifests (D07 as amended by ADR-0020)
+    removed_in: γ 3.7 removal wave 1
+    notes: hub build manifests, not migrated content — no orphan, their object left with the crates

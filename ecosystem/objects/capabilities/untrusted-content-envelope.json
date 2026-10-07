@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:untrusted-content-envelope",
+  "name": "Enveloppe d'intégrité pour contenu non fiable",
+  "purpose": "Séparation données/instructions rendue vérifiable, et non seulement conventionnelle. Tout contenu d'origine externe — web, courriel, mémoire, sortie d'outil, description d'outil ou de serveur MCP — est enveloppé avec une sérialisation canonique **préfixée en longueur champ par champ**, si bien qu'aucune frontière de champ n'est déplaçable par le contenu, puis scellé par HMAC-SHA256 vérifié en temps constant. Le rendu échappe les délimiteurs pour que la charge utile ne puisse pas forger le marqueur fermant. Fail-closed sur toute altération. Brique `packages/envelope`, en service réel dans l'orchestrateur de revue, qui enveloppe chaque fichier de preuve avant de l'exposer à un modèle.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/untrusted-content-envelope.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:loop-security-kernel",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

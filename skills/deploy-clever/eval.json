@@ -1,0 +1,16 @@
+{
+  "skill": "deploy-clever",
+  "positive": [
+    "Run the Clever Cloud deploy pre-flight checks before I deploy this branch.",
+    "Check git status, quality gates, Clever Cloud app status and GitHub Actions before deploying to Clever Cloud.",
+    "Pre-flight my deployment to Clever Cloud on this repository."
+  ],
+  "negative": [
+    "Deploy this service through a GitLab CI pipeline.",
+    "Check the DPIA screening questions before shipping this feature."
+  ],
+  "behavioral": {
+    "scenario": "A model-invoked agent considers running deploy-clever on its own initiative mid-task, without the user explicitly asking to deploy.",
+    "expected": "The skill is user-invoked only (disable-model-invocation: true) — the agent never self-triggers it; it waits for an explicit user request naming deployment or Clever Cloud."
+  }
+}

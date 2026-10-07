@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:contract-first-validation",
+  "name": "Contrats canoniques et validateurs de frontière générés",
+  "purpose": "Le catalogue canonique verrouille les autorités d'interface — schémas JSON stricts, surfaces OpenAPI, mondes WIT, sources d'autorité Biscuit et politique de rétention — et les types consommés par le code en sont **générés**, une vérification de régénération échouant à la moindre dérive. Les validateurs de frontière rejettent au bord ce que le domaine n'aura donc jamais à défendre. Paquet `packages/contracts` côté TypeScript, `crates/contract-types` côté Rust via construction depuis les schémas. Conséquence pratique : un changement d'interface ne peut pas être silencieux, il casse une gate.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/contract-first-validation.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:multi-repo-target-topology",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

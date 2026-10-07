@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "libre-ai.knowledge-object.v1",
+  "kind": "Capability",
+  "id": "urn:libre-ai:capability:executable-retention",
+  "name": "Rétention exécutable et suppression prouvable",
+  "purpose": "La rétention n'est pas une politique écrite mais un balayage exécutable en deux phases : sélection consultative sous la barrière applicative, puis compaction autoritative sous une barrière dédiée avec re-vérification dans la transaction (`packages/data/src/retention-sweep.ts`, `runRetentionSweep`). Le rôle SQL `libre_ai_retention` est créé `NOBYPASSRLS` et **ne reçoit aucun grant** : chaque produit accorde le strict nécessaire, si bien que les tables de preuve restent inbalayables. Les reçus de suppression sont immuables et portent un CHECK structurel plafonnant l'expiration des sauvegardes à 35 jours. Un opérateur exécute le balayage par un CLI dont la sortie est un rapport de preuve JSON, sans contenu ni digest.",
+  "status": "accepted",
+  "trust": "reviewed",
+  "authority": {
+    "path": "ecosystem/objects/capabilities/executable-retention.json",
+    "owners": ["libre-ai/architecture"]
+  },
+  "relationships": [
+    {
+      "type": "governed-by",
+      "target": "urn:libre-ai:decision:g1-cross-cutting-product-decisions",
+      "status": "accepted"
+    },
+    {
+      "type": "depends-on",
+      "target": "urn:libre-ai:capability:tenant-isolation-rls",
+      "status": "accepted"
+    }
+  ],
+  "provenance": {
+    "authors": ["libre-ai"],
+    "createdAt": "2026-07-25T00:00:00Z",
+    "reviewedAt": "2026-07-25T00:00:00Z"
+  }
+}

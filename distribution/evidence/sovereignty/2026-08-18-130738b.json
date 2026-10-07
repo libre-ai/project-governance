@@ -1,0 +1,383 @@
+{
+  "schemaVersion": "libre-ai.sovereignty.v1",
+  "run": {
+    "date": "2026-08-18",
+    "commit": "130738bd1fc792303c3a43b9ca0a369ef76606fc"
+  },
+  "summary": {
+    "pass": 3,
+    "fail": 0,
+    "pending": 4
+  },
+  "checks": [
+    {
+      "id": "SOV-01",
+      "slug": "reconstruct-without-origin",
+      "status": "pass",
+      "reason": "adoption attestation reports status \"pass\"",
+      "attestation": {
+        "path": "distribution/evidence/adoption/latest.json",
+        "status": "pass"
+      }
+    },
+    {
+      "id": "SOV-02",
+      "slug": "forge-restore",
+      "status": "pass",
+      "reason": "bundle restored in a clean directory; HEAD commit and tree hashes match",
+      "restore": {
+        "sourceCommit": "130738bd1fc792303c3a43b9ca0a369ef76606fc",
+        "sourceTree": "59f0807aa9324aa28107dc8f9c518e9338900ea8",
+        "restoredCommit": "130738bd1fc792303c3a43b9ca0a369ef76606fc",
+        "restoredTree": "59f0807aa9324aa28107dc8f9c518e9338900ea8"
+      }
+    },
+    {
+      "id": "SOV-03",
+      "slug": "dependency-jurisdiction-inventory",
+      "status": "pass",
+      "reason": "lockfiles parsed; 41 external packages classified by distribution registry (v0 heuristic: registry is not code jurisdiction)",
+      "inventory": {
+        "bun": {
+          "ecosystem": "bun",
+          "totalExternal": 41,
+          "directExternal": 6,
+          "firstParty": 0,
+          "byRegistry": [
+            {
+              "registry": "npm",
+              "count": 41
+            }
+          ],
+          "nonStandard": [],
+          "packages": [
+            {
+              "name": "@biomejs/biome",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "@biomejs/cli-darwin-arm64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-darwin-x64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-linux-arm64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-linux-arm64-musl",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-linux-x64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-linux-x64-musl",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-win32-arm64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@biomejs/cli-win32-x64",
+              "version": "2.5.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@types/bun",
+              "version": "1.3.14",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "@types/node",
+              "version": "26.1.1",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-aix-ppc64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-darwin-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-darwin-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-freebsd-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-freebsd-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-arm",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-loong64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-mips64el",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-ppc64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-riscv64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-s390x",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-linux-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-netbsd-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-netbsd-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-openbsd-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-openbsd-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-sunos-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-win32-arm64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "@typescript/typescript-win32-x64",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "ajv",
+              "version": "8.20.0",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "ajv-formats",
+              "version": "3.0.1",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "bun-types",
+              "version": "1.3.14",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "entities",
+              "version": "8.0.0",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "fast-deep-equal",
+              "version": "3.1.3",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "fast-uri",
+              "version": "4.1.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "json-schema-traverse",
+              "version": "1.0.0",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "require-from-string",
+              "version": "2.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            },
+            {
+              "name": "typescript",
+              "version": "7.0.2",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": true
+            },
+            {
+              "name": "undici-types",
+              "version": "8.3.0",
+              "ecosystem": "bun",
+              "registry": "npm",
+              "direct": false
+            }
+          ]
+        },
+        "cargo": {
+          "ecosystem": "cargo",
+          "totalExternal": 0,
+          "directExternal": 0,
+          "firstParty": 0,
+          "byRegistry": [],
+          "nonStandard": [],
+          "packages": []
+        }
+      }
+    },
+    {
+      "id": "SOV-04",
+      "slug": "second-infrastructure-deploy",
+      "activation": "first runtime release publicly deployed",
+      "status": "pending",
+      "reason": "activation condition: first runtime release publicly deployed"
+    },
+    {
+      "id": "SOV-05",
+      "slug": "degraded-mode",
+      "activation": "first runtime release publicly deployed",
+      "status": "pending",
+      "reason": "activation condition: first runtime release publicly deployed"
+    },
+    {
+      "id": "SOV-06",
+      "slug": "data-export-restore",
+      "activation": "first application in service with product data",
+      "status": "pending",
+      "reason": "activation condition: first application in service with product data"
+    },
+    {
+      "id": "SOV-07",
+      "slug": "key-and-identity-rotation",
+      "activation": "operational secrets in service",
+      "status": "pending",
+      "reason": "activation condition: operational secrets in service"
+    }
+  ]
+}

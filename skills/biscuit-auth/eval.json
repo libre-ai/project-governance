@@ -1,0 +1,16 @@
+{
+  "skill": "biscuit-auth",
+  "positive": [
+    "Implement Biscuit authorization with authority blocks and attenuation in this axum service.",
+    "Write authorizer policies and Ed25519 key handling for a multi-tenant Biscuit token.",
+    "Debug why this Biscuit token is being denied by the authorizer policies."
+  ],
+  "negative": [
+    "Implement JWT-based authentication for this external API integration.",
+    "Set up an OAuth2 login redirect flow for a web frontend."
+  ],
+  "behavioral": {
+    "scenario": "An agent is asked how to rotate Biscuit signing keys or revoke a leaked token.",
+    "expected": "The skill points to references/rotation-revocation.md for the procedure instead of inlining it in SKILL.md, keeping the main file scoped to authority/attenuation/authorizer/policies."
+  }
+}

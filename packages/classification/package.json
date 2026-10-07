@@ -1,0 +1,33 @@
+{
+  "name": "@libre-ai/classification",
+  "version": "0.1.0",
+  "private": true,
+  "license": "EUPL-1.2",
+  "type": "module",
+  "description": "Data reliability classification (loop-security kernel K2): authoritative / derived / operational — operational data is never authority.",
+  "keywords": [
+    "libre-ai",
+    "classification",
+    "k2",
+    "authority",
+    "provenance"
+  ],
+  "homepage": "https://libre-ai.fr",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/libre-ai/project-governance.git"
+  },
+  "engines": {
+    "bun": ">=1.4.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check:bun": "bun ../../tools/quality/check-bun-minimum.ts",
+    "precheck": "bun run check:bun",
+    "check": "bun test src",
+    "pretest": "bun run check:bun",
+    "test": "bun test src"
+  }
+}

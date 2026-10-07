@@ -1,0 +1,934 @@
+{
+  "schemaVersion": "libre-ai.work-package-plan.v1",
+  "authority": "urn:libre-ai:plan:g1-work-packages",
+  "globalConstraints": [
+    "Security, quality and performance gates precede feature completeness.",
+    "Contracts and accepted specifications are read-only unless architecture and security approve a coordinated change.",
+    "No Clever Cloud resource, secret, DNS, database or environment is configured before G4.",
+    "No legacy Git history, compatibility layer or historical product database is imported.",
+    "Bun.serve, strict TypeScript and React 19 own web boundaries without an added web framework.",
+    "Rust is retained only behind a cataloged WIT, authz, proof, artifact or system-tooling boundary.",
+    "Applications never read or write another product database and never query across tenants.",
+    "Every branch is bounded by declared write paths and reports security, PII, tests and evidence before integration.",
+    "Authoring and review are separate passes for every schema, authorization, migration, release or deployment change.",
+    "ADR-0003 contract candidates use dedicated review-only passes per role on immutable commits; the same agent/session may act serially and CI is evidence, not a verdict.",
+    "ADR-0005 permits only the disabled public-fixture Notebook Gate B slice under the future WP-G3-N01 path before G3; this bounded owner exception grants no user data, feature activation, release, physical-evidence waiver or root-lockfile ownership.",
+    "Clever Cloud Paris EU remains the runtime target and production data never enters GitHub.",
+    "WP-G3-A01 remains blocked from orchestrator integration until WP-G2-A01 implementation and conformance review pass; the current Specification Lock and package definition authorize contracts and simulation-only control work, not a harness, Pi worker or real mission."
+  ],
+  "packages": [
+    {
+      "id": "WP-G2-T01",
+      "phase": "G2",
+      "name": "Production toolchain and dependency authority",
+      "objective": "Replace the bootstrap-only Bun canary with a qualified stable Rust-line release and remain the sole integrator of root version catalogs and lockfiles.",
+      "owners": ["toolchain", "release"],
+      "integrator": "release",
+      "writePaths": [
+        "package.json",
+        "bun.lock",
+        "bunfig.toml",
+        "tsconfig.json",
+        "biome.json",
+        "Cargo.toml",
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        "toolchains/**",
+        "docs/toolchain/**"
+      ],
+      "readAuthorities": [
+        "docs/decisions/DECISION-REGISTER.md",
+        "docs/toolchain/BUN-QUALIFICATION.md",
+        "toolchains/bun.json"
+      ],
+      "dependsOn": [],
+      "parallelGroup": "g2-0",
+      "risk": "critical",
+      "humanGates": ["toolchain-production-acceptance", "supply-chain-license-review"],
+      "acceptance": [
+        "A clean Linux x64 checkout verifies exact binaries, source, notices and checksums.",
+        "Bun, TypeScript, browser and Cargo gates pass without a bootstrap-only production exception.",
+        "Every later root dependency request is integrated here with exact version, licence, advisory and source evidence.",
+        "Failure leaves production and Clever provisioning explicitly blocked."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-C01",
+      "phase": "G2",
+      "name": "Contract SDK and boundary validators",
+      "objective": "Build disposable TypeScript and Rust projections plus runtime validators from the locked JSON Schema, OpenAPI, WIT and policy authorities.",
+      "owners": ["canonical-core"],
+      "integrator": "architecture",
+      "writePaths": ["packages/contracts/**", "crates/contract-types/**"],
+      "readAuthorities": [
+        "contracts/catalog.v1.json",
+        "contracts/COMPATIBILITY.md",
+        "contracts/fixtures/schema-fixtures.v1.json"
+      ],
+      "dependsOn": ["WP-G2-T01"],
+      "parallelGroup": "g2-1",
+      "risk": "high",
+      "humanGates": ["contract-conformance-review"],
+      "acceptance": [
+        "All cataloged schemas validate positive and negative vectors in TypeScript and Rust.",
+        "Generated projections are reproducible and clearly non-authoritative.",
+        "Unknown fields, versions and unresolved references fail closed."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-K01",
+      "phase": "G2",
+      "name": "Knowledge and ecosystem engine",
+      "objective": "Implement versioned Knowledge Objects, graph rules, provenance and deterministic public projections without importing legacy history.",
+      "owners": ["canonical-core", "architecture"],
+      "integrator": "architecture",
+      "writePaths": [
+        "ecosystem/objects/**",
+        "ecosystem/schemas/**",
+        "ecosystem/projections/**",
+        "crates/ecosystem-engine/**",
+        "packages/knowledge/**"
+      ],
+      "readAuthorities": [
+        "ecosystem/schemas/knowledge-object.schema.json",
+        "contracts/catalog.v1.json",
+        "docs/architecture/TARGET.md"
+      ],
+      "dependsOn": ["WP-G2-C01"],
+      "parallelGroup": "g2-2",
+      "risk": "medium",
+      "humanGates": [],
+      "acceptance": [
+        "Graph ingestion rejects invalid, cyclic-forbidden and untrusted authority transitions.",
+        "The same inputs produce byte-identical selected projections.",
+        "Legacy provenance remains SHA-referenced without Git history import."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-W01",
+      "phase": "G2",
+      "name": "Bun React web platform and design foundation",
+      "objective": "Deliver the direct Bun.serve application shell, React SSR/hydration/static modes, accessible primitives, local-first PWA support and canonical app template.",
+      "owners": ["web-platform", "design-system"],
+      "integrator": "web-platform",
+      "writePaths": [
+        "packages/web-platform/**",
+        "packages/design-system/**",
+        "distribution/templates/bun-app/**"
+      ],
+      "readAuthorities": [
+        "docs/architecture/BUN-APP-TEMPLATE.md",
+        "docs/architecture/TARGET.md",
+        "contracts/openapi/website.v1.yaml"
+      ],
+      "dependsOn": ["WP-G2-T01", "WP-G2-C01"],
+      "parallelGroup": "g2-2",
+      "risk": "high",
+      "humanGates": ["accessibility-foundation-review"],
+      "acceptance": [
+        "One template serves SSR, hydration, static and JSON routes through direct Bun.serve.",
+        "Keyboard, focus, reduced-motion, no-JS and three-engine browser fixtures pass.",
+        "No forbidden web framework, remote runtime asset or second lockfile is introduced."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-I01",
+      "phase": "G2",
+      "name": "OIDC and opaque browser session capability",
+      "objective": "Implement provider-neutral OIDC PKCE, opaque keyed-digest sessions, CSRF, fixation rotation, logout and browser-safe session projections.",
+      "owners": ["auth-web", "security"],
+      "integrator": "security",
+      "writePaths": ["packages/auth-web/**"],
+      "readAuthorities": [
+        "docs/specifications/IDENTITY-AUTHORIZATION.md",
+        "contracts/openapi/auth.v1.yaml",
+        "contracts/schemas/browser-session.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-C01", "WP-G2-W01"],
+      "parallelGroup": "g2-3",
+      "risk": "critical",
+      "humanGates": ["identity-threat-model-review", "browser-session-security-review"],
+      "acceptance": [
+        "State, nonce, PKCE, issuer, audience, expiry and replay negative vectors fail closed.",
+        "Cookie attributes, CSRF, rotation, idle/absolute expiry and logout pass real-browser tests.",
+        "Provider tokens, cookie values and CSRF secrets are absent from logs and storage projections."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-Z01",
+      "phase": "G2",
+      "name": "Biscuit authorization capability",
+      "objective": "Implement Ed25519 authority issuance, monotonic attenuation, deny-by-default authorizers, root-block revocation and two-key rotation in specialized Rust.",
+      "owners": ["authz-biscuit", "security"],
+      "integrator": "security",
+      "writePaths": ["crates/authz-biscuit/**"],
+      "readAuthorities": [
+        "docs/specifications/IDENTITY-AUTHORIZATION.md",
+        "contracts/authz/authority-v1.datalog",
+        "contracts/authz/sessions-v1.datalog",
+        "contracts/authz/missions-v1.datalog"
+      ],
+      "dependsOn": ["WP-G2-T01", "WP-G2-C01"],
+      "parallelGroup": "g2-2",
+      "risk": "critical",
+      "humanGates": ["authorization-policy-review", "key-rotation-review"],
+      "acceptance": [
+        "Minimal allow vectors pass and missing tenant, cross-tenant, wrong-role, wrong-operation and expiry vectors deny.",
+        "Attenuation cannot expand resource, operation, tenant, role or expiry.",
+        "Revocation-store outage and unknown key ID fail closed without logging token bytes."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-D01",
+      "phase": "G2",
+      "name": "Tenant data, RLS and retention platform",
+      "objective": "Provide Bun PostgreSQL adapters, isolated owner migrations, RLS context, Redis/Cellar ports, retention jobs and deletion receipts without provisioning infrastructure.",
+      "owners": ["data-platform", "security"],
+      "integrator": "architecture",
+      "writePaths": ["packages/data/**", "packages/retention/**"],
+      "readAuthorities": [
+        "docs/specifications/DATA-LIFECYCLE.md",
+        "contracts/data/retention.v1.json",
+        "contracts/schemas/deletion-receipt.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-C01", "WP-G2-I01", "WP-G2-Z01"],
+      "parallelGroup": "g2-4",
+      "risk": "critical",
+      "humanGates": ["rls-adversarial-review", "migration-and-deletion-review"],
+      "acceptance": [
+        "Two-tenant and missing-context tests deny every cross-owner or cross-tenant query.",
+        "Retention boundaries, configurable minima/maxima and active deletion produce valid evidence.",
+        "Restore replay cannot resurrect an accepted deletion and backups remain bounded to 35 days."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-P01",
+      "phase": "G2",
+      "name": "Proof and Artifact capabilities",
+      "objective": "Implement content-addressed manifests, Evidence Reports, release candidates and deterministic verification without granting artifact bytes authority over source contracts.",
+      "owners": ["proof", "artifact", "release"],
+      "integrator": "release",
+      "writePaths": ["crates/proof/**", "crates/artifact/**", "packages/evidence/**"],
+      "readAuthorities": [
+        "contracts/schemas/evidence-report.v1.schema.json",
+        "contracts/schemas/artifact-manifest.v1.schema.json",
+        "docs/specifications/SPECIFICATION-STANDARD.md"
+      ],
+      "dependsOn": ["WP-G2-T01", "WP-G2-C01"],
+      "parallelGroup": "g2-2",
+      "risk": "high",
+      "humanGates": ["evidence-and-release-review"],
+      "acceptance": [
+        "Manifest path traversal, digest mismatch and pass/fail inconsistency are refused.",
+        "Identical inputs produce identical manifests and verification output.",
+        "A release/build artifact cannot exist without a bound passing Evidence Report."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-S01",
+      "phase": "G2",
+      "name": "Pure specialized Rust and WASM product engines",
+      "objective": "Implement only the candidate Rust/WASM boundaries for Radar, Notebook canonicalization and crypto, Model Policy and Boussole; leave Context, agent orchestration and Practices scoring unimplemented.",
+      "owners": ["specialized-rust"],
+      "integrator": "architecture",
+      "writePaths": [
+        "crates/radar-engine/**",
+        "crates/notebook-core/**",
+        "crates/policy-core/**",
+        "crates/boussole-scoring/**"
+      ],
+      "readAuthorities": [
+        "contracts/catalog.v1.json",
+        "contracts/wit/radar-engine-v2/world.wit",
+        "contracts/wit/radar-engine-v2/PROFILE.md",
+        "contracts/wit/notebook-core-v2/world.wit",
+        "contracts/wit/notebook-core-v2/SEMANTICS.md",
+        "contracts/wit/policy-core-v2/world.wit",
+        "contracts/wit/policy-core-v2/SEMANTICS.md",
+        "contracts/wit/boussole-scoring-v2/world.wit",
+        "contracts/wit/boussole-scoring-v2/SEMANTICS.md",
+        "contracts/schemas/radar-normalized-feed.v1.schema.json",
+        "contracts/schemas/radar-normalized-item.v1.schema.json",
+        "contracts/schemas/radar-rule-evaluation.v1.schema.json",
+        "contracts/schemas/curation-rule-set.v2.schema.json",
+        "contracts/schemas/context-document.v2.schema.json",
+        "contracts/schemas/notebook-backup-seal-request.v2.schema.json",
+        "contracts/schemas/notebook-backup.v2.schema.json",
+        "contracts/schemas/policy-definition.v2.schema.json",
+        "contracts/schemas/policy-need.v2.schema.json",
+        "contracts/schemas/model-snapshot.v2.schema.json",
+        "contracts/schemas/policy-evaluation.v2.schema.json",
+        "contracts/schemas/public-vote-dataset.v2.schema.json",
+        "contracts/schemas/boussole-method.v2.schema.json",
+        "contracts/schemas/boussole-response-set.v2.schema.json",
+        "contracts/schemas/local-comparison.v2.schema.json"
+      ],
+      "dependsOn": ["WP-G2-T01", "WP-G2-C01"],
+      "parallelGroup": "g2-2",
+      "risk": "critical",
+      "humanGates": [
+        "g2-s01-architecture-relock",
+        "hostile-parser-security-review",
+        "notebook-security-review",
+        "notebook-cryptography-review",
+        "notebook-privacy-review",
+        "policy-separation-security-review",
+        "policy-privacy-review",
+        "boussole-security-review",
+        "boussole-methodology-review",
+        "boussole-privacy-review",
+        "rust-boundary-value-review"
+      ],
+      "acceptance": [
+        "Every retained product engine has cross-runtime golden vectors and an explicit TS/Rust boundary bound to a cataloged v2 WIT profile.",
+        "No product engine implementation starts while any of its read authorities remains candidate or lacks its independent named agent verdicts.",
+        "Pure WIT worlds import no network, storage, clock, randomness, identity or logging capability.",
+        "Radar enforces source-scoped identities and explicit input, output, item and depth budgets without partial results.",
+        "Notebook crypto passes independent Argon2id, AES-GCM, AAD, anti-oracle, zeroization and browser-budget review.",
+        "Policy proves human proposer/approver separation and Boussole public scoring remains release-disabled pending both hash-bound approvals.",
+        "No crates/context or crates/agent-orchestrator implementation exists in this package; notebook-core remains the sole ContextDocument canonicalization authority.",
+        "The reserved Practices scoring WIT remains unimplemented until a new approved package demonstrates a real invariant."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-Q01",
+      "phase": "G2",
+      "name": "Foundation integration and quality harness",
+      "objective": "Integrate the canonical foundation into clean-checkout CI, browser, security, supply-chain and deterministic reference-chain evidence.",
+      "owners": ["quality", "release", "security"],
+      "integrator": "release",
+      "writePaths": [".github/workflows/**", "tools/quality/**", "verification/harness/**"],
+      "readAuthorities": [
+        "GOALS.md",
+        "docs/architecture/TARGET.md",
+        "contracts/catalog.v1.json",
+        "prompts/02-foundation-build.md"
+      ],
+      "dependsOn": [
+        "WP-G2-K01",
+        "WP-G2-W01",
+        "WP-G2-I01",
+        "WP-G2-Z01",
+        "WP-G2-D01",
+        "WP-G2-P01",
+        "WP-G2-S01"
+      ],
+      "parallelGroup": "g2-5",
+      "risk": "high",
+      "humanGates": ["g2-foundation-acceptance"],
+      "acceptance": [
+        "A clean checkout exercises Bun.serve, React, contracts, RLS, Biscuit, WIT, Proof, Artifact and Playwright.",
+        "All licence, advisory, source, secret, accessibility and deterministic-build gates pass in shared CI.",
+        "No Clever resource or production claim exists."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G2-A01",
+      "phase": "G2",
+      "name": "Agent orchestration control core — simulation only",
+      "objective": "Implement the deterministic Rust control core for validated plans and authorizations, idempotent commands, causal events and monotone budgets against a fake harness, without launching workers or gaining process, filesystem, network, provider, secret or persistence capabilities.",
+      "owners": ["agent-orchestrator", "security"],
+      "integrator": "architecture",
+      "writePaths": ["crates/agent-orchestrator/**", "verification/agent-orchestrator/**"],
+      "readAuthorities": [
+        "docs/adr/0004-agent-orchestration-option-b-specification-lock.md",
+        "docs/rfcs/0001-agent-orchestration-option-b.md",
+        "contracts/agent-orchestration/SEMANTICS.md",
+        "contracts/schemas/execution-plan-body.v1.schema.json",
+        "contracts/schemas/execution-authorization.v1.schema.json",
+        "contracts/schemas/agent-contributor-lineage.v1.schema.json",
+        "contracts/schemas/agent-review-session-attestation.v1.schema.json",
+        "contracts/schemas/agent-review-quorum.v1.schema.json",
+        "contracts/schemas/orchestrator-control.v1.schema.json",
+        "contracts/schemas/orchestrator-event.v2.schema.json",
+        "contracts/schemas/harness-profile.v1.schema.json",
+        "contracts/schemas/harness-attestation.v1.schema.json",
+        "contracts/schemas/mission-record.v2.schema.json",
+        "contracts/authz/agent-runs-v1.datalog",
+        "contracts/schemas/evidence-report.v1.schema.json",
+        "contracts/schemas/artifact-manifest.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-T01", "WP-G2-C01", "WP-G2-Z01", "WP-G2-P01", "WP-G2-Q01"],
+      "parallelGroup": "g2-6",
+      "risk": "critical",
+      "humanGates": [
+        "agent-control-architecture-review",
+        "authorization-and-budget-security-review",
+        "france-eu-event-log-privacy-review",
+        "simulation-only-conformance-acceptance"
+      ],
+      "acceptance": [
+        "Plan, quorum, authorization, Biscuit and harness-attestation bindings fail closed before run ID allocation; the control core never computes or grants a Missions quorum.",
+        "Start, pause, resume and cancel are revisioned and idempotent; authorized cancel remains monotone while pause prevents every new simulated effect.",
+        "Event IDs, exact sequence, predecessor digests, identities, delta arithmetic and monotone totals reject gaps, divergent collisions, retries that restore budget and cross-tenant substitution.",
+        "Unknown keys, revoked authorization, authorization/causal-store outage and missing required controls refuse execution without reflecting tokens, identifiers, paths, findings or content in operational logs; nonce ownership remains exclusively in Missions.",
+        "The crate exposes no process, filesystem, network, provider, secret, persistence or Pi adapter; its fake harness and stores exist only under tests and verification fixtures.",
+        "TypeScript and Rust consume the same locked adversarial vectors and produce byte-identical closed reason codes for every covered case.",
+        "Proof and Artifact outputs remain content-addressed references; no event payload or log becomes a second evidence authority.",
+        "The package implements no durable or unbounded event ledger: it validates one transition plus a caller-supplied collision observation; replay storage and its explicit resource bounds remain a later package prerequisite for real use.",
+        "A clean dependency graph, Cargo deny, bounded property tests and deterministic replay pass without changing any locked authority or root dependency outside WP-G2-T01 integration.",
+        "No real mission, app integration, worker launch, sandbox claim, provider call, release or deployment is authorized by this package."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-W01",
+      "phase": "G3",
+      "name": "Website reconstruction",
+      "objective": "Build the deterministic public projection, correction history, feeds, sitemap and offline search from reviewed canonical content.",
+      "owners": ["website", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/website/**"],
+      "readAuthorities": [
+        "docs/apps/website.md",
+        "contracts/openapi/website.v1.yaml",
+        "contracts/schemas/public-projection.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-K01", "WP-G2-W01", "WP-G2-P01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "high",
+      "humanGates": ["public-corpus-release-review"],
+      "acceptance": [
+        "Two clean builds are byte-identical with zero unapproved remote request.",
+        "No-JS, keyboard, three-browser, feeds, sitemap, search and correction journeys pass.",
+        "Rollback atomically restores one complete prior artifact."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-P01",
+      "phase": "G3",
+      "name": "Practices reconstruction",
+      "objective": "Build offline responsible-practice journeys, local progress/export/delete and separately authorized reviewed activity publication.",
+      "owners": ["practices", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/practices/**"],
+      "readAuthorities": [
+        "docs/apps/practices.md",
+        "contracts/openapi/practices.v1.yaml",
+        "contracts/schemas/activity-definition.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-W01", "WP-G2-I01", "WP-G2-D01", "WP-G2-P01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "high",
+      "humanGates": ["activity-content-and-privacy-review"],
+      "acceptance": [
+        "One real reviewed activity works offline with sourced non-punitive feedback.",
+        "Progress export/delete works without account and raw answers never cross the network.",
+        "Generated or unreviewed activity publication fails closed."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-R01",
+      "phase": "G3",
+      "name": "Radar reconstruction",
+      "objective": "Build tenant-scoped subscription, hostile fetch, deterministic curation, replay, export and deletion with bounded workers.",
+      "owners": ["radar", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/radar/**"],
+      "readAuthorities": [
+        "docs/apps/radar.md",
+        "contracts/openapi/radar.v2.yaml",
+        "contracts/wit/radar-engine-v2/world.wit"
+      ],
+      "dependsOn": [
+        "WP-G2-W01",
+        "WP-G2-I01",
+        "WP-G2-Z01",
+        "WP-G2-D01",
+        "WP-G2-P01",
+        "WP-G2-S01",
+        "WP-G2-Q01"
+      ],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["ssrf-and-hostile-parser-review", "radar-retention-review"],
+      "acceptance": [
+        "SSRF, redirect, decompression, body, parser and time budgets reject malicious fixtures.",
+        "Duplicate jobs and replays produce one attributable decision per version.",
+        "Raw bodies are discarded or quarantined exactly under the retention policy."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-N01",
+      "phase": "G3",
+      "name": "Notebook reconstruction",
+      "objective": "Build a local-only encrypted block notebook with deterministic context preview/export, backup/restore conflicts and deletion.",
+      "owners": ["notebook", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/notebook/**"],
+      "readAuthorities": [
+        "docs/apps/notebook.md",
+        "contracts/schemas/context-document.v2.schema.json",
+        "contracts/schemas/notebook-backup.v2.schema.json",
+        "contracts/wit/notebook-core-v2/world.wit"
+      ],
+      "dependsOn": ["WP-G2-W01", "WP-G2-S01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["local-crypto-and-privacy-review"],
+      "acceptance": [
+        "Offline create/edit/search and exact preview/export survive browser reload.",
+        "Encrypted backup/restore rejects tampering and reports every divergent revision.",
+        "Network interception proves no note, index, response or key leaves the device."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-S01",
+      "phase": "G3",
+      "name": "Sessions reconstruction",
+      "objective": "Build tenant spaces, audience-safe contributions, reconnectable events, draft synthesis, human approval, export and deletion.",
+      "owners": ["sessions", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/sessions/**"],
+      "readAuthorities": [
+        "docs/apps/sessions.md",
+        "contracts/openapi/sessions.v1.yaml",
+        "contracts/authz/sessions-v1.datalog"
+      ],
+      "dependsOn": ["WP-G2-W01", "WP-G2-I01", "WP-G2-Z01", "WP-G2-D01", "WP-G2-P01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["audience-and-private-export-review", "sessions-authz-review"],
+      "acceptance": [
+        "Two-instance disconnect/reconnect replays no duplicate mutation.",
+        "Private contributions never enter session exports or synthesis without explicit audience allowance.",
+        "Provider/Redis degradation preserves manual outcomes and authoritative event history."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-M01",
+      "phase": "G3",
+      "name": "Model Policy reconstruction",
+      "objective": "Build sourced policy/snapshot authoring and deterministic local eligibility evaluation with unknown facts denied or indeterminate.",
+      "owners": ["model-policy", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/model-policy/**"],
+      "readAuthorities": [
+        "docs/apps/model-policy.md",
+        "contracts/openapi/model-policy.v2.yaml",
+        "contracts/wit/policy-core-v2/world.wit"
+      ],
+      "dependsOn": [
+        "WP-G2-W01",
+        "WP-G2-I01",
+        "WP-G2-Z01",
+        "WP-G2-D01",
+        "WP-G2-P01",
+        "WP-G2-S01",
+        "WP-G2-Q01"
+      ],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["policy-separation-and-provenance-review"],
+      "acceptance": [
+        "Rust/WASM and independent reference vectors produce identical traces and hashes.",
+        "Unknown facts never produce eligible and origin is never treated as jurisdiction.",
+        "Restricted datasets are cited/digested without unauthorized redistribution."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-B01",
+      "phase": "G3",
+      "name": "Boussole reconstruction",
+      "objective": "Build local transparent comparison over sourced public votes while keeping personal responses off every server and public score disabled by default.",
+      "owners": ["boussole", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/boussole/**"],
+      "readAuthorities": [
+        "docs/apps/boussole.md",
+        "contracts/schemas/public-vote-dataset.v2.schema.json",
+        "contracts/schemas/boussole-method.v2.schema.json",
+        "contracts/wit/boussole-scoring-v2/world.wit"
+      ],
+      "dependsOn": ["WP-G2-W01", "WP-G2-P01", "WP-G2-S01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["independent-methodological-approval", "france-eu-legal-privacy-approval"],
+      "acceptance": [
+        "Golden vectors expose denominator, omitted votes and per-statement contributions.",
+        "Network interception proves zero response/result transmission and local deletion works.",
+        "Public scoring remains release-disabled without both hash-bound independent approvals."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-F01",
+      "phase": "G3",
+      "name": "Specifications reconstruction",
+      "objective": "Build tenant specification workspaces, attributable review, immutable accepted packages and planning-only handoffs.",
+      "owners": ["specifications", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/specifications/**"],
+      "readAuthorities": [
+        "docs/apps/specifications.md",
+        "contracts/openapi/specifications.v1.yaml",
+        "contracts/schemas/spec-package.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-W01", "WP-G2-I01", "WP-G2-Z01", "WP-G2-D01", "WP-G2-P01", "WP-G2-Q01"],
+      "parallelGroup": "g3-1",
+      "risk": "high",
+      "humanGates": ["spec-package-and-handoff-review"],
+      "acceptance": [
+        "A real package is refused with open decisions then accepted immutably after evidence.",
+        "Concurrent stale revisions and cross-tenant references fail.",
+        "Every emitted handoff contains only the plan capability and exact package digest."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-A01",
+      "phase": "G3",
+      "name": "Missions reconstruction",
+      "objective": "Build mission proposal, risk, observation and intervention with the locked v1 human-verdict baseline plus the locked v2 two-agent quorum workflow, without executing tools in the web app.",
+      "owners": ["missions", "experiences"],
+      "integrator": "product",
+      "writePaths": ["apps/missions/**"],
+      "readAuthorities": [
+        "docs/apps/missions.md",
+        "contracts/openapi/missions.v1.yaml",
+        "contracts/openapi/missions.v2.yaml",
+        "contracts/authz/missions-v1.datalog",
+        "contracts/authz/agent-runs-v1.datalog",
+        "contracts/agent-orchestration/SEMANTICS.md"
+      ],
+      "dependsOn": [
+        "WP-G2-W01",
+        "WP-G2-I01",
+        "WP-G2-Z01",
+        "WP-G2-D01",
+        "WP-G2-P01",
+        "WP-G2-Q01",
+        "WP-G2-A01"
+      ],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": [
+        "mission-state-and-authz-review",
+        "orchestrator-budget-review",
+        "agent-orchestration-v2-conformance"
+      ],
+      "acceptance": [
+        "Every v1/v2 state and role transition, stale revision and forged event vector is exercised without reinterpreting a v1 approval as a v2 quorum.",
+        "Author, reviewer, orchestrator and harness credentials can perform only their exact operations and cannot fabricate quorum, self-validate or cross tenant.",
+        "A bounded simulated v2 mission blocks on budget and reaches technical validation only after two eligible reviewers approve the exact result digest; protected human gates remain additive.",
+        "The web app executes no tool and owns no orchestrator runtime state; real mission execution, sandbox, Pi worker and provider integration remain blocked until separate harness/worker packages and conformance gates are approved."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-X01",
+      "phase": "G3",
+      "name": "Specifications to Missions evidence chain",
+      "objective": "Continuously integrate accepted SpecPackage, planning handoff, mission, orchestrator event, Evidence Report and Artifact manifest end to end.",
+      "owners": ["architecture", "quality"],
+      "integrator": "architecture",
+      "writePaths": ["verification/chains/**"],
+      "readAuthorities": [
+        "contracts/schemas/spec-package.v1.schema.json",
+        "contracts/schemas/agent-handoff.v1.schema.json",
+        "contracts/schemas/mission-record.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G3-F01", "WP-G3-A01", "WP-G2-P01"],
+      "parallelGroup": "g3-2",
+      "risk": "high",
+      "humanGates": ["reference-chain-acceptance"],
+      "acceptance": [
+        "One immutable digest chain verifies from specification through human mission verdict.",
+        "Any substituted package, event, evidence or artifact digest fails.",
+        "No planning handoff grants an execution operation."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-X02",
+      "phase": "G3",
+      "name": "Cross-application tenant and data conformance",
+      "objective": "Run adversarial session, Biscuit, RLS, retention, deletion, restore and zero-content-log vectors across every server-backed application.",
+      "owners": ["security", "data-platform", "quality"],
+      "integrator": "security",
+      "writePaths": ["verification/security-data/**"],
+      "readAuthorities": [
+        "docs/specifications/IDENTITY-AUTHORIZATION.md",
+        "docs/specifications/DATA-LIFECYCLE.md",
+        "contracts/data/retention.v1.json"
+      ],
+      "dependsOn": ["WP-G3-P01", "WP-G3-R01", "WP-G3-S01", "WP-G3-M01", "WP-G3-F01", "WP-G3-A01"],
+      "parallelGroup": "g3-2",
+      "risk": "critical",
+      "humanGates": ["cross-tenant-adversarial-acceptance", "deletion-restore-acceptance"],
+      "acceptance": [
+        "Missing/divergent tenant and every cross-app table access fail at policy and RLS layers.",
+        "Deletion and retention evidence covers PostgreSQL, Redis, search, blobs and restore replay.",
+        "Proxy and application logs contain no user/session ID, token, content or sensitive local response."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-X03",
+      "phase": "G3",
+      "name": "Cross-application browser and accessibility qualification",
+      "objective": "Qualify all critical journeys across Chromium, Firefox, WebKit, mobile viewport, keyboard, no-JS/offline and degraded dependencies.",
+      "owners": ["quality", "accessibility", "experiences"],
+      "integrator": "quality",
+      "writePaths": ["verification/experiences/**"],
+      "readAuthorities": [
+        "docs/specifications/SPECIFICATION-STANDARD.md",
+        "docs/apps/website.md",
+        "docs/apps/missions.md"
+      ],
+      "dependsOn": [
+        "WP-G3-W01",
+        "WP-G3-P01",
+        "WP-G3-R01",
+        "WP-G3-N01",
+        "WP-G3-S01",
+        "WP-G3-M01",
+        "WP-G3-B01",
+        "WP-G3-F01",
+        "WP-G3-A01"
+      ],
+      "parallelGroup": "g3-2",
+      "risk": "high",
+      "humanGates": ["accessibility-and-browser-acceptance"],
+      "acceptance": [
+        "Every critical journey passes keyboard and three-engine automation with explicit state labels.",
+        "Offline/local and provider/cache outage modes preserve safety and prior data.",
+        "Performance budgets are measured on production-like artifacts without third-party analytics."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-H01",
+      "phase": "G3",
+      "name": "Agent harness — attested execution confinement",
+      "objective": "Realize the confinement boundary a worker cannot argue its way out of: profile resolution and digesting, filesystem canonicalization with symlink policy, bounded outputs with a fail-closed scan, and a signed attestation binding requested profile, effective controls, worker manifests and kernel capabilities. Local process confinement only; network, secrets and providers stay closed.",
+      "owners": ["security", "platform"],
+      "integrator": "security",
+      "writePaths": ["crates/agent-harness/**"],
+      "readAuthorities": [
+        "docs/apps/harness.md",
+        "docs/specifications/LOOP-SECURITY-KERNEL.md",
+        "docs/adr/0004-agent-orchestration-option-b-specification-lock.md",
+        "docs/adr/0018-wave-3-opening-orchestrator-and-harness.md",
+        "contracts/schemas/harness-profile.v1.schema.json",
+        "contracts/schemas/harness-attestation.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-Q01", "WP-G2-Z01"],
+      "parallelGroup": "g3-0",
+      "risk": "critical",
+      "humanGates": ["layer-2-bootstrap-security-merge"],
+      "acceptance": [
+        "Every refusal code of the specification is reachable by an adversarial test written before the control it attacks.",
+        "A symlink and a path traversal escaping the workspace root are both refused after canonicalization, on the host's real semantics.",
+        "No attestation is emitted with an incomplete binding or without a signature; requested and effective controls are recorded as distinct fields.",
+        "An attestation verifies independently from the run that produced it, given only the profile digest and the public key.",
+        "A capability closed by ADR-0018 D2 is refused even when the profile declares it."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-O01",
+      "phase": "G3",
+      "name": "Orchestrator runtime — governed agent run control",
+      "objective": "Turn an authorized execution plan into a bounded, observable run: consume execution authorizations issued by Missions, enforce agent facts and per-agent revocation fail-closed, apply control-document budgets and liveness limits, append an immutable event chain, and halt with a decision dossier. Capabilities land in a separate crate so the accepted simulation-only core is not widened.",
+      "owners": ["platform", "security"],
+      "integrator": "platform",
+      "writePaths": [
+        "crates/agent-orchestrator-run/**",
+        "Cargo.toml",
+        "Cargo.lock",
+        "package.json",
+        "README.md",
+        "docs/apps/orchestrator.md",
+        "project.v1.yaml",
+        ".github/workflows/ci.yml",
+        "docs/reviews/orchestrator-run-control-persistence/**",
+        "tools/quality/rust-coverage-gate.test.ts",
+        "verification/agent-orchestrator/check-run-capabilities.ts",
+        "verification/agent-orchestrator/run-capability-boundary.test.ts",
+        "verification/agent-orchestrator/with-postgres.sh",
+        "verification/agent-orchestrator/benchmark-memory.sh",
+        "verification/agent-orchestrator/review-evidence.test.ts"
+      ],
+      "readAuthorities": [
+        "docs/apps/orchestrator.md",
+        "docs/specifications/LOOP-SECURITY-KERNEL.md",
+        "docs/adr/0004-agent-orchestration-option-b-specification-lock.md",
+        "docs/adr/0018-wave-3-opening-orchestrator-and-harness.md",
+        "contracts/schemas/orchestrator-control.v1.schema.json",
+        "contracts/schemas/orchestrator-event.v2.schema.json",
+        "contracts/schemas/execution-authorization.v1.schema.json",
+        "contracts/schemas/execution-plan-body.v1.schema.json"
+      ],
+      "dependsOn": ["WP-G2-Q01", "WP-G2-D01", "WP-G2-A01", "WP-G3-H01", "WP-G3-O02"],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["layer-2-bootstrap-security-merge"],
+      "acceptance": [
+        "A run cannot open without an execution authorization whose plan digest matches the plan body; self-authorization is refused.",
+        "Cross-tenant run access is denied at the storage layer, proven by a two-tenant integration test.",
+        "Replaying an event chain reconstructs run state byte-identically, and a broken predecessor digest is refused.",
+        "No step executes without a harness attestation binding the profile that was requested.",
+        "Store concurrency, RLS, need-to-know exports, retention and deletion/restore are qualified per ADR-0004 §6."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G3-O02",
+      "phase": "G3",
+      "name": "Orchestrator native authorized-execution core",
+      "objective": "Execute the locked graph, causal replay, human-decision, generation-transfer and effect-attestation semantics as deterministic pure Rust decisions without opening a runtime capability.",
+      "owners": ["platform", "security"],
+      "integrator": "platform",
+      "writePaths": [
+        "src/authorized_execution/**",
+        "tests/authorized_execution_*.rs",
+        "tests/support/**",
+        "benches/authorized_execution_replay.rs",
+        "bun.lock",
+        "docs/compat/**",
+        "docs/reviews/authorized-execution-native-core/**",
+        "tools/quality/authorized-execution-authority.test.ts",
+        "tests/compat_surface.rs",
+        "tests/compat/**",
+        "src/lib.rs"
+      ],
+      "readAuthorities": [
+        "docs/adr/0032-langgraph-pattern-mining-boundary.md",
+        "docs/adr/0034-authorized-execution-graph-boundary.md",
+        "docs/adr/0036-authorized-execution-specification-lock.md",
+        "contracts/fixtures/authorized-execution-v1/semantic-vectors.v1.json",
+        "contracts/fixtures/schema-fixtures.v1.json"
+      ],
+      "dependsOn": ["WP-G2-C01"],
+      "parallelGroup": "g3-1",
+      "risk": "critical",
+      "humanGates": ["authorized-execution-native-core-security-merge"],
+      "acceptance": [
+        "The exact SDK Rust and Contracts lock-authority commits are pinned and verified directly from the checkout.",
+        "All 54 locked semantic vectors execute independently in Rust with their literal outcomes and exact domain inventory.",
+        "Replay is deterministic, routing is closed and declaration-order independent, budgets are monotone, and unavailable observations refuse closed.",
+        "Five fake-harness crash cut points prove no blind retry, no false success and at most one fake external commit.",
+        "The source capability gate proves no I/O, clock, secret, persistence, provider or framework capability entered the crate.",
+        "Rust tests, clippy, benchmark, Bun gates, license/reuse gates, role-separated review and feature/post-merge CI are green."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G4-I01",
+      "phase": "G4",
+      "name": "Clever Cloud EU integration environment",
+      "objective": "Only after G3 acceptance, configure the minimum Paris EU applications, PostgreSQL, Redis, Cellar, DNS, secrets and observability required by the global candidate.",
+      "owners": ["operations", "security"],
+      "integrator": "operations",
+      "writePaths": ["infrastructure/clever-cloud/**"],
+      "readAuthorities": [
+        "docs/architecture/TARGET.md",
+        "docs/specifications/DATA-LIFECYCLE.md",
+        "prompts/04-integration-cutover.md"
+      ],
+      "dependsOn": ["WP-G3-X01", "WP-G3-X02", "WP-G3-X03"],
+      "parallelGroup": "g4-1",
+      "risk": "critical",
+      "humanGates": ["g4-provisioning-approval", "secret-and-eu-residency-review"],
+      "acceptance": [
+        "All resources are minimum-sized, Paris/EU-resident and recorded without secret values.",
+        "Private networks, TLS, backup ceilings and least-privilege identities verify.",
+        "Destroy/recreate procedures preserve evidence and never use historical production data."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G4-H01",
+      "phase": "G4",
+      "name": "Global deployed hardening and rollback",
+      "objective": "Qualify the single integrated candidate for security, privacy, accessibility, performance, operations, migration, backup, restore and rollback.",
+      "owners": ["quality", "security", "operations"],
+      "integrator": "release",
+      "writePaths": ["verification/global/**"],
+      "readAuthorities": [
+        "GOALS.md",
+        "docs/specifications/SPECIFICATION-STANDARD.md",
+        "contracts/catalog.v1.json"
+      ],
+      "dependsOn": ["WP-G4-I01"],
+      "parallelGroup": "g4-2",
+      "risk": "critical",
+      "humanGates": ["global-release-candidate-acceptance", "rollback-and-restore-approval"],
+      "acceptance": [
+        "The deployed candidate passes all local/CI evidence plus external network and browser smoke.",
+        "Backup restore replays deletions and rollback restores compatible artifacts without data resurrection.",
+        "SBOM, provenance, operational runbooks and incident paths bind one immutable candidate."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G4-C01",
+      "phase": "G4",
+      "name": "Single global cutover",
+      "objective": "Perform one approved switch of public surfaces to the qualified candidate with observable rollback and no product-by-product compatibility phase.",
+      "owners": ["release", "operations", "product"],
+      "integrator": "release",
+      "writePaths": ["distribution/releases/**", "docs/operations/**"],
+      "readAuthorities": [
+        "docs/transformation/BIG-BANG.md",
+        "prompts/04-integration-cutover.md",
+        "verification/global/**"
+      ],
+      "dependsOn": ["WP-G4-H01"],
+      "parallelGroup": "g4-3",
+      "risk": "critical",
+      "humanGates": ["single-cutover-approval"],
+      "acceptance": [
+        "One immutable release manifest names every app, contract, migration and evidence digest.",
+        "Public switching and rollback checkpoints are observed without partial product cutovers.",
+        "Legacy archives remain read-only and no compatibility endpoint survives."
+      ],
+      "definitionStatus": "locked"
+    },
+    {
+      "id": "WP-G5-D01",
+      "phase": "G5",
+      "name": "Sovereign distribution and independent reproduction",
+      "objective": "Publish one-way projections, packages, documentation, context packs and verification evidence that an independent actor can reproduce.",
+      "owners": ["distribution", "release"],
+      "integrator": "release",
+      "writePaths": [
+        "distribution/projections/**",
+        "distribution/packages/**",
+        "docs/distribution/**"
+      ],
+      "readAuthorities": [
+        "contracts/catalog.v1.json",
+        "distribution/releases/**",
+        "docs/architecture/TARGET.md"
+      ],
+      "dependsOn": ["WP-G4-C01"],
+      "parallelGroup": "g5-1",
+      "risk": "high",
+      "humanGates": ["distribution-and-license-approval"],
+      "acceptance": [
+        "An independent clean environment reconstructs and verifies every published capability.",
+        "All projections are one-way, content-addressed and carry licence/provenance notices.",
+        "No projection becomes a second writable authority or leaks secrets/private data."
+      ],
+      "definitionStatus": "locked"
+    }
+  ]
+}

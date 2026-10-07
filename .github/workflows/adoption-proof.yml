@@ -1,0 +1,91 @@
+name: Adoption proof
+
+# Positioning L3 — proof of independent appropriability. Weekly blank-room
+# reproduction of the PUBLIC repository: anonymous clone, credential-free
+# environment, the documented reference chain. The attestation (with its
+# friction log — the objective readability backlog) is published as a run
+# artifact and in the job summary.
+#
+# The loop reproduces libre-ai/governance itself (verification/adoption/
+# reproduce.ts carries the reasoning and the migration citations for why —
+# it cloned the now-frozen libre-ai/libre-ai hub until 2026-08-19, which is
+# why the previous three scheduled runs failed with "Module not found").
+#
+# Deliberately secret-free: the loop proves that anonymous public access is
+# sufficient, so no secret is configured and the default GITHUB_TOKEN is
+# never exported to the reproduction script (the script additionally builds
+# a deny-by-default child environment, see verification/adoption/cleanroom.ts).
+# Attestations produced here do NOT auto-push to main (branch protection);
+# see verification/adoption/README.md for how a CI attestation becomes a
+# committed evidence file.
+on:
+  schedule:
+    # Weekly; minute deliberately off :00/:30 to avoid the scheduler's
+    # top-of-hour congestion.
+    - cron: "41 5 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  reproduce:
+    name: Blank-room reproduction loop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      # No Rust toolchain, no Playwright browser install here: governance's
+      # post-γ FOUNDATION_CHAIN (verification/harness/reference-chain.ts)
+      # spawns neither `cargo` nor a browser engine — see its module doc for
+      # where those chain steps went. The loop's opportunistic toolchain
+      # passthrough (verification/adoption/cleanroom.ts) still resolves
+      # CARGO_HOME/RUSTUP_HOME/PLAYWRIGHT_BROWSERS_PATH when present on the
+      # runner, so a future chain step can reuse it without a workflow change.
+      - name: Run the blank-room reproduction loop
+        run: bun verification/adoption/reproduce.ts --out "$RUNNER_TEMP/adoption-evidence"
+      - name: Publish the attestation to the job summary
+        # A failed reproduction is still evidence — publish it too.
+        if: always()
+        run: |
+          shopt -s nullglob
+          for report in "$RUNNER_TEMP"/adoption-evidence/*.md; do
+            cat "$report" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: adoption-attestation
+          path: ${{ runner.temp }}/adoption-evidence/
+          if-no-files-found: warn
+      # A red run here is only visible to someone who opens the Actions tab
+      # (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique" — "absence
+      # de ligne récente" is its own failure mode). One red run stays a run;
+      # two in a row files a deduplicated governance issue.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Adoption proof
+          WORKFLOW_FILE: adoption-proof.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Adoption proof
+          WORKFLOW_FILE: adoption-proof.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve
