@@ -63,11 +63,11 @@
       "last_verified_on": "2026-10-07"
     },
     {
-      "repository": "libre-ai/personal-knowledge-notebook",
-      "project": "personal-knowledge-notebook",
+      "repository": "libre-ai/personal-knowledge-workspace",
+      "project": "personal-knowledge-workspace",
       "kind": "product",
       "layer": "couche-1",
-      "summary": "personal-knowledge-notebook: recovered sources with documentary integration under review.",
+      "summary": "personal-knowledge-workspace: recovered sources with documentary integration under review.",
       "display": "Avancement non calculable — périmètre à clarifier",
       "maturity": "idea",
       "confidence": "medium",

@@ -79,7 +79,9 @@ un état. Sa maturité et sa date viennent exclusivement de `project.v1.yaml`.
 Cette projection exhaustive suit l'inventaire courant sans graver son décompte
 dans la prose. Ses lignes sont dérivées des produits de
 `ecosystem/portfolio.v1.json` : « Libre AI » suivi du nom du dépôt, avec
-l'élision déjà signée du préfixe « ai- ».
+l'élision déjà signée du préfixe « ai- ». Une seule exception nommée :
+`libre-ai/personal-knowledge-workspace` porte « Libre AI Knowledge Workspace »
+(LEXICON §14), sans le qualificatif `personal` du nom de dépôt.
 
 <!-- libre-ai:brand:product-family:begin -->
 | Repository | Nom public |
@@ -88,7 +90,7 @@ l'élision déjà signée du préfixe « ai- ».
 | libre-ai/ai-model-policy | Libre AI Model Policy |
 | libre-ai/ai-practice-workbench | Libre AI Practice Workbench |
 | libre-ai/learning-session-facilitation | Libre AI Learning Session Facilitation |
-| libre-ai/personal-knowledge-notebook | Libre AI Personal Knowledge Notebook |
+| libre-ai/personal-knowledge-workspace | Libre AI Knowledge Workspace |
 | libre-ai/information-feed-filter | Libre AI Information Feed Filter |
 | libre-ai/travel-itinerary-planner | Libre AI Travel Itinerary Planner |
 <!-- libre-ai:brand:product-family:end -->

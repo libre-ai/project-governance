@@ -79,8 +79,8 @@
       ],
       "check": [["bun", "run", "check"]]
     },
-    "personal-knowledge-notebook": {
-      "repository": "libre-ai/personal-knowledge-notebook",
+    "personal-knowledge-workspace": {
+      "repository": "libre-ai/personal-knowledge-workspace",
       "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
       "dependencies": [
         "project-governance",
@@ -181,7 +181,7 @@
     "ai-model-policy",
     "ai-practice-workbench",
     "learning-session-facilitation",
-    "personal-knowledge-notebook",
+    "personal-knowledge-workspace",
     "information-feed-filter",
     "travel-itinerary-planner",
     "collaborative-data-sync",

@@ -17,7 +17,7 @@ TARGETS = (
     "ai-model-policy",
     "ai-practice-workbench",
     "learning-session-facilitation",
-    "personal-knowledge-notebook",
+    "personal-knowledge-workspace",
     "information-feed-filter",
     "travel-itinerary-planner",
     "project-website",
@@ -26,7 +26,7 @@ GATES = ("root", "native", "wasm", "e2e")
 E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
     "ai-practice-workbench": ("apps/practices", "test:e2e"),
-    "personal-knowledge-notebook": ("apps/notebook", "test:e2e"),
+    "personal-knowledge-workspace": ("apps/notebook", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }
 
@@ -54,12 +54,12 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
         for kind in gates:
             if kind == "root":
                 add(name, kind, "bun", ["run", "check"])
-            elif kind == "native" and name in ("ai-model-policy", "personal-knowledge-notebook"):
+            elif kind == "native" and name in ("ai-model-policy", "personal-knowledge-workspace"):
                 add(name, kind, "cargo", ["test", "--locked", "--offline"])
             elif kind == "wasm" and name == "ai-model-policy":
                 add(name, kind, "node", ["tools/quality/build-policy-core-wasm.ts"])
                 add(name, kind, "bun", ["tools/quality/policy-core-wasm-conformance.ts"])
-            elif kind == "wasm" and name == "personal-knowledge-notebook":
+            elif kind == "wasm" and name == "personal-knowledge-workspace":
                 add(name, kind, "node", ["tools/qualification/notebook-core-v2/build.ts"])
             elif kind == "e2e" and name in E2E:
                 child, script = E2E[name]
@@ -157,7 +157,7 @@ def main() -> int:
         for step in plan["steps"]:
             child_environment = environment.copy()
             qualified_build = step["gate"] == "wasm" or (
-                step["target"] == "personal-knowledge-notebook" and step["gate"] == "e2e"
+                step["target"] == "personal-knowledge-workspace" and step["gate"] == "e2e"
             )
             # The Rust setup action exports this default. Qualification builds
             # derive controls from repository inputs; all unexpected controls
