@@ -36,6 +36,16 @@ import { concludeGate, GateReport } from "./gate-report";
  *    control point I-17 requires; this gate only makes forgetting to cite it
  *    impossible to merge silently).
  *
+ * `ecosystem/FORGOTTEN.yaml` joined the gated surface on 2026-10-08 (owner
+ * decision Y13): ADR-0019 §2 makes every eviction carry a dated owner
+ * arbitration, and its `decided_by: owner` / `decided_on:` fields are written
+ * by the same hand that writes the entry — they record the claim, they are
+ * not evidence of it. The pull request that registers an eviction cites the
+ * arbitration the same way a doctrine change does. The three pull requests
+ * that touched the register before this date (#4, #10, #17) carried neither
+ * form; the gate judges the diff of the pull request under review, so they
+ * are not re-evaluated.
+ *
  * Runs only on `pull_request` events: the diff against the PR's base and the
  * PR description both exist there. A `push` to `main` only ever happens
  * through a protected-branch merge that already passed this gate at PR time,
@@ -46,6 +56,19 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^docs\/adr\//,
   /^docs\/decisions\/INVARIANTS\.md$/,
   /^docs\/decisions\/DECISION-REGISTER\.md$/,
+  /^ecosystem\/FORGOTTEN\.yaml$/,
+];
+
+/**
+ * The same surface as git pathspecs, for the diff the evidence is searched in.
+ * One entry per pattern above — the test suite holds the two lists together,
+ * so a path cannot be gated without its diff being read.
+ */
+export const GATED_PATHSPECS: readonly string[] = [
+  "docs/adr",
+  "docs/decisions/INVARIANTS.md",
+  "docs/decisions/DECISION-REGISTER.md",
+  "ecosystem/FORGOTTEN.yaml",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */
@@ -86,9 +109,7 @@ export function evaluateReviewEvidence(
   const report = new GateReport();
   const gated = touchesGatedPaths(changedPaths);
   if (gated.length === 0) {
-    report.allowEmpty(
-      "this run touches none of docs/adr/**, docs/decisions/INVARIANTS.md or docs/decisions/DECISION-REGISTER.md",
-    );
+    report.allowEmpty(`this run touches none of ${GATED_PATHSPECS.join(", ")}`);
     return report;
   }
 
@@ -156,15 +177,7 @@ if (import.meta.main) {
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    const diff = sh([
-      "git",
-      "diff",
-      `origin/${baseRef}...HEAD`,
-      "--",
-      "docs/adr",
-      "docs/decisions/INVARIANTS.md",
-      "docs/decisions/DECISION-REGISTER.md",
-    ]);
+    const diff = sh(["git", "diff", `origin/${baseRef}...HEAD`, "--", ...GATED_PATHSPECS]);
     const prBody = await readPullRequestBody();
     concludeGate("Review evidence", evaluateReviewEvidence(changedPaths, prBody, diff.stdout));
   }
