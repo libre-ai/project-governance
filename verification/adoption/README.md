@@ -17,7 +17,7 @@ independent components feed `distribution/evidence/adoption/`.
    `PLAYWRIGHT_BROWSERS_PATH`); every token, key and ambient identity is
    removed, and `GIT_TERMINAL_PROMPT=0` turns any authentication attempt into
    a loud failure;
-2. anonymous `git clone --depth 1 https://github.com/libre-ai/governance`
+2. anonymous `git clone --depth 1 https://github.com/libre-ai/project-governance`
    (shallow: the loop proves the published HEAD, no chain step needs history,
    and the cloned sha is recorded);
 3. `bun install --frozen-lockfile` — the committed lockfile must suffice;
