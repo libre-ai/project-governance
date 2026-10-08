@@ -40,9 +40,13 @@ describe("spliceStatusSection", () => {
 
 describe("skipMessage", () => {
   test("names the absent secret in the exact 'skipped:' form the inventory documents", () => {
-    const message = skipMessage("/tmp/healed/README.md");
+    const message = skipMessage([
+      { path: "profile/README.md", writtenTo: "/tmp/healed/profile-README.md" },
+      { path: "profile/README.fr.md", writtenTo: "/tmp/healed/profile-README.fr.md" },
+    ]);
     expect(message).toStartWith(`skipped: secret ${HEAL_SECRET} absent`);
-    expect(message).toContain("/tmp/healed/README.md");
+    expect(message).toContain("profile/README.md to /tmp/healed/profile-README.md");
+    expect(message).toContain("profile/README.fr.md to /tmp/healed/profile-README.fr.md");
   });
 });
 
