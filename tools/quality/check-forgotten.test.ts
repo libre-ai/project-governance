@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import {
+  buildReport,
+  EMPTY_REGISTER_NOTE,
+  type Finding,
   type ForgottenRegister,
   findForbiddenCitations,
   findResurrections,
   findWildForgetting,
+  memoizeResolver,
   parseRegister,
+  REGISTER_PATH,
 } from "./check-forgotten";
+import { renderGateReport } from "./gate-report";
 
 const REGISTER: ForgottenRegister = {
   entries: [
@@ -21,6 +27,15 @@ const REGISTER: ForgottenRegister = {
     },
   ],
   citation_allowlist: ["ecosystem/FORGOTTEN.yaml"],
+};
+
+const SHARED_ANCHOR: ForgottenRegister = {
+  entries: [
+    { id: "forgotten.one", evicted_paths: ["docs/dead/tree/"], recoverable_at: "cafebabe" },
+    { id: "forgotten.two", evicted_paths: ["prompts/done.md"], recoverable_at: "cafebabe" },
+    { id: "forgotten.three", evicted_paths: ["docs/dead/tree/"], recoverable_at: "cafebabe" },
+  ],
+  citation_allowlist: [],
 };
 
 describe("anti-resurrection", () => {
@@ -93,6 +108,123 @@ describe("anti-wild-forgetting", () => {
   });
 });
 
+// The defect these two describe, measured on 2026-10-08: success was one
+// `report.check(…, true, …)` with a literal `true`. It covered four entries and
+// fifty-seven evicted files, and a register reduced to `entries: []` produced
+// the same single true assertion with exit 0. The eviction recorded that day
+// (`forgotten.migration-drift-gate`) rests on this gate, so the guard against a
+// resurrection could not see its own emptiness.
+describe("the verdict counts what it covers", () => {
+  test("one assertion per entry, each named by its entry", () => {
+    const report = buildReport(REGISTER, []);
+
+    expect(report.asserted).toBe(2);
+    expect(report.checks.map((check) => check.item)).toEqual(["forgotten.tree", "forgotten.file"]);
+    expect(report.outcome).toBe("pass");
+  });
+
+  test("the success line carries the volume, not only the assertion count", () => {
+    const register: ForgottenRegister = {
+      entries: [
+        { id: "forgotten.a", evicted_paths: ["docs/a/"], recoverable_at: "aa", file_count: 49 },
+        {
+          id: "forgotten.b",
+          evicted_paths: ["p/one.md", "p/two.md"],
+          recoverable_at: "bb",
+          file_count: 2,
+        },
+      ],
+      citation_allowlist: [],
+    };
+    const rendered = renderGateReport("Forgetting", buildReport(register, []));
+
+    expect(rendered.lines[0]).toBe(
+      "Forgetting verified: 2 assertion(s) hold — 2 register entries, 3 evicted path(s), 51 evicted file(s) declared",
+    );
+  });
+
+  test("an empty register fails, and says why emptiness is a defect here", () => {
+    const report = buildReport({ entries: [], citation_allowlist: [] }, []);
+
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([`${REGISTER_PATH}: ${EMPTY_REGISTER_NOTE}`]);
+    expect(renderGateReport("Forgetting", report).ok).toBe(false);
+    expect(EMPTY_REGISTER_NOTE).toContain("no eviction is enforced");
+    expect(EMPTY_REGISTER_NOTE).toContain("ADR-0019");
+  });
+
+  test("a finding fails its own entry and leaves the other entries asserted", () => {
+    const findings: Finding[] = [
+      { rule: "resurrection", entry: "forgotten.file", detail: "prompts/done.md is back" },
+    ];
+    const report = buildReport(REGISTER, findings);
+
+    expect(report.asserted).toBe(2);
+    expect(report.violations).toEqual(["forgotten.file: [resurrection] prompts/done.md is back"]);
+    expect(report.checks[0]).toMatchObject({ item: "forgotten.tree", ok: true });
+  });
+
+  test("a finding attributed to an unknown entry is reported, not dropped", () => {
+    const findings: Finding[] = [
+      { rule: "citation", entry: "forgotten.absent", detail: "docs/x.md cites it" },
+    ];
+    const report = buildReport(REGISTER, findings);
+
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toHaveLength(1);
+    expect(report.violations[0]).toContain("absent from the register");
+  });
+});
+
+// Measured on the register of 2026-10-08: four entries, three sharing one
+// anchor, and the anchors live in the archived hub since ADR-0020 — so the
+// resolver issued three identical `gh api` calls to the same URL.
+describe("memoizeResolver", () => {
+  test("resolves each distinct commit once, however many entries share it", () => {
+    const asked: string[] = [];
+    const resolve = memoizeResolver((commit) => {
+      asked.push(commit);
+      return ["docs/dead/tree/DESIGN.md", "prompts/done.md"];
+    });
+
+    expect(findWildForgetting(SHARED_ANCHOR, resolve)).toHaveLength(0);
+    expect(asked).toEqual(["cafebabe"]);
+  });
+
+  test("an unresolvable commit is cached as unresolvable, not retried per entry", () => {
+    let calls = 0;
+    const resolve = memoizeResolver(() => {
+      calls += 1;
+      return null;
+    });
+
+    const findings = findWildForgetting(SHARED_ANCHOR, resolve);
+    expect(findings).toHaveLength(3);
+    expect(findings.every((finding) => finding.detail.includes("does not resolve"))).toBe(true);
+    expect(calls).toBe(1);
+  });
+
+  test("distinct commits are resolved distinctly — the key is the commit", () => {
+    const asked: string[] = [];
+    const register: ForgottenRegister = {
+      entries: [
+        { id: "forgotten.a", evicted_paths: ["a.md"], recoverable_at: "1111" },
+        { id: "forgotten.b", evicted_paths: ["b.md"], recoverable_at: "2222" },
+      ],
+      citation_allowlist: [],
+    };
+    const resolve = memoizeResolver((commit) => {
+      asked.push(commit);
+      return commit === "1111" ? ["a.md"] : ["README.md"];
+    });
+
+    const findings = findWildForgetting(register, resolve);
+    expect(asked).toEqual(["1111", "2222"]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.entry).toBe("forgotten.b");
+  });
+});
+
 describe("register parsing", () => {
   test("reads entries and allow-list", () => {
     const register = parseRegister(`
@@ -127,7 +259,7 @@ entries:
 
 describe("the real register", () => {
   test("every entry declares paths and a recovery commit", async () => {
-    const register = parseRegister(await Bun.file("ecosystem/FORGOTTEN.yaml").text());
+    const register = parseRegister(await Bun.file(REGISTER_PATH).text());
     expect(register.entries.length).toBeGreaterThan(0);
     for (const entry of register.entries) {
       expect(entry.id).toMatch(/^forgotten\./);

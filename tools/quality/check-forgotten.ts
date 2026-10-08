@@ -13,10 +13,14 @@
 // Rule 3 is why eviction is not destruction: every entry must prove where its content
 // still lives before the register is allowed to claim it forgotten.
 
+import { concludeGate, GateReport } from "./gate-report";
+
 export interface ForgottenEntry {
   id: string;
   evicted_paths: readonly string[];
   recoverable_at: string;
+  /** Files the eviction removed, declared by the register: the volume one entry stands for. */
+  file_count?: number;
 }
 
 export interface ForgottenRegister {
@@ -122,6 +126,113 @@ export function findWildForgetting(register: ForgottenRegister, resolve: TreeRes
   return findings;
 }
 
+/**
+ * Wraps a resolver so each commit is resolved once.
+ *
+ * Measured on the register of 2026-10-08: four entries, three of them anchored
+ * on the same commit, and the anchor repository is remote since the governance
+ * split — so the gate issued three identical `gh api` calls to one URL. The key
+ * is the commit and nothing else: a key that also carried the repository, or
+ * the entry, would let one entry's tree answer for another entry's anchor and
+ * hide an anchor that has become irresolvable.
+ */
+export function memoizeResolver(resolve: TreeResolver): TreeResolver {
+  const seen = new Map<string, readonly string[] | null>();
+  return (commit) => {
+    const cached = seen.get(commit);
+    if (cached !== undefined) return cached;
+    if (seen.has(commit)) return null;
+    const resolved = resolve(commit);
+    seen.set(commit, resolved);
+    return resolved;
+  };
+}
+
+export const REGISTER_PATH = "ecosystem/FORGOTTEN.yaml";
+
+/**
+ * Why an empty register is a defect here and not a legitimate state.
+ *
+ * This repository has evicted content by owner decision since 2026-07-28
+ * (ADR-0019 §4) and again on 2026-10-08 (ADR-0041 §8). An empty register
+ * therefore cannot mean "nothing was ever forgotten"; it means the register was
+ * emptied, or the gate stopped reading it. Either way every anti-resurrection
+ * and anti-citation rule it carries silently stops applying — there is nothing
+ * left to compare the tree against — while the gate keeps printing a green
+ * line. Restoring evicted content is an owner decision that removes *its* entry
+ * (ADR-0019 §2); it never removes all of them at once.
+ */
+export const EMPTY_REGISTER_NOTE =
+  "the register declares no entry, so no eviction is enforced: every anti-resurrection and " +
+  "anti-citation rule compares the tree against an empty set and holds vacuously. This " +
+  "repository has evicted content by owner decision since 2026-07-28 (ADR-0019 §4), so an " +
+  "empty register means it was emptied or is no longer being read, never that nothing was " +
+  "forgotten. Restoring content removes one entry by owner decision (ADR-0019 §2), not all of them";
+
+/**
+ * The verdict: one assertion per register entry, named by that entry.
+ *
+ * Until 2026-10-08 success was a single `report.check(REGISTER_PATH, true, …)`
+ * with a hardcoded `true`. One assertion stood for four entries and
+ * fifty-seven evicted files, and `entries: []` produced that same true
+ * assertion with exit 0 — the guard that forbids a resurrection could not
+ * detect its own emptiness, while the eviction recorded on 2026-10-08 relies
+ * on it. An entry that carries a finding fails under its own name, so the
+ * failure says which eviction broke rather than only that the register did.
+ */
+export function buildReport(register: ForgottenRegister, findings: readonly Finding[]): GateReport {
+  const report = new GateReport();
+  if (register.entries.length === 0) {
+    report.check(REGISTER_PATH, false, EMPTY_REGISTER_NOTE);
+    return report;
+  }
+
+  const byEntry = new Map<string, Finding[]>();
+  for (const finding of findings) {
+    const bucket = byEntry.get(finding.entry);
+    if (bucket === undefined) byEntry.set(finding.entry, [finding]);
+    else bucket.push(finding);
+  }
+
+  for (const entry of register.entries) {
+    const own = byEntry.get(entry.id) ?? [];
+    if (own.length === 0) {
+      const files = entry.file_count === undefined ? "" : `, ${entry.file_count} file(s) declared`;
+      report.check(
+        entry.id,
+        true,
+        `${entry.evicted_paths.length} evicted path(s)${files} stay out of the tree, uncited, and ` +
+          `recoverable at ${entry.recoverable_at.slice(0, 8)}`,
+      );
+      continue;
+    }
+    for (const finding of own) {
+      report.check(entry.id, false, `[${finding.rule}] ${finding.detail}`);
+    }
+  }
+
+  // A finding whose entry is not in the register would otherwise be dropped on
+  // the floor: nothing produces one today, and a silent loss is how a gate
+  // starts lying.
+  const declared = new Set(register.entries.map((entry) => entry.id));
+  for (const finding of findings) {
+    if (declared.has(finding.entry)) continue;
+    report.check(
+      finding.entry,
+      false,
+      `[${finding.rule}] ${finding.detail} (finding attributed to an entry absent from the register)`,
+    );
+  }
+
+  const paths = register.entries.reduce((n, entry) => n + entry.evicted_paths.length, 0);
+  const files = register.entries.reduce((n, entry) => n + (entry.file_count ?? 0), 0);
+  report.volume(
+    `${register.entries.length} register entr${register.entries.length === 1 ? "y" : "ies"}, ` +
+      `${paths} evicted path(s), ${files} evicted file(s) declared`,
+  );
+  return report;
+}
+
 export function parseRegister(source: string): ForgottenRegister {
   const parsed = Bun.YAML.parse(source) as Partial<ForgottenRegister>;
   if (!Array.isArray(parsed?.entries)) throw new Error("FORGOTTEN.yaml: missing `entries`");
@@ -133,8 +244,7 @@ export function parseRegister(source: string): ForgottenRegister {
 }
 
 if (import.meta.main) {
-  const REGISTER = "ecosystem/FORGOTTEN.yaml";
-  const register = parseRegister(await Bun.file(REGISTER).text());
+  const register = parseRegister(await Bun.file(REGISTER_PATH).text());
 
   const tracked = (await new Response(Bun.spawn(["git", "ls-files"]).stdout).text())
     .split("\n")
@@ -152,7 +262,7 @@ if (import.meta.main) {
   // `anchor_repository` is declared. Offline (or without `gh`), remote
   // verification is skipped with an explicit warning: CI has the network
   // and always verifies for real.
-  const resolve: TreeResolver = (commit) => {
+  const resolveOnce: TreeResolver = (commit) => {
     const probe = Bun.spawnSync(["git", "cat-file", "-e", `${commit}^{commit}`]);
     if (probe.exitCode === 0) {
       return new TextDecoder()
@@ -183,26 +293,13 @@ if (import.meta.main) {
   const findings = [
     ...findResurrections(register, tracked),
     ...findForbiddenCitations(register, files),
-    ...findWildForgetting(register, resolve),
+    ...findWildForgetting(register, memoizeResolver(resolveOnce)),
   ];
 
-  const { concludeGate, GateReport } = await import("./gate-report");
-  const report = new GateReport();
-  for (const finding of findings) {
-    report.check(finding.entry, false, `[${finding.rule}] ${finding.detail}`);
-  }
+  const report = buildReport(register, findings);
   if (findings.length > 0) {
     console.error(
       "Forgotten content resurfaced. Restoring it is an owner decision that removes its entry from the register (ADR-0019).",
-    );
-  } else {
-    const paths = register.entries.reduce((n, entry) => n + entry.evicted_paths.length, 0);
-    // An empty register is a legitimate state only if it is really empty —
-    // asserting it keeps the entry count in the verdict either way.
-    report.check(
-      "ecosystem/FORGOTTEN.yaml",
-      true,
-      `${register.entries.length} entries covering ${paths} evicted paths stay out of the tree, uncited and recoverable`,
     );
   }
   concludeGate("Forgetting", report);

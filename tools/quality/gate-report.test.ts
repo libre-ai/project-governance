@@ -66,6 +66,37 @@ describe("renderGateReport", () => {
     ]);
   });
 
+  test("the corpus size is said on the success line, not only in a note", () => {
+    const report = new GateReport()
+      .check("source policy", true, "545 tracked files carry no forbidden lockfile")
+      .volume("545 tracked file(s) scanned, 0 forbidden lockfile, 0 forbidden JavaScript source");
+    const rendered = renderGateReport("Source policy", report);
+
+    expect(rendered.ok).toBe(true);
+    expect(rendered.lines).toEqual([
+      "Source policy verified: 1 assertion(s) hold — 545 tracked file(s) scanned, 0 forbidden lockfile, 0 forbidden JavaScript source",
+    ]);
+  });
+
+  test("a gate that declares no volume keeps its exact previous line", () => {
+    const report = new GateReport().check("a", true, "ok");
+
+    expect(report.volumeSummary).toBeNull();
+    expect(renderGateReport("Specification lock", report).lines).toEqual([
+      "Specification lock verified: 1 assertion(s) hold",
+    ]);
+  });
+
+  test("a declared volume never turns a failure into a pass", () => {
+    const report = new GateReport()
+      .check("a", false, "forbidden lockfile")
+      .volume("545 tracked file(s) scanned");
+    const rendered = renderGateReport("Source policy", report);
+
+    expect(rendered.ok).toBe(false);
+    expect(rendered.lines.join("\n")).not.toContain("545");
+  });
+
   test("a failing gate prints every failed check and its count", () => {
     const report = new GateReport()
       .check("a", true, "ok")
