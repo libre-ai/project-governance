@@ -107,7 +107,9 @@ if (import.meta.main) {
   const result = Bun.spawnSync([
     "gh",
     "api",
-    "repos/libre-ai/libre-ai/contents/ecosystem/migration-index.v1.yaml?ref=main",
+    // No `ref`: the endpoint serves the hub's own default branch (see
+    // check-hub-orphans for the same correction).
+    "repos/libre-ai/libre-ai/contents/ecosystem/migration-index.v1.yaml",
     "-H",
     "Accept: application/vnd.github.raw+json",
   ]);

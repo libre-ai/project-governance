@@ -150,7 +150,10 @@ async function fetchBlobWithFallback(path: string): Promise<GhFetchResult> {
   );
   return ghWithRetry([
     "api",
-    `repos/libre-ai/libre-ai/contents/${path}?ref=main`,
+    // No `ref`: the endpoint serves the hub's own default branch. It is `main`
+    // and the hub is archived read-only, so writing it down would be correct
+    // today and wrong the day that stops holding — the class ADR-0041 §7 names.
+    `repos/libre-ai/libre-ai/contents/${path}`,
     "-H",
     "Accept: application/vnd.github.raw+json",
   ]);
