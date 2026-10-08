@@ -172,6 +172,8 @@ if (import.meta.main) {
   // the live case) says nothing about what THIS app transmits. The dependency
   // surface is licence-gated and lockfile-pinned elsewhere.
   const VENDORED_SEGMENTS = ["/node_modules/", "/dist/", "/build/", "/target/"];
+  let scanned = 0;
+  let lines = 0;
   for (const root of roots) {
     const glob = new Bun.Glob(`${root}**/*.{ts,tsx}`);
     const targets: ScanTarget[] = [];
@@ -179,6 +181,8 @@ if (import.meta.main) {
       if (VENDORED_SEGMENTS.some((segment) => path.includes(segment))) continue;
       targets.push({ path, content: await Bun.file(path).text() });
     }
+    scanned += targets.length;
+    for (const target of targets) lines += target.content.split("\n").length;
     const findings = scanForTransmission(targets, [root], allow);
     for (const finding of findings) {
       report.check(`${finding.path}:${finding.line}`, false, finding.reason);
@@ -193,5 +197,17 @@ if (import.meta.main) {
       );
     }
   }
+  // The corpus size, said out loud on the success line. An assertion count is
+  // one per root, so "No transmission verified: 1 assertion(s) hold" read the
+  // same over a whole app as over a single file — and, before the roots became
+  // mandatory, the same over NOTHING: from the ADR-0020 dispatch until
+  // 2026-08-04 this gate scanned a glob that matched no file and exited 0. The
+  // empty root is a red check now; printing what was scanned is what makes the
+  // difference visible without GATE_VERBOSE, which nobody sets in CI.
+  report.volume(
+    `${scanned} file(s) across ${roots.length} declared root(s) (${roots.join(", ")}), ` +
+      `${lines} line(s) matched against ${SIGNALS.length} transmission signal(s), ` +
+      `${allow.size} reviewed allowance(s)`,
+  );
   concludeGate("No transmission", report);
 }
