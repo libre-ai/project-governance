@@ -98,8 +98,8 @@ families:
       not_a_parity_axis: >
         model hosting, usage-based billing, and coupling to an editor account.
         Its paid tier sends content to a third-party host, which is the inverse
-        of the local-first promise of personal-knowledge-notebook,
-        public-vote-comparison and travel-itinerary-planner.
+        of the local-first promise of personal-knowledge-notebook
+        and travel-itinerary-planner.
       sovereignty: FAIL on the hosted tier — third-party US host, hosted models
       reuse_decision: >
         EXCLUDED. No licence is published, so there is nothing to adopt, wrap or

@@ -20,7 +20,6 @@ TARGETS = (
     "personal-knowledge-notebook",
     "information-feed-filter",
     "travel-itinerary-planner",
-    "public-vote-comparison",
     "project-website",
 )
 GATES = ("root", "native", "wasm", "e2e")
@@ -28,7 +27,6 @@ E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
     "ai-practice-workbench": ("apps/practices", "test:e2e"),
     "personal-knowledge-notebook": ("apps/notebook", "test:e2e"),
-    "public-vote-comparison": ("apps/boussole", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }
 

@@ -91,13 +91,6 @@ repositories:
     lifecycle: active
     owns:
       - itinerary planning over verified facts; trip instances stay local
-  - repository: libre-ai/public-vote-comparison
-    role: reserved-product-home
-    layer: couche-1
-    visibility: public
-    lifecycle: active
-    owns:
-      - private civic comparison against sourced public votes
   - repository: libre-ai/signalement
     card: project.v1.yaml
     role: reserved-product-home

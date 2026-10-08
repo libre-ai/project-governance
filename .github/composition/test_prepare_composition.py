@@ -76,7 +76,7 @@ class CompositionTests(unittest.TestCase):
 
     def test_every_product_plan_keeps_local_override_source_closure(self):
         required = {"project-governance", "schemas-and-contracts", "ai-work-supervision", "application-development-toolkit", "organization-data-lifecycle", "ai-model-policy"}
-        for target in ("ai-work-supervision", "ai-model-policy", "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-notebook", "information-feed-filter", "travel-itinerary-planner", "public-vote-comparison", "project-website"):
+        for target in ("ai-work-supervision", "ai-model-policy", "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-notebook", "information-feed-filter", "travel-itinerary-planner", "project-website"):
             names = {row["path"] for row in module.prepare(self.manifest, target)["checkouts"]}
             self.assertEqual(names, required | {target})
 
