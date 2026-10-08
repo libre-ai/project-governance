@@ -1,7 +1,7 @@
 # ADR-0041 — Consolidation de l'autorité et absorption des capacités sans destination
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-07, prises sur les quatre axes de décision (sécurité, qualité, performance, complétude) après mesure, le coût d'outillage ayant été écarté comme critère
+- **Arbitrage :** décisions propriétaires du 2026-10-07, prises sur les quatre axes de décision (sécurité, qualité, performance, complétude) après mesure, le coût d'outillage ayant été écarté comme critère ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), à laquelle il donne sa numérotation et ses entrées de registre
 - **Amende :** ADR-0024 §2.2 (clause « aucune fusion ») et I-28 (réalisations de référence du gate de `rev` orphelin)
 - **Applique :** I-03 (deux autorités séparées, un sujet une autorité unique), I-05 (la projection est l'artefact généré, vérifié par gate, jamais canonique), I-16 (les préconditions de la loi de couverture ne conditionnent pas l'existence d'un repository), I-18 (noyau de sécurité des boucles K1–K5)
@@ -141,6 +141,9 @@ résolue** du lockfile et non par un nom de paquet qu'un attaquant peut
 revendiquer.
 
 ### 8. Le gate de dérive de migration est retiré, pas réparé
+
+Owner-arbitration: 2026-10-08 — « retire check-migration-drift », après que les deux issues
+aient été posées et chiffrées.
 
 Sa prémisse est close. Il comparait l'arbre du moyeu `libre-ai/libre-ai` à celui
 de chaque destination pendant la fenêtre de double présence ; le moyeu est
