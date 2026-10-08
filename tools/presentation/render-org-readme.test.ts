@@ -4,7 +4,7 @@ import { renderOrgSection, summarizeMigration } from "./render-org-readme";
 
 const status = {
   schema_version: "libre-ai.fleet-status.v1" as const,
-  source: "project.v1.yaml cards at each repository main" as const,
+  source: "project.v1.yaml cards at each repository's default branch" as const,
   rows: [
     {
       repository: "libre-ai/notebook",

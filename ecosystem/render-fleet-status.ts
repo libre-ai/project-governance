@@ -26,7 +26,16 @@ export interface FleetStatusRow {
 
 export interface FleetStatus {
   readonly schema_version: "libre-ai.fleet-status.v1";
-  readonly source: "project.v1.yaml cards at each repository main";
+  /**
+   * Says where the rows came from, and it has to say it truthfully: the fetch
+   * below deliberately omits `?ref=`, so the REST contents endpoint serves each
+   * repository's OWN default branch. The projection nonetheless declared the
+   * cards read "at each repository main" — a written fact contradicting the
+   * resolution forty lines under it, and naming the one branch the fleet does
+   * not serve. A consumer reading this field would have gone looking in the
+   * documentary branch whose tree holds four entries.
+   */
+  readonly source: "project.v1.yaml cards at each repository's default branch";
   readonly rows: readonly FleetStatusRow[];
 }
 
@@ -73,7 +82,7 @@ export function buildFleetStatus(cards: readonly unknown[]): FleetStatus {
   });
   return {
     schema_version: "libre-ai.fleet-status.v1",
-    source: "project.v1.yaml cards at each repository main",
+    source: "project.v1.yaml cards at each repository's default branch",
     rows,
   };
 }
