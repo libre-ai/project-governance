@@ -295,6 +295,17 @@ if (import.meta.main) {
     tracked.map(async (path) => ({ path, text: await Bun.file(path).text() })),
   );
   const scanned = files.filter((file) => !isTestSource(file.path) && !isAllowlisted(file.path));
+  // What the exclusions actually cost, measured rather than written. The volume
+  // line reported "N historical surface(s) excluded" using the number of
+  // ENTRIES, which under-declared the exclusion by an order of magnitude: eight
+  // entries subtracted eighty readable tracked files from the scan. A verdict
+  // owes the size of what it did NOT look at as much as the size of what it did,
+  // and an entry count is not a file count — one entry ending in `/` can hide a
+  // whole subtree.
+  const excludedByAllowlist = files.filter(
+    (file) => !isTestSource(file.path) && isAllowlisted(file.path),
+  ).length;
+  const excludedAsTests = files.filter((file) => isTestSource(file.path)).length;
 
   for (const path of assertAllowlistReasons()) {
     report.check(path, false, "allow-list entry without a reason: an authorisation must say why");
@@ -328,10 +339,11 @@ if (import.meta.main) {
   }
 
   report.volume(
-    `${scanned.length} of ${files.length} readable tracked source(s) scanned (tests and ` +
-      `${HISTORICAL_ALLOWLIST.length} historical surface(s) excluded), against ` +
+    `${scanned.length} of ${files.length} readable tracked source(s) scanned, against ` +
       `${RETIRED_REPOSITORY_NAMES.length} retired repository name(s) in ` +
-      `${patterns().length} operational form(s)`,
+      `${patterns().length} operational form(s); NOT scanned: ${excludedByAllowlist} file(s) ` +
+      `under ${HISTORICAL_ALLOWLIST.length} historical allow-list entry(ies) and ` +
+      `${excludedAsTests} test source(s)`,
   );
   concludeGate("Retired repository names", report);
 }
