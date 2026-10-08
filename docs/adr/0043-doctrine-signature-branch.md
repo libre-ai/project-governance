@@ -40,8 +40,9 @@ La fusion vers `migrate/recover-code` reste gardée par `forge-reviewed-recovery
 - Ruleset `refoundation-no-bypass-branch` relu après modification et comparé à l'état relevé avant : identique hors exclusions, une exclusion ajoutée, aucune retirée.
 - Règles effectives lues par `GET /repos/libre-ai/project-governance/rules/branches/doctrine/owner-signature` : `deletion` et `non_fast_forward`, toutes deux du ruleset `24725518` ; aucune règle de `refoundation-no-bypass-branch`. La même lecture sur `feat/forge-realization` rend le même profil depuis le ruleset `24161114`.
 - Le dépôt compte six rulesets : les cinq antérieurs et `doctrine-signature-branch-integrity`.
+- Ordre des deux premières modifications : `created_at` de `24725518` = `2026-10-08T15:24:59.545+02:00` ; réponse du `PUT` ajoutant `doctrine/owner-signature` aux exclusions de `23544600` : `updated_at` = `2026-10-08T15:26:42.653+02:00`. La protection existait donc 103 secondes avant que la branche devienne créable, et la branche n'a été créée qu'après.
 - Ruleset `refoundation-no-bypass-branch` relu après la troisième modification : exclusions `migrate/recover-code`, `feat/forge-realization`, `doctrine/owner-signature`, `work/**` ; `include: ~ALL`, règles `creation`, `deletion`, `update`, `bypass_actors: []`.
-- Mesure par l'acte, faite par la session qui a exécuté la troisième modification :
+- Mesure par l'acte, faite par la session qui a exécuté la troisième modification (les lectures `rules/branches` ci-dessus sont une mesure distincte, faite par la session qui rédige cet ADR) :
 
   | Acte | Résultat |
   | --- | --- |
