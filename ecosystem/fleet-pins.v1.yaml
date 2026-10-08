@@ -134,3 +134,13 @@ generations:
       reach a consumer again. libre-ai/signalement, libre-ai/pi-evidence and
       libre-ai/carriere bump to it on their four surfaces; retiring
       libre-ai/governance waits for their green CI.
+  - sha: d083dd339c9f052187c9631f10441219cd8d1169
+    added_on: 2026-10-08
+    note: >-
+      the composition manifest composes project-governance at 39530653, whose
+      portfolio lists 19 repositories since public-vote-comparison was retired
+      (#14); under 2024a488 it still composed ff3ef051, whose portfolio lists
+      20, so a consumer's composition check passed against a portfolio this
+      authority no longer serves. libre-ai/project-website is the consumer that
+      must carry it: its served branch fails `portfolio.scope_invalid` against
+      the served portfolio, and it moves its pins together with its parser.
