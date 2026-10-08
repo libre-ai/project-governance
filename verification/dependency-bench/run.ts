@@ -61,13 +61,23 @@ async function write(path: string, content: string): Promise<void> {
   await Bun.write(join(bench, path), content);
 }
 
-// --- Case 1: GitHub transport. The positive half is proven by real use:
-// contracts/bun.lock pins github:libre-ai/governance#<full sha> WITH an
-// integrity hash, re-verified by every `bun install --frozen-lockfile` of
-// its CI — stronger than any one-shot fixture (K4 CLOSE33-01). What needs a
-// replayable artefact is the COUNTER-PROOF: an unreachable sha must fail
-// the install, establishing that the pin is enforced, not silently
-// bypassed. Network required — replayed with --online.
+// --- Case 1: GitHub transport. The positive half WAS proven by real use, by a
+// lockfile carrying a full sha with an integrity hash, re-verified by every
+// `bun install --frozen-lockfile` of its CI — stronger than any one-shot
+// fixture (K4 CLOSE33-01). The pin it carried, as written at the time:
+//
+//   github:libre-ai/governance#<full sha>   retired-repository-ok: 2026-08 citation; the consumer and the authority it pinned were both deleted by the 2026-10-07 consolidation, so this is the record of what was proven and not a reference to follow — renaming it would claim a lockfile that never existed
+//
+// That lockfile is gone with its repository, so the positive half of this case
+// now rests on nothing current while the detail string below still claims it.
+// Named rather than silently rewritten: re-establishing it is a measurement.
+//
+// What needs a replayable artefact is the COUNTER-PROOF: an unreachable sha
+// must fail the install, establishing that the pin is enforced, not silently
+// bypassed. The fixture names a repository that EXISTS and a sha that does
+// not — pointing it at a deleted repository (as it did until 2026-10-08) made
+// the install fail on the repository instead of on the pin, so the case
+// passed without proving its claim. Network required — replayed with --online.
 async function caseOne(): Promise<void> {
   if (!online) {
     record({
@@ -89,7 +99,7 @@ async function caseOne(): Promise<void> {
         private: true,
         dependencies: {
           "@libre-ai/governance":
-            "github:libre-ai/governance#deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            "github:libre-ai/project-governance#deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
         },
       },
       null,

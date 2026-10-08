@@ -23,7 +23,7 @@ secret, or any finding that includes exploit detail.**
 Report privately through GitHub private vulnerability reporting on this
 repository:
 
-<https://github.com/libre-ai/governance/security/advisories/new>
+<https://github.com/libre-ai/project-governance/security/advisories/new>
 
 This is the intake point for the whole organization: use it even when the
 finding concerns another repository, and name the repository and commit in
