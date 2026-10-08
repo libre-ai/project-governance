@@ -288,7 +288,7 @@ export function buildWorkflowsTreeQuery(repositories: readonly string[]): string
     const name = JSON.stringify(repository.slice(separator + 1));
     return [
       `  repo${index}: repository(owner: ${owner}, name: ${name}) {`,
-      `    workflowsTree: object(expression: "main:.github/workflows") {`,
+      `    workflowsTree: object(expression: "HEAD:.github/workflows") {`,
       `      ... on Tree { entries { name type object { ... on Blob { text } } } }`,
       `    }`,
       `  }`,

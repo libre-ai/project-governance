@@ -1,6 +1,6 @@
 {
   "schema_version": "libre-ai.evidence-feed.v1",
-  "repository": "libre-ai/libre-ai",
+  "repository": "libre-ai/project-governance",
   "events": [
     {
       "id": "gate-2026-01-13-2026-01-13-ligne-incomplete-sans-les-quatre-cellules",

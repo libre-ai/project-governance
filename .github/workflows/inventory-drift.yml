@@ -12,7 +12,10 @@ name: Inventory drift
 # private + not observable with the default token is consistent, not drift.
 on:
   push:
-    branches: [main]
+    # The served branch is listed: with `[main]` alone this workflow had
+    # ZERO push runs on `migrate/recover-code` — every one of its runs was a
+    # pull_request, so no verdict was ever attached to a merged head.
+    branches: [main, migrate/recover-code]
   pull_request:
   schedule:
     - cron: "43 8 * * 1"
@@ -48,7 +51,12 @@ jobs:
       - name: Verify exact CI revision
         run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       # Both scripts use Bun built-ins only — no `bun install` needed, which
-      # keeps this gate independent from the dependency supply chain.
+      # keeps this gate independent from the dependency supply chain. The
+      # generator reaches the K2 kernel by path for that reason: wiring it by
+      # package name on 2026-10-07 made this step fail on `Cannot find module`,
+      # and the seven gates below were skipped for five consecutive runs — the
+      # masking this file's own comment anticipated. They carry `if: always()`
+      # now, so each renders its verdict whatever a previous step did.
       - name: Regenerate the repository index and fail on drift
         run: |
           bun ecosystem/build-index.ts
@@ -57,20 +65,25 @@ jobs:
             exit 1
           fi
       - name: Reconcile inventory with the observable organization
+        if: always()
         run: bun ecosystem/check-inventory-drift.ts
       - name: Fleet template pins match the declared generations
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-fleet-pins.ts
       - name: Hub and destination copies stay identical during the pending window
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-migration-drift.ts
       - name: Every repository card is valid and its README status matches
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-fleet-presentation.ts
       - name: Every hub path has a destination, replacement or eviction
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-hub-orphans.ts
@@ -82,6 +95,7 @@ jobs:
       # toolchain migration wave lands, and a step that fails early would mask
       # every gate placed after it for the whole duration of the wave.
       - name: Every workflow installs the Bun toolchain from the declared source
+        if: always()
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-toolchain-source.ts
@@ -99,7 +113,7 @@ jobs:
       # and its second consecutive red files the governance issue below. Last
       # of the job for the same reason as the toolchain step above.
       - name: Every repository carries the canonical Dependabot configuration
-        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-dependabot-conformance.ts

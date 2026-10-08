@@ -74,14 +74,14 @@
     {
       "claim": "Souveraineté",
       "mechanism": "Les choix d'hébergement, dépendances et mécanismes de réversibilité sont publiés.",
-      "source": "https://github.com/libre-ai/governance/blob/main/docs/decisions/INVARIANTS.md",
+      "source": "https://github.com/libre-ai/project-governance/blob/HEAD/docs/decisions/INVARIANTS.md",
       "verifiedOn": "2026-09-09",
       "limitation": "La cible runtime est documentée ; aucun déploiement non prouvé n'est présenté comme actif."
     },
     {
       "claim": "Explicabilité",
       "mechanism": "Décisions, états et limites sont reliés à des sources versionnées.",
-      "source": "https://github.com/libre-ai/governance",
+      "source": "https://github.com/libre-ai/project-governance",
       "verifiedOn": "2026-09-09",
       "limitation": "Cette traçabilité n'implique pas que toute sortie de modèle soit causalement explicable."
     }

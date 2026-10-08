@@ -25,7 +25,10 @@ name: Context conformance
 # documents for when GitHub fails to deliver an event.
 on:
   push:
-    branches: [main]
+    # The served branch is listed: with `[main]` alone this workflow had
+    # ZERO push runs on `migrate/recover-code` — every one of its runs was a
+    # pull_request, so no verdict was ever attached to a merged head.
+    branches: [main, migrate/recover-code]
   pull_request:
   schedule:
     - cron: "29 7 * * 1"

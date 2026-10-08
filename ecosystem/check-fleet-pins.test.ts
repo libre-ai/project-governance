@@ -20,7 +20,7 @@ test("selectFleetPinTargets excludes private repositories before remote fetch", 
         lifecycle: "active",
       },
     ]),
-  ).toEqual([{ repository: "libre-ai/public", card: "project.v1.yaml" }]);
+  ).toEqual([{ repository: "libre-ai/public", card: "project.v1.yaml", cardDeclared: false }]);
 });
 
 // The gate's promise is that no governance revision reaches a consumer's
@@ -301,21 +301,38 @@ describe("collectSightings", () => {
 describe("buildFleetPinsQuery", () => {
   test("aliases by index (a repository name may carry a hyphen, invalid in a GraphQL alias)", () => {
     const query = buildFleetPinsQuery([
-      { repository: "libre-ai/authz-biscuit", card: "project.v1.yaml" },
-      { repository: "libre-ai/governance", card: "project.v1.yaml" },
+      { repository: "libre-ai/authz-biscuit", card: "project.v1.yaml", cardDeclared: true },
+      { repository: "libre-ai/governance", card: "project.v1.yaml", cardDeclared: true },
     ]);
     expect(query).toContain('repo0: repository(owner: "libre-ai", name: "authz-biscuit")');
     expect(query).toContain('repo1: repository(owner: "libre-ai", name: "governance")');
   });
 
   test("reads the tree for .github/workflows and blobs for package.json and the repository's own card path", () => {
-    const query = buildFleetPinsQuery([{ repository: "libre-ai/demo", card: "cards/demo.yaml" }]);
-    expect(query).toContain('object(expression: "main:.github/workflows")');
+    const query = buildFleetPinsQuery([
+      { repository: "libre-ai/demo", card: "cards/demo.yaml", cardDeclared: true },
+    ]);
+    expect(query).toContain('object(expression: "HEAD:.github/workflows")');
     expect(query).toContain(
       "... on Tree { entries { name type object { ... on Blob { text } } } }",
     );
-    expect(query).toContain('object(expression: "main:package.json")');
-    expect(query).toContain('object(expression: "main:cards/demo.yaml")');
+    expect(query).toContain('object(expression: "HEAD:package.json")');
+    expect(query).toContain('object(expression: "HEAD:cards/demo.yaml")');
+  });
+
+  // The seventh instance of one defect class, and the costliest: this gate read
+  // the documentary `main` of the nineteen destinations, whose served branch is
+  // `migrate/recover-code`. `main:project.v1.yaml` answered null where
+  // `HEAD:project.v1.yaml` answers 8153 bytes, so every destination returned an
+  // empty tree, produced zero sightings, and was skipped in silence -- the gate
+  // reported "2 assertion(s) hold" over a fleet carrying twenty-four drifts,
+  // three of them pins on the authority this consolidation is retiring.
+  test("never names a branch: HEAD resolves whatever branch each repository serves", () => {
+    const query = buildFleetPinsQuery([
+      { repository: "libre-ai/demo", card: "project.v1.yaml", cardDeclared: true },
+    ]);
+    expect(query).not.toContain("main:");
+    expect(query.match(/HEAD:/g)).toHaveLength(3);
   });
 });
 
@@ -356,8 +373,8 @@ describe("parseFleetPinsRepoNode", () => {
 
 describe("parseFleetPinsBatchResponse", () => {
   const targets = [
-    { repository: "libre-ai/governance", card: "project.v1.yaml" },
-    { repository: "libre-ai/gone", card: "project.v1.yaml" },
+    { repository: "libre-ai/governance", card: "project.v1.yaml", cardDeclared: true },
+    { repository: "libre-ai/gone", card: "project.v1.yaml", cardDeclared: true },
   ];
 
   test("resolves a found repository and flags an unresolved one as unable-to-verify, never a fabricated finding", () => {
@@ -428,5 +445,23 @@ describe("the retired authority", () => {
       [sha],
     );
     expect(failures).toEqual([]);
+  });
+});
+
+describe("selectFleetPinTargets — a declared card is not a defaulted one", () => {
+  test("an entry naming its card is marked declared; one without is not", () => {
+    const targets = selectFleetPinTargets([
+      {
+        repository: "libre-ai/with-card",
+        visibility: "public",
+        lifecycle: "active",
+        card: "project.v1.yaml",
+      },
+      { repository: "libre-ai/.github", visibility: "public", lifecycle: "active" },
+    ] as never);
+    expect(targets).toEqual([
+      { repository: "libre-ai/with-card", card: "project.v1.yaml", cardDeclared: true },
+      { repository: "libre-ai/.github", card: "project.v1.yaml", cardDeclared: false },
+    ]);
   });
 });

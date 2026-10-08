@@ -26,10 +26,13 @@ import { readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 export const FEED_SCHEMA_VERSION = "libre-ai.evidence-feed.v1";
-export const REPOSITORY = "libre-ai/libre-ai";
+// The authority that actually carries `distribution/`. Until 2026-10-07 this
+// named the archived hub, so every link of the published feed -- 52 of them,
+// plus its own `rel="self"` -- answered 404.
+export const REPOSITORY = "libre-ai/project-governance";
 export const GATE_LOG_PATH = "distribution/evidence/gate-acceptance-log.md";
 /** Public artifact links point at the canonical branch of the public mirror. */
-export const GITHUB_BLOB_BASE = "https://github.com/libre-ai/libre-ai/blob/main/";
+export const GITHUB_BLOB_BASE = "https://github.com/libre-ai/project-governance/blob/HEAD/";
 /**
  * tag: URIs (RFC 4151) need an authority the minting entity controls at the
  * tagged date; the GitHub Pages subdomain of the organization is the only
@@ -394,7 +397,7 @@ export function renderAtom(feed: EvidenceFeed): string {
     `  <updated>${toRfc3339(newest.date)}</updated>`,
     "  <author><name>Libre AI</name></author>",
     `  <link rel="alternate" type="text/html" href="${GITHUB_BLOB_BASE}distribution/feeds/changelog.md"/>`,
-    '  <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/libre-ai/libre-ai/main/distribution/feeds/evidence.atom.xml"/>',
+    '  <link rel="self" type="application/atom+xml" href="https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/distribution/feeds/evidence.atom.xml"/>',
   ];
   for (const event of feed.events) {
     const summary =

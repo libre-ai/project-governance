@@ -207,7 +207,7 @@ describe("Atom validity through the independent parser", () => {
       expect(byName.get("title")).toBeDefined();
       expect(byName.get("updated")?.text).toMatch(RFC3339);
       expect(byName.get("link")?.attributes.href).toMatch(
-        /^https:\/\/github\.com\/libre-ai\/libre-ai\/blob\/main\//,
+        /^https:\/\/github\.com\/libre-ai\/project-governance\/blob\/HEAD\//,
       );
     }
   });

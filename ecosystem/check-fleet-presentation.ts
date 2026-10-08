@@ -116,7 +116,11 @@ async function fetchFromGitHubWithRetry(repository: string, path: string): Promi
       [
         "gh",
         "api",
-        `repos/${repository}/contents/${path}?ref=main`,
+        // No `ref`: the REST contents endpoint serves the repository's own default
+        // branch. Naming `main` reported `declared card project.v1.yaml is missing
+        // at main` for the five card-declaring repositories that serve
+        // `migrate/recover-code`, where the card is 8153 bytes.
+        `repos/${repository}/contents/${path}`,
         "-H",
         "Accept: application/vnd.github.raw+json",
       ],
@@ -177,11 +181,11 @@ export function buildFleetPresentationQuery(targets: readonly PresentationTarget
     }
     const owner = JSON.stringify(target.repository.slice(0, separator));
     const name = JSON.stringify(target.repository.slice(separator + 1));
-    const cardExpression = JSON.stringify(`main:${target.card}`);
+    const cardExpression = JSON.stringify(`HEAD:${target.card}`);
     return [
       `  repo${index}: repository(owner: ${owner}, name: ${name}) {`,
       `    card: object(expression: ${cardExpression}) { ... on Blob { text } }`,
-      `    readme: object(expression: "main:README.md") { ... on Blob { text } }`,
+      `    readme: object(expression: "HEAD:README.md") { ... on Blob { text } }`,
       `  }`,
     ].join("\n");
   });
