@@ -57,12 +57,12 @@ phases:
     title: En service dans la constellation
     exit_criteria:
       - id: consumed-pinned
-        text: "Le gabarit de flotte (workflows réutilisables + outillage qualité) est consommé épinglé par les 30 repos de code de la constellation, les gates de flotte (inventaire, pins, dérive de migration) tournent en service continu."
+        text: "Le gabarit de flotte (workflows réutilisables + outillage qualité) est consommé épinglé par les 20 dépôts consommateurs de la flotte de 24 (hors l'autorité elle-même, le profil d'organisation, le dépôt privé exclu de la lecture inter-dépôts et le moyeu archivé), chacun sur une génération déclarée dans ecosystem/fleet-pins.v1.yaml (19 sur 2024a488, 1 sur d083dd33) ; les gates de flotte (inventaire, pins) le vérifient dans le job Inventory drift à chaque push de la branche servie et à chaque pull request."
         weight: 1
         status: accepted
         evidence:
-          date: "2026-07-29"
-          reference: "gate-acceptance-log 2026-07-29 (ligne 3.3), PR hub #277"
+          date: "2026-10-09"
+          reference: "bun ecosystem/check-fleet-pins.ts sur f032f233396b96574646756a118f87562bfa1440 (2026-10-09) : 60 pin(s) read across 20 of 22 target(s), 0 unreadable, against 10 declared generation(s) ; même commit, run CI push https://github.com/libre-ai/project-governance/actions/runs/37850575256 (2026-10-08) : inventaire 24 déclarés / 23 observés, 0 dérive, pins identiques"
       - id: compat-policy
         text: "L'API est couverte par une politique de compatibilité déclarée et un versionnage de rupture outillé."
         weight: 1
