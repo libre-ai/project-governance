@@ -18,7 +18,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/ai-practice-workbench",
@@ -26,7 +27,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/ai-work-supervision",
@@ -34,7 +36,8 @@
       "layer": "couche-2",
       "role": "reserved-application-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/application-development-toolkit",
@@ -50,7 +53,8 @@
       "layer": "couche-3",
       "role": "satellite",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/capability-authorization",
@@ -76,7 +80,8 @@
       "layer": "couche-4",
       "role": "satellite",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/database-policy-inspector",
@@ -84,7 +89,8 @@
       "layer": "transverse",
       "role": "standalone-tool",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/execution-continuity-evaluator",
@@ -110,7 +116,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/learning-session-facilitation",
@@ -118,7 +125,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/libre-ai",
@@ -135,7 +143,8 @@
       "layer": "couche-4",
       "role": "satellite",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/personal-knowledge-notebook",
@@ -143,7 +152,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/pi-evidence",
@@ -203,7 +213,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     }
   ]
 }
