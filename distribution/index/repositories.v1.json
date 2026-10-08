@@ -67,7 +67,8 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active"
+      "lifecycle": "active",
+      "card": "project.v1.yaml"
     },
     {
       "repository": "libre-ai/collaborative-data-sync",
