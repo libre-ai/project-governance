@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   evaluateReviewEvidence,
   findEvidenceSignals,
+  GATED_PATH_PATTERNS,
+  GATED_PATHSPECS,
   touchesGatedPaths,
 } from "./check-review-evidence";
 
@@ -27,6 +29,29 @@ describe("touchesGatedPaths", () => {
 
   test("an unrelated path change is not gated", () => {
     expect(touchesGatedPaths(["ecosystem/repositories.v1.yaml", "README.md"])).toEqual([]);
+  });
+
+  // Owner decision 2026-10-08 (Y13): ADR-0019 §2 requires a dated owner
+  // arbitration per eviction, so the forgetting register is gated like the
+  // doctrine registers — exactly that file, not its neighbours.
+  test("matches ecosystem/FORGOTTEN.yaml exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "ecosystem/FORGOTTEN.yaml",
+        "ecosystem/FORGOTTEN.yaml.bak",
+        "ecosystem/repositories.v1.yaml",
+        "docs/ecosystem/FORGOTTEN.yaml",
+      ]),
+    ).toEqual(["ecosystem/FORGOTTEN.yaml"]);
+  });
+
+  test("every gated pattern has a pathspec whose diff is searched for evidence", () => {
+    expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
+    for (const pathspec of GATED_PATHSPECS) {
+      const sample =
+        pathspec.endsWith(".md") || pathspec.endsWith(".yaml") ? pathspec : `${pathspec}/x.md`;
+      expect(touchesGatedPaths([sample])).toEqual([sample]);
+    }
   });
 });
 
@@ -91,6 +116,42 @@ describe("evaluateReviewEvidence", () => {
     const report = evaluateReviewEvidence(["docs/decisions/INVARIANTS.md"], "bump a typo", "");
     expect(report.outcome).toBe("violations");
     expect(report.violations[0]).toContain("neither the pull request description");
+  });
+
+  test("a FORGOTTEN.yaml change with neither signal fails", () => {
+    const diff = [
+      "+  - id: forgotten.example",
+      "+    decided_by: owner",
+      "+    decided_on: 2026-10-08",
+    ].join("\n");
+    const report = evaluateReviewEvidence(
+      ["ecosystem/FORGOTTEN.yaml"],
+      "chore: register an eviction",
+      diff,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      "ecosystem/FORGOTTEN.yaml: neither the pull request description nor the diff of the gated files references a docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker",
+    ]);
+  });
+
+  test("a FORGOTTEN.yaml change with an Owner-arbitration marker in the PR body passes", () => {
+    const report = evaluateReviewEvidence(
+      ["ecosystem/FORGOTTEN.yaml"],
+      "Owner-arbitration: 2026-10-08",
+      "",
+    );
+    expect(report.outcome).toBe("pass");
+    expect(report.asserted).toBe(1);
+  });
+
+  test("a FORGOTTEN.yaml change citing a docs/reviews/ artefact passes", () => {
+    const report = evaluateReviewEvidence(
+      ["ecosystem/FORGOTTEN.yaml"],
+      "",
+      "+    review: docs/reviews/forgetting/eviction-2026-10-08.md",
+    );
+    expect(report.outcome).toBe("pass");
   });
 
   test("several gated paths in one run are reported as a single item", () => {
