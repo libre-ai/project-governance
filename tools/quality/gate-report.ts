@@ -6,8 +6,9 @@
 // the other when there is only one list.
 //
 // The rule this module exists to enforce: **a gate that asserted nothing fails.**
-// Two gates of this repository ran green over zero items. `check-migration-drift`
-// (K4 AUTH-05) sent every remaining path through its skip list; then
+// Two gates of this repository ran green over zero items. The migration-drift
+// gate (K4 AUTH-05, retired 2026-10-08 by ADR-0041 §8) sent every remaining path
+// through its skip list; then
 // `check-specification-lock` emptied its own application list when `docs/apps/`
 // stopped existing here (ADR-0020 dispatch). Neither was visible from the exit
 // code, because both printed a reassuring sentence and exited 0. Emptiness is now

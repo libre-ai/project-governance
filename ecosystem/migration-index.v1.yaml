@@ -37,10 +37,11 @@
 # est resté l'autorité vivante pendant le démantèlement (γ 3.3 à 3.8) et l'est
 # encore techniquement, même si le hub est désormais archivé (lecture seule
 # définitive) et ne peut donc plus avancer. La copie précédente ici datait de
-# γ 3.3 (56 entrées, toutes `pending`) ; `check-migration-drift.ts` lit déjà
-# l'index d'autorité en réseau et n'utilise pas cette copie pour ses
-# assertions — elle sert la lecture humaine. Re-synchroniser seulement si
-# l'archive du hub est elle-même amendée (ce qu'elle ne devrait plus être).
+# γ 3.3 (56 entrées, toutes `pending`). Le gate qui lisait l'index d'autorité en
+# réseau a été retiré le 2026-10-08 (ADR-0041 §8) : cette copie ne sert plus
+# aucune assertion et reste pour la lecture humaine et pour les six outils qui
+# s'y réfèrent. Re-synchroniser seulement si l'archive du hub est elle-même
+# amendée (ce qu'elle ne devrait plus être).
 
 schema_version: libre-ai.migration-index.v1
 

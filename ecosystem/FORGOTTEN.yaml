@@ -77,6 +77,33 @@ entries:
     adr: ADR-0019
     recoverable_at: 67571bf00593073d3bb121a7a08536f83b7c76b2
 
+  - id: forgotten.migration-drift-gate
+    evicted_paths:
+      - ecosystem/check-migration-drift.ts
+      - ecosystem/check-migration-drift.test.ts
+    file_count: 2
+    reason: >-
+      Gate de la fenêtre de double présence moyeu/destination. Sa prémisse est close :
+      le moyeu `libre-ai/libre-ai` est archivé en lecture seule depuis le 2026-07-30,
+      donc son index de migration ne peut plus avancer, et la consolidation du
+      2026-10-07 (ADR-0041) a retiré les 10 dépôts à noms courts que cet index nomme
+      encore comme destinations. Mesure au 2026-10-08 : 34 constats, tous des « entrées
+      fantômes » désignant un dépôt supprimé, et aucune divergence réelle — son propre
+      message le disait (« failed with the dual-presence window closed — they are not
+      divergences »). Corriger l'index exigerait de désarchiver le moyeu, ce que sa
+      propre règle interdit. Un gate qui ne peut plus devenir vert entraîne à ignorer
+      un rouge : c'est le défaut que `tools/quality/gate-report.ts` existe pour
+      empêcher, appliqué au gate lui-même. `check-hub-orphans` reste et couvre la
+      question survivante — tout chemin du moyeu a une destination, un remplacement
+      ou une éviction.
+    decided_by: owner
+    decided_on: 2026-10-08
+    adr: ADR-0041
+    recoverable_at: 2cbf6e58e0f1e8e080354c302c523eb5206c9049
+    survives_as:
+      - ecosystem/check-hub-orphans.ts
+      - ecosystem/migration-index.v1.yaml
+
 # Fichiers autorisés à nommer un chemin évincé. Toute autre citation échoue : c'est ce
 # qui empêche un document futur de ressusciter le contenu par référence. La liste est
 # une donnée, pas une exception codée en dur dans le garde-fou.

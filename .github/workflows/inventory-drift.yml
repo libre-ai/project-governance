@@ -72,11 +72,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-fleet-pins.ts
-      - name: Hub and destination copies stay identical during the pending window
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bun ecosystem/check-migration-drift.ts
       - name: Every repository card is valid and its README status matches
         if: always()
         env:

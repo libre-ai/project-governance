@@ -59,6 +59,7 @@ Changes to this register require an ADR and explicit human approval.
 | D48 | Les donneurs aux noms courts sont retirés après préservation prouvée par clone réel depuis bundle, `fsck` et recomptage par branche, sur manifeste confirmé ; `governance` en dernier, après re-épinglage de ses consommateurs | ADR-0041 §3 | 2026-10-07 |
 | D49 | Les trois capacités sans destination sont absorbées dans `project-governance` et non supprimées — moteur de projection en `crates/ecosystem-engine`, noyau K2 en `packages/classification` exporté et désormais appelé, lecteur de projection conservé comme seconde implémentation du digest ; ADR-0024 §2.2 est amendée pour ces trois seules briques | ADR-0041 §4 | 2026-10-07 |
 | D50 | `carriere` est déclaré à l'inventaire et conservé : I-16 et ADR-0023 §2.2 excluent que l'absence de code conditionne l'existence d'un repository, et le registre de transition interdit sa suppression implicite | ADR-0041 §5 | 2026-10-07 |
+| D51 | Le gate de dérive de migration est retiré et son éviction enregistrée : sa fenêtre de double présence est close, le moyeu est archivé en lecture seule et ses dix destinations à noms courts sont supprimées, de sorte que ses 34 constats sont des entrées fantômes et non des divergences ; un gate qui ne peut plus devenir vert entraîne à ignorer un rouge. `check-hub-orphans` porte la question survivante | ADR-0041 §8 | 2026-10-08 |
 
 Two accepted ADRs still have no corresponding D-entry above: ADR-0010
 (auth v1 session/revision/concurrency code), ADR-0018 (wave 3 opening —

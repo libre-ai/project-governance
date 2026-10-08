@@ -213,9 +213,10 @@ Conformément au constat de ce document — la valeur principale d'un challenger
 est souvent dans les défauts qu'il expose — la confrontation a trouvé trois
 gates verts qui n'assertaient rien, sur une même classe de défaut :
 
-- `ecosystem/check-migration-drift.ts` (K4 AUTH-05), **déjà corrigé** avant cet
+- le gate de dérive de migration (K4 AUTH-05), **déjà corrigé** avant cet
   import et devenu le modèle de référence interne : il portait localement la
-  règle que l'import ne fait que généraliser.
+  règle que l'import ne fait que généraliser. Il a été retiré le 2026-10-08
+  (ADR-0041 §8) ; la règle qu'il a inspirée vit dans `tools/quality/gate-report.ts`.
 - `tools/quality/check-specification-lock.ts` : vidait sa propre liste
   d'applications depuis la ventilation ADR-0020, puis affichait `verified: 13` —
   la longueur de la liste écartée, pas du travail fait. Zéro spécification

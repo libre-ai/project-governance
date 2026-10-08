@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { GateReport, renderGateReport } from "./gate-report";
 
 // The defect this module closes: a gate that inspects nothing exits 0 and reads
-// as verified. It happened twice here — `check-migration-drift` (K4 AUTH-05)
-// skipped every remaining path, and `check-specification-lock` emptied its own
+// as verified. It happened twice here — the migration-drift gate (K4 AUTH-05,
+// retired 2026-10-08) skipped every remaining path, and `check-specification-lock`
+// emptied its own
 // application list once `docs/apps/` left this repository (ADR-0020 dispatch).
 
 describe("GateReport", () => {
