@@ -17,6 +17,7 @@
  */
 
 import { buildIndex } from "./build-index";
+import { delay, ghGraphQLRaw, RETRY_DELAYS_MS } from "./github-fleet";
 
 export const ORGANIZATION = "libre-ai";
 
@@ -78,13 +79,6 @@ export function reconcileInventory(
   }
 
   return { drifts, notes };
-}
-
-/** Two retries beyond the first attempt — 1s then 3s — same budget as ecosystem/check-context-conformance.ts's ghWithRetry. */
-const RETRY_DELAYS_MS = [1000, 3000];
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -151,28 +145,6 @@ async function fetchLiveRepositoriesViaRest(): Promise<LiveRepository[]> {
 // request per page (the fleet fits in one, verified empirically — 36
 // repositories, `hasNextPage: false`) instead of gh api --paginate's many
 // sequential REST calls under the hood.
-
-function ghApiGraphQLArgs(): string[] {
-  return ["api", "graphql", "-F", "query=@-"];
-}
-
-async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", ...ghApiGraphQLArgs()], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
-}
 
 export function buildOrgRepositoriesQuery(organization: string, cursor: string | null): string {
   const after = cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`;
