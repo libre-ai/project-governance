@@ -120,4 +120,9 @@ if (failures.length === 0) {
       : "no installed dependency found — run bun install before auditing licenses",
   );
 }
+report.volume(
+  `${checked.size} installed dependenc${checked.size === 1 ? "y" : "ies"} audited against ` +
+    `${allowed.size} allowed licence(s), ${firstParty.size} first-party package(s) resolved ` +
+    `from the lockfile`,
+);
 concludeGate("JavaScript licenses", report);

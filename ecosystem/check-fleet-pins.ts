@@ -605,11 +605,13 @@ if (import.meta.main) {
       true,
       `${inspected} pins across ${covered} repositories match the ${generationShas.length} declared generations`,
     );
-    // Printed, not only recorded: a success line that carries no volume is how
-    // "2 assertion(s) hold" stood for a fleet of twenty-four targets.
-    console.log(
-      `Fleet pins: ${inspected} pin(s) read across ${covered} of ${targets.length} target(s), 0 unreadable, against ${generationShas.length} declared generation(s)`,
-    );
   }
+  // Said on the success line, not in a note only GATE_VERBOSE expands: a
+  // "2 assertion(s) hold" stood for a fleet of twenty-four targets. This was an
+  // ad-hoc console.log of its own until `GateReport.volume` generalised it.
+  report.volume(
+    `${inspected} pin(s) read across ${covered} of ${targets.length} target(s), ` +
+      `${unreadable.length} unreadable, against ${generationShas.length} declared generation(s)`,
+  );
   concludeGate("Fleet pins", report);
 }

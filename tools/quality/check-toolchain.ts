@@ -52,4 +52,9 @@ for (const failure of failures) report.check("bun toolchain", false, failure);
 if (failures.length === 0) {
   report.check("bun toolchain", true, `revision ${actualRevision} matches the declared toolchain`);
 }
+report.volume(
+  `3 facts compared between the running process and toolchains/bun.json — version ` +
+    `${actualVersion} vs ${expected.version}, revision ${actualRevision} vs ${expected.revision}, ` +
+    `pinned source commit ${expected.sourceCommit.slice(0, 9)}`,
+);
 concludeGate("Bun toolchain", report);

@@ -327,5 +327,9 @@ if (import.meta.main) {
         : "the hub listing returned no path — the reconciliation asserted nothing",
     );
   }
+  gate.volume(
+    `${report.covered} of ${hubPaths.length} hub path(s) accounted for by a destination, a ` +
+      `replacement or an eviction, ${report.orphans.length} orphan(s)`,
+  );
   concludeGate("Hub orphans", gate);
 }

@@ -154,4 +154,9 @@ if (failures.length === 0) {
     `root + ${manifestPaths.size} package/template manifests require ${expectedEngine}`,
   );
 }
+report.volume(
+  `1 root manifest and ${manifestPaths.size} package/template manifest(s) read, ` +
+    `${Object.keys(root.scripts ?? {}).length} root script(s) inspected for the Bun floor, ` +
+    `against engines ${expectedEngine} and ${selectedPackageManager}`,
+);
 concludeGate("Bun manifests", report);
