@@ -97,7 +97,9 @@ jobs:
       # Owner decision 2026-09-07 ("restore Dependabot everywhere through a
       # governance template"): every non-archived repository carries the
       # byte-exact variant of distribution/templates/dependabot/ selected by
-      # its manifests at main. Reads the fleet in one GraphQL batch, like
+      # its manifests at main; a repository whose full tree carries no
+      # manifest of any Dependabot ecosystem asserts "no ecosystem to watch"
+      # and must carry no configuration. Reads the fleet in one GraphQL batch, like
       # context-conformance; the report names each drifted repository and the
       # first differing line, so the wave that fixes it needs no second look.
       # Scheduled and dispatched runs only: this job is a required pull

@@ -69,6 +69,8 @@ Structure identique pour le rôle méthodologique et le rôle juridique/vie priv
 4. **L'approbation n'active rien** — les deux gates franchis, l'activation reste `false` jusqu'à une décision de publication distincte, portant sur le build lié par hash.
 5. **Séparation de la preuve présente et de la preuve future** — la preuve de non-transmission distingue ce qui est prouvé aujourd'hui (aucun transport n'existe dans l'arbre, garde-fou `tools/quality/check-no-transmission.ts`, monde WIT sans import) de ce qui reste dû (canari navigateur et capture réseau sur un build de release), avec un énoncé de non-interférence portant sur corps, en-têtes, méthode, chemin, paramètres, journaux **et cadence**.
 
+**Correction (2026-10-08).** La règle 5 range `tools/quality/check-no-transmission.ts` dans ce qui est « prouvé aujourd'hui ». Pour Boussole, ce rang n'est plus tenu. Mesuré le 2026-10-08 sur les vingt-quatre dépôts que déclare `ecosystem/repositories.v1.yaml` : un seul câble ce garde-fou, `libre-ai/personal-knowledge-notebook`, scopé `apps/notebook/src` — aucun ne le câble pour Boussole, et le dépôt produit qui avait reçu `apps/boussole/` est supprimé (mesuré au code de sortie de l'API, non à sa sortie : le corps d'un 404 s'écrit sur la sortie standard). La distinction que porte la règle — preuve présente contre preuve future — reste la bonne forme et ne change pas ; c'est le **rang** de cet élément qui change. Pour Boussole, « aucun transport n'existe dans l'arbre » redevient ce qu'il était avant tout câblage : une propriété d'architecture, au même rang que le canari navigateur encore dû, et non un fait vérifié par mécanisme. Aucune des cinq règles, aucune option et aucune décision de cet ADR n'est modifiée.
+
 ## Options
 
 ### Option A — adoption intégrale
