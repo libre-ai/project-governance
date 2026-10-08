@@ -31,10 +31,15 @@
  *
  * With the token: a fixed branch `heal/org-readme` in `.github` (recreated
  * from `main` when no pull request is open from it, appended to otherwise),
- * one commit through the Contents API with the token's identity as author
- * and a matching `Signed-off-by` trailer, one pull request — found by head
- * branch, never duplicated. Idempotent: a branch already carrying the
- * healed content gets no second commit.
+ * one commit per drifting profile README through the Contents API with the
+ * token's identity as author and a matching `Signed-off-by` trailer, one pull
+ * request — found by head branch, never duplicated. Idempotent: a file the
+ * branch already carries healed gets no second commit.
+ *
+ * Both profile languages are healed (owner decision 2026-10-08, Y14): the
+ * gate compares `profile/README.md` and `profile/README.fr.md` against the
+ * same rendered section, so a heal that only spliced the English file would
+ * leave the run red on the French one.
  *
  * Pure parts (`spliceStatusSection`, `skipMessage`, `healCommitMessage`,
  * `findOpenPullRequest`) are unit-tested; the API calls are not, and the
@@ -43,12 +48,17 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { STATUS_SECTION_BEGIN, STATUS_SECTION_END } from "../../ecosystem/project-cards";
-import { checkOrgReadmeDrift, isLiveState, readLiveState } from "./check-org-readme-drift";
+import {
+  checkOrgReadmeDrift,
+  isLiveState,
+  PROFILE_LANGUAGES,
+  PROFILE_README_PATHS,
+  readLiveState,
+} from "./check-org-readme-drift";
 
 export const HEAL_SECRET = "ORG_README_HEAL_TOKEN";
 export const HEAL_BRANCH = "heal/org-readme";
 export const HEAL_REPOSITORY = "libre-ai/.github";
-export const HEAL_PATH = "profile/README.md";
 export const HEAL_PR_TITLE = "docs(profile): sync the status section with the live fleet cards";
 
 function countOccurrences(haystack: string, needle: string): number {
@@ -73,10 +83,19 @@ export function spliceStatusSection(liveReadme: string, freshSection: string): s
   return liveReadme.slice(0, begin) + freshSection + liveReadme.slice(end);
 }
 
-export function skipMessage(healedPath: string): string {
+export interface HealedFile {
+  /** Path inside `libre-ai/.github`. */
+  readonly path: string;
+  /** Where the healed copy was written for the run artifact. */
+  readonly writtenTo: string;
+  readonly content: string;
+}
+
+export function skipMessage(healed: readonly Pick<HealedFile, "path" | "writtenTo">[]): string {
+  const written = healed.map((file) => `${file.path} to ${file.writtenTo}`).join(", ");
   return (
-    `skipped: secret ${HEAL_SECRET} absent — the healed ${HEAL_REPOSITORY} ${HEAL_PATH} was written ` +
-    `to ${healedPath} (run artifact "org-readme-healed"); paste it, or configure the secret ` +
+    `skipped: secret ${HEAL_SECRET} absent — the healed ${HEAL_REPOSITORY} ${written} ` +
+    `(run artifact "org-readme-healed"); paste it, or configure the secret ` +
     "(docs/method/AGENTIC-LOOP-INVENTORY.md, « Auto-guérison du README d'organisation ») so the " +
     "next red run opens the pull request itself"
   );
@@ -156,7 +175,7 @@ function refExists(api: Api, branch: string): boolean {
   }
 }
 
-function openPullRequest(api: Api, healed: string, runUrl: string): string {
+function openPullRequest(api: Api, healed: readonly HealedFile[], runUrl: string): string {
   const user = api.json(["api", "user"]) as { login: string; id: number };
   const identity: Identity = {
     name: user.login,
@@ -200,31 +219,33 @@ function openPullRequest(api: Api, healed: string, runUrl: string): string {
     ]);
   }
 
-  const current = api.json([
-    "api",
-    `repos/${HEAL_REPOSITORY}/contents/${HEAL_PATH}?ref=${HEAL_BRANCH}`,
-  ]) as { sha: string; content: string };
-  const currentText = Buffer.from(current.content, "base64").toString("utf8");
-  if (currentText === healed) {
-    console.log(
-      `heal-org-readme: ${HEAL_BRANCH} already carries the healed README — no new commit`,
-    );
-  } else {
+  for (const file of healed) {
+    const current = api.json([
+      "api",
+      `repos/${HEAL_REPOSITORY}/contents/${file.path}?ref=${HEAL_BRANCH}`,
+    ]) as { sha: string; content: string };
+    const currentText = Buffer.from(current.content, "base64").toString("utf8");
+    if (currentText === file.content) {
+      console.log(
+        `heal-org-readme: ${HEAL_BRANCH} already carries the healed ${file.path} — no new commit`,
+      );
+      continue;
+    }
     // `--input -` reads the JSON body from stdin, so the README content never
     // goes through argv (size limit, and it would be visible in `ps`).
     const body = JSON.stringify({
       message: healCommitMessage(runUrl, identity),
-      content: Buffer.from(healed, "utf8").toString("base64"),
+      content: Buffer.from(file.content, "utf8").toString("base64"),
       sha: current.sha,
       branch: HEAL_BRANCH,
       committer: identity,
       author: identity,
     });
     api.run(
-      ["api", "-X", "PUT", `repos/${HEAL_REPOSITORY}/contents/${HEAL_PATH}`, "--input", "-"],
+      ["api", "-X", "PUT", `repos/${HEAL_REPOSITORY}/contents/${file.path}`, "--input", "-"],
       body,
     );
-    console.log(`heal-org-readme: committed the healed README to ${HEAL_BRANCH}`);
+    console.log(`heal-org-readme: committed the healed ${file.path} to ${HEAL_BRANCH}`);
   }
 
   if (existing !== null) {
@@ -262,29 +283,39 @@ if (import.meta.main) {
     process.exit(1);
   }
 
-  const drift = checkOrgReadmeDrift(state.readme, state.freshSection);
-  if (drift.length === 0) {
+  const healed: HealedFile[] = [];
+  for (const language of PROFILE_LANGUAGES) {
+    const path = PROFILE_README_PATHS[language];
+    const readme = state.readmes[language];
+    const drift = checkOrgReadmeDrift(readme, state.freshSection, language);
+    if (drift.length === 0) {
+      console.log(`heal-org-readme: ${HEAL_REPOSITORY} ${path} already matches the live cards`);
+      continue;
+    }
+    const spliced = spliceStatusSection(readme, state.freshSection);
+    if (spliced === null) {
+      console.error(`heal-org-readme: ${drift.join("; ")} — not a mechanical fix, no pull request`);
+      process.exit(1);
+    }
+    const writtenTo = join(outDirectory, `profile-${path.slice("profile/".length)}`);
+    mkdirSync(dirname(writtenTo), { recursive: true });
+    await Bun.write(writtenTo, spliced);
+    healed.push({ path, writtenTo, content: spliced });
+  }
+
+  if (healed.length === 0) {
     console.log(
-      `heal-org-readme: ${HEAL_REPOSITORY} ${HEAL_PATH} already matches the live cards — nothing to ` +
-        "heal there (a stale ecosystem/projections/fleet-status.v1.json is fixed in THIS repository: " +
-        "bun ecosystem/render-fleet-status.ts)",
+      "heal-org-readme: nothing to heal in the profile READMEs (a stale " +
+        "ecosystem/projections/fleet-status.v1.json is fixed in THIS repository: " +
+        "bun ecosystem/render-fleet-status.ts; a drifting brand introduction is re-rendered " +
+        "with bun tools/presentation/render-org-brand-intro.ts)",
     );
     process.exit(0);
   }
 
-  const healed = spliceStatusSection(state.readme, state.freshSection);
-  if (healed === null) {
-    console.error(`heal-org-readme: ${drift.join("; ")} — not a mechanical fix, no pull request`);
-    process.exit(1);
-  }
-
-  const healedPath = join(outDirectory, "profile-README.md");
-  mkdirSync(dirname(healedPath), { recursive: true });
-  await Bun.write(healedPath, healed);
-
   const token = process.env[HEAL_SECRET];
   if (token === undefined || token.length === 0) {
-    const message = skipMessage(healedPath);
+    const message = skipMessage(healed);
     console.log(`heal-org-readme: ${message}`);
     appendSummary(`**Org README heal** — ${message}`);
     process.exit(0);

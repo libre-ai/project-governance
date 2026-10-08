@@ -3,6 +3,30 @@
   "source": "project.v1.yaml cards at each repository main",
   "rows": [
     {
+      "repository": "libre-ai/ai-model-policy",
+      "project": "ai-model-policy",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "ai-model-policy: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
+      "repository": "libre-ai/ai-practice-workbench",
+      "project": "ai-practice-workbench",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "ai-practice-workbench: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
       "repository": "libre-ai/carriere",
       "project": "carriere",
       "kind": "product",
@@ -15,6 +39,42 @@
       "last_verified_on": "2026-10-08"
     },
     {
+      "repository": "libre-ai/information-feed-filter",
+      "project": "information-feed-filter",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "information-feed-filter: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
+      "repository": "libre-ai/learning-session-facilitation",
+      "project": "learning-session-facilitation",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "learning-session-facilitation: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
+      "repository": "libre-ai/personal-knowledge-notebook",
+      "project": "personal-knowledge-notebook",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "personal-knowledge-notebook: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
       "repository": "libre-ai/signalement",
       "project": "signalement",
       "kind": "product",
@@ -25,6 +85,30 @@
       "confidence": "medium",
       "exposure": "spec-published",
       "last_verified_on": "2026-10-06"
+    },
+    {
+      "repository": "libre-ai/travel-itinerary-planner",
+      "project": "travel-itinerary-planner",
+      "kind": "product",
+      "layer": "couche-1",
+      "summary": "travel-itinerary-planner: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-08"
+    },
+    {
+      "repository": "libre-ai/ai-work-supervision",
+      "project": "ai-work-supervision",
+      "kind": "application",
+      "layer": "couche-2",
+      "summary": "ai-work-supervision: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
     },
     {
       "repository": "libre-ai/execution-continuity-evaluator",
@@ -51,6 +135,18 @@
       "last_verified_on": "2026-09-12"
     },
     {
+      "repository": "libre-ai/artifact-verification",
+      "project": "artifact-verification",
+      "kind": "satellite",
+      "layer": "couche-3",
+      "summary": "artifact-verification: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
       "repository": "libre-ai/capability-authorization",
       "project": "authz-biscuit",
       "kind": "satellite",
@@ -61,6 +157,42 @@
       "confidence": "medium",
       "exposure": "spec-published",
       "last_verified_on": "2026-07-30"
+    },
+    {
+      "repository": "libre-ai/collaborative-data-sync",
+      "project": "collaborative-data-sync",
+      "kind": "satellite",
+      "layer": "couche-4",
+      "summary": "collaborative-data-sync: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-08"
+    },
+    {
+      "repository": "libre-ai/organization-data-lifecycle",
+      "project": "organization-data-lifecycle",
+      "kind": "satellite",
+      "layer": "couche-4",
+      "summary": "organization-data-lifecycle: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
+    },
+    {
+      "repository": "libre-ai/database-policy-inspector",
+      "project": "database-policy-inspector",
+      "kind": "tool",
+      "layer": "transverse",
+      "summary": "database-policy-inspector: recovered sources with documentary integration under review.",
+      "display": "Avancement non calculable — périmètre à clarifier",
+      "maturity": "idea",
+      "confidence": "medium",
+      "exposure": "idea",
+      "last_verified_on": "2026-10-07"
     },
     {
       "repository": "libre-ai/pi-evidence",

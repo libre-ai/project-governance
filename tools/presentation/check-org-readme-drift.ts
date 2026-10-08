@@ -20,6 +20,18 @@
  * `bun ecosystem/render-fleet-status.ts`, re-render the section with
  * `bun tools/presentation/render-org-readme.ts`.
  *
+ * Owner decision 2026-10-08 (Y14): the French profile `profile/README.fr.md`
+ * carries the same status section, and this gate compares both languages.
+ * The section is rendered once — its labels are French, as they have been
+ * in the English README since γ 3.6 — so the two READMEs are held to the
+ * same bytes between their sentinels, never to two renderings that could
+ * disagree.
+ *
+ * Every comparison that holds is recorded as an assertion, so the success
+ * line counts what was examined (projection, two status sections, two brand
+ * introductions): a passing comparison that asserted nothing made the line
+ * read "2 assertion(s)" while four comparisons had run.
+ *
  * The heal path (`heal-org-readme.ts`) shares `readLiveState` so it splices
  * exactly the section this gate compares against, never a third rendering.
  * Failure surfaces through docs/method/AGENTIC-LOOP-INVENTORY.md's
@@ -43,22 +55,33 @@ function countOccurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
+/** Where each language of the organization profile lives in `libre-ai/.github`. */
+export const PROFILE_README_PATHS: Readonly<Record<BrandLanguage, string>> = {
+  en: "profile/README.md",
+  fr: "profile/README.fr.md",
+};
+
+export const PROFILE_LANGUAGES: readonly BrandLanguage[] = ["en", "fr"];
+
 /**
  * Compares the live `.github` README against a freshly rendered section.
  * Mirrors `project-cards.ts`'s `checkStatusSection` sentinel discipline: one
  * declared pair of sentinels, byte-identical content between them.
  */
-export function checkOrgReadmeDrift(liveReadme: string, freshSection: string): string[] {
+export function checkOrgReadmeDrift(
+  liveReadme: string,
+  freshSection: string,
+  language: BrandLanguage,
+): string[] {
+  const path = PROFILE_README_PATHS[language];
   const beginCount = countOccurrences(liveReadme, STATUS_SECTION_BEGIN);
   const endCount = countOccurrences(liveReadme, STATUS_SECTION_END);
   if (beginCount === 0 || endCount === 0) {
-    return [
-      ".github profile/README.md: generated project-status section missing (sentinels not found)",
-    ];
+    return [`.github ${path}: generated project-status section missing (sentinels not found)`];
   }
   if (beginCount > 1 || endCount > 1) {
     return [
-      ".github profile/README.md: section statut dupliquée — une seule paire de sentinelles est admise",
+      `.github ${path}: section statut dupliquée — une seule paire de sentinelles est admise`,
     ];
   }
   const begin = liveReadme.indexOf(STATUS_SECTION_BEGIN);
@@ -66,7 +89,7 @@ export function checkOrgReadmeDrift(liveReadme: string, freshSection: string): s
   const committed = liveReadme.slice(begin, end + STATUS_SECTION_END.length);
   if (committed !== freshSection) {
     return [
-      ".github profile/README.md: the published status section diverges from a fresh render of " +
+      `.github ${path}: the published status section diverges from a fresh render of ` +
         "ecosystem/repositories.v1.yaml — run `bun tools/presentation/render-org-readme.ts` and " +
         "paste the result between the sentinels",
     ];
@@ -81,7 +104,7 @@ export function checkOrgBrandIntroDrift(
 ): string[] {
   const beginCount = countOccurrences(liveReadme, BRAND_INTRO_BEGIN);
   const endCount = countOccurrences(liveReadme, BRAND_INTRO_END);
-  const path = language === "en" ? "profile/README.md" : "profile/README.fr.md";
+  const path = PROFILE_README_PATHS[language];
   if (beginCount === 0 || endCount === 0) {
     return [`.github ${path}: generated brand introduction missing (sentinels not found)`];
   }
@@ -142,11 +165,9 @@ function fetchFromGitHub(repository: string, path: string): string | null {
 }
 
 export interface LiveState {
-  readonly readme: string;
-  readonly frenchReadme: string;
+  readonly readmes: Readonly<Record<BrandLanguage, string>>;
   readonly freshSection: string;
-  readonly freshEnglishIntro: string;
-  readonly freshFrenchIntro: string;
+  readonly freshIntros: Readonly<Record<BrandLanguage, string>>;
   readonly liveStatus: FleetStatus;
   readonly committedStatus: FleetStatus;
 }
@@ -177,10 +198,12 @@ export async function readLiveState(): Promise<LiveState | LiveStateFailure> {
 
   const migrationText = fetchFromGitHub("libre-ai/libre-ai", "ecosystem/migration-index.v1.yaml");
   if (migrationText === null) unreadable.push("libre-ai/libre-ai: migration index unreadable");
-  const readme = fetchFromGitHub("libre-ai/.github", "profile/README.md");
-  if (readme === null) unreadable.push("libre-ai/.github: profile/README.md unreadable");
-  const frenchReadme = fetchFromGitHub("libre-ai/.github", "profile/README.fr.md");
-  if (frenchReadme === null) unreadable.push("libre-ai/.github: profile/README.fr.md unreadable");
+  const readme = fetchFromGitHub("libre-ai/.github", PROFILE_README_PATHS.en);
+  if (readme === null) unreadable.push(`libre-ai/.github: ${PROFILE_README_PATHS.en} unreadable`);
+  const frenchReadme = fetchFromGitHub("libre-ai/.github", PROFILE_README_PATHS.fr);
+  if (frenchReadme === null) {
+    unreadable.push(`libre-ai/.github: ${PROFILE_README_PATHS.fr} unreadable`);
+  }
   if (migrationText === null || readme === null || frenchReadme === null || unreadable.length > 0) {
     return { unreadable };
   }
@@ -193,18 +216,60 @@ export async function readLiveState(): Promise<LiveState | LiveStateFailure> {
     new URL("../../brand/projections/public-brand.v1.json", import.meta.url),
   ).json()) as PublicBrandProjection;
   return {
-    readme,
-    frenchReadme,
+    readmes: { en: readme, fr: frenchReadme },
     freshSection: renderOrgSection(liveStatus, summarizeMigration(migrationText)),
-    freshEnglishIntro: renderOrgBrandIntro(brandProjection, "en"),
-    freshFrenchIntro: renderOrgBrandIntro(brandProjection, "fr"),
+    freshIntros: {
+      en: renderOrgBrandIntro(brandProjection, "en"),
+      fr: renderOrgBrandIntro(brandProjection, "fr"),
+    },
     liveStatus,
     committedStatus,
   };
 }
 
 export function isLiveState(state: LiveState | LiveStateFailure): state is LiveState {
-  return "readme" in state;
+  return "readmes" in state;
+}
+
+/** The subset of `GateReport` the comparisons need, so they are testable without the CLI. */
+export interface AssertionSink {
+  check(item: string, ok: boolean, note: string): unknown;
+}
+
+/**
+ * Records one assertion per comparison — on success as on failure — for the
+ * status section and the brand introduction of each profile language.
+ */
+export function recordProfileComparisons(
+  report: AssertionSink,
+  state: Pick<LiveState, "readmes" | "freshSection" | "freshIntros" | "liveStatus">,
+): void {
+  for (const language of PROFILE_LANGUAGES) {
+    const path = PROFILE_README_PATHS[language];
+    const readme = state.readmes[language];
+
+    const drift = checkOrgReadmeDrift(readme, state.freshSection, language);
+    if (drift.length === 0) {
+      report.check(
+        "org readme drift",
+        true,
+        `libre-ai/.github ${path} status section matches a fresh render (${state.liveStatus.rows.length} rows)`,
+      );
+    } else {
+      for (const failure of drift) report.check("org readme drift", false, failure);
+    }
+
+    const introDrift = checkOrgBrandIntroDrift(readme, state.freshIntros[language], language);
+    if (introDrift.length === 0) {
+      report.check(
+        "org brand intro drift",
+        true,
+        `libre-ai/.github ${path} brand introduction matches a fresh render (${language})`,
+      );
+    } else {
+      for (const failure of introDrift) report.check("org brand intro drift", false, failure);
+    }
+  }
 }
 
 if (import.meta.main) {
@@ -227,27 +292,10 @@ if (import.meta.main) {
         report.check("fleet-status projection", false, failure);
     }
 
-    const drift = checkOrgReadmeDrift(state.readme, state.freshSection);
-    if (drift.length === 0) {
-      report.check(
-        "org readme drift",
-        true,
-        `libre-ai/.github profile/README.md matches a fresh render (${state.liveStatus.rows.length} rows)`,
-      );
-    } else {
-      for (const failure of drift) report.check("org readme drift", false, failure);
-    }
-
-    for (const failure of checkOrgBrandIntroDrift(state.readme, state.freshEnglishIntro, "en")) {
-      report.check("org brand intro drift", false, failure);
-    }
-    for (const failure of checkOrgBrandIntroDrift(
-      state.frenchReadme,
-      state.freshFrenchIntro,
-      "fr",
-    )) {
-      report.check("org brand intro drift", false, failure);
-    }
+    recordProfileComparisons(report, state);
+    report.volume(
+      `${state.liveStatus.rows.length} fleet rows, ${PROFILE_LANGUAGES.length} profile READMEs (${PROFILE_LANGUAGES.map((language) => PROFILE_README_PATHS[language]).join(", ")})`,
+    );
   }
   concludeGate("Org README drift", report);
 }

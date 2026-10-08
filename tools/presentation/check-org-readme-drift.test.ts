@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { STATUS_SECTION_BEGIN, STATUS_SECTION_END } from "../../ecosystem/project-cards";
 import type { FleetStatus, FleetStatusRow } from "../../ecosystem/render-fleet-status";
+import { GateReport, renderGateReport } from "../quality/gate-report";
 import {
   checkOrgBrandIntroDrift,
   checkOrgReadmeDrift,
   checkProjectionFreshness,
+  recordProfileComparisons,
 } from "./check-org-readme-drift";
 import { BRAND_INTRO_BEGIN, BRAND_INTRO_END } from "./render-org-brand-intro";
 
@@ -64,19 +66,24 @@ describe("checkOrgReadmeDrift", () => {
   test("no drift when the live section is byte-identical to a fresh render", () => {
     const section = wrap("| Radar | ... |");
     const readme = `# Libre AI\n\nSome prose.\n\n${section}\n\nMore prose.\n`;
-    expect(checkOrgReadmeDrift(readme, section)).toEqual([]);
+    expect(checkOrgReadmeDrift(readme, section, "en")).toEqual([]);
   });
 
   test("fails named when the live section text diverges from a fresh render", () => {
     const live = `# Libre AI\n\n${wrap("| Radar | stale |")}\n`;
     const fresh = wrap("| Radar | fresh |");
-    const failures = checkOrgReadmeDrift(live, fresh);
+    const failures = checkOrgReadmeDrift(live, fresh, "en");
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain("diverges from a fresh render");
+    expect(failures[0]).toContain("profile/README.md:");
   });
 
   test("fails when the sentinels are absent from the live README", () => {
-    const failures = checkOrgReadmeDrift("# Libre AI\n\nNo generated section here.\n", wrap("x"));
+    const failures = checkOrgReadmeDrift(
+      "# Libre AI\n\nNo generated section here.\n",
+      wrap("x"),
+      "en",
+    );
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain("sentinels not found");
   });
@@ -84,9 +91,26 @@ describe("checkOrgReadmeDrift", () => {
   test("fails when the live README carries a duplicated sentinel pair", () => {
     const section = wrap("x");
     const live = `${section}\n\n${section}`;
-    const failures = checkOrgReadmeDrift(live, section);
+    const failures = checkOrgReadmeDrift(live, section, "en");
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain("dupliquée");
+  });
+
+  // Owner decision 2026-10-08 (Y14): the French profile carries the same
+  // section, and a failure on it must name the French file, not the English one.
+  test("the French README is held to the same section and its failures name README.fr.md", () => {
+    const section = wrap("| Radar | ... |");
+    expect(checkOrgReadmeDrift(`# Libre AI\n\n${section}\n`, section, "fr")).toEqual([]);
+
+    const missing = checkOrgReadmeDrift("# Libre AI\n", section, "fr");
+    expect(missing).toHaveLength(1);
+    expect(missing[0]).toContain(".github profile/README.fr.md:");
+    expect(missing[0]).toContain("sentinels not found");
+
+    const stale = checkOrgReadmeDrift(wrap("| Radar | stale |"), section, "fr");
+    expect(stale).toHaveLength(1);
+    expect(stale[0]).toContain(".github profile/README.fr.md:");
+    expect(stale[0]).toContain("diverges from a fresh render");
   });
 });
 
@@ -103,5 +127,58 @@ describe("checkOrgBrandIntroDrift", () => {
     expect(
       checkOrgBrandIntroDrift(`${BRAND_INTRO_BEGIN}\nStale.\n${BRAND_INTRO_END}`, fresh, "en")[0],
     ).toContain("diverges");
+  });
+});
+
+// `gate-integrity` §2: a success prints what it examined. The two brand
+// introduction comparisons used to record nothing when they held, so the
+// success line read "2 assertion(s)" after four comparisons had run.
+describe("recordProfileComparisons", () => {
+  const section = wrap("| Radar | ... |");
+  const intro = (language: string) =>
+    `${BRAND_INTRO_BEGIN}\nIntro ${language}.\n${BRAND_INTRO_END}`;
+  const readme = (language: string) => `${intro(language)}\n\n${section}\n`;
+  const state = {
+    readmes: { en: readme("en"), fr: readme("fr") },
+    freshSection: section,
+    freshIntros: { en: intro("en"), fr: intro("fr") },
+    liveStatus: status([row()]),
+  };
+
+  test("every comparison that holds is counted: two sections and two introductions", () => {
+    const report = new GateReport();
+    recordProfileComparisons(report, state);
+    expect(report.outcome).toBe("pass");
+    expect(report.checks.map((check) => check.note)).toEqual([
+      "libre-ai/.github profile/README.md status section matches a fresh render (1 rows)",
+      "libre-ai/.github profile/README.md brand introduction matches a fresh render (en)",
+      "libre-ai/.github profile/README.fr.md status section matches a fresh render (1 rows)",
+      "libre-ai/.github profile/README.fr.md brand introduction matches a fresh render (fr)",
+    ]);
+    expect(renderGateReport("Org README drift", report).lines[0]).toBe(
+      "Org README drift verified: 4 assertion(s) hold",
+    );
+  });
+
+  test("a French README without the status section fails the gate, named", () => {
+    const report = new GateReport();
+    recordProfileComparisons(report, { ...state, readmes: { ...state.readmes, fr: intro("fr") } });
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      "org readme drift: .github profile/README.fr.md: generated project-status section missing (sentinels not found)",
+    ]);
+    expect(report.asserted).toBe(4);
+  });
+
+  test("a drifting French introduction fails while the English one still counts", () => {
+    const report = new GateReport();
+    recordProfileComparisons(report, {
+      ...state,
+      freshIntros: { ...state.freshIntros, fr: intro("fr, fresh") },
+    });
+    expect(report.violations).toEqual([
+      "org brand intro drift: .github profile/README.fr.md: the published brand introduction diverges from a fresh render",
+    ]);
+    expect(report.checks.filter((check) => check.ok)).toHaveLength(3);
   });
 });
