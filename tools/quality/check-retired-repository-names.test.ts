@@ -17,14 +17,28 @@ import {
 const ORG = "libre-ai";
 
 describe("the retired list", () => {
-  test("holds the sixteen names the 2026-10-07 consolidation retired", () => {
-    expect(RETIRED_REPOSITORY_NAMES).toHaveLength(16);
-    expect(new Set(RETIRED_REPOSITORY_NAMES).size).toBe(16);
+  // No written count. A previous form of this test asserted a length of 33 AND a
+  // distinct-name count of 16 in the same body: two contradictory numbers, both
+  // written, left by a partial edit that grew the list without re-measuring the
+  // assertion. Unicity is the property worth locking, and it is expressed against
+  // the list's own length so that it survives every future entry.
+  test("each name appears once", () => {
+    expect(new Set(RETIRED_REPOSITORY_NAMES).size).toBe(RETIRED_REPOSITORY_NAMES.length);
   });
 
   test("the hub is deliberately absent: archived read-only is not retired", () => {
     expect(RETIRED_REPOSITORY_NAMES as readonly string[]).not.toContain("libre-ai");
-    expect(RETIRED_REPOSITORY_NAMES as readonly string[]).not.toContain("website");
+  });
+
+  // Held out until 2026-10-08 as "regularised, not retired" (ADR-0020 §2.4, a
+  // rule written for the TOOLING list). Measured that day: the old repository
+  // does not resolve, and the retirement manifest maps it to its new name exactly
+  // as it maps `web-platform`, which this list has always held. The exclusion was
+  // hiding an operational reference under a `repo:` key in a file that is neither
+  // a test nor allow-listed.
+  test("website is in: a regularised name whose repository no longer resolves", () => {
+    expect(RETIRED_REPOSITORY_NAMES as readonly string[]).toContain("website");
+    expect(RETIRED_REPOSITORY_NAMES as readonly string[]).toContain("web-platform");
   });
 
   test("holds bare names only, so the list cannot match the forms it declares", () => {
@@ -104,6 +118,35 @@ describe("the four operational forms", () => {
         { path: "x.md", text: `https://github.com/${ORG}/project-governance/blob/HEAD/a.md` },
       ]),
     ).toEqual([]);
+  });
+
+  // Admitting `website` is only safe if `project-website` — the live repository
+  // it was regularised INTO — cannot match it. Every form anchors the alternation
+  // immediately after the owner, so the retired name can never be reached as a
+  // suffix; this proves it on all four rather than on the one that came to mind.
+  test("project-website is not website, in any of the four forms", () => {
+    const live = "project-website";
+    const sources = [
+      { path: "a.md", text: `https://github.com/${ORG}/${live}/blob/HEAD/README.md` },
+      { path: "b.md", text: `https://raw.githubusercontent.com/${ORG}/${live}/HEAD/x.md` },
+      { path: ".github/workflows/x.yml", text: `      - uses: ${ORG}/${live}/.github/a.yml@sha` },
+      { path: "package.json", text: `    "x": "github:${ORG}/${live}#abc"` },
+      // One path per key: findings are de-duplicated on path+line+name+form, so
+      // ten structured fields sharing a file would collapse into one and the
+      // counter-proof below would under-count instead of failing.
+      ...OPERATIONAL_KEYS.map((key) => ({
+        path: `card-${key}.yaml`,
+        text: `  ${key}: ${ORG}/${live}`,
+      })),
+    ];
+    expect(findOperationalReferences(sources)).toEqual([]);
+    // Counter-proof: the same shapes with the retired name ARE caught, so the
+    // emptiness above is the anchoring and not a broken corpus.
+    expect(
+      findOperationalReferences(
+        sources.map((source) => ({ ...source, text: source.text.replace(live, "website") })),
+      ).length,
+    ).toBe(sources.length);
   });
 
   test("another owner's repository of the same name is not this organisation's", () => {

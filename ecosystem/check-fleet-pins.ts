@@ -44,6 +44,7 @@ import {
   isPublicCrossRepositoryTarget,
   PRIVATE_CROSS_REPOSITORY_NOTE,
 } from "./build-index";
+import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 
 export interface RepositorySources {
   /** Workflow file name -> file text, for every file under .github/workflows. */
@@ -227,13 +228,6 @@ interface FetchOutcome {
   readonly error: string | null;
 }
 
-/** Two retries beyond the first attempt — 1s then 3s — same budget as ecosystem/check-context-conformance.ts's ghWithRetry. */
-const RETRY_DELAYS_MS = [1000, 3000];
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** REST fallback, retried, used only when the GraphQL batch below cannot be answered at all. */
 async function ghApi(path: string, raw: boolean): Promise<FetchOutcome> {
   let lastError = "";
@@ -297,24 +291,6 @@ async function readSourcesViaRest(
 // request (one Tree + two Blob reads per aliased repository) instead of
 // gh api --paginate-style per-file REST calls (a directory listing plus one
 // call per workflow file plus two more, times every non-archived repo).
-
-async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", "api", "graphql", "-F", "query=@-"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
-}
 
 export interface FleetPinTarget {
   readonly repository: string;
@@ -410,23 +386,6 @@ export function parseFleetPinsBatchResponse(
     );
   });
   return result;
-}
-
-/**
- * Pure: does this parsed `gh api graphql` response body carry a usable
- * `data` payload? False for a top-level rejection (`{"data": null,
- * "errors": [...]}` — the documented shape of a rate-limited/quota-exhausted
- * response), a response with no `data` key at all, or a non-object body.
- * Accepting `data: null` as success would hand `null` to
- * parseFleetPinsBatchResponse, which reads it as "every repository
- * unresolved" in one pass with no retry and no REST fallback.
- */
-export function hasUsableGraphQLData(
-  parsed: unknown,
-): parsed is { readonly data: Record<string, unknown> } {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const data = (parsed as { readonly data?: unknown }).data;
-  return typeof data === "object" && data !== null;
 }
 
 /** `null` means the whole batch could not be answered at all — caller falls back to REST, never assumes empty sources. */

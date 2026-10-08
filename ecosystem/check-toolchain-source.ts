@@ -48,6 +48,7 @@ import {
   isPublicCrossRepositoryTarget,
   PRIVATE_CROSS_REPOSITORY_NOTE,
 } from "./build-index";
+import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 
 export interface CanonicalToolchain {
   readonly assetUrl: string;
@@ -199,13 +200,6 @@ export type WorkflowsFetchOutcome =
   | { readonly kind: "no-workflows-directory" }
   | { readonly kind: "unable-to-verify"; readonly detail: string };
 
-/** Two retries beyond the first attempt — 1s then 3s — same budget as this file's neighbors. */
-const RETRY_DELAYS_MS = [1000, 3000];
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 interface GhFetchResult {
   readonly text: string | null;
   readonly error: string | null;
@@ -259,24 +253,6 @@ async function fetchWorkflowsViaRest(repository: string): Promise<WorkflowsFetch
 // --- GraphQL primary path: same escape from the shared REST quota as
 // ecosystem/check-fleet-pins.ts — one Tree read per aliased repository
 // instead of a directory listing plus one REST call per workflow file.
-
-async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", "api", "graphql", "-F", "query=@-"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
-}
 
 export function buildWorkflowsTreeQuery(repositories: readonly string[]): string {
   const blocks = repositories.map((repository, index) => {
@@ -346,23 +322,6 @@ export function parseWorkflowsTreeBatchResponse(
     result.set(repository, parseWorkflowsTreeNode(data?.[`repo${index}`] ?? null));
   });
   return result;
-}
-
-/**
- * Pure: does this parsed `gh api graphql` response body carry a usable
- * `data` payload? False for a top-level rejection (`{"data": null,
- * "errors": [...]}` — the documented shape of a rate-limited/quota-exhausted
- * response), a response with no `data` key at all, or a non-object body.
- * Accepting `data: null` as success would hand `null` to
- * parseWorkflowsTreeBatchResponse, which reads it as "every repository
- * unresolved" in one pass with no retry and no REST fallback.
- */
-export function hasUsableGraphQLData(
-  parsed: unknown,
-): parsed is { readonly data: Record<string, unknown> } {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const data = (parsed as { readonly data?: unknown }).data;
-  return typeof data === "object" && data !== null;
 }
 
 async function fetchWorkflowsViaGraphQL(

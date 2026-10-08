@@ -30,6 +30,7 @@
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
 import { buildIndex } from "./build-index";
 import { fetchLiveRepositories, ORGANIZATION } from "./check-inventory-drift";
+import { RETRY_DELAYS_MS } from "./github-fleet";
 
 export type ForgeState =
   | { readonly kind: "present"; readonly archived: boolean }
@@ -211,9 +212,6 @@ export function classifyProbe(exitCode: number, stdout: string, stderr: string):
   if (/\(HTTP 404\)/.test(stderr)) return { kind: "absent" };
   return { kind: "unreadable", reason: stderr.trim() || `gh api exited ${exitCode}` };
 }
-
-/** Two retries beyond the first attempt, the budget of check-inventory-drift.ts. */
-const RETRY_DELAYS_MS = [1000, 3000];
 
 async function probe(name: string): Promise<ForgeState> {
   let state: ForgeState = { kind: "unreadable", reason: "not attempted" };

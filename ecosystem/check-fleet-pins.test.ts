@@ -3,7 +3,6 @@ import {
   auditRepository,
   buildFleetPinsQuery,
   collectSightings,
-  hasUsableGraphQLData,
   parseFleetPinsBatchResponse,
   parseFleetPinsRepoNode,
   type RepositorySources,
@@ -388,25 +387,8 @@ describe("parseFleetPinsBatchResponse", () => {
   });
 });
 
-describe("hasUsableGraphQLData", () => {
-  test("rejects a top-level rate-limit rejection — data: null alongside errors[]", () => {
-    expect(hasUsableGraphQLData({ data: null, errors: [{ type: "RATE_LIMITED" }] })).toBe(false);
-  });
-
-  test("rejects a response with no data key at all", () => {
-    expect(hasUsableGraphQLData({ errors: [{ type: "SOME_ERROR" }] })).toBe(false);
-    expect(hasUsableGraphQLData({})).toBe(false);
-  });
-
-  test("rejects a non-object body", () => {
-    expect(hasUsableGraphQLData(null)).toBe(false);
-    expect(hasUsableGraphQLData(undefined)).toBe(false);
-  });
-
-  test("accepts a real data payload", () => {
-    expect(hasUsableGraphQLData({ data: { repo0: {} } })).toBe(true);
-  });
-});
+// `hasUsableGraphQLData` now lives in ecosystem/github-fleet.ts, asserted
+// once for every gate: ecosystem/github-fleet.test.ts.
 
 describe("the retired authority", () => {
   test("a pin on libre-ai/governance fails even when its sha is a declared generation", () => {
