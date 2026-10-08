@@ -9,6 +9,8 @@
  * fails the gate.
  */
 
+import { delay, ghGraphQLRaw, RETRY_DELAYS_MS } from "./github-fleet";
+
 export const ARCHIVE_RESIDUALS: ReadonlySet<string> = new Set([
   // The archive's own identity and machine registers.
   "README.md",
@@ -68,13 +70,6 @@ export function findOrphans(
   return { covered, orphans };
 }
 
-/** Two retries beyond the first attempt — 1s then 3s — same budget as this file's neighbors. */
-const RETRY_DELAYS_MS = [1000, 3000];
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 interface GhFetchResult {
   readonly text: string | null;
   readonly error: string | null;
@@ -103,24 +98,6 @@ async function ghWithRetry(args: readonly string[]): Promise<GhFetchResult> {
     if (wait !== undefined) await delay(wait);
   }
   return { text: null, error: lastError };
-}
-
-async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", "api", "graphql", "-F", "query=@-"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
 }
 
 /** GraphQL primary for a single blob, REST+retry fallback — same shape as this file's neighbors. */

@@ -44,6 +44,7 @@
  */
 
 import { buildIndex, PRIVATE_CROSS_REPOSITORY_NOTE, type Visibility } from "./build-index";
+import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 
 export interface RegistryEntry {
   readonly repository: string;
@@ -377,12 +378,6 @@ export interface GhFetchResult {
 }
 
 const NOT_FOUND_PATTERN = /\(HTTP 404\)/;
-/** Two retries beyond the first attempt — 1s then 3s — before giving up and reporting unable-to-verify. */
-export const RETRY_DELAYS_MS = [1000, 3000];
-
-export function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function ghRaw(
   args: string[],
@@ -568,24 +563,6 @@ export function parseBatchResponse(
   return result;
 }
 
-export async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", "api", "graphql", "-F", "query=@-"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
-}
-
 /**
  * `data` is read from stdout regardless of exit code — a partial NOT_FOUND
  * on one alias makes `gh` exit non-zero even though the response carries a
@@ -594,25 +571,6 @@ export async function ghGraphQLRaw(
  * genuine transport/rate-limit/auth failure — is retried, twice, before
  * this returns `null` and the caller falls back to `fetchFleetViaRest`.
  */
-/**
- * Pure: does this parsed `gh api graphql` response body carry a usable
- * `data` payload? False for a top-level rejection (`{"data": null,
- * "errors": [...]}` — the documented shape of a rate-limited/quota-exhausted
- * response: `data` is present, just explicitly `null`), a response with no
- * `data` key at all, or a non-object body. Treating `data: null` as success
- * would hand `null` to parseBatchResponse, which reads it as "every
- * repository unresolved" in one pass with no retry and no REST fallback —
- * the exact class of incident this file's retry logic exists to prevent,
- * moved from the REST 403 to the GraphQL top-level error.
- */
-export function hasUsableGraphQLData(
-  parsed: unknown,
-): parsed is { readonly data: Record<string, unknown> } {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const data = (parsed as { readonly data?: unknown }).data;
-  return typeof data === "object" && data !== null;
-}
-
 async function fetchFleetViaGraphQL(
   repositories: readonly string[],
 ): Promise<Map<string, FleetRepoResult> | null> {
