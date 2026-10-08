@@ -28,6 +28,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
       "no apps/, crates/ or packages/ family lives in this repository since the ADR-0020 dispatch — the guard travels with the families it protects",
   },
   {
+    file: "tools/quality/check-audit-delta.ts",
+    because:
+      "a delta needs a base. On a pull request the base is the target branch, on a push the tip the push replaced; a LOCAL run sitting on the served branch has neither, so base and head are the same commit and every delta is empty by construction rather than by measurement. This gate is wired in ci.yml and never in `bun run check`, so that case is a developer reading it by hand, and failing there would be a red for a non-defect. When an EVENT hands a base and that base equals head, the gate fails instead — a pull request taken against its own head measures nothing, and that is a defect in the request, not an empty set",
+  },
+  {
     file: "tools/quality/check-review-evidence.ts",
     because:
       "most pull requests do not touch docs/adr/**, docs/decisions/INVARIANTS.md or docs/decisions/DECISION-REGISTER.md — asserting nothing on those runs is the truth, not a silenced gate (it also allows-empty on non-pull_request runs, where no PR diff or description exists to inspect)",

@@ -1,6 +1,6 @@
 {
   "schema_version": "libre-ai.fleet-status.v1",
-  "source": "project.v1.yaml cards at each repository main",
+  "source": "project.v1.yaml cards at each repository's default branch",
   "rows": [
     {
       "repository": "libre-ai/ai-model-policy",
@@ -216,7 +216,7 @@
       "maturity": "usable",
       "confidence": "medium",
       "exposure": "usable-verifiable",
-      "last_verified_on": "2026-09-09"
+      "last_verified_on": "2026-10-08"
     },
     {
       "repository": "libre-ai/schemas-and-contracts",
