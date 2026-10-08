@@ -33,11 +33,11 @@ These documents distinguish accepted direction, design candidates and capabiliti
 <!-- libre-ai:project-status:begin -->
 <!-- Section générée depuis project.v1.yaml — ne pas éditer à la main. -->
 
-- Situation actuelle : Autorité de doctrine et d'outillage de flotte depuis le transfert tracé du 2026-10-07, qui exécute la direction propriétaire du 2026-09-29 : doctrine (41 ADR, LEXICON, registres d'invariants et de décisions), gates d'écosystème, workflows réutilisables et gate de composition multi-dépôts. L'inventaire déclare les 24 dépôts cibles ; le gate de dérive reste rouge tant que les 34 donneurs aux noms courts sont observables, et passera au vert à leur retrait. Le corpus historique de `governance` (docs/reviews, la majorité de docs/superpowers) reste dans l'archive vérifiée, non déclaré supersédé.
+- Situation actuelle : Autorité de doctrine et d'outillage de flotte depuis le transfert tracé du 2026-10-07, qui exécute la direction propriétaire du 2026-09-29 : doctrine (ADR 0001 à 0043, LEXICON, registres d'invariants et de décisions), gates d'écosystème, workflows réutilisables et gate de composition multi-dépôts. Mesures du 2026-10-08 : le gate de dérive d'inventaire est vert (24 dépôts déclarés, 24 observés, 0 dérive) ; le gate d'épinglage lit 60 pins sur 20 des 22 cibles, 0 illisible, contre 10 générations déclarées ; la présentation de flotte tient sur 24 dépôts. Restent rouges la conformité de contexte (1 sur 24 : application-development-toolkit, sans AGENTS.md sur sa branche servie) et celle de Dependabot (2 sur 24 : application-development-toolkit sans copie, `.github` sans variante publiée pour son jeu de manifestes). Le corpus historique de `governance` (docs/reviews, la majorité de docs/superpowers) reste dans l'archive vérifiée, non déclaré supersédé.
 - Maturité : usable
 - Exposition : usable-verifiable
 - Confiance : medium
-- Preuves vérifiées le : 2026-09-09
+- Preuves vérifiées le : 2026-10-08
 - Avancement : 33,3 % du périmètre actuellement déclaré
 
 <!-- libre-ai:project-status:end -->
