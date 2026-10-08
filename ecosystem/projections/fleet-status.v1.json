@@ -51,18 +51,6 @@
       "last_verified_on": "2026-09-12"
     },
     {
-      "repository": "libre-ai/pi-evidence",
-      "project": "pi-evidence",
-      "kind": "tool",
-      "layer": "couche-2",
-      "summary": "Pi package and CLI for declared-check evidence and replay.",
-      "display": "50 % du périmètre actuellement déclaré",
-      "maturity": "usable",
-      "confidence": "medium",
-      "exposure": "usable-verifiable",
-      "last_verified_on": "2026-10-06"
-    },
-    {
       "repository": "libre-ai/capability-authorization",
       "project": "authz-biscuit",
       "kind": "satellite",
@@ -73,6 +61,18 @@
       "confidence": "medium",
       "exposure": "spec-published",
       "last_verified_on": "2026-07-30"
+    },
+    {
+      "repository": "libre-ai/pi-evidence",
+      "project": "pi-evidence",
+      "kind": "tool",
+      "layer": "transverse",
+      "summary": "Pi package and CLI for declared-check evidence and replay.",
+      "display": "50 % du périmètre actuellement déclaré",
+      "maturity": "usable",
+      "confidence": "medium",
+      "exposure": "usable-verifiable",
+      "last_verified_on": "2026-10-06"
     },
     {
       "repository": "libre-ai/project-governance",
