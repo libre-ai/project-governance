@@ -262,6 +262,114 @@ export function scanPatches(cargoToml: string, parse: TomlParser = Bun.TOML.pars
   return scan;
 }
 
+/** A defect in what the gate READ, as opposed to a defect in a pin it found. */
+export interface CorpusDefect {
+  readonly item: string;
+  readonly detail: string;
+}
+
+/** Does this manifest carry the `[workspace]` table that makes it the root? */
+export function declaresWorkspace(cargoToml: string, parse: TomlParser = Bun.TOML.parse): boolean {
+  let document: unknown;
+  try {
+    document = parse(cargoToml);
+  } catch {
+    return false;
+  }
+  return isTable(document) && isTable(document.workspace);
+}
+
+/**
+ * Manifests that declare a `[patch.*]` table Cargo will never read.
+ *
+ * Cargo reads `[patch]` at the workspace root only. A patch table in a member
+ * manifest is silently ignored — the build resolves to the registry crate and
+ * the pin is neither applied nor checked. Reading only the root is therefore
+ * correct AND insufficient: the root can lose its `[patch]` to a member and
+ * nothing says so.
+ */
+export function findStrayPatchTables(
+  manifests: readonly { readonly path: string; readonly text: string }[],
+  parse: TomlParser = Bun.TOML.parse,
+): string[] {
+  const stray: string[] = [];
+  for (const manifest of manifests) {
+    let document: unknown;
+    try {
+      document = parse(manifest.text);
+    } catch {
+      // Unreadable here is reported by the root scan when it is the root, and
+      // is not this predicate's question otherwise.
+      continue;
+    }
+    if (isTable(document) && document.patch !== undefined) stray.push(manifest.path);
+  }
+  return stray;
+}
+
+/** One inspected item of the corpus the gate read, verdict and evidence. */
+export interface CorpusAssertion extends CorpusDefect {
+  readonly ok: boolean;
+}
+
+/** Said out loud when the root manifest declares no patch at all. */
+export const NO_PATCH_NOTE =
+  "declares no [patch.*] entry: zero intra-organisation pin is a legitimate answer here, and " +
+  "the orphan-rev rule of ADR-0031 D2 holds vacuously. What keeps that from being a green over " +
+  "nothing is the rest of this report: the manifest above IS the workspace root Cargo reads " +
+  "[patch] from, checked rather than assumed, and every member manifest was inspected for a " +
+  "[patch.*] Cargo would ignore. An unreadable manifest and a manifest with no patch are two " +
+  "different answers and this gate gives them two different lines";
+
+/**
+ * Everything the gate inspected about WHAT IT READ, before any network call.
+ *
+ * Until 2026-10-08 this gate printed `Orphan-rev gate: OK` and exited 0 over an
+ * empty set — probed with a `Cargo.toml` carrying no `[patch.*]` at all, and
+ * the file's own comment records that the defect had already happened once: the
+ * relocation of the crate under `crates/` made an unqualified `"Cargo.toml"`
+ * resolve to nothing.
+ *
+ * The fix is not "empty fails". A repository may legitimately carry no patch,
+ * and forcing a red there would be a verdict on nothing in the other
+ * direction. What the gate owed was the distinction D3 names — green on what
+ * it cannot read is not a gate — so the two facts it can be wrong about are
+ * asserted on every run, whatever the patch count: the manifest it read is the
+ * workspace root, and no member manifest hides a `[patch.*]` where Cargo
+ * ignores it. A zero patch count is then reported as a zero, with its reason.
+ */
+export function inspectCorpus(input: {
+  readonly manifest: string;
+  readonly declaresWorkspace: boolean;
+  readonly scan: PatchScan;
+  readonly memberManifests: readonly string[];
+  readonly strayPatchManifests: readonly string[];
+}): CorpusAssertion[] {
+  const assertions: CorpusAssertion[] = [
+    {
+      item: input.manifest,
+      ok: input.declaresWorkspace,
+      detail: input.declaresWorkspace
+        ? "is the workspace root: it carries a [workspace] table, so the [patch] section read here is the one Cargo reads"
+        : "read as the workspace root but it carries no [workspace] table: Cargo reads [patch] at the workspace root only, so this gate is measuring a patch section Cargo ignores. The crate's relocation under crates/ already made this path resolve to nothing once",
+    },
+  ];
+  const stray = new Set(input.strayPatchManifests);
+  for (const member of input.memberManifests) {
+    assertions.push({
+      item: member,
+      ok: !stray.has(member),
+      detail: stray.has(member)
+        ? "declares a [patch.*] table outside the workspace root, where Cargo silently ignores it: the pin is neither applied to the build nor checked here. Move it to the workspace root"
+        : "declares no [patch.*] table, which is what a member manifest must not carry: Cargo would ignore it there",
+    });
+  }
+  if (input.scan.entries === 0) {
+    assertions.push({ item: input.manifest, ok: true, detail: NO_PATCH_NOTE });
+  }
+  return assertions;
+}
+
 /**
  * A rev is acceptable only when the producer's released line already contains
  * it — `identical` or `behind` against that line's tip.
@@ -412,33 +520,55 @@ async function compareStatus(patch: GitPatch): Promise<CompareStatus> {
   }
 }
 
-// Repository-root relative, like every other `check:*` of this repository.
-// The manifest this gate reads is the absorbed crate's, not a root workspace:
-// `project-governance` has no root Cargo.toml, so an unqualified "Cargo.toml"
-// resolved to nothing once the crate moved under `crates/`.
-// The workspace root: `[patch]` is only read there, so that is where the
-// orphan-rev gate must look for it.
+// Repository-root relative, like every other `check:*` of this repository, and
+// the workspace root: Cargo reads `[patch]` there and nowhere else, so that is
+// where this gate must look for it.
+//
+// The sentence this comment replaced said `project-governance` has no root
+// Cargo.toml. That was true for one window — the absorption of the engine put
+// the manifest under `crates/` and an unqualified "Cargo.toml" resolved to
+// nothing — and it is false since the workspace root was reintroduced. Both
+// halves were kept side by side, which is how a comment stops being evidence.
+// `declaresWorkspace` now checks the claim instead of asserting it.
 const CARGO_MANIFEST = "Cargo.toml";
 
+// Member manifests are read too, for a `[patch.*]` Cargo would ignore there.
+const MEMBER_MANIFESTS = "crates/*/Cargo.toml";
+
 if (import.meta.main) {
+  const { concludeGate, GateReport } = await import("../../../tools/quality/gate-report");
+  const report = new GateReport();
+
   const cargoToml = await Bun.file(CARGO_MANIFEST).text();
   let scan: PatchScan;
   try {
     scan = scanPatches(cargoToml);
   } catch (error) {
-    console.error(`Orphan-rev gate: CANNOT PARSE ${(error as Error).message}`);
-    console.error("Orphan-rev gate: FAILED");
-    process.exit(1);
+    report.check(CARGO_MANIFEST, false, `CANNOT PARSE ${(error as Error).message}`);
+    concludeGate("Orphan-rev", report);
+    throw new Error("unreachable: concludeGate exits on a failing report");
   }
-  console.log(
-    `Orphan-rev gate: ${scan.entries} patch entr${scan.entries === 1 ? "y" : "ies"} under [patch.*] (all sources), ${scan.organisationSources} github.com/${ORGANISATION} URL(s) in the manifest (text and parsed tree agree), ${scan.patches.length} intra-organisation patch(es) pinned by a full sha, ${scan.rejections.length} rejected`,
-  );
-  let failures = 0;
+
+  const members: { path: string; text: string }[] = [];
+  for await (const path of new Bun.Glob(MEMBER_MANIFESTS).scan({ cwd: ".", onlyFiles: true })) {
+    members.push({ path, text: await Bun.file(path).text() });
+  }
+
+  const corpus = inspectCorpus({
+    manifest: CARGO_MANIFEST,
+    declaresWorkspace: declaresWorkspace(cargoToml),
+    scan,
+    memberManifests: members.map((member) => member.path),
+    strayPatchManifests: findStrayPatchTables(members),
+  });
+  for (const assertion of corpus) report.check(assertion.item, assertion.ok, assertion.detail);
+
   for (const rejection of scan.rejections) {
-    console.error(`  FAIL ${rejection.crate} [patch.${rejection.section}]: ${rejection.reason}`);
-    failures += 1;
+    report.check(`${rejection.crate} [patch.${rejection.section}]`, false, rejection.reason);
   }
+
   for (const patch of scan.patches) {
+    const subject = `${patch.crate} -> ${patch.owner}/${patch.repo}@${patch.rev.slice(0, 7)}`;
     let status: CompareStatus;
     try {
       status = await compareStatus(patch);
@@ -446,24 +576,26 @@ if (import.meta.main) {
       // Two reds, named apart: a pin the producer cannot serve is a finding to
       // act on, an unreachable producer is a condition to look into. Both fail.
       const label = error instanceof UnreachableRevError ? "FAIL" : "CANNOT CHECK";
-      console.error(`  ${label} ${patch.crate}: ${(error as Error).message}`);
-      failures += 1;
+      report.check(subject, false, `${label}: ${(error as Error).message}`);
       continue;
     }
-    if (isOnMain(status)) {
-      console.log(
-        `  OK   ${patch.crate} -> ${patch.owner}/${patch.repo}@${patch.rev.slice(0, 7)} is on main (${status})`,
-      );
-    } else {
-      console.error(
-        `  FAIL ${patch.crate} -> ${patch.owner}/${patch.repo}@${patch.rev.slice(0, 7)} is NOT on main (${status}): re-pin to the merge commit before merging`,
-      );
-      failures += 1;
-    }
+    report.check(
+      subject,
+      isOnMain(status),
+      isOnMain(status)
+        ? `is on the producer's served line (${status})`
+        : `is NOT on the served line (${status}): re-pin to the merge commit before merging`,
+    );
   }
-  if (failures > 0) {
-    console.error("Orphan-rev gate: FAILED");
-    process.exit(1);
-  }
-  console.log("Orphan-rev gate: OK");
+
+  // The volume on the success line, not in a note no operator reads: a count of
+  // assertions does not say whether one pin was checked or none at all.
+  report.volume(
+    `${scan.entries} patch entr${scan.entries === 1 ? "y" : "ies"} under [patch.*] of ` +
+      `${CARGO_MANIFEST}, ${scan.organisationSources} github.com/${ORGANISATION} URL(s) ` +
+      `(text and parsed tree agree), ${scan.patches.length} intra-organisation pin(s) compared ` +
+      `to their producer's served line, ${scan.rejections.length} rejected, ` +
+      `${members.length} member manifest(s) inspected for a stray [patch.*]`,
+  );
+  concludeGate("Orphan-rev", report);
 }
