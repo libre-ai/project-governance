@@ -1,7 +1,7 @@
 # ADR-0043 — Branches inscriptibles de l'autorité : doctrine en attente de signature et branches de session
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. L'extension des branches de session à la flotte est arbitrée le même jour (« Oui, forge + .github »). Owner-arbitration: 2026-10-08
+- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. L'extension des branches de session à la flotte est arbitrée le même jour (« Oui, forge + .github »). La branche servie du profil `.github` est arbitrée le même jour (« Modèle branche servie »). Owner-arbitration: 2026-10-08
 - **Applique :** I-17 (surface à touche humaine fermée : registre, ADR et mutations des garde-fous restent sous signature) ; la forme d'ADR-0041 §6 (toute modification de contrôle de protection est nommée, avec son périmètre exact)
 - **N'amende pas :** ADR-0041 §6. Son titre « une seule modification de contrôle de protection » décrit le périmètre de l'opération de consolidation du 2026-10-07 — un bypass temporaire sur le profil `libre-ai/.github`, restauré à l'identique — et non une règle permanente qui interdirait toute modification ultérieure. Les trois modifications consignées ici couvrent une autre fenêtre et un autre dépôt
 - **Autorise :** l'usage de `doctrine/owner-signature` comme branche de tête des pull requests de doctrine qui attendent la signature du propriétaire ; l'usage d'une branche `work/<session>` par session de travail, supprimée après le merge, dans `project-governance` et dans les 18 dépôts de l'extension
@@ -34,6 +34,15 @@ La convention `work/<session>` n'est pas une préférence de rangement : elle re
 Le même jour, le propriétaire a étendu les branches de session aux **18 autres dépôts** portant `refoundation-no-bypass-branch` : les 17 dépôts de la forge (`ai-work-supervision`, `ai-model-policy`, `ai-practice-workbench`, `learning-session-facilitation`, `personal-knowledge-notebook`, `information-feed-filter`, `travel-itinerary-planner`, `application-development-toolkit`, `schemas-and-contracts`, `collaborative-data-sync`, `execution-continuity-evaluator`, `execution-sandbox`, `capability-authorization`, `organization-data-lifecycle`, `database-policy-inspector`, `artifact-verification`, `project-website`) et le profil `libre-ai/.github`. Sur chacun, une seule modification : l'ajout de `refs/heads/work/**` aux exclusions. La charge de chaque `PUT` a été dérivée du ruleset vivant relu dans la même boucle, et une assertion refusait l'envoi si une exclusion disparaissait ou si `include`, les types de règles ou `bypass_actors` changeaient — aucune ne l'a refusé. La convention `work/<session>` s'applique à l'identique sur ces dépôts.
 
 La garantie « la branche de doctrine n'existe jamais sans sa protection » est structurelle, pas une discipline d'opérateur : avant la deuxième modification, la règle `creation` sur `~ALL` interdisait de créer `doctrine/owner-signature`, donc la seule séquence possible était ruleset d'intégrité → exclusion → branche.
+
+### Branche servie du profil `.github` (2026-10-08)
+
+L'extension à la flotte ouvrait `work/**` sur `libre-ai/.github` sans rendre sa branche servie `main` fusionnable : `refoundation-no-bypass-branch` y portait encore `update` sur `~ALL`, et aucun ruleset propre ne la gardait. Le propriétaire a choisi le modèle des branches servies de la flotte (« Modèle branche servie »), en deux modifications exécutées par lui-même dans cet ordre :
+
+1. **Création** du ruleset `profile-reviewed-admission` (id `24731510`, `created_at` 16:54:10.111) sur la seule ref `refs/heads/main` : `deletion`, `non_fast_forward`, `pull_request` (fusion squash seule, 0 approbation requise, fils de revue résolus), sans contournement. Aucun check requis : le profil n'a pas de CI.
+2. **Ajout** de `refs/heads/main` aux exclusions de `refoundation-no-bypass-branch` sur ce dépôt (`updated_at` 16:54:21.584), charge dérivée du vivant sous assertion de non-retrait ; exclusions résultantes `refs/heads/main`, `refs/heads/work/**`.
+
+Comme pour la branche de doctrine, l'ordre est structurel : tant que `main` n'était pas exclue, `refoundation` interdisait toute écriture, donc `main` n'a jamais été sans garde. Règles effectives lues sur `main` après coup : `deletion`, `non_fast_forward`, `pull_request`, toutes trois du ruleset `24731510`.
 
 ## Conséquences et limites
 
