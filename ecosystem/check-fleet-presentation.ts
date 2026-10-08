@@ -15,6 +15,7 @@
  * are reported and skipped, never silently ignored.
  */
 import { buildIndex, type Visibility } from "./build-index";
+import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 import { checkStatusSection, validateCard } from "./project-cards";
 
 export interface FleetEntry {
@@ -102,13 +103,6 @@ export function parseFleet(yamlText: string): FleetEntry[] {
   return buildIndex(yamlText).repositories;
 }
 
-/** Two retries beyond the first attempt — 1s then 3s — same budget as this file's neighbors. */
-const RETRY_DELAYS_MS = [1000, 3000];
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function fetchFromGitHubWithRetry(repository: string, path: string): Promise<FetchOutcome> {
   let lastError = "";
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
@@ -144,24 +138,6 @@ async function fetchFromGitHubWithRetry(repository: string, path: string): Promi
 // --- GraphQL primary path: same escape from the shared REST quota as
 // ecosystem/check-context-conformance.ts — one Blob read per file, batched
 // across every card-declaring repository in a single request.
-
-async function ghGraphQLRaw(
-  query: string,
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const proc = Bun.spawn(["gh", "api", "graphql", "-F", "query=@-"], {
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  proc.stdin.write(query);
-  proc.stdin.end();
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return { exitCode, stdout, stderr };
-}
 
 export interface PresentationTarget {
   readonly repository: string;
@@ -219,23 +195,6 @@ export function parseFleetPresentationBatchResponse(
     });
   });
   return result;
-}
-
-/**
- * Pure: does this parsed `gh api graphql` response body carry a usable
- * `data` payload? False for a top-level rejection (`{"data": null,
- * "errors": [...]}` — the documented shape of a rate-limited/quota-exhausted
- * response), a response with no `data` key at all, or a non-object body.
- * Accepting `data: null` as success would hand `null` to
- * parseFleetPresentationBatchResponse, which reads it as "every repository
- * unresolved" in one pass with no retry and no REST fallback.
- */
-export function hasUsableGraphQLData(
-  parsed: unknown,
-): parsed is { readonly data: Record<string, unknown> } {
-  if (typeof parsed !== "object" || parsed === null) return false;
-  const data = (parsed as { readonly data?: unknown }).data;
-  return typeof data === "object" && data !== null;
 }
 
 async function fetchFleetPresentationViaGraphQL(
