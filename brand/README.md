@@ -77,22 +77,20 @@ autonome, ni promesse propre, ni couleur permanente pouvant être confondue avec
 un état. Sa maturité et sa date viennent exclusivement de `project.v1.yaml`.
 
 Cette projection exhaustive suit l'inventaire courant sans graver son décompte
-dans la prose. Elle conserve l'élision déjà signée de « AI » dans le nom public
-de Practices.
+dans la prose. Ses lignes sont dérivées des produits de
+`ecosystem/portfolio.v1.json` : « Libre AI » suivi du nom du dépôt, avec
+l'élision déjà signée du préfixe « ai- ».
 
 <!-- libre-ai:brand:product-family:begin -->
 | Repository | Nom public |
 | --- | --- |
-| libre-ai/feed-radar | Libre AI Radar |
-| libre-ai/notebook | Libre AI Notebook |
-| libre-ai/ai-practices | Libre AI Practices |
-| libre-ai/sessions | Libre AI Sessions |
-| libre-ai/boussole-politique | Libre AI Boussole Politique |
-| libre-ai/spec-studio | Libre AI Spec Studio |
-| libre-ai/policy | Libre AI Model Policy |
-| libre-ai/carriere | Libre AI Carrière |
-| libre-ai/travel-agent | Libre AI Travel Agent |
-| libre-ai/website | Libre AI Website |
+| libre-ai/ai-work-supervision | Libre AI Work Supervision |
+| libre-ai/ai-model-policy | Libre AI Model Policy |
+| libre-ai/ai-practice-workbench | Libre AI Practice Workbench |
+| libre-ai/learning-session-facilitation | Libre AI Learning Session Facilitation |
+| libre-ai/personal-knowledge-notebook | Libre AI Personal Knowledge Notebook |
+| libre-ai/information-feed-filter | Libre AI Information Feed Filter |
+| libre-ai/travel-itinerary-planner | Libre AI Travel Itinerary Planner |
 <!-- libre-ai:brand:product-family:end -->
 
 ## Sémantique visuelle

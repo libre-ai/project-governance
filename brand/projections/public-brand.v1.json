@@ -23,44 +23,32 @@
   },
   "products": [
     {
-      "repository": "libre-ai/feed-radar",
-      "publicName": "Libre AI Radar"
+      "repository": "libre-ai/ai-work-supervision",
+      "publicName": "Libre AI Work Supervision"
     },
     {
-      "repository": "libre-ai/notebook",
-      "publicName": "Libre AI Notebook"
-    },
-    {
-      "repository": "libre-ai/ai-practices",
-      "publicName": "Libre AI Practices"
-    },
-    {
-      "repository": "libre-ai/sessions",
-      "publicName": "Libre AI Sessions"
-    },
-    {
-      "repository": "libre-ai/boussole-politique",
-      "publicName": "Libre AI Boussole Politique"
-    },
-    {
-      "repository": "libre-ai/spec-studio",
-      "publicName": "Libre AI Spec Studio"
-    },
-    {
-      "repository": "libre-ai/policy",
+      "repository": "libre-ai/ai-model-policy",
       "publicName": "Libre AI Model Policy"
     },
     {
-      "repository": "libre-ai/carriere",
-      "publicName": "Libre AI Carrière"
+      "repository": "libre-ai/ai-practice-workbench",
+      "publicName": "Libre AI Practice Workbench"
     },
     {
-      "repository": "libre-ai/travel-agent",
-      "publicName": "Libre AI Travel Agent"
+      "repository": "libre-ai/learning-session-facilitation",
+      "publicName": "Libre AI Learning Session Facilitation"
     },
     {
-      "repository": "libre-ai/website",
-      "publicName": "Libre AI Website"
+      "repository": "libre-ai/personal-knowledge-notebook",
+      "publicName": "Libre AI Personal Knowledge Notebook"
+    },
+    {
+      "repository": "libre-ai/information-feed-filter",
+      "publicName": "Libre AI Information Feed Filter"
+    },
+    {
+      "repository": "libre-ai/travel-itinerary-planner",
+      "publicName": "Libre AI Travel Itinerary Planner"
     }
   ],
   "proofs": [
