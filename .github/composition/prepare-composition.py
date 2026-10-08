@@ -10,7 +10,7 @@ ORDER = (
     "project-governance", "schemas-and-contracts", "application-development-toolkit",
     "ai-work-supervision", "organization-data-lifecycle", "ai-model-policy",
     "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-notebook",
-    "information-feed-filter", "travel-itinerary-planner", "public-vote-comparison",
+    "information-feed-filter", "travel-itinerary-planner",
     "collaborative-data-sync", "execution-continuity-evaluator", "execution-sandbox",
     "capability-authorization", "database-policy-inspector", "artifact-verification",
     "project-website",
@@ -29,7 +29,6 @@ DEPENDENCIES = {
     "personal-knowledge-notebook": UI,
     "information-feed-filter": (*BASE, "ai-model-policy"),
     "travel-itinerary-planner": ("project-governance",),
-    "public-vote-comparison": UI,
     "collaborative-data-sync": ("project-governance",),
     "execution-continuity-evaluator": BASE,
     "execution-sandbox": BASE,
@@ -49,7 +48,7 @@ OVERRIDE_SOURCES = (
 for _target in (
     "ai-work-supervision", "ai-model-policy", "ai-practice-workbench",
     "learning-session-facilitation", "personal-knowledge-notebook",
-    "information-feed-filter", "travel-itinerary-planner", "public-vote-comparison",
+    "information-feed-filter", "travel-itinerary-planner",
     "project-website",
 ):
     DEPENDENCIES[_target] = tuple(name for name in OVERRIDE_SOURCES if name != _target)

@@ -42,7 +42,7 @@ jobs:
               'application-development-toolkit', 'organization-data-lifecycle',
               'ai-model-policy', 'ai-practice-workbench', 'learning-session-facilitation',
               'personal-knowledge-notebook', 'information-feed-filter',
-              'travel-itinerary-planner', 'public-vote-comparison', 'collaborative-data-sync',
+              'travel-itinerary-planner', 'collaborative-data-sync',
               'execution-continuity-evaluator', 'execution-sandbox',
               'capability-authorization', 'database-policy-inspector',
               'artifact-verification', 'project-website',
@@ -128,7 +128,7 @@ jobs:
             --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
 
       - name: Install browsers for the selected product
-        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","public-vote-comparison","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 - <<'PY'
@@ -139,7 +139,6 @@ jobs:
               'ai-work-supervision': 'packages/auth-web',
               'ai-practice-workbench': 'apps/practices',
               'personal-knowledge-notebook': 'apps/notebook',
-              'public-vote-comparison': 'apps/boussole',
               'project-website': '',
           }
           target = os.environ['INPUT_TARGET']
@@ -152,7 +151,7 @@ jobs:
           PY
 
       - name: Run selected browser suite sequentially
-        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","public-vote-comparison","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-notebook","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 -B tooling/.github/composition/check-products.py \

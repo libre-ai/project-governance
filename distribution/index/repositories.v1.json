@@ -180,14 +180,6 @@
       "lifecycle": "active"
     },
     {
-      "repository": "libre-ai/public-vote-comparison",
-      "name": "public-vote-comparison",
-      "layer": "couche-1",
-      "role": "reserved-product-home",
-      "visibility": "public",
-      "lifecycle": "active"
-    },
-    {
       "repository": "libre-ai/schemas-and-contracts",
       "name": "schemas-and-contracts",
       "layer": "transverse",

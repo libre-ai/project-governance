@@ -171,30 +171,6 @@
       }
     },
     {
-      "repository": "public-vote-comparison",
-      "repositoryId": "1372583343",
-      "group": "products",
-      "name": {
-        "en": "Libre AI Public Vote Comparison",
-        "fr": "Libre AI Public Vote Comparison"
-      },
-      "role": {
-        "en": "Compare positions you choose to state with sourced public voting records. This proposed product is for people examining public decisions who want to understand where their stated position agrees or differs.",
-        "fr": "Comparer les positions que vous choisissez d’exprimer à des votes publics sourcés. Ce produit vise les personnes qui souhaitent comparer leur position à des décisions publiques précises, avec leurs sources."
-      },
-      "status": "code_integration_local",
-      "sourceReadmes": {
-        "en": {
-          "path": "README.md",
-          "sha256": "eef655b763bba2669153dbcda852000b201ca830dca1a7e2cf53860dacb071f9"
-        },
-        "fr": {
-          "path": "README.fr.md",
-          "sha256": "46cff5d04dd2393723212bcec9f067781a077be49cfe45ef5ec452efd943cfc4"
-        }
-      }
-    },
-    {
       "repository": "application-development-toolkit",
       "repositoryId": "1372583383",
       "group": "components",

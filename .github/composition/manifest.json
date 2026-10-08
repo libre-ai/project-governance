@@ -118,19 +118,6 @@
       ],
       "check": [["bun", "run", "check"]]
     },
-    "public-vote-comparison": {
-      "repository": "libre-ai/public-vote-comparison",
-      "ref": "f8fe30c00f5c23be701db2d8c10a6ae7d0dc3081",
-      "dependencies": [
-        "project-governance",
-        "schemas-and-contracts",
-        "ai-work-supervision",
-        "application-development-toolkit",
-        "organization-data-lifecycle",
-        "ai-model-policy"
-      ],
-      "check": [["bun", "run", "check"]]
-    },
     "collaborative-data-sync": {
       "repository": "libre-ai/collaborative-data-sync",
       "ref": "a3d90ebd80d721901b2cb0d0bbcd46897a9cd13b",
@@ -197,7 +184,6 @@
     "personal-knowledge-notebook",
     "information-feed-filter",
     "travel-itinerary-planner",
-    "public-vote-comparison",
     "collaborative-data-sync",
     "execution-continuity-evaluator",
     "execution-sandbox",
