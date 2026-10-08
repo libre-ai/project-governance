@@ -26,6 +26,7 @@ export type GateOutcome = "pass" | "violations" | "empty";
 export class GateReport {
   #checks: GateCheck[] = [];
   #emptyReason: string | null = null;
+  #volume: string | null = null;
 
   /** Record one inspected item. `note` is the evidence, on success as on failure. */
   check(item: string, ok: boolean, note: string): this {
@@ -44,6 +45,20 @@ export class GateReport {
     return this;
   }
 
+  /**
+   * How much was actually examined, printed ON the success line.
+   *
+   * `GATE_VERBOSE` is the only way to read the per-item notes, and nobody sets
+   * it in CI: `Source policy verified: 1 assertion(s) hold` read the same over
+   * 545 files as over one. An assertion count is not a corpus size, so the
+   * corpus size is said out loud instead of being inferable from a note the
+   * operator never sees.
+   */
+  volume(summary: string): this {
+    this.#volume = summary;
+    return this;
+  }
+
   get checks(): readonly GateCheck[] {
     return this.#checks;
   }
@@ -59,6 +74,10 @@ export class GateReport {
 
   get emptyReason(): string | null {
     return this.#emptyReason;
+  }
+
+  get volumeSummary(): string | null {
+    return this.#volume;
   }
 
   get outcome(): GateOutcome {
@@ -103,10 +122,11 @@ export function renderGateReport(gate: string, report: GateReport, verbose = fal
     };
   }
 
+  const volume = report.volumeSummary === null ? "" : ` — ${report.volumeSummary}`;
   const summary =
     report.asserted === 0
       ? `${gate} verified nothing, as declared: ${report.emptyReason}`
-      : `${gate} verified: ${report.asserted} assertion(s) hold`;
+      : `${gate} verified: ${report.asserted} assertion(s) hold${volume}`;
   const detail = verbose ? report.checks.map((check) => `  ${check.item} — ${check.note}`) : [];
   return { ok: true, lines: [summary, ...detail] };
 }
