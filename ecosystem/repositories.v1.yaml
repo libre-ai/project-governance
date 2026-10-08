@@ -107,6 +107,11 @@ repositories:
     owns:
       - incident capture, executable verification and portable projections
   - repository: libre-ai/carriere
+    # 2026-10-08 : la fiche existait et etait correcte — AGENTS.md conforme,
+    # schema-valide, section README octet-identique a un rendu frais — et le gate
+    # de presentation assertait « no card declared — nothing to present ». Un vert
+    # qui ne mesurait rien, faute de cette ligne.
+    card: project.v1.yaml
     role: reserved-product-home
     layer: couche-1
     visibility: public
