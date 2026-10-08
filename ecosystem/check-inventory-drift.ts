@@ -291,7 +291,8 @@ if (import.meta.main) {
     return { name, visibility: entry.visibility };
   });
 
-  const { drifts, notes } = reconcileInventory(declared, await fetchLiveRepositories());
+  const live = await fetchLiveRepositories();
+  const { drifts, notes } = reconcileInventory(declared, live);
   for (const note of notes) console.log(note);
   const { concludeGate, GateReport } = await import("../tools/quality/gate-report");
   const report = new GateReport();
@@ -309,5 +310,10 @@ if (import.meta.main) {
         : "the inventory declares no repository — the reconciliation asserted nothing",
     );
   }
+  report.volume(
+    `${declared.length} declared repositor${declared.length === 1 ? "y" : "ies"} reconciled ` +
+      `against ${live.length} observed in the ${ORGANIZATION} organization, ` +
+      `${drifts.length} drift(s)`,
+  );
   concludeGate("Inventory drift", report);
 }

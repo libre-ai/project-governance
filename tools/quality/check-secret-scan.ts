@@ -111,5 +111,9 @@ if (import.meta.main) {
         : "the corpus glob matched no file — the scan asserted nothing",
     );
   }
+  report.volume(
+    `${targets.length} living file(s) scanned for a credential marker, outside ` +
+      `${IGNORED_PREFIXES.length} ignored prefix(es) and ${IGNORED_FILES.size} ignored file(s)`,
+  );
   concludeGate("Secret scan", report);
 }

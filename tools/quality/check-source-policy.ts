@@ -33,4 +33,9 @@ if (report.violations.length === 0) {
       : "the corpus glob matched no file — the scan asserted nothing",
   );
 }
+report.volume(
+  `${scanned} file(s) scanned outside ${ignoredPrefixes.length} ignored prefix(es), against ` +
+    `${forbiddenLockfiles.size} forbidden lockfile name(s) and ` +
+    `${forbiddenSourceExtensions.length} forbidden JavaScript extension(s)`,
+);
 concludeGate("Source policy", report);

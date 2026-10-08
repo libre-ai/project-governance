@@ -293,5 +293,9 @@ if (import.meta.main) {
         : "git tracked no file — the scan asserted nothing",
     );
   }
+  report.volume(
+    `${paths.length} tracked file(s) checked for a dataset path, of which ${targets.length} ` +
+      `authored file(s) were read for a personal identifier`,
+  );
   concludeGate("Personal-data boundary", report);
 }
