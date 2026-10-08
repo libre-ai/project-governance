@@ -28,7 +28,7 @@ const row = (overrides: Partial<FleetStatusRow> = {}): FleetStatusRow => ({
 
 const status = (rows: readonly FleetStatusRow[]): FleetStatus => ({
   schema_version: "libre-ai.fleet-status.v1",
-  source: "project.v1.yaml cards at each repository main",
+  source: "project.v1.yaml cards at each repository's default branch",
   rows,
 });
 
