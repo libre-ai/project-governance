@@ -175,12 +175,14 @@ describe("the historical allow-list", () => {
     expect(isAllowlisted("SECURITY.md")).toBe(false);
   });
 
-  test("the generated projection entry records the measurement that justifies it", () => {
-    const projection = HISTORICAL_ALLOWLIST.find(
-      (entry) => entry.path === "ecosystem/projections/",
+  test("the generated projections are scanned, not allow-listed", () => {
+    // Removed after the owner arbitration of 2026-10-08 regenerated
+    // fleet-status.v1.json from the live cards: a stale projection must
+    // surface as a finding again, never hide behind a provisional entry.
+    expect(HISTORICAL_ALLOWLIST.some((entry) => entry.path === "ecosystem/projections/")).toBe(
+      false,
     );
-    expect(projection?.reason).toContain("MEASURED 2026-10-08");
-    expect(projection?.reason).toContain("must be removed");
+    expect(isAllowlisted("ecosystem/projections/fleet-status.v1.json")).toBe(false);
   });
 });
 
