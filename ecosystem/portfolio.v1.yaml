@@ -35,7 +35,7 @@ families:
   transverse:
     - name: Website
       exposure: spec-published
-      repo: libre-ai/website          # reserved, declared in repositories.v1.yaml
+      repo: libre-ai/project-website  # declared in repositories.v1.yaml; measured served 2026-10-08
       cdc: docs/apps/website.md
       scope: static/SSR sourced citable projection of knowledge, product records, forge evidence; no CMS, no tracking
 
