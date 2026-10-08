@@ -92,6 +92,10 @@ export const RETIRED_REPOSITORY_NAMES = [
   "travel-agent",
   "web-platform",
   "website",
+  // Renamed, not deleted: LEXICON §14 (ADR-0042 §7, act 2) renamed it to
+  // `personal-knowledge-workspace`. GitHub keeps a redirect from the old name,
+  // and no operational reference may rest on that redirect.
+  "personal-knowledge-notebook",
 ] as const;
 
 // `libre-ai` itself is absent by design: the hub is archived read-only, not

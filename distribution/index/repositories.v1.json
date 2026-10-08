@@ -147,8 +147,8 @@
       "card": "project.v1.yaml"
     },
     {
-      "repository": "libre-ai/personal-knowledge-notebook",
-      "name": "personal-knowledge-notebook",
+      "repository": "libre-ai/personal-knowledge-workspace",
+      "name": "personal-knowledge-workspace",
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",

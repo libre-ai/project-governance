@@ -149,7 +149,7 @@ describe("scanForTransmission", () => {
 // own `check` chain — a root invented to have something to scan is the defect
 // this gate was built to stop, not its wiring. Its enforcement point is a
 // consumer: measured on 2026-10-08 across the twenty-four inventoried
-// repositories, exactly one wires it — `personal-knowledge-notebook`, as
+// repositories, exactly one wires it — `personal-knowledge-workspace`, as
 // `check:no-transmission` inside its aggregated `check`, over
 // `apps/notebook/src`.
 //

@@ -99,12 +99,12 @@
       }
     },
     {
-      "repository": "personal-knowledge-notebook",
+      "repository": "personal-knowledge-workspace",
       "repositoryId": "1372583201",
       "group": "products",
       "name": {
-        "en": "Libre AI Personal Knowledge Notebook",
-        "fr": "Libre AI Personal Knowledge Notebook"
+        "en": "Libre AI Knowledge Workspace",
+        "fr": "Libre AI Knowledge Workspace"
       },
       "role": {
         "en": "Capture your notes, organize them and find useful information again while choosing what you share. This proposed product is for people building a personal collection of knowledge who want deliberate control over their notes and exports.",
