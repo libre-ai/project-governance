@@ -273,7 +273,8 @@ async function fetchLiveRepositoriesViaGraphQL(
   return collected;
 }
 
-async function fetchLiveRepositories(): Promise<LiveRepository[]> {
+/** Every repository the token can list, fail-closed; shared with check-truth-drift.ts. */
+export async function fetchLiveRepositories(): Promise<LiveRepository[]> {
   return (
     (await fetchLiveRepositoriesViaGraphQL(ORGANIZATION)) ?? (await fetchLiveRepositoriesViaRest())
   );

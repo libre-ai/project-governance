@@ -48,16 +48,31 @@ reactivation:
     revisions below remain the freeze record; the github_status
     frozen-reserved-product-home becomes reserved-active-product-home, and
     agent-board is renamed to missions (its URL redirects).
+refoundation_removal:
+  performed_on: 2026-09-16
+  authorized_by: owner
+  reference: docs/adr/0041-authority-consolidation-and-capability-absorption.md
+  rationale: >-
+    The 2026-09-16 cutover deleted 36 repositories of the organization and
+    created the long-named destinations that replace them (ADR-0041 context).
+    Nine entries below were part of that lot: the eight reserved-active
+    product homes (missions, ai-practices, boussole-politique, feed-radar,
+    notebook, sessions, spec-studio, website) and the policy repository,
+    which the weekly audit had skipped as private and unreadable. Their github_status moves from reserved-active-product-home
+    to removed-2026-09-16; the recorded freeze revisions remain the freeze
+    record. Recorded 2026-10-08 after the weekly truth audit reported the
+    nine names absent from the organization (HTTP 404 on each).
 repositories:
   - id: legacy.missions
     # Renamed agent-board -> missions (ADR-0008 amended 2026-07-23): the repo name
     # now follows the architecture — Missions is the mission AUTHORITY, Agent Board
-    # is only its read-only projection. The agent-board URL redirects to missions.
+    # is only its read-only projection. The agent-board URL redirected to missions
+    # until missions itself was deleted on 2026-09-16 (refoundation_removal above).
     remote: https://github.com/libre-ai/missions.git
     revision: 6fc9f2068b9a5319495999db4900560cc02d8975
     dirty_entries: 0
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.agent-factory
     remote: https://github.com/libre-ai/agent-factory.git
     revision: ec38d4af2bea8a39de7daed2a2800f94c26588b4
@@ -74,7 +89,7 @@ repositories:
     dirty_entries: 0
     preserved_unmerged_refs: 10
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.artifact-supply
     remote: https://github.com/libre-ai/artifact-supply.git
     revision: 85598ba380ef7b10b5a0398181910e1f6627fe41
@@ -93,7 +108,7 @@ repositories:
     revision: 18f011df333a81fd4dfcfc048f6b9a3d8d9f17b4
     dirty_entries: 0
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.client-kit
     remote: https://github.com/libre-ai/client-kit.git
     revision: d0d22998f571a13802686099198514b9c063b885
@@ -125,7 +140,7 @@ repositories:
     dirty_entries: 0
     preserved_unmerged_refs: 7
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.gear
     remote: https://github.com/libre-ai/gear.git
     revision: 0c7f35f8dc511d5d4f6a81ccdd8ee323a70b7bde
@@ -162,14 +177,14 @@ repositories:
     revision: dde02ed8e9a02381518c71cedf447c684b82d2de
     dirty_entries: 0
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.policy
     remote: https://github.com/libre-ai/policy.git
     revision: f97b3b2e8d59e2bf3d9d1e351461559c938db154
     dirty_entries: 0
     preserved_unmerged_refs: 1
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.proof-kit
     remote: https://github.com/libre-ai/proof-kit.git
     revision: 04cae1130f45d2f0638349a9cd2208e88a87d730
@@ -183,14 +198,14 @@ repositories:
     dirty_entries: 0
     preserved_unmerged_refs: 6
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.spec-studio
     remote: https://github.com/libre-ai/spec-studio.git
     revision: e8eb1fbadc35021d21e01e345b8162e38060ff5d
     dirty_entries: 0
     preserved_unmerged_refs: 1
     freeze_status: archived
-    github_status: reserved-active-product-home
+    github_status: removed-2026-09-16
   - id: legacy.website
     remote: https://github.com/libre-ai/website.git
     revision: 0318c92b5b0f4fed82cc64b75e5132db04ea04e3
@@ -199,8 +214,9 @@ repositories:
     # The legacy website (revision above) was removed before 2026-07-19. The name
     # was re-created 2026-07-23 as a NEW reserved product home for the CDC-locked
     # Website product (tracked in repositories.v1.yaml); the removed legacy content
-    # is NOT restored. Status transitions removed -> reserved-active-product-home.
-    github_status: reserved-active-product-home
+    # is NOT restored. Status transitions removed -> reserved-active-product-home
+    # -> removed-2026-09-16 (the Website product home is now project-website).
+    github_status: removed-2026-09-16
 hub_archive:
   # The hub was archived on 2026-07-30 (ADR-0020 general activation; owner
   # act recorded at gate-acceptance-log line 3.8). GitHub refuses every write

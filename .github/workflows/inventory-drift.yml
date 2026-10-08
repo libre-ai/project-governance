@@ -8,7 +8,7 @@ name: Inventory drift
 #     directions (presence, name, visibility), so a repository created,
 #     renamed or re-exposed without an inventory update fails the same day
 #     instead of waiting for the weekly truth-drift audit.
-# The declared-private repository (policy) is handled by the checker itself:
+# A declared-private repository (product-research) is handled by the checker itself:
 # private + not observable with the default token is consistent, not drift.
 on:
   push:

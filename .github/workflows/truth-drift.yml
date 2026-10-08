@@ -5,9 +5,11 @@ name: Public truth drift
 # caught the 2026-07-19 audit findings (unarchived repository with post-freeze
 # pushes, silently removed repositories) as they happened.
 #
-# Since 2026-07-23 (ADR-0008), reserved product homes are reserved-active
-# (unarchived, issues off, living README) rather than frozen-archived; the
-# audit verifies reserved-active-product-home repos are present and NOT archived.
+# Both comparisons live in ecosystem/check-truth-drift.ts (unit-tested), not
+# in inline shell: the shell version printed no volume on success and read
+# any failed API call — rate limit, 5xx — as "absent", the passing answer for
+# every removed repository. Only an HTTP 404 is an absence now; any other
+# failure fails the gate.
 on:
   schedule:
     - cron: "43 6 * * 1"
@@ -25,98 +27,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Compare github_status with live state
-        run: |
-          set -euo pipefail
-          fail=0
-          # policy is a private repository: unreadable with the repo-scoped
-          # token, verified manually instead.
-          PRIVATE_SKIP="policy"
-          repo=""
-          while IFS= read -r line; do
-            case "$line" in
-              *"- id: legacy."*)
-                repo="${line##*legacy.}"
-                ;;
-              *"github_status:"*)
-                status="${line##*github_status: }"
-                skip=false
-                for p in $PRIVATE_SKIP; do
-                  [ "$repo" = "$p" ] && skip=true
-                done
-                if [ "$skip" = "true" ]; then
-                  echo "SKIP $repo (private, unreadable with the repository token)"
-                  continue
-                fi
-                if archived=$(gh api "repos/libre-ai/$repo" --jq .archived 2>/dev/null); then
-                  live="present-archived-$archived"
-                else
-                  live="absent"
-                fi
-                case "$status" in
-                  frozen-reserved-product-home)
-                    if [ "$live" != "present-archived-true" ]; then
-                      echo "DRIFT: $repo expected frozen+archived, live=$live"
-                      fail=1
-                    fi
-                    ;;
-                  reserved-active-product-home)
-                    # Reactivated 2026-07-23 (ADR-0008): reserved homes are now
-                    # unarchived and carry a living README. They must be present
-                    # and NOT archived.
-                    if [ "$live" != "present-archived-false" ]; then
-                      echo "DRIFT: $repo expected reserved+unarchived, live=$live"
-                      fail=1
-                    fi
-                    ;;
-                  removed-*)
-                    if [ "$live" != "absent" ]; then
-                      echo "DRIFT: $repo expected removed, live=$live"
-                      fail=1
-                    fi
-                    ;;
-                esac
-                ;;
-            esac
-          done < ecosystem/LEGACY-MANIFEST.yaml
-          exit $fail
-      - name: Inventory matches observable organization
-        run: |
-          set -euo pipefail
-          fail=0
-          # Public repositories declared in the inventory
-          declared=$(grep -E '^  - repository: ' ecosystem/repositories.v1.yaml \
-            | sed 's/.*repository: //')
-          declared_public=""
-          repo=""
-          while IFS= read -r line; do
-            case "$line" in
-              "  - repository: "*) repo="${line##*repository: }" ;;
-              "    visibility: public"*) declared_public="$declared_public ${repo#libre-ai/}" ;;
-            esac
-          done < ecosystem/repositories.v1.yaml
-          # Live public repositories of the organization
-          live=$(gh api --paginate "orgs/libre-ai/repos?per_page=100" \
-            --jq '.[] | select(.private == false) | .name' | sort)
-          for r in $live; do
-            case " $declared_public " in
-              *" $r "*) ;;
-              *) echo "DRIFT: public repository '$r' absent from repositories.v1.yaml"; fail=1 ;;
-            esac
-          done
-          for r in $declared_public; do
-            case "$r" in libre-ai|.github) continue;; esac
-            gh api "repos/libre-ai/$r" --jq .archived >/dev/null 2>&1 || {
-              echo "DRIFT: inventory declares '$r' public but it is not observable"
-              fail=1
-            }
-          done
-          exit $fail
-      # Only the alerting steps below need Bun: the alert on a red run, the
-      # resolve on a green one. Installed on both outcomes, skipped only when
-      # the run was cancelled — this workflow otherwise has no Bun dependency.
       - name: Install archived Bun toolchain
-        if: ${{ !cancelled() }}
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
           BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
@@ -125,6 +36,17 @@ jobs:
           echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
           unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # Bun built-ins only, no `bun install`: the gate stays independent from
+      # the dependency supply chain, like inventory-drift.yml.
+      - name: Compare github_status with live state
+        run: bun ecosystem/check-truth-drift.ts manifest
+      # Runs whatever the manifest comparison said, so each step renders its
+      # own verdict instead of being skipped behind the first red one.
+      - name: Inventory matches observable organization
+        if: ${{ !cancelled() }}
+        run: bun ecosystem/check-truth-drift.ts inventory
       # A red run here is only visible to someone who opens the Actions tab
       # (AGENTIC-LOOP-INVENTORY.md, "Contrôle de dérive périodique" — "absence
       # de ligne récente" is its own failure mode). One red run stays a run;
