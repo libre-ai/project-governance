@@ -1,12 +1,12 @@
 # ADR-0042 — Vision produit et méthode de réalisation
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07
+- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), dont le point 2 (« consolider les familles de dépôts existantes ») reçoit ici sa règle de découpage
 - **Cite sans la répéter :** ADR-0041 pour la topologie de l'autorité, l'inventaire et l'admission des destinations par bascule de branche par défaut
 - **Amende :** ADR-0041, préambule « N'autorise pas » (aucun transfert d'autorité au-delà des transferts tracés), pour le seul domaine Connaissance (§7)
 - **Déroge :** I-09 (« tenant obligatoire + RLS »), pour la seule v0 mono-utilisateur de Work Supervision (§5)
-- **Remplace :** deux points du mandat du 2026-09-15 — Notebook comme première épreuve (remplacé par l'ordre du §3) et macOS natif dès le premier palier de plateformes (remplacé par le §6)
+- **Remplace :** un point du mandat du 2026-09-15 — Notebook comme première épreuve (remplacé par l'ordre du §3). Le second point initialement remplacé, macOS natif dès le premier palier de plateformes, est rétabli par le §8
 - **Applique :** I-03 (un sujet, une autorité), I-04 (noms conformes à l'architecture, préservation des URLs levée), I-06 (stack), I-08 (discipline de preuve), I-11 (licences), I-13 (la méthode est le produit zéro), I-14 (portefeuille par couches, aucun décompte codé en dur), I-16 (naissance d'un repository), I-19 (dogfooding d'abord), I-21 (frontière code / données), I-27 (gate de parité après dogfooding)
 - **Autorise :** la sortie du gel de P02, P07, P33 et P39 ; l'ouverture des PR du §7 une fois leurs préconditions remplies
 - **N'autorise pas :** la création d'un dépôt ; l'activation d'un produit ; le renommage ou l'archivage d'un dépôt hors des préconditions du §7 ; l'adoption d'une brique GPL avant la revue juridique du §4 ; une promesse de plateforme non qualifiée
@@ -148,8 +148,9 @@ de la fabrique.
 - **Architecture agnostique.** Un cœur Rust et des adaptateurs d'interface par
   plateforme.
 - **Promesse par palier de plateformes**, faite après qualification par un
-  parcours réel. Premier palier : web et extension navigateur (Chrome, Firefox).
-  Deuxième palier : macOS natif, avec P40. Les autres plateformes ne sont pas
+  parcours réel. Le contenu des paliers est fixé par le §8, qui remplace la
+  rédaction initiale (premier palier web et extension, macOS natif au second).
+  Les autres plateformes ne sont pas
   promises.
 
 ### 7. Topologie : un domaine, un dépôt produit au plus — amendement pour Connaissance
@@ -189,6 +190,41 @@ LEXICON §1, puisque I-04 a levé la préservation des URLs historiques ; seule
 l'entrée de nom de l'acte 1 est requise. Les autres domaines suivront ce modèle,
 chacun par son propre ADR. Aucun autre dépôt n'est renommé ni archivé par
 celui-ci.
+
+### 8. Premier palier : application macOS native et extension — amendement du 2026-10-08
+
+Owner-arbitration: 2026-10-08 — « tous les produits », « app + extension », en
+réponse à la question de la portée d'un premier palier natif.
+
+Le premier palier de plateformes devient, **pour tous les produits du
+catalogue** :
+
+- une **application macOS native**, adaptateur d'interface du cœur Rust du
+  produit (§6). Pour un produit à fichiers locaux, l'application lit et écrit
+  directement le dossier qui fait foi, sans pont ni service local ;
+- l'**extension navigateur** (Chrome, Firefox), conservée pour ce que seul un
+  navigateur voit (capture web, lecture de page). Elle parle au même cœur par
+  **native messaging** : le navigateur lance l'hôte et lui parle par stdio, seule
+  l'extension déclarée peut l'appeler, et aucun port n'est ouvert sur la
+  machine. Un service en écoute sur `localhost` est écarté : toute page web
+  pourrait le viser.
+
+Une interface web n'est pas promise au premier palier. Les produits serveur
+(Bun + PostgreSQL, §5) sont servis à l'application par leur API. Le contenu du
+deuxième palier sera fixé par un ADR ultérieur. La fabrique n'est pas
+concernée : son moteur et ses terminaux restent en CLI/TUI et son cockpit en
+web (§3).
+
+Conséquences :
+
+- toute **distribution** d'une application à un tiers exige un compte Apple
+  Developer, la signature et la notarisation du binaire, ainsi que la
+  déclaration de l'hôte de native messaging auprès de chaque navigateur.
+  L'usage réel par le propriétaire (jalon B′) n'en dépend pas ;
+- la qualification de chaque produit porte sur deux adaptateurs, l'application et
+  l'extension, et sur leur partage d'un même cœur ;
+- le point du mandat du 2026-09-15 « macOS natif dès le premier palier » est
+  rétabli.
 
 ## Conséquences et limites
 
