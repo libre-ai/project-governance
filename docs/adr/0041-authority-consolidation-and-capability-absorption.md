@@ -140,6 +140,41 @@ et du code de première partie, en reconnaissant la provenance par la **source
 résolue** du lockfile et non par un nom de paquet qu'un attaquant peut
 revendiquer.
 
+### 8. Le gate de dérive de migration est retiré, pas réparé
+
+Sa prémisse est close. Il comparait l'arbre du moyeu `libre-ai/libre-ai` à celui
+de chaque destination pendant la fenêtre de double présence ; le moyeu est
+archivé en lecture seule depuis le 2026-07-30, donc son index de migration ne
+peut plus avancer, et §3 de cette décision a retiré les dix dépôts à noms courts
+que cet index nomme encore comme destinations.
+
+Mesure au 2026-10-08 : **34 constats, tous des « entrées fantômes »** désignant un
+dépôt supprimé, **aucune divergence réelle**. Son propre message l'énonçait —
+« failed with the dual-presence window closed — read the DRIFT lines above; they
+are not divergences ». Un gate qui sait sa fenêtre fermée et rapporte quand même
+est un gate qui ne peut plus devenir vert, et un rouge permanent entraîne à
+ignorer les rouges : c'est exactement le défaut que `tools/quality/gate-report.ts`
+existe pour empêcher, appliqué cette fois au gate lui-même.
+
+Les deux issues étaient : lui apprendre la table de correspondance des noms
+courts vers les noms longs, ou le retirer. La première ferait vivre dans un gate
+une table dont l'unique objet serait de traduire un index figé dans un dépôt
+qu'on ne peut plus amender — un coût de maintenance permanent pour une question
+sans réponse possible. Le retrait est choisi.
+
+**Ce qui reste couvert.** `check-hub-orphans` porte la question survivante : tout
+chemin ayant vécu dans le moyeu a une destination, un remplacement ou une
+éviction. Il est vert, lit l'index d'autorité en réseau, et devient le seul
+lecteur du parcours GraphQL en largeur que les deux partageaient.
+`ecosystem/migration-index.v1.yaml` est conservé : six outils s'y réfèrent, et il
+sert la lecture humaine.
+
+**Ce qui n'est pas détruit.** L'éviction est enregistrée dans
+`ecosystem/FORGOTTEN.yaml` sous `forgotten.migration-drift-gate` (ADR-0019), avec
+son ancre de récupération ; le garde-fou d'oubli interdit désormais sa
+résurrection et sa citation par chemin. Les quatre fichiers qui le citaient
+nomment la leçon sans le chemin.
+
 ## Conséquences et limites
 
 Le gate de dérive d'inventaire passe de 21 assertions rouges à 4 : `governance`

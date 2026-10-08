@@ -83,8 +83,9 @@ interface GhFetchResult {
 /**
  * REST fallback, retried, used only when the GraphQL paths below cannot be
  * answered at all — the shared installation REST quota was observed
- * exhausted even for a single fixed call (2026-08-19, same CI job,
- * ecosystem/check-migration-drift.ts's hub-index read), so "three fixed
+ * exhausted even for a single fixed call (2026-08-19, same CI job, by the
+ * migration-drift gate's hub-index read — that gate was retired on 2026-10-08,
+ * ADR-0041 §8), so "three fixed
  * requests" does not exempt this file from the same GraphQL escape as the
  * fleet-wide sweeps beside it in the same CI job.
  */
@@ -155,10 +156,11 @@ async function fetchBlobWithFallback(path: string): Promise<GhFetchResult> {
   ]);
 }
 
-// --- Recursive hub tree, via a breadth-first GraphQL walk — same pattern
-// as ecosystem/check-migration-drift.ts (no direct GraphQL equivalent of
-// REST's git/trees?recursive=1; one query per depth level, batching every
-// directory discovered at that depth).
+// --- Recursive hub tree, via a breadth-first GraphQL walk — the pattern the
+// retired migration-drift gate also used (ADR-0041 §8): there is no direct
+// GraphQL equivalent of REST's git/trees?recursive=1, so one query per depth
+// level, batching every directory discovered at that depth. This file is now
+// the only reader of that pattern.
 
 interface TreeWaveEntry {
   readonly name: string;
