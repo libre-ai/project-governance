@@ -1,10 +1,10 @@
 # ADR-0043 — Branches inscriptibles de l'autorité : doctrine en attente de signature et branches de session
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. Owner-arbitration: 2026-10-08
+- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. L'extension des branches de session à la flotte est arbitrée le même jour (« Oui, forge + .github »). Owner-arbitration: 2026-10-08
 - **Applique :** I-17 (surface à touche humaine fermée : registre, ADR et mutations des garde-fous restent sous signature) ; la forme d'ADR-0041 §6 (toute modification de contrôle de protection est nommée, avec son périmètre exact)
 - **N'amende pas :** ADR-0041 §6. Son titre « une seule modification de contrôle de protection » décrit le périmètre de l'opération de consolidation du 2026-10-07 — un bypass temporaire sur le profil `libre-ai/.github`, restauré à l'identique — et non une règle permanente qui interdirait toute modification ultérieure. Les trois modifications consignées ici couvrent une autre fenêtre et un autre dépôt
-- **Autorise :** l'usage de `doctrine/owner-signature` comme branche de tête des pull requests de doctrine qui attendent la signature du propriétaire ; l'usage d'une branche `work/<session>` par session de travail, supprimée après le merge
+- **Autorise :** l'usage de `doctrine/owner-signature` comme branche de tête des pull requests de doctrine qui attendent la signature du propriétaire ; l'usage d'une branche `work/<session>` par session de travail, supprimée après le merge, dans `project-governance` et dans les 18 dépôts de l'extension
 - **N'autorise pas :** toute autre modification de ruleset ; la fusion d'une pull request de doctrine sans signature du propriétaire ou son autorisation explicite ; l'usage de `doctrine/owner-signature` pour un changement d'outillage ou de gate ; le partage d'une branche `work/` entre deux sessions
 
 ## Contexte
@@ -29,6 +29,12 @@ Ce qui ne change pas : `bypass_actors` reste `[]` sur les six rulesets, et chaqu
 
 La convention `work/<session>` n'est pas une préférence de rangement : elle remplace, dans cet espace, la protection de non-fast-forward sciemment retirée. C'est ce filet qui, le 2026-10-08, a fait refuser un push par-dessus la pull request d'une autre session sur `feat/forge-realization`.
 
+### Extension à la flotte (2026-10-08)
+
+Le même jour, le propriétaire a étendu les branches de session aux **18 autres dépôts** portant `refoundation-no-bypass-branch` : les 17 dépôts de la forge (`ai-work-supervision`, `ai-model-policy`, `ai-practice-workbench`, `learning-session-facilitation`, `personal-knowledge-notebook`, `information-feed-filter`, `travel-itinerary-planner`, `application-development-toolkit`, `schemas-and-contracts`, `collaborative-data-sync`, `execution-continuity-evaluator`, `execution-sandbox`, `capability-authorization`, `organization-data-lifecycle`, `database-policy-inspector`, `artifact-verification`, `project-website`) et le profil `libre-ai/.github`. Sur chacun, une seule modification : l'ajout de `refs/heads/work/**` aux exclusions. La charge de chaque `PUT` a été dérivée du ruleset vivant relu dans la même boucle, et une assertion refusait l'envoi si une exclusion disparaissait ou si `include`, les types de règles ou `bypass_actors` changeaient — aucune ne l'a refusé. La convention `work/<session>` s'applique à l'identique sur ces dépôts.
+
+La garantie « la branche de doctrine n'existe jamais sans sa protection » est structurelle, pas une discipline d'opérateur : avant la deuxième modification, la règle `creation` sur `~ALL` interdisait de créer `doctrine/owner-signature`, donc la seule séquence possible était ruleset d'intégrité → exclusion → branche.
+
 ## Conséquences et limites
 
 Une signature en attente ne bloque plus que les autres changements de doctrine, qui de toute façon se sérialisent par l'arbitrage ; tout le reste avance sur les branches de session. Deux pull requests de doctrine simultanées sur `doctrine/owner-signature` restent impossibles ; ce n'est pas un défaut, la signature étant un acte propriétaire unique à la fois.
@@ -40,6 +46,7 @@ La fusion vers `migrate/recover-code` reste gardée par `forge-reviewed-recovery
 - Ruleset `refoundation-no-bypass-branch` relu après modification et comparé à l'état relevé avant : identique hors exclusions, une exclusion ajoutée, aucune retirée.
 - Règles effectives lues par `GET /repos/libre-ai/project-governance/rules/branches/doctrine/owner-signature` : `deletion` et `non_fast_forward`, toutes deux du ruleset `24725518` ; aucune règle de `refoundation-no-bypass-branch`. La même lecture sur `feat/forge-realization` rend le même profil depuis le ruleset `24161114`.
 - Le dépôt compte six rulesets : les cinq antérieurs et `doctrine-signature-branch-integrity`.
+- Extension à la flotte, relue après coup par un second instrument : sur les 18 dépôts, `refoundation-no-bypass-branch` est `active`, `include: ~ALL`, règles `creation+deletion+update`, 0 acteur de contournement ; exclusions = `migrate/recover-code`, `feat/forge-realization`, `work/**` (17 dépôts forge) et `work/**` seul (`.github`) ; règles effectives lues par `rules/branches` : aucune sur `work/probe-x`, `creation+deletion+update` sur `chore/probe-x`, sur chacun des 18.
 - Ordre des deux premières modifications : `created_at` de `24725518` = `2026-10-08T15:24:59.545+02:00` ; réponse du `PUT` ajoutant `doctrine/owner-signature` aux exclusions de `23544600` : `updated_at` = `2026-10-08T15:26:42.653+02:00`. La protection existait donc 103 secondes avant que la branche devienne créable, et la branche n'a été créée qu'après.
 - Ruleset `refoundation-no-bypass-branch` relu après la troisième modification : exclusions `migrate/recover-code`, `feat/forge-realization`, `doctrine/owner-signature`, `work/**` ; `include: ~ALL`, règles `creation`, `deletion`, `update`, `bypass_actors: []`.
 - Mesure par l'acte, faite par la session qui a exécuté la troisième modification (les lectures `rules/branches` ci-dessus sont une mesure distincte, faite par la session qui rédige cet ADR) :
