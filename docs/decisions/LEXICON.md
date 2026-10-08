@@ -1,7 +1,7 @@
 # LEXICON — carte de noms cible et glossaire produit (Phase 0, Lexicon Lock)
 
 - **Statut :** signé — signature propriétaire prononcée le 2026-07-20, journalisée dans [`distribution/evidence/gate-acceptance-log.md`](../../distribution/evidence/gate-acceptance-log.md) (PR #130, merge = signature). Cette carte est en vigueur : elle est l'autorité unique des noms cibles, et tout nom hors carte est un défaut bloquant (garde-fou classe 4).
-- **Date :** 2026-07-20. **Amendé :** 2026-07-28 par ADR-0020 (activation générale), 2026-07-30 (§9, carte des couches complétée), 2026-08-18 (§10, harness créé — domaine F chantier A et §11, neuvième produit), 2026-09-10 (§12, dixième produit candidat), même procédure que la signature — production → revue K4 → arrêt dur → merge = signature propriétaire. Le §8 porte le premier amendement ; les corrections ciblées dans le corps sont marquées « (ADR-0020) ».
+- **Date :** 2026-07-20. **Amendé :** 2026-07-28 par ADR-0020 (activation générale), 2026-07-30 (§9, carte des couches complétée), 2026-08-18 (§10, harness créé — domaine F chantier A et §11, neuvième produit), 2026-09-10 (§12, dixième produit candidat), 2026-10-08 (§14, nom du dépôt du domaine Connaissance, ADR-0042 §7 acte 1), même procédure que la signature — production → revue K4 → arrêt dur → merge = signature propriétaire. Le §8 porte le premier amendement ; les corrections ciblées dans le corps sont marquées « (ADR-0020) ».
 - **Arbitrage :** accompli — la signature propriétaire de cette carte est l'acte de clôture de la Phase 0 (Lexicon Lock). Procédure suivie : production solo → revue K4 (relecteurs indépendants : cohérence, collisions, doctrine) → arrêt dur → signature propriétaire → renommage et écriture des noms cibles comme acquis.
 - **Portée :** tous les noms cibles de la constellation — repositories, produits, briques, packages npm, crates, familles — et le glossaire produit. Le glossaire de **méthode** (socle, control plane, satellite, vague, gate, WP, traceur…) est déjà fixé et ne relève pas de cette carte.
 - **Règle d'anti-hallucination :** tant que cette carte n'est pas signée, aucun agent n'écrit un nom cible comme acquis dans un artefact ; après signature, tout nom hors carte est un défaut bloquant (garde-fou classe 4).
@@ -373,3 +373,70 @@ dépôt `administrative-private` transverse, hors portfolio, sans fiche produit.
 Ce nom ne désigne ni produit, ni package, ni crate. Le contenu de recherche reste
 non normatif ; seuls le nom, le rôle, la visibilité et la frontière d'autorité
 entrent dans l'index public. Les familles de noms existantes restent inchangées.
+
+## 14. Amendement du 2026-10-08 — nom du dépôt du domaine Connaissance (ADR-0042 §7, acte 1)
+
+Owner-arbitration: 2026-10-08 — décisions propriétaires Y7 (nom du dépôt
+`personal-knowledge-workspace`) et Y15 (nom public « Libre AI Knowledge
+Workspace »), données en chat sur l'étude de nommage du domaine.
+
+Amendement produit selon la procédure de ce document (production → revue K4
+→ arrêt dur → merge = signature propriétaire). ADR-0042 §7 fait de
+`personal-knowledge-notebook` le dépôt du domaine Connaissance, qui porte P01 à
+P07 ; il en subordonne le renommage à cette entrée. Le nom ci-dessous décrit le
+domaine, et non plus le seul produit de notes (P04).
+
+### 14.1 Nom canonique
+
+| Domaine      | Repo                                    | Marque publique              | Couche | Produits portés |
+| ------------ | --------------------------------------- | ---------------------------- | ------ | --------------- |
+| Connaissance | `libre-ai/personal-knowledge-workspace` | Libre AI Knowledge Workspace | 1      | P01 à P07       |
+
+Ancien nom : `libre-ai/personal-knowledge-notebook`. Pour ce dépôt, cette entrée
+remplace les lignes `notebook` du §1.1 et du §3, qui décrivent la génération aux
+noms courts. La remise à niveau générale de ces tables reste un sujet distinct
+(ADR-0042, Conséquences). Les noms publics des produits P01 à P07 ne sont pas
+fixés ici : chacun fera l'objet d'une entrée propre, et aucun nom de code
+interne n'entre dans une surface publique.
+
+Le nom du dépôt suit la convention des noms longs de l'inventaire
+(`ecosystem/repositories.v1.yaml`) : groupe nominal descriptif en kebab-case,
+objet puis fonction.
+
+**Exception de marque publique (Y15).** La dérivation en service dans
+`ecosystem/portfolio.v1.json` (« Libre AI » + nom du dépôt en casse de titre)
+donnerait « Libre AI Personal Knowledge Workspace ». Le propriétaire a retenu
+**« Libre AI Knowledge Workspace »**, identique en anglais et en français : le
+qualificatif `personal` reste dans l'identifiant du dépôt et sort de la marque.
+C'est une exception nommée, pas une nouvelle règle : les autres dépôts gardent
+la dérivation mécanique, et toute projection qui la calcule (portefeuille,
+famille de marque, site public) doit porter cette exception explicitement au
+lieu de la dériver. Le nom court « Knowledge Workspace » peut suivre la marque
+dans un contexte non ambigu (`brand/README.md`, architecture de famille).
+
+### 14.2 Disponibilité, collision et limite sémantique
+
+Contrôle du 2026-10-08 : `libre-ai/personal-knowledge-workspace` est libre
+(HTTP 404). Le nom est absent des noms d'outillage retirés (§1.2,
+`tools/quality/check-retired-names.ts`), des dépôts retirés
+(`tools/quality/check-retired-repository-names.ts`) et des marques mortes (§6.1).
+GitHub compte 5 dépôts dont le nom contient l'expression, dont le plus étoilé a
+1 étoile ; aucun produit actif homonyme n'a été identifié. « Workspace » nomme
+aussi le workspace de build (Bun, Cargo) dans la doctrine. Le nom composé lève
+cette ambiguïté : seul, le mot ne désigne jamais ce dépôt. « Knowledge
+Workspace » est un générique de catégorie ; il n'est jamais revendiqué seul,
+conformément au §3. Ce contrôle n'est ni une recherche d'antériorité ni un avis
+juridique.
+
+### 14.3 Condition du renommage
+
+Le dépôt garde son ancien nom jusqu'au merge de cet amendement. Le renommage
+relève de l'acte 2 d'ADR-0042 §7 : une pull request met à jour toutes les
+références opérationnelles de l'autorité, le dépôt est renommé sur GitHub par
+le propriétaire, puis la pull request est fusionnée aussitôt. L'ancien nom
+rejoint `RETIRED_REPOSITORY_NAMES` dans cette pull request de renommage, et non
+dans le présent amendement : tant que le dépôt porte son ancien nom, les
+références opérationnelles vivantes à `personal-knowledge-notebook` sont
+légitimes, et le gate des dépôts retirés les rejetterait. Une fois le renommage
+fusionné, aucune référence opérationnelle ne repose sur la redirection de
+GitHub.

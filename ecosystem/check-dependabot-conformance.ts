@@ -61,17 +61,14 @@
 
 import { PRIVATE_CROSS_REPOSITORY_NOTE } from "./build-index";
 import {
-  delay,
   fetchFile,
   type GhFetchResult,
-  ghGraphQLRaw,
   ghWithRetry,
-  hasUsableGraphQLData,
   parseRegistry,
-  RETRY_DELAYS_MS,
   type RegistryEntry,
   type ReviewOutcome,
 } from "./check-context-conformance";
+import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 
 export const TEMPLATE_VARIANTS = ["github-actions", "cargo"] as const;
 export type TemplateVariant = (typeof TEMPLATE_VARIANTS)[number];

@@ -8,7 +8,6 @@ import {
   extractSections,
   fetchPublicFleetContext,
   hasAuthorityPointer,
-  hasUsableGraphQLData,
   lastLifecycleTransition,
   layerMarkerOk,
   missingSections,
@@ -583,28 +582,6 @@ describe("parseBatchResponse", () => {
   });
 });
 
-describe("hasUsableGraphQLData", () => {
-  test("rejects a top-level rate-limit rejection — data: null alongside errors[]", () => {
-    // The exact regression: this is the documented shape of a
-    // rate-limited/quota-exhausted gh api graphql response. `data` is
-    // present (not undefined) but explicitly null — accepting it as
-    // success used to mark every repository "unable to verify" in one
-    // pass, with no retry and no REST fallback.
-    expect(hasUsableGraphQLData({ data: null, errors: [{ type: "RATE_LIMITED" }] })).toBe(false);
-  });
-
-  test("rejects a response with no data key at all", () => {
-    expect(hasUsableGraphQLData({ errors: [{ type: "SOME_ERROR" }] })).toBe(false);
-    expect(hasUsableGraphQLData({})).toBe(false);
-  });
-
-  test("rejects a non-object body", () => {
-    expect(hasUsableGraphQLData(null)).toBe(false);
-    expect(hasUsableGraphQLData(undefined)).toBe(false);
-    expect(hasUsableGraphQLData("not json shaped")).toBe(false);
-  });
-
-  test("accepts a real data payload", () => {
-    expect(hasUsableGraphQLData({ data: { repo0: { agents: null } } })).toBe(true);
-  });
-});
+// `hasUsableGraphQLData` now lives in ecosystem/github-fleet.ts, with every
+// case this file used to assert plus the ones its three sibling gates
+// asserted: ecosystem/github-fleet.test.ts.
