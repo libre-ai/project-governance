@@ -31,6 +31,14 @@
  * frozen hub, which no longer carries either path. REPOSITORY_URL now points
  * at the repository that actually carries the reference chain.
  *
+ * It moved a second time on 2026-10-08, for the same reason one step later: the
+ * 2026-10-07 consolidation (ADR-0041) renamed that destination, and the old
+ * name was deleted — `gh api repos/<org>/<old name>` answers 404. The weekly
+ * loop was therefore cloning a repository that no longer exists, exactly the
+ * failure its own note above records for the frozen hub. It was found by
+ * `tools/quality/check-retired-repository-names.ts`, written to make this class
+ * visible instead of discovered by a scheduled run three weeks later.
+ *
  * The pre-γ loop also ran a second step — "one contract validated with the
  * repository's own conformance tooling" (`tools/quality/
  * check-policy-core-vectors.ts`). That module was deliberately deleted from
@@ -75,7 +83,7 @@ import {
   type ToolchainPassthrough,
 } from "./cleanroom";
 
-const REPOSITORY_URL = "https://github.com/libre-ai/governance";
+const REPOSITORY_URL = "https://github.com/libre-ai/project-governance";
 const CHAIN_EVIDENCE_PATH = "verification/harness/wp-g2-q01-reference-chain-evidence.md";
 
 async function pathExists(path: string): Promise<boolean> {
