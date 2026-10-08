@@ -108,9 +108,11 @@ Le chemin honnête est donc gaté sur un secret dédié. Sans secret, l'étape
 (log + résumé de job) — jamais un vert silencieux, le run étant rouge par
 l'étape de dérive. Avec le secret : branche fixe `heal/org-readme` dans
 `.github` (recréée depuis `main` quand aucune PR n'est ouverte, complétée
-sinon), un commit par l'API Contents (auteur = identité du jeton, trailer
-`Signed-off-by` assorti), une PR trouvée par branche de tête, jamais
-dupliquée.
+sinon), un commit par l'API Contents pour chaque README de profil
+divergent — `profile/README.md` et `profile/README.fr.md` portent la même
+section depuis la décision propriétaire du 2026-10-08 (Y14) — (auteur =
+identité du jeton, trailer `Signed-off-by` assorti), une PR trouvée par
+branche de tête, jamais dupliquée.
 
 **Action propriétaire requise** (aucun secret n'existe sur `governance` au
 2026-09-07) :
