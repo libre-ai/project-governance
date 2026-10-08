@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import {
   CargoTomlParseError,
   classifyContainment,
+  declaresWorkspace,
+  findStrayPatchTables,
+  inspectCorpus,
   isOnMain,
+  NO_PATCH_NOTE,
+  type PatchScan,
   parseSymrefHead,
   scanPatches,
 } from "./check-patch-rev";
@@ -124,6 +129,158 @@ describe("isOnMain", () => {
     expect(isOnMain("behind")).toBe(true);
     expect(isOnMain("ahead")).toBe(false);
     expect(isOnMain("diverged")).toBe(false);
+  });
+});
+
+// The defect, probed on f3a7e193: a `Cargo.toml` carrying no `[patch.*]` at all
+// printed `Orphan-rev gate: OK` and exited 0. The file's own comment recorded
+// that it had already happened once — the relocation of the crate under
+// `crates/` made an unqualified "Cargo.toml" resolve to nothing.
+//
+// The fix is not "empty fails": a repository may legitimately carry no patch.
+// What the gate owed was the distinction D3 names — green on what it CANNOT
+// READ is not a gate — so the two facts it can be wrong about are asserted on
+// every run whatever the patch count, and a zero is reported as a zero.
+describe("inspectCorpus", () => {
+  const ONE_PIN: PatchScan = {
+    entries: 1,
+    organisationSources: 1,
+    patches: [
+      {
+        section: "crates-io",
+        crate: "biscuit-auth",
+        owner: "libre-ai",
+        repo: "capability-authorization",
+        rev: REV,
+      },
+    ],
+    rejections: [],
+  };
+  const EMPTY: PatchScan = { entries: 0, organisationSources: 0, patches: [], rejections: [] };
+  const ROOT = { manifest: "Cargo.toml", declaresWorkspace: true };
+
+  test("asserts that the manifest it read is the workspace root, on every run", () => {
+    const assertions = inspectCorpus({
+      ...ROOT,
+      scan: ONE_PIN,
+      memberManifests: [],
+      strayPatchManifests: [],
+    });
+
+    expect(assertions).toHaveLength(1);
+    expect(assertions[0]).toMatchObject({ item: "Cargo.toml", ok: true });
+    expect(assertions[0]?.detail).toContain("is the workspace root");
+  });
+
+  test("a manifest read as the root but carrying no [workspace] fails", () => {
+    const assertions = inspectCorpus({
+      manifest: "Cargo.toml",
+      declaresWorkspace: false,
+      scan: ONE_PIN,
+      memberManifests: [],
+      strayPatchManifests: [],
+    });
+
+    expect(assertions.filter((assertion) => !assertion.ok)).toHaveLength(1);
+    expect(assertions[0]?.detail).toContain("no [workspace] table");
+    expect(assertions[0]?.detail).toContain("resolve to nothing");
+  });
+
+  test("a [patch.*] in a member manifest fails: Cargo ignores it there", () => {
+    const assertions = inspectCorpus({
+      ...ROOT,
+      scan: ONE_PIN,
+      memberManifests: ["crates/a/Cargo.toml", "crates/b/Cargo.toml"],
+      strayPatchManifests: ["crates/b/Cargo.toml"],
+    });
+
+    expect(assertions).toHaveLength(3);
+    const failed = assertions.filter((assertion) => !assertion.ok);
+    expect(failed.map((assertion) => assertion.item)).toEqual(["crates/b/Cargo.toml"]);
+    expect(failed[0]?.detail).toContain("silently ignores it");
+  });
+
+  test("every member manifest is asserted, clean ones included", () => {
+    const assertions = inspectCorpus({
+      ...ROOT,
+      scan: ONE_PIN,
+      memberManifests: ["crates/a/Cargo.toml", "crates/b/Cargo.toml"],
+      strayPatchManifests: [],
+    });
+
+    expect(assertions.every((assertion) => assertion.ok)).toBe(true);
+    expect(assertions.map((assertion) => assertion.item)).toEqual([
+      "Cargo.toml",
+      "crates/a/Cargo.toml",
+      "crates/b/Cargo.toml",
+    ]);
+  });
+
+  // Not symmetrical with the forgetting register: a repository may legitimately
+  // carry no patch at all, so the gate says so rather than failing.
+  test("no patch entry is reported as a zero with its reason, not as a failure", () => {
+    const assertions = inspectCorpus({
+      ...ROOT,
+      scan: EMPTY,
+      memberManifests: [],
+      strayPatchManifests: [],
+    });
+
+    expect(assertions.every((assertion) => assertion.ok)).toBe(true);
+    expect(assertions.at(-1)?.detail).toBe(NO_PATCH_NOTE);
+    expect(NO_PATCH_NOTE).toContain("legitimate answer");
+    expect(NO_PATCH_NOTE).toContain("two different answers");
+  });
+
+  test("an unreadable root and a root with no patch are two different verdicts", () => {
+    const unreadable = inspectCorpus({
+      manifest: "Cargo.toml",
+      declaresWorkspace: false,
+      scan: EMPTY,
+      memberManifests: [],
+      strayPatchManifests: [],
+    });
+    const empty = inspectCorpus({
+      ...ROOT,
+      scan: EMPTY,
+      memberManifests: [],
+      strayPatchManifests: [],
+    });
+
+    expect(unreadable.some((assertion) => !assertion.ok)).toBe(true);
+    expect(empty.every((assertion) => assertion.ok)).toBe(true);
+  });
+});
+
+describe("declaresWorkspace", () => {
+  test("true for a manifest carrying a [workspace] table", () => {
+    expect(declaresWorkspace('[workspace]\nmembers = ["crates/x"]\n')).toBe(true);
+  });
+
+  test("false for a package manifest", () => {
+    expect(declaresWorkspace('[package]\nname = "x"\nversion = "0.1.0"\n')).toBe(false);
+  });
+
+  test("false for a manifest the parser cannot read — never a silent true", () => {
+    expect(declaresWorkspace("[workspace\n")).toBe(false);
+  });
+});
+
+describe("findStrayPatchTables", () => {
+  test("names a member manifest that declares [patch.*]", () => {
+    const stray = findStrayPatchTables([
+      { path: "crates/a/Cargo.toml", text: '[package]\nname = "a"\nversion = "0.1.0"\n' },
+      {
+        path: "crates/b/Cargo.toml",
+        text: '[package]\nname = "b"\nversion = "0.1.0"\n[patch.crates-io]\nx = { path = "x" }\n',
+      },
+    ]);
+
+    expect(stray).toEqual(["crates/b/Cargo.toml"]);
+  });
+
+  test("an unreadable member manifest is not reported as stray", () => {
+    expect(findStrayPatchTables([{ path: "crates/a/Cargo.toml", text: "[patch\n" }])).toEqual([]);
   });
 });
 

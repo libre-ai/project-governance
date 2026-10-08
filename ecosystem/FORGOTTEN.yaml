@@ -104,9 +104,43 @@ entries:
       - ecosystem/check-hub-orphans.ts
       - ecosystem/migration-index.v1.yaml
 
+  - id: forgotten.bun-snapshot-verifier
+    evicted_paths:
+      - tools/quality/verify-bun-snapshot.ts
+    file_count: 1
+    reason: >-
+      Vérificateur de l'instantané local de la chaîne Bun. Mesure au 2026-10-08, sur clone
+      frais de la branche servie : zéro consommateur — son script `check:bun-snapshot`
+      n'était appelé ni par `check`, ni par un autre script, ni par un des 16 workflows ;
+      et il ne pouvait pas en avoir. Il lit `toolchains/bun.json`, dont le champ
+      `localSnapshot` désigne un répertoire sous `.tools/`, que `.gitignore` exclut, et
+      aucun script du dépôt ne produit cet instantané : sur clone frais il relève 4
+      fichiers manquants et sort 1. Le câbler aurait donc rendu `bun run check` rouge
+      partout sauf sur la machine où les archives avaient été téléchargées à la main le
+      2026-07-16. Dans l'autre sens il portait le défaut que `tools/quality/gate-report.ts`
+      existe pour empêcher : `assets: {}` avec les deux fichiers fixes présents affiche
+      « 0 assets » et sort 0 — probé. Un garde-fou qui ne tourne jamais et qui, s'il
+      tournait, serait vert sur un ensemble vide, n'est pas un garde-fou. L'arbitrage a été
+      délégué à l'agent dans le mandat du 2026-10-08 (« soit tu le câbles, soit tu le
+      retires avec son entrée de package.json »), et la mesure a tranché. La qualification
+      de la chaîne Bun elle-même survit : `check:toolchain` compare le runtime en vigueur à
+      `toolchains/bun.json` à chaque maillon de la chaîne, et `docs/toolchain/BUN-QUALIFICATION.md`
+      garde la trace de l'instantané.
+    decided_by: owner
+    decided_on: 2026-10-08
+    adr: ADR-0019
+    recoverable_at: f3a7e193550d41e5c69f4a9845661f2753b4df2f
+    survives_as:
+      - tools/quality/check-toolchain.ts
+      - docs/toolchain/BUN-QUALIFICATION.md
+
 # Fichiers autorisés à nommer un chemin évincé. Toute autre citation échoue : c'est ce
 # qui empêche un document futur de ressusciter le contenu par référence. La liste est
 # une donnée, pas une exception codée en dur dans le garde-fou.
 citation_allowlist:
   - ecosystem/FORGOTTEN.yaml
   - docs/adr/0019-forgetting-primitive.md
+  # Relevé de migration du moyeu : un inventaire de chemins et de sommes de contrôle,
+  # daté et clos. Il nomme ce que le dépôt contenait à l'import, pas ce qu'il sert —
+  # le réécrire pour effacer une ligne falsifierait la preuve qu'il est.
+  - docs/migration/source.json
