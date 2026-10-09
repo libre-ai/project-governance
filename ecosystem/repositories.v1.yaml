@@ -74,7 +74,7 @@ repositories:
     lifecycle: active
     owns:
       - source-grounded collective learning and facilitation
-  - repository: libre-ai/personal-knowledge-notebook
+  - repository: libre-ai/personal-knowledge-workspace
     card: project.v1.yaml
     role: reserved-product-home
     layer: couche-1
