@@ -32,6 +32,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Validate exact target and revisions before checkout
+        id: inputs
         shell: bash
         run: |
           python3 - <<'PY'
@@ -181,6 +182,82 @@ jobs:
         run: |
           bun run build
           bun run check:e2e
+
+      # A red browser suite left nothing behind: this job uploaded no artifact,
+      # so the Firefox COOP hang (F2) could only be studied by reproducing it
+      # locally. The inventory always runs and prints the volume it found, so
+      # "the suite wrote no trace" stays distinguishable from "nothing was
+      # looked at". Both steps are gated on the input validation: once it has
+      # failed, `inputs.target` is unvalidated and must not become a path.
+      - name: Inventory browser evidence
+        if: always() && steps.inputs.outcome == 'success'
+        shell: bash
+        env:
+          JOB_STATUS: ${{ job.status }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          workspace = Path(os.environ['GITHUB_WORKSPACE'])
+          root = workspace / 'composition' / os.environ['INPUT_TARGET']
+          # Mirrors the upload globs: installed packages ship their own
+          # `test-results` fixtures, which are not evidence of this run.
+          pruned = {'node_modules', '.git'}
+          directories, traces, files, size = [], 0, 0, 0
+          if root.is_dir():
+              for current, children, names in os.walk(root):
+                  children[:] = sorted(name for name in children if name not in pruned)
+                  base = Path(current)
+                  if base.name in ('test-results', 'playwright-report'):
+                      directories.append(str(base.relative_to(workspace)))
+                  inside = any(part in ('test-results', 'playwright-report') for part in base.relative_to(root).parts)
+                  for name in names:
+                      if name.startswith('.') or not inside:
+                          continue
+                      files += 1
+                      size += (base / name).lstat().st_size
+                      traces += name == 'trace.zip'
+          summary = {
+              'schemaVersion': 'libre-ai.e2e-evidence-inventory.v1',
+              'target': os.environ['INPUT_TARGET'],
+              'runAttempt': int(os.environ['RUN_ATTEMPT']),
+              'jobStatus': os.environ['JOB_STATUS'],
+              'compositionPresent': root.is_dir(),
+              'evidenceDirectories': directories,
+              'traceArchives': traces,
+              'files': files,
+              'bytes': size,
+          }
+          text = json.dumps(summary, indent=2)
+          (workspace / 'e2e-evidence-summary.json').write_text(text + '\n', encoding='utf-8')
+          print(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as handle:
+              handle.write(
+                  f"Browser evidence: {len(directories)} directories, {traces} trace archives, "
+                  f"{files} files ({size} bytes) under composition/{summary['target']}.\n"
+              )
+          PY
+
+      # Traces hold page snapshots and network bodies of the locally spawned
+      # test servers only: this job receives no secret, and hidden files (the
+      # `.last-run.json` index, Playwright scratch directories) stay excluded by
+      # the action's default. Every `trace.zip` written by `retain-on-failure`
+      # lives under a project `test-results` output directory, which the first
+      # glob already covers.
+      - name: Upload browser evidence of a red run
+        if: (failure() || cancelled()) && steps.inputs.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-${{ inputs.target }}-${{ github.run_attempt }}
+          path: |
+            e2e-evidence-summary.json
+            composition/${{ inputs.target }}/**/test-results/**
+            composition/${{ inputs.target }}/**/playwright-report/**
+            !composition/${{ inputs.target }}/**/node_modules/**
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Record the validation boundary
         if: always()
