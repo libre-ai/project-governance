@@ -148,9 +148,16 @@ def tool(name):
     return found
 
 
+def fixture_env():
+    # Run inside a composition, these tests inherit the runner's own
+    # GIT_NO_REPLACE_OBJECTS; the fixtures must see git as a target would.
+    env = {key: value for key, value in os.environ.items() if key != 'GIT_NO_REPLACE_OBJECTS'}
+    return {**env, **GIT_IDENTITY}
+
+
 def git(cwd, *argv):
     return subprocess.run([tool('git'), *argv], cwd=cwd, check=True, capture_output=True, text=True,
-                          env={**os.environ, **GIT_IDENTITY}).stdout.strip()
+                          env=fixture_env()).stdout.strip()
 
 
 def commit_all(path):
@@ -417,7 +424,7 @@ class CargoSourceTests(unittest.TestCase):
         crate = composition.root / SIBLING
         committed = git(crate, 'rev-parse', 'HEAD:crates/sdk-rs/src/lib.rs')
         impostor = subprocess.run([tool('git'), 'hash-object', '-w', '--stdin'], cwd=crate, input=IMPOSTOR,
-                                  check=True, capture_output=True, text=True).stdout.strip()
+                                  check=True, capture_output=True, text=True, env=fixture_env()).stdout.strip()
         git(crate, 'replace', committed, impostor)
         self.assertIn('IMPOSTOR', git(crate, 'cat-file', '-p', committed))
         composition.check(self.m)
