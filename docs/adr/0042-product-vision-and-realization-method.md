@@ -1,7 +1,7 @@
 # ADR-0042 — Vision produit et méthode de réalisation
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08 ; §9 et §10 ajoutés sur arbitrage du 2026-10-09. Owner-arbitration: 2026-10-09
+- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08 ; §9 et §10 ajoutés sur arbitrage du 2026-10-09. Owner-arbitration: 2026-10-09 ; §11 ajouté sur arbitrage du 2026-10-09 (décision Y38). Owner-arbitration: 2026-10-09
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), dont le point 2 (« consolider les familles de dépôts existantes ») reçoit ici sa règle de découpage
 - **Cite sans la répéter :** ADR-0041 pour la topologie de l'autorité, l'inventaire et l'admission des destinations par bascule de branche par défaut
 - **Amende :** ADR-0041, préambule « N'autorise pas » (aucun transfert d'autorité au-delà des transferts tracés), pour le seul domaine Connaissance (§7)
@@ -124,6 +124,8 @@ dépendances, sous la politique suivante :
 - interdites : AGPL et SSPL.
 
 Ce qu'est « adopter une brique GPL » est précisé par le §10.
+
+Les licences permissives ISC, Zlib et Unicode-3.0 sont admises au même titre (§11).
 
 ### 5. Modèle de données et dérogation de la fabrique
 
@@ -289,6 +291,27 @@ Reste une adoption soumise au §4, revue juridique comprise :
 Le code libre-ai reste sous les licences d'I-11 ; aucun code GPL n'y est copié.
 Si l'exécutable manque, le produit le signale ; l'installer à la place de
 l'utilisateur serait une adoption au sens ci-dessus.
+
+### 11. Licences permissives ISC, Zlib et Unicode-3.0 — précision du §4, 2026-10-09
+
+Owner-arbitration: 2026-10-09 — décision Y38 de l'étude privée du 2026-10-07.
+
+Le §4 nomme les licences admises sans nommer ISC, Zlib ni Unicode-3.0. Ces trois
+licences permissives sont **admises au même titre que MIT, Apache-2.0 et BSD**.
+Elles sont déjà dans la liste `allow` de `[licenses]` des `deny.toml` de la
+flotte, ce que ce paragraphe ne change pas ; il aligne la doctrine sur la
+politique appliquée. Relevé le 2026-10-09 sur la branche servie :
+`deny.toml` et `crates/ecosystem-engine/deny.toml` de cette autorité, et
+`deny.toml` d'`ai-model-policy`, admettent `"ISC"`, `"Unicode-3.0"` et `"Zlib"`.
+
+Dépendances rencontrées, licences relevées sur crates.io le 2026-10-09 :
+
+- `ring` (`Apache-2.0 AND ISC`) et `rustls-webpki` (`ISC`), que toute pile
+  `rustls` entraîne ;
+- `unicode-ident` (`(MIT OR Apache-2.0) AND Unicode-3.0`), utilisé à la seule
+  compilation ;
+- `foldhash` (`Zlib`), entraîné par `ratatui` dans l'interface terminal de
+  Work Supervision.
 
 ## Conséquences et limites
 
