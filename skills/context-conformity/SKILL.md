@@ -20,7 +20,7 @@ La source de vérité est l'environnement réel du dépôt courant, jamais une l
 ## Vérifications, dans l'environnement du dépôt cible
 
 1. **Gates de qualité.** Lire `package.json` `scripts.check` (ou l'équivalent Rust/`Cargo.toml`) du dépôt cible et l'exécuter — `bun run check` n'est pas universel, c'est la convention la plus fréquente, pas une supposition à appliquer aveuglément. Ne jamais déclarer un travail terminé sur la seule lecture du code.
-2. **Workflows réutilisables consommés.** `grep -rn "libre-ai/governance/.github/workflows/reusable-" .github/workflows/` — un dépôt de flotte consomme au moins `reusable-licensing.yml` et `reusable-context-hygiene.yml`, par SHA épinglé, jamais par tag mobile ni dupliqué en local. Une CI locale qui réinvente licensing/hygiene au lieu de consommer `governance` est une dérive à signaler, jamais à corriger silencieusement.
+2. **Workflows réutilisables consommés.** `grep -rn "libre-ai/project-governance/.github/workflows/reusable-" .github/workflows/` — un dépôt de flotte consomme au moins `reusable-licensing.yml` et `reusable-context-hygiene.yml`, par SHA épinglé, jamais par tag mobile ni dupliqué en local. Une CI locale qui réinvente licensing/hygiene au lieu de consommer `governance` est une dérive à signaler, jamais à corriger silencieusement.
 3. **Fichiers d'identité non vides.** `AGENTS.md`, `REUSE.toml`, `project.v1.yaml` existent et portent un contenu substantif, pas un gabarit vide. `AGENTS.md` est la source canonique du périmètre du dépôt ; un `CLAUDE.md` de dépôt n'est qu'un adaptateur (`@AGENTS.md`), jamais une doctrine parallèle.
 4. **DCO.** Le dernier commit local porte un trailer `Signed-off-by` cohérent avec l'auteur (`git log -1 --format=%an\ %ae`).
 

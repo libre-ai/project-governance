@@ -13,7 +13,7 @@
  * intermediate). Since 2026-09-07 it also fails when the committed
  * projection `ecosystem/projections/fleet-status.v1.json` lags those same
  * live cards: that file is what `render-org-readme.ts` renders from and what
- * `libre-ai/website` ships as a pinned git-dep, and a stale copy made the
+ * `libre-ai/project-website` ships as a pinned git-dep, and a stale copy made the
  * gate's own remedy ("run render-org-readme.ts and paste") re-render the
  * already-published, already-wrong section byte for byte. Two named
  * failures, two named commands: regenerate the projection with
@@ -142,7 +142,7 @@ export function checkProjectionFreshness(committed: FleetStatus, live: FleetStat
   return [
     `ecosystem/projections/fleet-status.v1.json lags the live project cards (${stale.sort().join(", ")}) — ` +
       "run `bun ecosystem/render-fleet-status.ts` and commit the result; render-org-readme.ts and " +
-      "libre-ai/website both read this file",
+      "libre-ai/project-website both read this file",
   ];
 }
 

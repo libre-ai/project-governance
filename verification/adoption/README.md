@@ -32,11 +32,11 @@ fifth step, `bun tools/quality/check-policy-core-vectors.ts`. Migration γ
 `verification/adoption/` to this repository — the loop was still cloning the
 frozen hub, so both paths came back "Module not found" for three consecutive
 weekly runs (2026-08-05, -12, -19). REPOSITORY_URL now points at
-`libre-ai/governance`, the repository that actually carries the chain; the
+`libre-ai/project-governance`, the repository that actually carries the chain; the
 fifth step is retired, not re-pointed — `check-policy-core-vectors.ts` was
 deliberately removed from this repository at its 2026-07-29 bootstrap ("belongs
 to the contracts authority"), and its successor `tools/quality/
-check-contracts.ts` is gated by `libre-ai/contracts`' own CI. Detail and
+check-contracts.ts` is gated by `libre-ai/schemas-and-contracts`' own CI. Detail and
 citations: the module doc in `reproduce.ts`.
 
 Output: `distribution/evidence/adoption/YYYY-MM-DD-<short-sha>.json` (strict

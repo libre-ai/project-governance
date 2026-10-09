@@ -47,7 +47,7 @@ on a mismatch rather than running silently against a different Bun.
 
 A structural or doctrine-affecting change needs a corresponding ADR or
 invariant update, not only code. Canonical contracts and schemas are not
-owned here: `libre-ai/contracts` is the other authority for those.
+owned here: `libre-ai/schemas-and-contracts` is the other authority for those.
 
 ## External contributions
 
