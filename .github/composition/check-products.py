@@ -77,7 +77,7 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
             "Bun canary 57f349f63, Rust 1.97.0 and wasm32-unknown-unknown target",
             "Cargo dependencies preloaded for offline native tests",
             "Node 26.5.0 matching the Notebook platform executable pin",
-            "Playwright 1.61.1 browsers installed before E2E",
+            "Browsers of each product's locked Playwright version installed before E2E",
         ],
         "limits": [
             "Inherited root checks are not exhaustive native/WASM/E2E aggregates",
