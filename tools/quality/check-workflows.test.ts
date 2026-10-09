@@ -147,3 +147,59 @@ describe("a gate still reports when its blocking step fails", () => {
     expect(unguarded).toEqual([]);
   });
 });
+
+// No e2e failure in the fleet published a trace: `validate-composition` ran
+// every browser suite and uploaded nothing, so the Firefox COOP hang (F2) had
+// to be reproduced locally. Anchored on the action and on what the steps run,
+// not on their names, so a rename cannot retire the assertion.
+describe("validate-composition keeps the evidence of a red browser suite", () => {
+  interface UploadStep extends Step {
+    readonly id?: string;
+    readonly with?: Record<string, string | number>;
+  }
+  const steps = (parse("validate-composition.yml").jobs?.validate?.steps ?? []) as UploadStep[];
+  const indexOf = (predicate: (step: UploadStep) => boolean): number => steps.findIndex(predicate);
+  const upload = indexOf((step) => (step.uses ?? "").startsWith("actions/upload-artifact@"));
+  const inventory = indexOf((step) => (step.run ?? "").includes("e2e-evidence-summary.json"));
+  const browserSuites = [
+    indexOf((step) => (step.run ?? "").includes("--gate e2e")),
+    indexOf((step) => (step.run ?? "").includes("bun run check:e2e")),
+  ];
+
+  test("both browser suites precede the inventory, which precedes the upload", () => {
+    for (const suite of browserSuites) expect(suite).toBeGreaterThanOrEqual(0);
+    expect(inventory).toBeGreaterThan(Math.max(...browserSuites));
+    expect(upload).toBeGreaterThan(inventory);
+  });
+
+  test("the inventory always runs, the upload runs on a red or cancelled job", () => {
+    expect(steps[inventory]?.if).toBe("always() && steps.inputs.outcome == 'success'");
+    expect(steps[upload]?.if).toBe(
+      "(failure() || cancelled()) && steps.inputs.outcome == 'success'",
+    );
+  });
+
+  test("an unvalidated target never becomes an upload path", () => {
+    // Once the validation step has failed, `inputs.target` is whatever the
+    // caller sent; both steps must read the outcome of that exact step.
+    expect(steps[0]?.id).toBe("inputs");
+    expect(steps[0]?.run ?? "").toContain("Unknown composition target");
+  });
+
+  test("the upload is bounded, unique per target and attempt, and excludes installed packages", () => {
+    const options = steps[upload]?.with ?? {};
+    expect(options.name).toBe("e2e-${{ inputs.target }}-${{ github.run_attempt }}");
+    expect(options["if-no-files-found"]).toBe("ignore");
+    expect(Number(options["retention-days"])).toBe(7);
+    // Hidden files stay excluded by the action's default; opting in would ship
+    // Playwright's scratch directories and run indexes.
+    expect(options["include-hidden-files"]).toBeUndefined();
+    const paths = String(options.path).trim().split("\n");
+    expect(paths).toEqual([
+      "e2e-evidence-summary.json",
+      "composition/${{ inputs.target }}/**/test-results/**",
+      "composition/${{ inputs.target }}/**/playwright-report/**",
+      "!composition/${{ inputs.target }}/**/node_modules/**",
+    ]);
+  });
+});
