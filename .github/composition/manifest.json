@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "c5423307b23488a7fd37127a6e4053cbb8ce98bc",
+      "ref": "da0c3b6ff7f8814daab2cdf881406d8c4d49ff0f",
       "dependencies": [],
       "check": [["bun", "run", "check"]]
     },
