@@ -1,25 +1,41 @@
 // SPDX-FileCopyrightText: 2026 Libre AI contributors
 // SPDX-License-Identifier: EUPL-1.2
 //
-// Dependency policy gate (decisions Y43 and Y44, 2026-10-09): executes this
-// repository's own `deny.toml` against its committed Cargo graph(s) with
-// cargo-deny — bans, licenses and sources — from the required check.
+// Dependency policy gate (decisions Y43, Y44, Y47 — 2026-10-09): executes the
+// calling repository's own `deny.toml` against its committed Cargo graph(s)
+// with cargo-deny — `bans`, `licenses` and `sources` — from the required check.
 //
-// Why the binary is fetched here rather than taken from PATH: the required
-// check runs inside the source composition, whose runner installs Bun, Node
-// and Rust but no cargo-deny, and the composition workflow is not this
-// repository's to change. Why it is pinned by archive sha256 and not resolved
-// with `cargo install`: `cargo install` resolves against a mutable registry
-// and would silently change the enforcing binary between two runs of the same
-// commit (same pin and same digests as the fleet template
-// `reusable-dependency-policy.yml`). The cached archive is re-hashed on every
-// run, so the cache is never trusted beyond its digest.
+// Usage, from the root of the repository to examine:
+//   bun node_modules/@libre-ai/governance/tools/quality/check-dependency-policy.ts \
+//     [--root=<dir>] [--manifest-path=<repository-relative Cargo.toml>]...
 //
-// Why advisories are not checked here (I-26, Y44): bans, licenses and sources
-// are a pure function of the committed Cargo.lock and deny.toml, so their
-// verdict is reproducible at constant commit, which is what a required check
-// may assert. An advisory verdict depends on the RustSec database fetched at
-// run time; a fleet advisory control notifies on it without blocking.
+// Why it lives in the governance package (Y47): it was copied into every Rust
+// repository of the fleet, so a pin, a digest or a check list changed in one
+// copy and drifted in the others. Consumers now run the copy of the
+// governance generation they pin, like every other tool of tools/quality.
+//
+// Why `advisories` is not part of the verdict (Y44): bans, licences and
+// sources are a pure function of the committed Cargo.lock and deny.toml, so
+// their verdict is reproducible at constant commit. The advisory verdict
+// depends on the RustSec database of the day — a required check asserting it
+// turns red with nothing in the tree having changed. The FORMAT of every
+// `[advisories] ignore` waiver is still enforced, independently of this
+// script, by tools/quality/check-advisory-waivers.ts, which the source
+// composition runs on every target before its checks.
+//
+// Where the binary comes from: the version and the per-platform archive and
+// executable digests are declared once, in toolchains/cargo-deny.json of this
+// package. The source composition installs the linux-x64 binary from that
+// declaration (.github/composition/install-toolchains.sh) and exports its path
+// as LIBRE_AI_CARGO_DENY. When that variable is set the binary is the
+// composition's: it must exist and match the declared executable digest and
+// version, and a mismatch FAILS without falling back to a download — a
+// fallback would make the declaration decorative. When it is not set (a
+// developer machine, a workflow outside the composition), the pinned archive
+// is downloaded, its digest verified, and the extracted executable verified
+// against the same declaration. `cargo install` is never used: it resolves
+// against a mutable registry and would change the enforcing binary between two
+// runs of the same commit.
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -35,60 +51,106 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 
-export const CARGO_DENY_VERSION = "0.19.5";
-
-/** The checks whose verdict is a function of the tree alone (I-26): no `advisories`. */
+/** The checks whose verdict is a function of the tree alone (Y44). */
 export const REQUIRED_CHECKS = ["bans", "licenses", "sources"] as const;
 
-export interface CargoDenyArchive {
-  readonly triple: string;
-  readonly url: string;
-  readonly sha256: string;
-}
+/** Set by the source composition to the path of the binary it installed. */
+export const PROVIDED_BINARY_ENV = "LIBRE_AI_CARGO_DENY";
 
-// Digests measured on the release archives and cross-checked against the
-// `.sha256` files published with release 0.19.5.
-const ARCHIVE_DIGESTS: Readonly<Record<string, { triple: string; sha256: string }>> = {
-  "darwin-arm64": {
-    triple: "aarch64-apple-darwin",
-    sha256: "0cf28e019edb3708ba9755b8c822864ee6d6175d6fc167956972e78ea9ff0be3",
-  },
-  "darwin-x64": {
-    triple: "x86_64-apple-darwin",
-    sha256: "36102b6ab83a546036ada57526227317a7827e1788ce39ac6df1c9102b86fa10",
-  },
-  "linux-arm64": {
-    triple: "aarch64-unknown-linux-musl",
-    sha256: "f23d2b4e343a54af3d925b557294c8c9d00dacb7bb98663f995a4427efebe1db",
-  },
-  "linux-x64": {
-    triple: "x86_64-unknown-linux-musl",
-    sha256: "5ea64ae09959b5fe1072d898f95caaa89b374678ba6728d5e9ed1366745479b0",
-  },
-};
+/** The declaration shipped with this package (`toolchains` is in `files`). */
+export const POLICY_PATH = resolve(import.meta.dir, "..", "..", "toolchains", "cargo-deny.json");
 
 const ARCHIVE_BYTE_LIMIT = 64 * 1024 * 1024;
+const SHA256 = /^[0-9a-f]{64}$/;
+const VERSION = /^\d+\.\d+\.\d+$/;
+const PLATFORM_KEYS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"] as const;
 
-export function archiveFor(platform: string, arch: string): CargoDenyArchive {
-  const entry = ARCHIVE_DIGESTS[`${platform}-${arch}`];
-  if (entry === undefined) {
-    throw new Error(`No pinned cargo-deny ${CARGO_DENY_VERSION} archive for ${platform}-${arch}`);
-  }
-  return {
-    triple: entry.triple,
-    sha256: entry.sha256,
-    url: `https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-${entry.triple}.tar.gz`,
+export interface CargoDenyPlatform {
+  readonly triple: string;
+  readonly archiveName: string;
+  readonly archiveUrl: string;
+  readonly archiveSha256: string;
+  readonly executableRelativePath: string;
+  readonly executableSha256: string;
+}
+
+export interface CargoDenyPolicy {
+  readonly version: string;
+  readonly platforms: Readonly<Record<string, CargoDenyPlatform>>;
+}
+
+/**
+ * Parse and check the declaration before trusting it: every URL and member
+ * path is derived from version and triple, so a hand edit that changes one
+ * without the other is refused rather than fetched.
+ */
+export function parsePolicy(text: string): CargoDenyPolicy {
+  const raw = JSON.parse(text) as {
+    tool?: unknown;
+    version?: unknown;
+    platforms?: Record<string, Partial<CargoDenyPlatform>>;
   };
+  if (raw.tool !== "cargo-deny") throw new Error("cargo-deny policy: tool must be 'cargo-deny'");
+  const version = raw.version;
+  if (typeof version !== "string" || !VERSION.test(version)) {
+    throw new Error("cargo-deny policy: version must be an exact x.y.z version");
+  }
+  const platforms: Record<string, CargoDenyPlatform> = {};
+  for (const key of PLATFORM_KEYS) {
+    const entry = raw.platforms?.[key];
+    if (entry === undefined) throw new Error(`cargo-deny policy: platform ${key} is not declared`);
+    const triple = entry.triple ?? "";
+    const archiveName = `cargo-deny-${version}-${triple}.tar.gz`;
+    const expected: CargoDenyPlatform = {
+      triple,
+      archiveName,
+      archiveUrl: `https://github.com/EmbarkStudios/cargo-deny/releases/download/${version}/${archiveName}`,
+      archiveSha256: entry.archiveSha256 ?? "",
+      executableRelativePath: `cargo-deny-${version}-${triple}/cargo-deny`,
+      executableSha256: entry.executableSha256 ?? "",
+    };
+    if (!/^[a-z0-9_]+-[a-z0-9_-]+$/.test(triple)) {
+      throw new Error(`cargo-deny policy: ${key}.triple is not a target triple`);
+    }
+    for (const field of ["archiveName", "archiveUrl", "executableRelativePath"] as const) {
+      if (entry[field] !== expected[field]) {
+        throw new Error(`cargo-deny policy: ${key}.${field} must be ${expected[field]}`);
+      }
+    }
+    for (const field of ["archiveSha256", "executableSha256"] as const) {
+      if (!SHA256.test(expected[field])) {
+        throw new Error(`cargo-deny policy: ${key}.${field} is not a sha256 digest`);
+      }
+    }
+    platforms[key] = expected;
+  }
+  return { version, platforms };
+}
+
+export function loadPolicy(path: string = POLICY_PATH): CargoDenyPolicy {
+  return parsePolicy(readRequired(path, "toolchains/cargo-deny.json"));
+}
+
+export function platformFor(
+  policy: CargoDenyPolicy,
+  platform: string,
+  arch: string,
+): CargoDenyPlatform {
+  const entry = policy.platforms[`${platform}-${arch}`];
+  if (entry === undefined) {
+    throw new Error(`No pinned cargo-deny ${policy.version} archive for ${platform}-${arch}`);
+  }
+  return entry;
 }
 
 export function sha256Of(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-export function verifyDigest(bytes: Uint8Array, expected: string): void {
+export function verifyDigest(bytes: Uint8Array, expected: string, label: string): void {
   const actual = sha256Of(bytes);
   if (actual !== expected) {
-    throw new Error(`cargo-deny archive digest mismatch: expected ${expected}, got ${actual}`);
+    throw new Error(`cargo-deny ${label} digest mismatch: expected ${expected}, got ${actual}`);
   }
 }
 
@@ -130,30 +192,53 @@ function readRequired(path: string, label: string): string {
   }
 }
 
-function cacheDirectory(): string {
-  const base = process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache");
-  return join(base, "libre-ai", "cargo-deny", CARGO_DENY_VERSION);
+/**
+ * The binary the composition declares, verified — or `null` when nothing is
+ * declared. A declared binary that is missing or differs is an error: the
+ * caller must not fall back to downloading another one.
+ */
+export function providedBinary(
+  environment: Readonly<Record<string, string | undefined>>,
+  entry: CargoDenyPlatform,
+): string | null {
+  const declared = environment[PROVIDED_BINARY_ENV];
+  if (declared === undefined || declared === "") return null;
+  if (!isAbsolute(declared)) {
+    throw new Error(`${PROVIDED_BINARY_ENV} must be an absolute path, got ${declared}`);
+  }
+  let bytes: Uint8Array;
+  try {
+    bytes = new Uint8Array(readFileSync(declared));
+  } catch (error) {
+    throw new Error(
+      `${PROVIDED_BINARY_ENV} declares ${declared}, which cannot be read: ${(error as Error).message} — refusing to download a substitute`,
+    );
+  }
+  verifyDigest(bytes, entry.executableSha256, `executable (${PROVIDED_BINARY_ENV})`);
+  return declared;
 }
 
-async function obtainArchive(archive: CargoDenyArchive): Promise<Uint8Array> {
-  const cached = join(
-    cacheDirectory(),
-    `cargo-deny-${CARGO_DENY_VERSION}-${archive.triple}.tar.gz`,
-  );
+function cacheDirectory(version: string): string {
+  const base = process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache");
+  return join(base, "libre-ai", "cargo-deny", version);
+}
+
+async function obtainArchive(version: string, entry: CargoDenyPlatform): Promise<Uint8Array> {
+  const cached = join(cacheDirectory(version), entry.archiveName);
   if (existsSync(cached)) {
     const bytes = new Uint8Array(readFileSync(cached));
-    if (sha256Of(bytes) === archive.sha256) return bytes;
+    if (sha256Of(bytes) === entry.archiveSha256) return bytes;
     rmSync(cached, { force: true });
   }
-  const response = await fetch(archive.url, { redirect: "follow" });
+  const response = await fetch(entry.archiveUrl, { redirect: "follow" });
   if (!response.ok) {
-    throw new Error(`Cannot download ${archive.url}: HTTP ${response.status}`);
+    throw new Error(`Cannot download ${entry.archiveUrl}: HTTP ${response.status}`);
   }
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength > ARCHIVE_BYTE_LIMIT) {
     throw new Error(`cargo-deny archive exceeds ${ARCHIVE_BYTE_LIMIT} bytes`);
   }
-  verifyDigest(bytes, archive.sha256);
+  verifyDigest(bytes, entry.archiveSha256, "archive");
   mkdirSync(dirname(cached), { recursive: true });
   const partial = `${cached}.${process.pid}.partial`;
   writeFileSync(partial, bytes);
@@ -167,8 +252,29 @@ function run(command: string, args: readonly string[], cwd: string): number {
   return result.status ?? 1;
 }
 
-export async function main(argv: readonly string[]): Promise<number> {
-  const { root, manifests } = parseArguments(argv, resolve(import.meta.dir, "..", ".."));
+export function denyArguments(manifestPath: string, config: string): string[] {
+  return [
+    "--locked",
+    "--color",
+    "never",
+    "--manifest-path",
+    manifestPath,
+    "--workspace",
+    "check",
+    "--config",
+    config,
+    "--show-stats",
+    ...REQUIRED_CHECKS,
+  ];
+}
+
+export async function main(
+  argv: readonly string[],
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<number> {
+  // The repository examined is the caller's working directory, never this
+  // package's location: consumers run the copy under node_modules.
+  const { root, manifests } = parseArguments(argv, process.cwd());
   const config = join(root, "deny.toml");
   readRequired(config, "deny.toml");
   let lockedPackages = 0;
@@ -179,60 +285,51 @@ export async function main(argv: readonly string[]): Promise<number> {
     lockedPackages += countLockedPackages(readRequired(lock, `${dirname(manifest)}/Cargo.lock`));
   }
 
-  const archive = archiveFor(process.platform, process.arch);
-  const bytes = await obtainArchive(archive);
-  const scratch = mkdtempSync(join(tmpdir(), "cargo-deny-"));
+  const policy = loadPolicy();
+  const entry = platformFor(policy, process.platform, process.arch);
+  const provided = providedBinary(environment, entry);
+  const scratch = provided === null ? mkdtempSync(join(tmpdir(), "cargo-deny-")) : null;
   try {
-    const tarball = join(scratch, "cargo-deny.tar.gz");
-    writeFileSync(tarball, bytes);
-    if (run("tar", ["-xzf", tarball, "-C", scratch], scratch) !== 0) {
-      throw new Error("Cannot extract the cargo-deny archive");
+    let binary: string;
+    let origin: string;
+    if (provided !== null) {
+      binary = provided;
+      origin = `provided by the composition at ${provided}`;
+    } else {
+      const bytes = await obtainArchive(policy.version, entry);
+      const tarball = join(scratch as string, entry.archiveName);
+      writeFileSync(tarball, bytes);
+      if (run("tar", ["-xzf", tarball, "-C", scratch as string], scratch as string) !== 0) {
+        throw new Error("Cannot extract the cargo-deny archive");
+      }
+      binary = join(scratch as string, entry.executableRelativePath);
+      verifyDigest(new Uint8Array(readFileSync(binary)), entry.executableSha256, "executable");
+      origin = `downloaded, archive sha256 ${entry.archiveSha256}`;
     }
-    const binary = join(
-      scratch,
-      `cargo-deny-${CARGO_DENY_VERSION}-${archive.triple}`,
-      "cargo-deny",
-    );
     const version = spawnSync(binary, ["--version"], { encoding: "utf8" });
-    if (version.status !== 0 || version.stdout.trim() !== `cargo-deny ${CARGO_DENY_VERSION}`) {
+    if (version.status !== 0 || version.stdout.trim() !== `cargo-deny ${policy.version}`) {
       throw new Error(
         `Unexpected cargo-deny binary: ${version.stdout ?? ""}${version.stderr ?? ""}`,
       );
     }
 
     for (const manifest of manifests) {
-      console.log(`cargo-deny ${CARGO_DENY_VERSION} check: ${manifest} with deny.toml`);
-      const status = run(
-        binary,
-        [
-          "--locked",
-          "--color",
-          "never",
-          "--manifest-path",
-          join(root, manifest),
-          "--workspace",
-          "check",
-          "--config",
-          config,
-          "--show-stats",
-          ...REQUIRED_CHECKS,
-        ],
-        root,
-      );
+      console.log(`cargo-deny ${policy.version} check: ${manifest} with deny.toml`);
+      const status = run(binary, denyArguments(join(root, manifest), config), root);
       if (status !== 0) {
         console.error(`Dependency policy FAILED for ${manifest} (cargo-deny exit ${status}).`);
         return 1;
       }
     }
+    console.log(
+      `Dependency policy verified: ${REQUIRED_CHECKS.join(", ")} hold for ` +
+        `${manifests.length} manifest(s) and deny.toml read, ${lockedPackages} locked package(s) inspected ` +
+        `(cargo-deny ${policy.version} ${origin}, executable sha256 ${entry.executableSha256}).`,
+    );
+    return 0;
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    if (scratch !== null) rmSync(scratch, { recursive: true, force: true });
   }
-  console.log(
-    `Dependency policy verified: ${REQUIRED_CHECKS.join(", ")} hold for ` +
-      `${manifests.length} manifest(s), ${lockedPackages} locked package(s) inspected ` +
-      `(cargo-deny ${CARGO_DENY_VERSION}, archive sha256 ${archive.sha256}).`,
-  );
-  return 0;
 }
 
 if (import.meta.main) {

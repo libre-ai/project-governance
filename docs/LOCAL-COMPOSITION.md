@@ -63,8 +63,11 @@ Sur **Linux x86_64** :
 ```sh
 bash "$WORKSPACE/tooling/.github/composition/install-toolchains.sh" \
   "$WORKSPACE/tooling/toolchains/bun.json" \
-  "$WORKSPACE/tooling/toolchains/notebook-qualification.json"
+  "$WORKSPACE/tooling/toolchains/notebook-qualification.json" \
+  "$WORKSPACE/tooling/toolchains/cargo-deny.json"
 ```
+
+Cet installateur fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
 
 Sur **macOS ARM64**, réutilisez l’installateur Notebook au commit qualifié, sans ajouter ses paquets à la composition. Son empreinte est vérifiée avant exécution :
 
@@ -86,6 +89,7 @@ Ces recettes refusent les autres architectures. Elles ne changent pas l’autori
 TOOL_BIN="$(cat "$GITHUB_PATH")"
 export PATH="$TOOL_BIN:$PATH"
 export NOTEBOOK_QUALIFICATION_NODE="$TOOL_BIN/node"
+[ -x "$TOOL_BIN/cargo-deny" ] && export LIBRE_AI_CARGO_DENY="$TOOL_BIN/cargo-deny"
 bun --revision
 node --version
 ```

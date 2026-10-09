@@ -22,6 +22,16 @@
  * URL and digest are changed together. Only a comparison to the canonical
  * policy turns "the download matches what this workflow claims" into "this
  * workflow claims what the authority declares".
+ *
+ * Second declared tool (Y47): cargo-deny. Its canonical declaration is
+ * `toolchains/cargo-deny.json`, the file the source composition installs from
+ * and `tools/quality/check-dependency-policy.ts` verifies against. Every
+ * `CARGO_DENY_ARCHIVE_URL` a fleet workflow still carries (the fleet template
+ * `reusable-dependency-policy.yml`, copies not yet retired) must be one of the
+ * archives that file pins, with that archive's digest. Unlike Bun, finding no
+ * such declaration is not a failure: the composition, not a workflow, is the
+ * intended provider, so zero workflow declarations is the converged state —
+ * the count is printed so that zero is visible as zero.
  */
 
 /**
@@ -42,6 +52,7 @@ export interface DeclaredSource {
   readonly sha256: string | null;
 }
 
+import { type CargoDenyPolicy, parsePolicy } from "../tools/quality/check-dependency-policy";
 import {
   buildIndex,
   type InventoryEntry,
@@ -60,8 +71,20 @@ export interface SourceVerdict {
   readonly failures: readonly string[];
 }
 
-const URL_LINE = /^\s*BUN_ARCHIVE_URL:\s*(?:"([^"]+)"|'([^']+)'|(\S+))\s*$/;
-const SHA_LINE = /^\s*BUN_ARCHIVE_SHA256:\s*(?:"|')?([0-9a-f]{64})(?:"|')?\s*$/;
+export interface DeclarationKeys {
+  readonly url: RegExp;
+  readonly sha256: RegExp;
+}
+
+function declarationKeys(prefix: string): DeclarationKeys {
+  return {
+    url: new RegExp(`^\\s*${prefix}_ARCHIVE_URL:\\s*(?:"([^"]+)"|'([^']+)'|(\\S+))\\s*$`),
+    sha256: new RegExp(`^\\s*${prefix}_ARCHIVE_SHA256:\\s*(?:"|')?([0-9a-f]{64})(?:"|')?\\s*$`),
+  };
+}
+
+export const BUN_KEYS: DeclarationKeys = declarationKeys("BUN");
+export const CARGO_DENY_KEYS: DeclarationKeys = declarationKeys("CARGO_DENY");
 
 /**
  * Pair every `BUN_ARCHIVE_URL` of a workflow with the digest of its own env
@@ -73,17 +96,18 @@ export function extractDeclaredSources(
   repository: string,
   file: string,
   workflow: string,
+  keys: DeclarationKeys = BUN_KEYS,
 ): DeclaredSource[] {
   const lines = workflow.split("\n");
   const urls: { readonly index: number; readonly value: string }[] = [];
   const digests: { readonly index: number; readonly value: string }[] = [];
   for (const [index, line] of lines.entries()) {
-    const url = URL_LINE.exec(line);
+    const url = keys.url.exec(line);
     if (url) {
       urls.push({ index, value: url[1] ?? url[2] ?? url[3] ?? "" });
       continue;
     }
-    const digest = SHA_LINE.exec(line);
+    const digest = keys.sha256.exec(line);
     if (digest?.[1] !== undefined) digests.push({ index, value: digest[1] });
   }
   return urls.map((url, position) => {
@@ -136,6 +160,43 @@ export function verifySources(
     }
   }
   return { asserted: sources.length, failures };
+}
+
+/**
+ * cargo-deny declarations against `toolchains/cargo-deny.json`: the URL must be
+ * one of the pinned archives and the digest that archive's. Empty is a pass by
+ * design (see the header) — the caller prints the count.
+ */
+export function verifyCargoDenySources(
+  sources: readonly DeclaredSource[],
+  policy: CargoDenyPolicy,
+): SourceVerdict {
+  const failures: string[] = [];
+  const archives = Object.values(policy.platforms);
+  for (const source of sources) {
+    const archive = archives.find((entry) => entry.archiveUrl === source.url);
+    if (archive === undefined) {
+      failures.push(
+        `${source.repository}: ${source.file} installs cargo-deny from ${source.url} — not an archive pinned by toolchains/cargo-deny.json (cargo-deny ${policy.version})`,
+      );
+      continue;
+    }
+    if (source.sha256 === null) {
+      failures.push(
+        `${source.repository}: ${source.file} declares a CARGO_DENY_ARCHIVE_URL with no CARGO_DENY_ARCHIVE_SHA256 — the download is unverified`,
+      );
+    } else if (source.sha256 !== archive.archiveSha256) {
+      failures.push(
+        `${source.repository}: ${source.file} declares digest ${source.sha256.slice(0, 12)}… for ${archive.archiveName} — canonical digest is ${archive.archiveSha256.slice(0, 12)}…`,
+      );
+    }
+  }
+  return { asserted: sources.length, failures };
+}
+
+/** The canonical cargo-deny declaration, checked by the parser its consumer uses. */
+export async function readCanonicalCargoDeny(): Promise<CargoDenyPolicy> {
+  return parsePolicy(await Bun.file("toolchains/cargo-deny.json").text());
 }
 
 export interface CanonicalPolicy {
@@ -382,6 +443,14 @@ if (import.meta.main) {
     assetUrl: policy.durableRelease.linuxX64Asset,
     assetSha256: policy.assets["linux-x64"].sha256,
   };
+  let cargoDeny: CargoDenyPolicy;
+  try {
+    cargoDeny = await readCanonicalCargoDeny();
+  } catch (error) {
+    console.error(`DRIFT: toolchains/cargo-deny.json: ${(error as Error).message}`);
+    console.error("The canonical cargo-deny declaration is not a usable oracle.");
+    process.exit(1);
+  }
 
   const inventory = buildIndex(await Bun.file("ecosystem/repositories.v1.yaml").text());
   const targets = selectToolchainTargets(inventory.repositories);
@@ -394,6 +463,7 @@ if (import.meta.main) {
   const fetched = await fetchWorkflowsForFleet(targets);
 
   const sources: DeclaredSource[] = [];
+  const cargoDenySources: DeclaredSource[] = [];
   const unableToVerify: string[] = [];
   let inspected = 0;
   let unreadable = 0;
@@ -418,6 +488,14 @@ if (import.meta.main) {
       sources.push(
         ...extractDeclaredSources(repository, `.github/workflows/${file.name}`, file.text),
       );
+      cargoDenySources.push(
+        ...extractDeclaredSources(
+          repository,
+          `.github/workflows/${file.name}`,
+          file.text,
+          CARGO_DENY_KEYS,
+        ),
+      );
     }
   }
 
@@ -429,18 +507,24 @@ if (import.meta.main) {
     sources.length === 0 && unableToVerify.length > 0
       ? { asserted: 0, failures: [] as string[] }
       : verifySources(sources, canonical);
+  const cargoDenyVerdict = verifyCargoDenySources(cargoDenySources, cargoDeny);
   const excluded = [...ARCHIVED_EXCLUSIONS]
     .map(([repository, reason]) => `${repository} (${reason})`)
     .join(", ");
-  if (verdict.failures.length > 0 || unableToVerify.length > 0) {
+  if (
+    verdict.failures.length > 0 ||
+    cargoDenyVerdict.failures.length > 0 ||
+    unableToVerify.length > 0
+  ) {
     for (const failure of verdict.failures) console.error(`DRIFT: ${failure}`);
+    for (const failure of cargoDenyVerdict.failures) console.error(`DRIFT: ${failure}`);
     for (const failure of unableToVerify) console.error(`UNABLE TO VERIFY: ${failure}`);
     console.error(
-      `The fleet installs its Bun toolchain from a source the canonical policy does not declare (${inspected} repositories inspected, ${verdict.asserted} declarations found, ${unableToVerify.length} unable to verify).`,
+      `The fleet installs a toolchain from a source the canonical policy does not declare (${inspected} repositories inspected, ${verdict.asserted} Bun and ${cargoDenyVerdict.asserted} cargo-deny declarations found, ${unableToVerify.length} unable to verify).`,
     );
     process.exit(1);
   }
   console.log(
-    `Toolchain source verified: ${verdict.asserted} workflow declarations across ${inspected} repositories match toolchains/bun.json (${unreadable} without a readable workflow directory; excluded: ${excluded})`,
+    `Toolchain source verified: ${verdict.asserted} workflow declarations across ${inspected} repositories match toolchains/bun.json; ${cargoDenyVerdict.asserted} cargo-deny workflow declarations match toolchains/cargo-deny.json (cargo-deny ${cargoDeny.version}, ${Object.keys(cargoDeny.platforms).length} platforms pinned) (${unreadable} without a readable workflow directory; excluded: ${excluded})`,
   );
 }
