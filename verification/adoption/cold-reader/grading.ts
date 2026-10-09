@@ -14,7 +14,18 @@
  * requiring all of them would grade wording, not understanding.
  */
 
-export const QUESTIONNAIRE_SCHEMA_VERSION = "libre-ai.cold-reader-questionnaire.v1";
+/**
+ * The version names the GRID, not only its shape: a verdict records it, and two
+ * scores are comparable only under the same version. v2 (2026-10-09) followed
+ * the owner's re-targeting of the second public surface from the archived hub
+ * README to the project-governance README; measured against the surfaces as
+ * they read that day, the v1 grid had 8 of its 13 expected elements matched by
+ * none of their own patterns in the source they cited, so every element was
+ * re-sourced. A v1 score is not comparable with a v2 score. The parser accepts
+ * the current version only, so a stale grid fails to load instead of grading
+ * against surfaces that no longer state it.
+ */
+export const QUESTIONNAIRE_SCHEMA_VERSION = "libre-ai.cold-reader-questionnaire.v2";
 
 export interface ExpectedElement {
   readonly id: string;

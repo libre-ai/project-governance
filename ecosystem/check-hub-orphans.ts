@@ -100,9 +100,19 @@ async function ghWithRetry(args: readonly string[]): Promise<GhFetchResult> {
   return { text: null, error: lastError };
 }
 
+/**
+ * The hub's served branch, resolved by GitHub rather than written here. `HEAD`
+ * answers in a GraphQL expression (`HEAD:<path>`) and in a REST tree path
+ * alike. The hub serves `main` today and is archived read-only, so a written
+ * `main` would be correct today and wrong the day that stops holding — the
+ * class ADR-0041 §7 names, and the REST fallback below already omits `ref`
+ * for the same reason.
+ */
+const HUB_SERVED_REF = "HEAD";
+
 /** GraphQL primary for a single blob, REST+retry fallback — same shape as this file's neighbors. */
 async function fetchBlobWithFallback(path: string): Promise<GhFetchResult> {
-  const expression = JSON.stringify(`main:${path}`);
+  const expression = JSON.stringify(`${HUB_SERVED_REF}:${path}`);
   const query = `query { repository(owner: "libre-ai", name: "libre-ai") { object(expression: ${expression}) { ... on Blob { text } } } }`;
   let lastError = "";
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
@@ -252,14 +262,16 @@ async function hubTreePathsViaRest(ref: string): Promise<GhFetchResult> {
 }
 
 if (import.meta.main) {
-  const viaGraphQL = await hubTreePathsViaGraphQL("main");
+  const viaGraphQL = await hubTreePathsViaGraphQL(HUB_SERVED_REF);
   let hubPaths: string[];
   if (viaGraphQL !== null) {
     hubPaths = viaGraphQL;
   } else {
-    const rest = await hubTreePathsViaRest("main");
+    const rest = await hubTreePathsViaRest(HUB_SERVED_REF);
     if (rest.text === null) {
-      console.error(`unable to verify the hub tree — ${rest.error ?? "not found at main"}`);
+      console.error(
+        `unable to verify the hub tree — ${rest.error ?? "not found on the hub's served branch"}`,
+      );
       process.exit(1);
     }
     hubPaths = rest.text.split("\n").filter((l) => l.length > 0);
@@ -268,7 +280,7 @@ if (import.meta.main) {
   const forgottenResult = await fetchBlobWithFallback("ecosystem/FORGOTTEN.yaml");
   if (indexResult.text === null || forgottenResult.text === null) {
     console.error(
-      `unable to verify the hub registers — index: ${indexResult.error ?? "not found at main"}; forgotten: ${forgottenResult.error ?? "not found at main"}`,
+      `unable to verify the hub registers — index: ${indexResult.error ?? "not found on the hub's served branch"}; forgotten: ${forgottenResult.error ?? "not found on the hub's served branch"}`,
     );
     process.exit(1);
   }
