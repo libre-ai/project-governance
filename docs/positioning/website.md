@@ -129,6 +129,6 @@ autre produit ou rend le site dépendant d'un service non remplaçable.
 La cible d'origine portait une section technique — implémentation Dioxus, primitives
 d'un kit client retiré, contraintes de publication statique associées. Elle est morte et
 n'est pas extraite : la stack web est fixée par I-06 (Bun fullstack, TypeScript strict,
-React 19) et le site vit dans le dépôt `libre-ai/website` ([ADR-0008](../adr/0008-multi-repo-target-topology-and-brand.md), activé par ADR-0020).
+React 19) et le site vit dans le dépôt `libre-ai/project-website` ([ADR-0008](../adr/0008-multi-repo-target-topology-and-brand.md), activé par ADR-0020).
 Le décompte de produits qu'elle figeait n'est pas repris non plus : la carte canonique
 est tenue par [`docs/decisions/LEXICON.md`](../decisions/LEXICON.md) §2.

@@ -1,6 +1,6 @@
 name: reusable-context-hygiene
 # Fleet gate template (design §5.3): consumed as
-#   uses: libre-ai/governance/.github/workflows/reusable-context-hygiene.yml@<sha>
+#   uses: libre-ai/project-governance/.github/workflows/reusable-context-hygiene.yml@<sha>
 on:
   workflow_call: {}
 

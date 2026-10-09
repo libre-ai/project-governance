@@ -49,7 +49,7 @@
  * — never here." Its functional successor, `tools/quality/check-contracts.ts`
  * (validates policy-core-v1 golden vectors against `contracts/schemas/*`,
  * generalized to every contract kind), lives in and is gated by the
- * `libre-ai/contracts` repository's own CI — it verifies itself, in its own
+ * `libre-ai/schemas-and-contracts` repository's own CI — it verifies itself, in its own
  * blank-room terms, and does not need re-proving from here. The step is
  * retired from this loop rather than re-pointed at another repository: this
  * loop reproduces ONE public repository per run (REPOSITORY_URL), and
@@ -290,7 +290,7 @@ async function main(): Promise<void> {
         // repository (2026-07-29, commit 1f9103618e046374c8179f38f4ff5432743
         // be259 — "Contract-vector verifiers removed: they belong to the
         // contracts authority"). Its successor, tools/quality/
-        // check-contracts.ts, lives in and is gated by libre-ai/contracts'
+        // check-contracts.ts, lives in and is gated by libre-ai/schemas-and-contracts'
         // own CI (see the module doc above). This loop reproduces ONE public
         // repository per run; that repository's own adoption proof is its
         // own concern.

@@ -13,10 +13,18 @@ import {
 // a note, never a drift — otherwise every public CI run would false-positive.
 
 const declared = (...entries: [string, DeclaredRepository["visibility"]][]): DeclaredRepository[] =>
-  entries.map(([name, visibility]) => ({ name, visibility }));
+  entries.map(([name, visibility]) => ({ name, visibility, lifecycle: "active" }));
 
 const live = (...entries: [string, boolean][]): LiveRepository[] =>
-  entries.map(([name, isPrivate]) => ({ name, isPrivate }));
+  entries.map(([name, isPrivate]) => ({ name, isPrivate, isArchived: false }));
+
+const declaredWithLifecycle = (
+  ...entries: [string, DeclaredRepository["visibility"], DeclaredRepository["lifecycle"]][]
+): DeclaredRepository[] =>
+  entries.map(([name, visibility, lifecycle]) => ({ name, visibility, lifecycle }));
+
+const liveWithArchive = (...entries: [string, boolean, boolean][]): LiveRepository[] =>
+  entries.map(([name, isPrivate, isArchived]) => ({ name, isPrivate, isArchived }));
 
 describe("reconcileInventory", () => {
   test("a matching inventory produces no drift", () => {
@@ -79,12 +87,95 @@ describe("reconcileInventory", () => {
   });
 });
 
+// ADR-0042 §7, act 3: lifecycle is compared with GitHub's archived state in
+// both directions, each declared-archived entry yields exactly one assertion,
+// and an archived claim that cannot be read is a drift, never a zero.
+describe("reconcileInventory — lifecycle against the archived state", () => {
+  test("declared archived and observable as archived: one holding assertion, no drift", () => {
+    const result = reconcileInventory(
+      declaredWithLifecycle(["hub", "public", "archived"], ["tool", "public", "active"]),
+      liveWithArchive(["hub", false, true], ["tool", false, false]),
+    );
+    expect(result.drifts).toEqual([]);
+    expect(result.archived).toEqual([
+      { name: "hub", holds: true, evidence: "declared archived and observable as archived" },
+    ]);
+  });
+
+  test("declared archived but observable as active is drift and a failing assertion", () => {
+    const result = reconcileInventory(
+      declaredWithLifecycle(["old", "public", "archived"]),
+      liveWithArchive(["old", false, false]),
+    );
+    expect(result.drifts).toEqual(["DRIFT: 'old' declared archived but observable as active"]);
+    expect(result.archived).toEqual([
+      {
+        name: "old",
+        holds: false,
+        evidence: "DRIFT: 'old' declared archived but observable as active",
+      },
+    ]);
+  });
+
+  test("archived on GitHub but declared active is drift", () => {
+    const result = reconcileInventory(
+      declaredWithLifecycle(["tool", "public", "active"]),
+      liveWithArchive(["tool", false, true]),
+    );
+    expect(result.drifts).toEqual(["DRIFT: 'tool' is archived on GitHub but declared active"]);
+    expect(result.archived).toEqual([]);
+  });
+
+  test("a declared-archived private entry invisible to the token is drift, not a note", () => {
+    const result = reconcileInventory(
+      declaredWithLifecycle(["hub", "public", "active"], ["vault", "private", "archived"]),
+      liveWithArchive(["hub", false, false]),
+    );
+    const drift =
+      "DRIFT: 'vault' declared archived but not observable — its archived state cannot be verified";
+    expect(result.drifts).toEqual([drift]);
+    expect(result.notes).toEqual([]);
+    expect(result.archived).toEqual([{ name: "vault", holds: false, evidence: drift }]);
+  });
+
+  test("a declared-archived public entry that is not observable is the same drift", () => {
+    const result = reconcileInventory(declaredWithLifecycle(["gone", "public", "archived"]), []);
+    expect(result.drifts).toEqual([
+      "DRIFT: 'gone' declared archived but not observable — its archived state cannot be verified",
+    ]);
+    expect(result.archived).toHaveLength(1);
+  });
+
+  test("one assertion per declared-archived entry, whatever their outcomes", () => {
+    const result = reconcileInventory(
+      declaredWithLifecycle(
+        ["a", "public", "archived"],
+        ["b", "public", "archived"],
+        ["c", "public", "archived"],
+        ["d", "public", "active"],
+      ),
+      liveWithArchive(["a", false, true], ["b", false, false], ["d", false, false]),
+    );
+    expect(result.archived.map((assertion) => [assertion.name, assertion.holds])).toEqual([
+      ["a", true],
+      ["b", false],
+      ["c", false],
+    ]);
+  });
+});
+
 describe("buildOrgRepositoriesQuery", () => {
   test("omits the after argument on the first page", () => {
     const query = buildOrgRepositoriesQuery("libre-ai", null);
     expect(query).toContain('organization(login: "libre-ai")');
     expect(query).toContain("repositories(first: 100)");
     expect(query).not.toContain("after:");
+  });
+
+  test("asks for the archived state of every node", () => {
+    expect(buildOrgRepositoriesQuery("libre-ai", null)).toContain(
+      "nodes { name isPrivate isArchived }",
+    );
   });
 
   test("carries the cursor for a subsequent page", () => {
@@ -99,12 +190,12 @@ describe("parseOrgRepositoriesPage", () => {
       organization: {
         repositories: {
           pageInfo: { hasNextPage: true, endCursor: "next" },
-          nodes: [{ name: "governance", isPrivate: false }],
+          nodes: [{ name: "governance", isPrivate: false, isArchived: true }],
         },
       },
     });
     expect(page).toEqual({
-      nodes: [{ name: "governance", isPrivate: false }],
+      nodes: [{ name: "governance", isPrivate: false, isArchived: true }],
       hasNextPage: true,
       endCursor: "next",
     });
@@ -129,10 +220,15 @@ describe("parseOrgRepositoriesPage", () => {
       organization: {
         repositories: {
           pageInfo: { hasNextPage: false, endCursor: null },
-          nodes: [{ name: "ok", isPrivate: true }, null, { name: "bad" }],
+          nodes: [
+            { name: "ok", isPrivate: true, isArchived: false },
+            null,
+            { name: "bad" },
+            { name: "no-archive-field", isPrivate: false },
+          ],
         },
       },
     });
-    expect(page?.nodes).toEqual([{ name: "ok", isPrivate: true }]);
+    expect(page?.nodes).toEqual([{ name: "ok", isPrivate: true, isArchived: false }]);
   });
 });

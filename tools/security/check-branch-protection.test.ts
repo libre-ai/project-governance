@@ -3,6 +3,8 @@ import {
   auditProtection,
   type CiSnapshot,
   computeFix,
+  fetchRepositoryState,
+  type GhApi,
   type ProtectionSnapshot,
   planFix,
   selectActivePublicRepositories,
@@ -141,6 +143,89 @@ describe("planFix", () => {
     expect(plan.kind).toBe("refuse");
     if (plan.kind === "refuse") {
       expect(plan.reason).toContain("refusing to fix to empty");
+    }
+  });
+});
+
+// `ghApi` reports a 404 as `{ text: null, error: null }`, because on the
+// protection endpoint a 404 is the answer: this branch has no protection. On
+// the repository endpoint it is not an answer — the inventory declares the
+// repository, so a 404 means it stopped resolving. Measured 2026-10-09 on the
+// `repoInfo.text as string` cast that stood here: `TypeError - null is not an
+// object (evaluating 'JSON.parse(repoInfo.text).default_branch')`, thrown out
+// of the gate, which ends the fleet sweep at the first renamed repository and
+// takes every repository after it in the loop with it. One field deeper, a 200
+// without `default_branch` reaches a GREEN: measured with an explicit `--ref`
+// (so the commit lookup that otherwise catches it resolves),
+// `branches/undefined/protection` answers 404 and the gate reports "no branch
+// protection configured — outside this gate's scope" over a repository it never
+// read; with `--fix` it would PATCH `branches/undefined`.
+describe("an unreadable repository response is a named failure, not a crash or a green", () => {
+  const notFound: GhApi = () => ({ text: null, error: null });
+
+  test("a 404 on the repository fails the gate with a message", () => {
+    const state = fetchRepositoryState("libre-ai/gone", undefined, notFound);
+
+    expect(state).toHaveProperty("error");
+    if ("error" in state) {
+      expect(state.error).toContain("libre-ai/gone");
+      expect(state.error).toContain("HTTP 404");
+    }
+  });
+
+  test("a 200 without default_branch fails instead of passing as unprotected", () => {
+    // Every read AFTER the repository one succeeds here, so nothing downstream
+    // can stand in for the missing guard: with an explicit ref the commit
+    // lookup resolves, `branches/undefined/protection` answers 404, and the
+    // only thing left to notice that `default_branch` was never read is the
+    // guard under test. Unguarded, this returns `hasProtection: false` — the
+    // gate's green.
+    const api: GhApi = (path) => {
+      if (path === "repos/libre-ai/odd") return { text: JSON.stringify({ id: 1 }), error: null };
+      if (path.includes("/check-runs")) {
+        return { text: JSON.stringify({ check_runs: [{ name: "Bun quality" }] }), error: null };
+      }
+      if (path.includes("/commits/")) {
+        return { text: JSON.stringify({ sha: "feedface" }), error: null };
+      }
+      // `branches/undefined/protection`: a 404, read as "no protection".
+      return { text: null, error: null };
+    };
+
+    const state = fetchRepositoryState("libre-ai/odd", "feedface", api);
+
+    expect(state).toHaveProperty("error");
+    if ("error" in state) expect(state.error).toContain("no default_branch");
+  });
+
+  test("a readable repository still reads through to its CI observation", () => {
+    const api: GhApi = (path) => {
+      if (path === "repos/libre-ai/live") {
+        return { text: JSON.stringify({ default_branch: "trunk" }), error: null };
+      }
+      if (path === "repos/libre-ai/live/branches/trunk/protection") {
+        return {
+          text: JSON.stringify({
+            required_status_checks: { strict: false, contexts: ["Bun quality"] },
+          }),
+          error: null,
+        };
+      }
+      if (path.includes("/check-runs")) {
+        return { text: JSON.stringify({ check_runs: [{ name: "Bun quality" }] }), error: null };
+      }
+      return { text: JSON.stringify({ sha: "feedface" }), error: null };
+    };
+
+    const state = fetchRepositoryState("libre-ai/live", undefined, api);
+
+    expect(state).not.toHaveProperty("error");
+    if (!("error" in state)) {
+      expect(state.branch).toBe("trunk");
+      expect(state.hasProtection).toBe(true);
+      expect(state.strict).toBe(false);
+      expect(state.protection.required).toEqual(["Bun quality"]);
+      expect(state.ci.observed).toEqual(["Bun quality"]);
     }
   });
 });

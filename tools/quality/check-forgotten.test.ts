@@ -139,8 +139,40 @@ describe("the verdict counts what it covers", () => {
     const rendered = renderGateReport("Forgetting", buildReport(register, []));
 
     expect(rendered.lines[0]).toBe(
-      "Forgetting verified: 2 assertion(s) hold — 2 register entries, 3 evicted path(s), 51 evicted file(s) declared",
+      "Forgetting verified: 2 assertion(s) hold — 2 register entries, 3 evicted path(s), " +
+        "51 evicted file(s) declared: forgotten.a, forgotten.b",
     );
+  });
+
+  // An eviction makes another gate go quiet: the files leave the tree, so the
+  // gate that reported on them stops, and nothing in its output ties that
+  // silence to a decision. This line is the tie, and it is the only one a CI
+  // reader sees — `GATE_VERBOSE`, which carries the per-entry notes, is set
+  // nowhere in CI. Measured on 2026-10-09: the eviction of that day moved the
+  // counters from 5 entries / 7 paths / 58 files to 6 / 8 / 62, and a reader
+  // could see that something had been forgotten without being able to see what.
+  test("the success line names the entries, not only their count", () => {
+    const line = renderGateReport("Forgetting", buildReport(REGISTER, [])).lines[0] ?? "";
+
+    for (const entry of REGISTER.entries) expect(line).toContain(entry.id);
+  });
+
+  // Locks the absence of a truncation threshold: entries are appended, so a cap
+  // would hide the newest eviction — the one whose arrival moves the counters,
+  // and the only reason the line names anything at all.
+  test("it names every entry, however many the register carries", () => {
+    const many: ForgottenRegister = {
+      entries: Array.from({ length: 12 }, (_, index) => ({
+        id: `forgotten.entry-${index}`,
+        evicted_paths: [`docs/gone-${index}/`],
+        recoverable_at: "cafebabe",
+      })),
+      citation_allowlist: [],
+    };
+
+    const line = renderGateReport("Forgetting", buildReport(many, [])).lines[0] ?? "";
+
+    for (const entry of many.entries) expect(line).toContain(entry.id);
   });
 
   test("an empty register fails, and says why emptiness is a defect here", () => {

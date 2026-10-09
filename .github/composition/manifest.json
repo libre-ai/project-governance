@@ -53,19 +53,6 @@
       ],
       "check": [["bun", "run", "check"]]
     },
-    "ai-practice-workbench": {
-      "repository": "libre-ai/ai-practice-workbench",
-      "ref": "9c25bf51b5588a388f1117975205627921e8e00c",
-      "dependencies": [
-        "project-governance",
-        "schemas-and-contracts",
-        "ai-work-supervision",
-        "application-development-toolkit",
-        "organization-data-lifecycle",
-        "ai-model-policy"
-      ],
-      "check": [["bun", "run", "check"]]
-    },
     "learning-session-facilitation": {
       "repository": "libre-ai/learning-session-facilitation",
       "ref": "65cba786203702bcff237754543777f1916e490d",
@@ -82,19 +69,6 @@
     "personal-knowledge-workspace": {
       "repository": "libre-ai/personal-knowledge-workspace",
       "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
-      "dependencies": [
-        "project-governance",
-        "schemas-and-contracts",
-        "ai-work-supervision",
-        "application-development-toolkit",
-        "organization-data-lifecycle",
-        "ai-model-policy"
-      ],
-      "check": [["bun", "run", "check"]]
-    },
-    "information-feed-filter": {
-      "repository": "libre-ai/information-feed-filter",
-      "ref": "7ee92fea4a53c58dff4dad3d66101cae74b99709",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -179,10 +153,8 @@
     "ai-work-supervision",
     "organization-data-lifecycle",
     "ai-model-policy",
-    "ai-practice-workbench",
     "learning-session-facilitation",
     "personal-knowledge-workspace",
-    "information-feed-filter",
     "travel-itinerary-planner",
     "collaborative-data-sync",
     "execution-continuity-evaluator",

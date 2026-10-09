@@ -1,6 +1,6 @@
 name: reusable-licensing
 # Fleet gate template (design §5.3): consumed as
-#   uses: libre-ai/governance/.github/workflows/reusable-licensing.yml@<sha>
+#   uses: libre-ai/project-governance/.github/workflows/reusable-licensing.yml@<sha>
 # with tooling_ref pinned to the SAME sha — a gate evolution is a sha bump
 # in the consuming repository, in the culture of the pin (K4 AUTH-01).
 on:

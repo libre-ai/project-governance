@@ -119,10 +119,14 @@ export function planFix(protection: ProtectionSnapshot, ci: CiSnapshot): FixPlan
 // ---------------------------------------------------------------------------
 // CLI (network I/O — not unit-tested; the logic above is)
 
-interface GhApiResult {
+export interface GhApiResult {
+  /** Response body, or null when the call answered 404 — see `ghApi`. */
   readonly text: string | null;
   readonly error: string | null;
 }
+
+/** The one network seam of this gate, injected so the read paths are testable. */
+export type GhApi = (path: string, method?: "GET" | "PATCH", body?: unknown) => GhApiResult;
 
 function ghApi(path: string, method: "GET" | "PATCH" = "GET", body?: unknown): GhApiResult {
   const args = ["gh", "api", path, "--method", method];
@@ -155,7 +159,7 @@ async function loadInventory(): Promise<InventoryEntry[]> {
   ).repositories;
 }
 
-interface FetchedState {
+export interface FetchedState {
   readonly branch: string;
   readonly strict: boolean;
   readonly hasProtection: boolean;
@@ -163,36 +167,68 @@ interface FetchedState {
   readonly ci: CiSnapshot;
 }
 
-function fetchRepositoryState(
+export function fetchRepositoryState(
   repository: string,
   ref?: string,
+  api: GhApi = ghApi,
 ): FetchedState | { readonly error: string } {
-  const repoInfo = ghApi(`repos/${repository}`);
+  const repoInfo = api(`repos/${repository}`);
   if (repoInfo.error !== null)
     return { error: `${repository}: cannot read repository — ${repoInfo.error}` };
-  const branch = (JSON.parse(repoInfo.text as string) as { default_branch: string }).default_branch;
+  // A 404 on the repository itself is not the answer a 404 is on the
+  // protection endpoint. `ghApi` folds both into `text: null, error: null`
+  // because "no protection configured" is a legitimate state; "this
+  // repository does not resolve" never is — the inventory declares it.
+  // Measured 2026-10-09 on the cast this replaced: `TypeError - null is not
+  // an object (evaluating 'JSON.parse(repoInfo.text).default_branch')`,
+  // thrown out of the gate, so one renamed repository took down the whole
+  // fleet sweep — including every repository after it in the loop — instead
+  // of failing one named assertion.
+  if (repoInfo.text === null) {
+    return {
+      error:
+        `${repository}: cannot read repository — not found (HTTP 404): the inventory declares it, ` +
+        "GitHub does not serve it (deleted, renamed, or no longer visible to this token)",
+    };
+  }
+  const branch = (JSON.parse(repoInfo.text) as { default_branch?: unknown }).default_branch;
+  // A 200 whose payload carries no `default_branch` is the same illegibility
+  // one field deeper, and it does reach a green: measured 2026-10-09 with an
+  // explicit `--ref` (so the commit lookup that otherwise catches it
+  // resolves), `branch` is `undefined`, `branches/undefined/protection`
+  // answers 404, and the gate reports "no branch protection configured —
+  // outside this gate's scope" over a repository it never read. With `--fix`
+  // it would then PATCH `branches/undefined`.
+  if (typeof branch !== "string" || branch === "") {
+    return {
+      error: `${repository}: repository payload carries no default_branch — the response is unreadable, not a repository without protection`,
+    };
+  }
 
-  const protectionRaw = ghApi(`repos/${repository}/branches/${branch}/protection`);
+  const protectionRaw = api(`repos/${repository}/branches/${branch}/protection`);
   if (protectionRaw.error !== null) {
     return { error: `${repository}: cannot read branch protection — ${protectionRaw.error}` };
   }
-  const hasProtection = protectionRaw.text !== null;
-  const parsedProtection = hasProtection
-    ? (JSON.parse(protectionRaw.text as string) as {
-        required_status_checks?: { strict?: boolean; contexts?: string[] };
-      })
-    : {};
+  // Here a 404 IS the answer: the branch has no protection configured.
+  const protectionText = protectionRaw.text;
+  const hasProtection = protectionText !== null;
+  const parsedProtection =
+    protectionText === null
+      ? {}
+      : (JSON.parse(protectionText) as {
+          required_status_checks?: { strict?: boolean; contexts?: string[] };
+        });
   const required = parsedProtection.required_status_checks?.contexts ?? [];
   const strict = parsedProtection.required_status_checks?.strict ?? true;
 
   const commitRef = ref ?? branch;
-  const commitInfo = ghApi(`repos/${repository}/commits/${encodeURIComponent(commitRef)}`);
+  const commitInfo = api(`repos/${repository}/commits/${encodeURIComponent(commitRef)}`);
   if (commitInfo.error !== null)
     return { error: `${repository}: cannot resolve ${commitRef} — ${commitInfo.error}` };
   if (commitInfo.text === null) return { error: `${repository}: ref ${commitRef} not found` };
   const sha = (JSON.parse(commitInfo.text) as { sha: string }).sha;
 
-  const checkRuns = ghApi(`repos/${repository}/commits/${sha}/check-runs?per_page=100`);
+  const checkRuns = api(`repos/${repository}/commits/${sha}/check-runs?per_page=100`);
   if (checkRuns.error !== null)
     return { error: `${repository}: cannot read check-runs — ${checkRuns.error}` };
   const runs =

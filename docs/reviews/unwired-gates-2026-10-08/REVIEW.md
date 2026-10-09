@@ -121,3 +121,14 @@ et l'objet de ce code n'a pas disparu : l'hypothèse qu'il instrumente,
 corpus de connaissance, avec son critère de succès chiffré et aucune mesure
 encore enregistrée. Le constat du gate est juste ; la suite est une décision
 propriétaire.
+
+**Arbitrage rendu (2026-10-09) — option A, éviction.** Le propriétaire a tranché
+sur les trois options présentées, en retenant comme argument contre l'option B le
+refus d'écrire une interface de commande pour faire taire un gate : cela aurait
+rendu le vert en fabriquant une fausse entrée, c'est-à-dire en reproduisant le
+défaut même que la correction retire. L'entrée
+`forgotten.convergence-anchor-instrument` est posée au registre d'oubli, datée de
+cet arbitrage, ancrée sur un commit dont les quatre chemins ont été vérifiés
+présents. Les mesures ci-dessus ne sont pas réécrites : elles sont la preuve sur
+laquelle l'arbitrage a été rendu, et c'est à ce titre que ce fichier est inscrit
+à la liste de citation autorisée du registre.

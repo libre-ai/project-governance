@@ -40,8 +40,8 @@ jobs:
           targets = {
               'project-governance', 'schemas-and-contracts', 'ai-work-supervision',
               'application-development-toolkit', 'organization-data-lifecycle',
-              'ai-model-policy', 'ai-practice-workbench', 'learning-session-facilitation',
-              'personal-knowledge-workspace', 'information-feed-filter',
+              'ai-model-policy', 'learning-session-facilitation',
+              'personal-knowledge-workspace',
               'travel-itinerary-planner', 'collaborative-data-sync',
               'execution-continuity-evaluator', 'execution-sandbox',
               'capability-authorization', 'database-policy-inspector',
@@ -128,7 +128,7 @@ jobs:
             --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
 
       - name: Install browsers for the selected product
-        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-workspace","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","personal-knowledge-workspace","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 - <<'PY'
@@ -137,7 +137,6 @@ jobs:
           import subprocess
           children = {
               'ai-work-supervision': 'packages/auth-web',
-              'ai-practice-workbench': 'apps/practices',
               'personal-knowledge-workspace': 'apps/notebook',
               'project-website': '',
           }
@@ -151,7 +150,7 @@ jobs:
           PY
 
       - name: Run selected browser suite sequentially
-        if: contains(fromJSON('["ai-work-supervision","ai-practice-workbench","personal-knowledge-workspace","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","personal-knowledge-workspace","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 -B tooling/.github/composition/check-products.py \

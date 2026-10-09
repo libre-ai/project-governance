@@ -8,7 +8,7 @@
  * is never hand-edited.
  *
  * The CLI reads the COMMITTED projection (`ecosystem/projections/
- * fleet-status.v1.json`) — the same file `libre-ai/website` ships — so its
+ * fleet-status.v1.json`) — the same file `libre-ai/project-website` ships — so its
  * output is only as fresh as that file. `check-org-readme-drift.ts` fails
  * named when the projection lags the live cards (measured 2026-09-07: a
  * projection last regenerated 2026-08-03 made this CLI reproduce the

@@ -15,17 +15,14 @@ import sys
 TARGETS = (
     "ai-work-supervision",
     "ai-model-policy",
-    "ai-practice-workbench",
     "learning-session-facilitation",
     "personal-knowledge-workspace",
-    "information-feed-filter",
     "travel-itinerary-planner",
     "project-website",
 )
 GATES = ("root", "native", "wasm", "e2e")
 E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
-    "ai-practice-workbench": ("apps/practices", "test:e2e"),
     "personal-knowledge-workspace": ("apps/notebook", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }
@@ -77,7 +74,7 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
             "Bun canary 57f349f63, Rust 1.97.0 and wasm32-unknown-unknown target",
             "Cargo dependencies preloaded for offline native tests",
             "Node 26.5.0 matching the Notebook platform executable pin",
-            "Playwright 1.61.1 browsers installed before E2E",
+            "Browsers of each product's locked Playwright version installed before E2E",
         ],
         "limits": [
             "Inherited root checks are not exhaustive native/WASM/E2E aggregates",
