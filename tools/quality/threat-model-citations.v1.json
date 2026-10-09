@@ -1,0 +1,14 @@
+{
+  "register": "docs/decisions/INVARIANTS.md",
+  "scope": "docs/security/",
+  "files": [
+    {
+      "path": "docs/security/THREAT-MODEL.md",
+      "because": "consolidated threat model: every STRIDE/LINDDUN row, section and residual risk cites the register entry carrying it; 27 of its 35 citations named an unrelated or imprecise invariant until the 2026-10-09 realignment"
+    },
+    {
+      "path": "docs/security/AGENT-RUNTIME-DOCTRINE.md",
+      "because": "cites the dogfooding invariant for the runtime doctrine's own tooling"
+    }
+  ]
+}

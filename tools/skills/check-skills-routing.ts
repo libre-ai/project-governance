@@ -39,7 +39,17 @@
  * every skill's eval.json carries its negative triggers; grading whether
  * they in fact fail to fire stays a reviewer's job, alongside the
  * behavioral case this gate also never grades.
+ *
+ * Every positive trigger is one case with a structured result
+ * (`RoutingCaseResult`): `pass`, `fail` (readable, routed elsewhere) or
+ * `ungraded` (its source could not be read — invalid eval.json, broken
+ * frontmatter, a non-string trigger). Ungraded blocks like a fail, because an
+ * unreadable source is a failure and never a zero, but it is counted and
+ * named apart: the counters printed with the verdict sum to the number of
+ * cases.
  */
+
+import { parseFrontmatter } from "./lint-skill";
 
 export const PAIRWISE_ERROR_THRESHOLD = 0.75;
 export const PAIRWISE_WARNING_THRESHOLD = 0.5;
@@ -304,86 +314,270 @@ function readRank1Floor(): number {
   return parsed;
 }
 
+/** Raw text of one admitted skill as read from disk; `evalJson` is null when the file is absent. */
+export interface SkillSourceText {
+  readonly name: string;
+  readonly skillMarkdown: string;
+  readonly evalJson: string | null;
+}
+
+/** A source field that was either read, or could not be — with the reason why. */
+export type Readable<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly reason: string };
+
+export interface ParsedSkillSource {
+  readonly name: string;
+  readonly description: Readable<string>;
+  /** The raw `positive` array entries, unvalidated: each one is graded or declared ungraded. */
+  readonly positives: Readable<readonly unknown[]>;
+}
+
+/**
+ * A positive case's verdict.
+ *
+ * `ungraded` is not a softer `fail`: it means the gate could not read what it
+ * was asked to grade (an unparsable eval.json, a broken frontmatter, a trigger
+ * that is not a string). A `fail` is a readable trigger that routed elsewhere.
+ * Both block — an unreadable source is a failure, never a zero — but they call
+ * for different repairs, so they are counted and named apart.
+ */
+export type RoutingCaseOutcome = "pass" | "fail" | "ungraded";
+
+export interface RoutingCaseResult {
+  /**
+   * `<skill>/positive/<1-based index in eval.json>`, or `<skill>/positive/*`
+   * when the eval file itself is unreadable and the number of its triggers is
+   * unknowable — that whole source then counts as one ungraded case, so it can
+   * never contribute zero cases.
+   */
+  readonly caseId: string;
+  readonly skill: string;
+  readonly kind: "positive";
+  readonly outcome: RoutingCaseOutcome;
+  /** Every positive case blocks: negatives and behavioral cases are not graded here (module doc). */
+  readonly blocking: true;
+  readonly trigger?: string;
+  /** 1-based rank of the case's own skill for its trigger; graded cases only. */
+  readonly rank?: number;
+  /** Cosine score of the case's own skill for its trigger; graded cases only. */
+  readonly score?: number;
+  readonly winner?: RankedSkill;
+  readonly tied?: boolean;
+  /** Why the case is not a pass: the routing miss for `fail`, the unreadable source for `ungraded`. */
+  readonly reason?: string;
+}
+
+export interface RoutingCaseSummary {
+  readonly total: number;
+  readonly pass: number;
+  readonly fail: number;
+  readonly ungraded: number;
+}
+
+/** Pure parse of one skill's two files — no filesystem access, so every unreadable shape is testable. */
+export function parseSkillSource(source: SkillSourceText): ParsedSkillSource {
+  return {
+    name: source.name,
+    description: readDescription(source.skillMarkdown),
+    positives: readPositives(source.evalJson),
+  };
+}
+
+function readDescription(skillMarkdown: string): Readable<string> {
+  const parsed = parseFrontmatter(skillMarkdown);
+  if ("error" in parsed) {
+    return { ok: false, reason: `frontmatter unreadable: ${parsed.error} (see T1)` };
+  }
+  const description = parsed.frontmatter.description ?? "";
+  if (description.length === 0) {
+    return {
+      ok: false,
+      reason: "frontmatter description is empty — cannot be routed or compared (see T1)",
+    };
+  }
+  return { ok: true, value: description };
+}
+
+function readPositives(evalJson: string | null): Readable<readonly unknown[]> {
+  if (evalJson === null) return { ok: false, reason: "no eval.json found (see T1)" };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(evalJson);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `eval.json is not valid JSON (${message}) (see T1)` };
+  }
+  const positive =
+    typeof raw === "object" && raw !== null ? (raw as { positive?: unknown }).positive : undefined;
+  if (!Array.isArray(positive)) {
+    return { ok: false, reason: 'eval.json carries no "positive" array (see T1)' };
+  }
+  if (positive.length === 0) {
+    return { ok: false, reason: "eval.json declares zero positive triggers (see T1)" };
+  }
+  return { ok: true, value: positive };
+}
+
+/**
+ * One result per positive case, in source order. The routing corpus is built
+ * from the routable descriptions only, exactly as before this function
+ * existed: a skill whose frontmatter cannot be read competes for no trigger.
+ */
+export function gradeRoutingCases(
+  sources: readonly ParsedSkillSource[],
+  floor: number,
+): RoutingCaseResult[] {
+  const routable: SkillDescriptor[] = [];
+  for (const source of sources) {
+    if (source.description.ok) {
+      routable.push({ name: source.name, description: source.description.value });
+    }
+  }
+  const corpus = buildRoutingCorpus(routable);
+  const results: RoutingCaseResult[] = [];
+
+  for (const source of sources) {
+    const base = { skill: source.name, kind: "positive", blocking: true } as const;
+    if (!source.positives.ok) {
+      const reasons = [source.positives.reason];
+      if (!source.description.ok) reasons.push(source.description.reason);
+      results.push({
+        ...base,
+        caseId: `${source.name}/positive/*`,
+        outcome: "ungraded",
+        reason: reasons.join("; "),
+      });
+      continue;
+    }
+    source.positives.value.forEach((entry, index) => {
+      const caseId = `${source.name}/positive/${index + 1}`;
+      if (typeof entry !== "string" || entry.trim() === "") {
+        results.push({
+          ...base,
+          caseId,
+          outcome: "ungraded",
+          reason: `positive trigger ${index + 1} is not a non-empty string (see T1)`,
+        });
+        return;
+      }
+      if (!source.description.ok) {
+        results.push({
+          ...base,
+          caseId,
+          outcome: "ungraded",
+          trigger: entry,
+          reason: source.description.reason,
+        });
+        return;
+      }
+      const ranking = rankForQuery(entry, corpus);
+      const check = checkPositiveTrigger(source.name, ranking, floor);
+      const tiedSuffix = check.tied ? " (tied)" : "";
+      const graded = {
+        ...base,
+        caseId,
+        trigger: entry,
+        rank: ranking.findIndex((ranked) => ranked.name === source.name) + 1,
+        score: check.targetScore,
+        tied: check.tied,
+        ...(check.winner === undefined ? {} : { winner: check.winner }),
+      };
+      if (check.ok) {
+        results.push({ ...graded, outcome: "pass" });
+      } else {
+        results.push({
+          ...graded,
+          outcome: "fail",
+          reason: `expected rank-1 "${source.name}" (>= floor ${floor}), got "${check.winner?.name ?? "none"}" at ${(check.winner?.score ?? 0).toFixed(3)}${tiedSuffix}, "${source.name}" scored ${check.targetScore.toFixed(3)}`,
+        });
+      }
+    });
+  }
+  return results;
+}
+
+/** Counts by outcome; `total` is the number of results, so the three counters must sum to it. */
+export function summarizeRoutingCases(results: readonly RoutingCaseResult[]): RoutingCaseSummary {
+  let pass = 0;
+  let fail = 0;
+  let ungraded = 0;
+  for (const result of results) {
+    switch (result.outcome) {
+      case "pass":
+        pass++;
+        break;
+      case "fail":
+        fail++;
+        break;
+      case "ungraded":
+        ungraded++;
+        break;
+    }
+  }
+  return { total: results.length, pass, fail, ungraded };
+}
+
+export function formatRoutingSummary(summary: RoutingCaseSummary): string {
+  return `${summary.total} positive case(s): ${summary.pass} pass, ${summary.fail} fail, ${summary.ungraded} ungraded`;
+}
+
+/** Reads every `<name>/SKILL.md` (and its sibling eval.json, when present) under `root`, sorted by name. */
+export async function loadSkillSources(root: string): Promise<SkillSourceText[]> {
+  const glob = new Bun.Glob("*/SKILL.md");
+  const names: string[] = [];
+  for await (const path of glob.scan({ cwd: root, onlyFiles: true })) {
+    const name = path.split("/")[0];
+    if (name) names.push(name);
+  }
+  names.sort();
+  const sources: SkillSourceText[] = [];
+  for (const name of names) {
+    const skillMarkdown = await Bun.file(`${root}/${name}/SKILL.md`).text();
+    const evalFile = Bun.file(`${root}/${name}/eval.json`);
+    const evalJson = (await evalFile.exists()) ? await evalFile.text() : null;
+    sources.push({ name, skillMarkdown, evalJson });
+  }
+  return sources;
+}
+
 async function main(): Promise<void> {
   const { existsSync } = await import("node:fs");
   const { concludeGate, GateReport } = await import("../quality/gate-report");
-  const { parseFrontmatter } = await import("./lint-skill");
 
+  const gate = "Skills routing (T2)";
   const report = new GateReport();
   const skillsRoot = "skills";
 
   if (!existsSync(skillsRoot)) {
     report.allowEmpty(`no ${skillsRoot}/ directory in this repository`);
-    concludeGate("Skills routing (T2)", report);
+    concludeGate(gate, report);
     return;
   }
 
-  const glob = new Bun.Glob("*/SKILL.md");
-  const dirs: string[] = [];
-  for await (const path of glob.scan({ cwd: skillsRoot, onlyFiles: true })) {
-    const dir = path.split("/")[0];
-    if (dir) dirs.push(dir);
-  }
-  dirs.sort();
+  const sources = (await loadSkillSources(skillsRoot)).map(parseSkillSource);
 
-  if (dirs.length === 0) {
+  if (sources.length === 0) {
     report.allowEmpty(`${skillsRoot}/ exists but holds no <name>/SKILL.md — nothing admitted yet`);
-    concludeGate("Skills routing (T2)", report);
+    concludeGate(gate, report);
     return;
   }
 
   const skills: SkillDescriptor[] = [];
-  const positiveTriggers = new Map<string, string[]>();
-
-  for (const dir of dirs) {
-    const source = await Bun.file(`${skillsRoot}/${dir}/SKILL.md`).text();
-    const parsed = parseFrontmatter(source);
-    if ("error" in parsed) {
-      report.check(
-        `${dir} — frontmatter`,
-        false,
-        `cannot route: ${parsed.error} (see T1 for the structural gate)`,
-      );
-      continue;
-    }
-    const description = parsed.frontmatter.description ?? "";
-    if (description.length === 0) {
-      report.check(
-        `${dir} — frontmatter description`,
-        false,
-        "empty description — cannot be routed or compared (see T1)",
-      );
-      continue;
-    }
-    skills.push({ name: dir, description });
-
-    const evalPath = `${skillsRoot}/${dir}/eval.json`;
-    if (existsSync(evalPath)) {
-      let raw: { positive?: unknown };
-      try {
-        raw = (await Bun.file(evalPath).json()) as { positive?: unknown };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        report.check(
-          evalPath,
-          false,
-          `invalid JSON (${message}) — rank-1 routing cannot be checked (see T1)`,
-        );
-        continue;
-      }
-      const positive = Array.isArray(raw.positive)
-        ? raw.positive.filter((v): v is string => typeof v === "string")
-        : [];
-      positiveTriggers.set(dir, positive);
+  for (const source of sources) {
+    if (source.description.ok) {
+      skills.push({ name: source.name, description: source.description.value });
     }
   }
 
+  let comparedPairs = 0;
   if (skills.length < 2) {
     report.allowEmpty(
       `only ${skills.length} skill(s) carry a routable description — pairwise overlap needs at least 2 to compare`,
     );
   } else {
     for (const pair of pairwiseOverlap(skills)) {
+      comparedPairs++;
       const percent = (pair.similarity * 100).toFixed(1);
       if (pair.similarity >= PAIRWISE_ERROR_THRESHOLD) {
         report.check(
@@ -401,35 +595,42 @@ async function main(): Promise<void> {
     }
   }
 
-  if (skills.length > 0) {
-    const floor = readRank1Floor();
-    const corpus = buildRoutingCorpus(skills);
-    for (const skill of skills) {
-      const triggers = positiveTriggers.get(skill.name);
-      if (!triggers) {
+  const floor = readRank1Floor();
+  const results = gradeRoutingCases(sources, floor);
+  for (const result of results) {
+    const quoted = result.trigger === undefined ? "" : `: "${truncateTrigger(result.trigger)}"`;
+    switch (result.outcome) {
+      case "pass":
         report.check(
-          `${skill.name} — eval triggers`,
+          result.caseId,
+          true,
+          `pass — rank-1 "${result.skill}" at ${(result.score ?? 0).toFixed(3)}${result.tied ? " (tied)" : ""} (floor ${floor})${quoted}`,
+        );
+        break;
+      case "fail":
+        report.check(result.caseId, false, `FAIL — ${result.reason ?? "routing miss"}${quoted}`);
+        break;
+      case "ungraded":
+        report.check(
+          result.caseId,
           false,
-          "no eval.json found — rank-1 routing cannot be checked (see T1)",
+          `UNGRADED — ${result.reason ?? "source unreadable"}${quoted}`,
         );
-        continue;
-      }
-      triggers.forEach((trigger, index) => {
-        const ranking = rankForQuery(trigger, corpus);
-        const result = checkPositiveTrigger(skill.name, ranking, floor);
-        const tiedSuffix = result.tied ? " (tied)" : "";
-        report.check(
-          `${skill.name} — positive trigger ${index + 1}`,
-          result.ok,
-          result.ok
-            ? `rank-1 "${skill.name}" at ${result.targetScore.toFixed(3)}${tiedSuffix} (floor ${floor}): "${truncateTrigger(trigger)}"`
-            : `expected rank-1 "${skill.name}" (>= floor ${floor}), got "${result.winner?.name ?? "none"}" at ${(result.winner?.score ?? 0).toFixed(3)}${tiedSuffix}, "${skill.name}" scored ${result.targetScore.toFixed(3)}: "${truncateTrigger(trigger)}"`,
-        );
-      });
+        break;
     }
   }
 
-  concludeGate("Skills routing (T2)", report);
+  const summary = summarizeRoutingCases(results);
+  const volume = `${formatRoutingSummary(summary)}; ${comparedPairs} description pair(s) compared across ${skills.length} routable skill(s)`;
+  report.volume(volume);
+  if (summary.fail > 0 || summary.ungraded > 0) {
+    // The violation list mixes both kinds of blocking case; the counters say
+    // how many of each, because an ungraded case is a repair of the source,
+    // not of the description.
+    console.error(`${gate}: ${volume}`);
+  }
+
+  concludeGate(gate, report);
 }
 
 function truncateTrigger(trigger: string, max = 88): string {
