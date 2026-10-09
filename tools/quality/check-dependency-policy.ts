@@ -268,27 +268,35 @@ export function denyArguments(manifestPath: string, config: string): string[] {
   ];
 }
 
-export async function main(
-  argv: readonly string[],
-  environment: Readonly<Record<string, string | undefined>> = process.env,
-): Promise<number> {
-  // The repository examined is the caller's working directory, never this
-  // package's location: consumers run the copy under node_modules.
-  const { root, manifests } = parseArguments(argv, process.cwd());
-  const config = join(root, "deny.toml");
-  readRequired(config, "deny.toml");
-  let lockedPackages = 0;
-  for (const manifest of manifests) {
-    const manifestPath = join(root, manifest);
-    readRequired(manifestPath, manifest);
-    const lock = join(dirname(manifestPath), "Cargo.lock");
-    lockedPackages += countLockedPackages(readRequired(lock, `${dirname(manifest)}/Cargo.lock`));
-  }
+/** A cargo-deny executable verified against toolchains/cargo-deny.json. */
+export interface VerifiedCargoDeny {
+  readonly binary: string;
+  readonly version: string;
+  readonly executableSha256: string;
+  /** Where the binary came from, for the gate's evidence line. */
+  readonly origin: string;
+  /** Removes the extraction directory of a downloaded binary; no-op otherwise. */
+  dispose(): void;
+}
 
+/**
+ * The one way this package obtains cargo-deny: the composition-provided binary
+ * when LIBRE_AI_CARGO_DENY is declared (verified, never substituted), otherwise
+ * the pinned archive downloaded, digest-verified and extracted. In both cases
+ * the executable digest and the reported version must match the declaration.
+ * Shared by this gate and by the periodic fleet advisory control, so the two
+ * cannot drift on how the binary is trusted.
+ */
+export async function acquireCargoDeny(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<VerifiedCargoDeny> {
   const policy = loadPolicy();
   const entry = platformFor(policy, process.platform, process.arch);
   const provided = providedBinary(environment, entry);
   const scratch = provided === null ? mkdtempSync(join(tmpdir(), "cargo-deny-")) : null;
+  const dispose = () => {
+    if (scratch !== null) rmSync(scratch, { recursive: true, force: true });
+  };
   try {
     let binary: string;
     let origin: string;
@@ -312,10 +320,41 @@ export async function main(
         `Unexpected cargo-deny binary: ${version.stdout ?? ""}${version.stderr ?? ""}`,
       );
     }
+    return {
+      binary,
+      version: policy.version,
+      executableSha256: entry.executableSha256,
+      origin,
+      dispose,
+    };
+  } catch (error) {
+    dispose();
+    throw error;
+  }
+}
 
+export async function main(
+  argv: readonly string[],
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): Promise<number> {
+  // The repository examined is the caller's working directory, never this
+  // package's location: consumers run the copy under node_modules.
+  const { root, manifests } = parseArguments(argv, process.cwd());
+  const config = join(root, "deny.toml");
+  readRequired(config, "deny.toml");
+  let lockedPackages = 0;
+  for (const manifest of manifests) {
+    const manifestPath = join(root, manifest);
+    readRequired(manifestPath, manifest);
+    const lock = join(dirname(manifestPath), "Cargo.lock");
+    lockedPackages += countLockedPackages(readRequired(lock, `${dirname(manifest)}/Cargo.lock`));
+  }
+
+  const cargoDeny = await acquireCargoDeny(environment);
+  try {
     for (const manifest of manifests) {
-      console.log(`cargo-deny ${policy.version} check: ${manifest} with deny.toml`);
-      const status = run(binary, denyArguments(join(root, manifest), config), root);
+      console.log(`cargo-deny ${cargoDeny.version} check: ${manifest} with deny.toml`);
+      const status = run(cargoDeny.binary, denyArguments(join(root, manifest), config), root);
       if (status !== 0) {
         console.error(`Dependency policy FAILED for ${manifest} (cargo-deny exit ${status}).`);
         return 1;
@@ -324,11 +363,11 @@ export async function main(
     console.log(
       `Dependency policy verified: ${REQUIRED_CHECKS.join(", ")} hold for ` +
         `${manifests.length} manifest(s) and deny.toml read, ${lockedPackages} locked package(s) inspected ` +
-        `(cargo-deny ${policy.version} ${origin}, executable sha256 ${entry.executableSha256}).`,
+        `(cargo-deny ${cargoDeny.version} ${cargoDeny.origin}, executable sha256 ${cargoDeny.executableSha256}).`,
     );
     return 0;
   } finally {
-    if (scratch !== null) rmSync(scratch, { recursive: true, force: true });
+    cargoDeny.dispose();
   }
 }
 
