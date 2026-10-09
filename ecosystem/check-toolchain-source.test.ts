@@ -3,13 +3,16 @@ import { describe, expect, test } from "bun:test";
 import {
   ARCHIVED_EXCLUSIONS,
   buildWorkflowsTreeQuery,
+  CARGO_DENY_KEYS,
   type CanonicalToolchain,
   extractDeclaredSources,
   parseWorkflowsTreeBatchResponse,
   parseWorkflowsTreeNode,
   readCanonical,
+  readCanonicalCargoDeny,
   selectToolchainTargets,
   verifyCanonical,
+  verifyCargoDenySources,
   verifySources,
 } from "./check-toolchain-source";
 
@@ -260,3 +263,83 @@ describe("parseWorkflowsTreeBatchResponse", () => {
 
 // `hasUsableGraphQLData` now lives in ecosystem/github-fleet.ts, asserted
 // once for every gate: ecosystem/github-fleet.test.ts.
+
+describe("cargo-deny declarations (Y47)", () => {
+  function denyBlock(url: string, sha256: string | null): string {
+    return [
+      "      - name: Install pinned dependency-policy toolchain",
+      "        env:",
+      "          CARGO_DENY_VERSION: 0.19.5",
+      `          CARGO_DENY_ARCHIVE_URL: ${url}`,
+      ...(sha256 === null ? [] : [`          CARGO_DENY_ARCHIVE_SHA256: ${sha256}`]),
+      "          CARGO_AUDIT_VERSION: 0.22.1",
+    ].join("\n");
+  }
+
+  test("the live canonical declaration parses and the fleet template matches it", async () => {
+    const policy = await readCanonicalCargoDeny();
+    const template = await Bun.file(".github/workflows/reusable-dependency-policy.yml").text();
+    const sources = extractDeclaredSources(
+      "libre-ai/project-governance",
+      ".github/workflows/reusable-dependency-policy.yml",
+      template,
+      CARGO_DENY_KEYS,
+    );
+    expect(sources.length).toBe(1);
+    expect(verifyCargoDenySources(sources, policy)).toEqual({ asserted: 1, failures: [] });
+  });
+
+  test("Bun extraction does not read cargo-deny lines, and conversely", () => {
+    const workflow = [
+      installBlock(canonical.assetUrl, canonical.assetSha256),
+      denyBlock("https://example.invalid/cargo-deny.tar.gz", "0".repeat(64)),
+    ].join("\n");
+    expect(extractDeclaredSources("r", "f", workflow).map((s) => s.url)).toEqual([
+      canonical.assetUrl,
+    ]);
+    expect(extractDeclaredSources("r", "f", workflow, CARGO_DENY_KEYS).map((s) => s.url)).toEqual([
+      "https://example.invalid/cargo-deny.tar.gz",
+    ]);
+  });
+
+  test("counter-proof: an unpinned archive, a diverging digest and a missing digest turn it red", async () => {
+    const policy = await readCanonicalCargoDeny();
+    const linux = policy.platforms["linux-x64"];
+    if (linux === undefined) throw new Error("linux-x64 not pinned");
+    const other = linux.archiveUrl.replaceAll("0.19.5", "0.19.4");
+    const sources = [
+      ...extractDeclaredSources(
+        "libre-ai/a",
+        "ci.yml",
+        denyBlock(other, linux.archiveSha256),
+        CARGO_DENY_KEYS,
+      ),
+      ...extractDeclaredSources(
+        "libre-ai/b",
+        "ci.yml",
+        denyBlock(linux.archiveUrl, "0".repeat(64)),
+        CARGO_DENY_KEYS,
+      ),
+      ...extractDeclaredSources(
+        "libre-ai/c",
+        "ci.yml",
+        denyBlock(linux.archiveUrl, null),
+        CARGO_DENY_KEYS,
+      ),
+    ];
+    const verdict = verifyCargoDenySources(sources, policy);
+    expect(verdict.asserted).toBe(3);
+    expect(verdict.failures.length).toBe(3);
+    expect(verdict.failures[0]).toContain("libre-ai/a");
+    expect(verdict.failures[0]).toContain("not an archive pinned");
+    expect(verdict.failures[1]).toContain("canonical digest");
+    expect(verdict.failures[2]).toContain("no CARGO_DENY_ARCHIVE_SHA256");
+  });
+
+  test("zero workflow declarations is the converged state, not a failure", async () => {
+    expect(verifyCargoDenySources([], await readCanonicalCargoDeny())).toEqual({
+      asserted: 0,
+      failures: [],
+    });
+  });
+});
