@@ -21,7 +21,7 @@ Le candidat `decision-binding-vectors.v1` (`libre-ai/schemas-and-contracts` #19,
 exige qu'une demande reprenne exactement la politique de son pas : même correspondance
 choix → issue, même issue sans réponse, même rôle, sous le graphe et l'organisation qu'elle
 nomme. Il a passé trois rondes de revue à rôles séparés, architecture et sécurité, sur des
-commits immuables et deux modèles distincts :
+commits immuables (deux modèles distincts en rondes 1 et 2) :
 
 | Ronde | Architecture | Sécurité |
 | --- | --- | --- |
@@ -42,21 +42,26 @@ Le jeu est verrouillé sur le précédent de la famille, sans nouvelle sorte d'e
 - `check-contracts.ts` les contrôle comme `semantic-vectors.v1` : JSON strict, bornes,
   contenu public, enveloppe, identifiants, couverture et rejeu de chaque cas.
 
-Une sorte d'entrée « vecteurs » au catalogue ferait de chaque fichier de `contracts/fixtures/`
-une autorité à cataloguer, y compris les vecteurs déjà verrouillés. Elle reste possible plus
-tard, pour tous les fichiers à la fois.
+**Écart avec le dossier relu, signé par cette fusion.** Le dossier de revue annonçait comme acte
+de verrouillage une nouvelle sorte d'entrée « vecteurs » au catalogue. Les relecteurs de rôle ont
+jugé le contenu des vecteurs, pas cette forme de verrou. Cette ADR retient l'autre voie : la forme
+déjà employée par la famille verrouillée. Une sorte « vecteurs » imposerait de changer les racines
+gérées du contrôleur et de passer par le registre post-verrouillage épinglé. Elle obligerait aussi
+à cataloguer les vecteurs déjà verrouillés, ou à les laisser seuls hors catalogue. Elle reste
+possible plus tard, pour tous les fichiers de vecteurs à la fois.
 
 Toute évolution de sens est une nouvelle majeure (`decision-binding-vectors.v2`), jamais une
 édition en place.
 
 ## Conséquences
 
-- Le contrat d'une décision humaine est complet côté demande. Un évaluateur conforme refuse
-  une demande non liée (`graph-binding-mismatch`, `step-not-decision`,
+- Le contrat définit la liaison côté demande. Un évaluateur qui s'en réclame refuse une demande
+  non liée (`graph-binding-mismatch`, `step-not-decision`,
   `decision-policy-mismatch`), et lève sur un pas en double ou un choix répété.
-- `execution-continuity-evaluator` pourra rejouer le fichier verrouillé quand sa composition
-  épinglera une révision des contrats qui le contient ; ses tests reproduisent aujourd'hui les
-  cas en fixtures Rust.
+- Aucun consommateur n'est encore tenu de rejouer ce fichier : le work package du cœur natif ne
+  lit que `semantic-vectors.v1`. `execution-continuity-evaluator` pourra le rejouer quand sa
+  composition épinglera une révision des contrats qui le contient ; d'ici là, ses tests
+  reproduisent les cas en fixtures Rust.
 - **Risque résiduel déclaré** : le libellé d'un choix, ce que lit l'approbateur, n'est pas lié.
   La politique du graphe n'en porte pas. Jusqu'à une majeure de `execution-graph-v1`,
   l'émetteur ne prend jamais un libellé du demandeur.
