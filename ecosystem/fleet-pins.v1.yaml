@@ -157,3 +157,20 @@ generations:
       together with its parser. No further generation is declared before the
       13 forge repositories still on 2024a488 move here: one more would put
       them beyond the two-generation grace window.
+  - sha: 46061644fb17bc14e67d3501602b7904fce75ae0
+    added_on: 2026-10-09
+    note: >-
+      the composition manifest composes project-governance at c5423307, after
+      act 3 (#48: portfolio 19 to 17 and brand family 7 to 5, the archived
+      information-feed-filter and ai-practice-workbench removed as composition
+      targets) and the cargo source substitution (#43: a composed sibling
+      crate replaces its pinned git source, and the cargo rev must equal the
+      composed ref); application-development-toolkit at 9e817e73, which
+      carries the hydration marker fix 98af3d6e and Playwright 1.62.1; and
+      ai-work-supervision at a15568d6, which carries Playwright 1.62.1.
+      artifact-verification, execution-continuity-evaluator and
+      execution-sandbox move here with their git-pinned contract types;
+      project-website moves with its 17-item parser, and
+      personal-knowledge-workspace with its Bun floor fix. Every other
+      consumer stays on 7c2238d6, inside the two-generation grace window; no
+      further generation is declared before they move.

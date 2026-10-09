@@ -29,11 +29,11 @@ class CompositionTests(unittest.TestCase):
         self.assertTrue(all(step["argv"][-2:] == ["--frozen-lockfile", "--ignore-scripts"] for step in plan["install"] if step["argv"][1] == "install"))
 
     def test_ui_browser_exports_are_built_before_consumer_installation(self):
-        plan = module.prepare(self.manifest, "ai-practice-workbench")
+        plan = module.prepare(self.manifest, "personal-knowledge-workspace")
         steps = plan["install"]
         ui = next(i for i, step in enumerate(steps) if step["cwd"] == "application-development-toolkit")
         self.assertEqual(steps[ui + 1], {"cwd": "application-development-toolkit", "argv": ["bun", "run", "--cwd", "packages/ui", "build"]})
-        for consumer in ("ai-work-supervision", "ai-practice-workbench", "ai-model-policy"):
+        for consumer in ("ai-work-supervision", "personal-knowledge-workspace", "ai-model-policy"):
             self.assertGreater(next(i for i, step in enumerate(steps) if step["cwd"] == consumer), ui + 1)
         self.assertEqual(plan["setup"], [])
 
@@ -76,9 +76,33 @@ class CompositionTests(unittest.TestCase):
 
     def test_every_product_plan_keeps_local_override_source_closure(self):
         required = {"project-governance", "schemas-and-contracts", "ai-work-supervision", "application-development-toolkit", "organization-data-lifecycle", "ai-model-policy"}
-        for target in ("ai-work-supervision", "ai-model-policy", "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-workspace", "information-feed-filter", "travel-itinerary-planner", "project-website"):
+        for target in ("ai-work-supervision", "ai-model-policy", "learning-session-facilitation", "personal-knowledge-workspace", "travel-itinerary-planner", "project-website"):
             names = {row["path"] for row in module.prepare(self.manifest, target)["checkouts"]}
             self.assertEqual(names, required | {target})
+
+    def test_cargo_sources_pin_the_composed_sibling_revision(self):
+        ref = self.manifest["repositories"]["schemas-and-contracts"]["ref"]
+        for target in ("artifact-verification", "execution-continuity-evaluator", "execution-sandbox"):
+            plan = module.prepare(self.manifest, target)
+            self.assertEqual(plan["cargoSources"], [{
+                "package": "libre-ai-contract-types",
+                "repository": "libre-ai/schemas-and-contracts",
+                "url": "https://github.com/libre-ai/schemas-and-contracts",
+                "rev": ref,
+                "path": "schemas-and-contracts/crates/sdk-rs",
+            }])
+            self.assertIn("schemas-and-contracts", [row["path"] for row in plan["checkouts"]])
+        for target in ("database-policy-inspector", "project-governance", "schemas-and-contracts"):
+            self.assertEqual(module.prepare(self.manifest, target)["cargoSources"], [])
+
+    def test_cargo_source_follows_the_manifest_not_the_target_revision(self):
+        # The rev comes from the composed sibling's manifest row; a target
+        # revision override cannot move it.
+        overridden = module.prepare(self.manifest, "execution-sandbox", "a" * 40)
+        self.assertEqual(overridden["cargoSources"][0]["rev"], self.manifest["repositories"]["schemas-and-contracts"]["ref"])
+        moved = json.loads(json.dumps(self.manifest))
+        moved["repositories"]["schemas-and-contracts"]["ref"] = "b" * 40
+        self.assertEqual(module.prepare(moved, "execution-sandbox")["cargoSources"][0]["rev"], "b" * 40)
 
     def test_cli_emits_argv_only_and_rejects_duplicate_json(self):
         result = subprocess.run([sys.executable, str(HERE / "prepare-composition.py"), "--target", "database-policy-inspector"], capture_output=True, text=True, check=False)

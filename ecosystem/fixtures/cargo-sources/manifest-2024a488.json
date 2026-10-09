@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "c5423307b23488a7fd37127a6e4053cbb8ce98bc",
+      "ref": "ff3ef051f164662a85f1883a531bd5c426775587",
       "dependencies": [],
       "check": [["bun", "run", "check"]]
     },
@@ -15,7 +15,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "a15568d66c285501229710bb18b8c5aa24700dfb",
+      "ref": "775f04bba84b8d544e3b47bf3eb43d05861e573b",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -27,7 +27,7 @@
     },
     "application-development-toolkit": {
       "repository": "libre-ai/application-development-toolkit",
-      "ref": "9e817e7394bfc1b747b06c5000a11dec9d314614",
+      "ref": "5ec3630ece2a768872dfb67171c9b7fbf21a1aa9",
       "dependencies": ["project-governance", "schemas-and-contracts", "ai-work-supervision"],
       "check": [["bun", "run", "check"]]
     },
@@ -53,6 +53,19 @@
       ],
       "check": [["bun", "run", "check"]]
     },
+    "ai-practice-workbench": {
+      "repository": "libre-ai/ai-practice-workbench",
+      "ref": "9c25bf51b5588a388f1117975205627921e8e00c",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
     "learning-session-facilitation": {
       "repository": "libre-ai/learning-session-facilitation",
       "ref": "65cba786203702bcff237754543777f1916e490d",
@@ -66,9 +79,22 @@
       ],
       "check": [["bun", "run", "check"]]
     },
-    "personal-knowledge-workspace": {
-      "repository": "libre-ai/personal-knowledge-workspace",
+    "personal-knowledge-notebook": {
+      "repository": "libre-ai/personal-knowledge-notebook",
       "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "information-feed-filter": {
+      "repository": "libre-ai/information-feed-filter",
+      "ref": "7ee92fea4a53c58dff4dad3d66101cae74b99709",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -82,6 +108,19 @@
     "travel-itinerary-planner": {
       "repository": "libre-ai/travel-itinerary-planner",
       "ref": "d3e164cf01ebaebb4d1ad9f9cd393c72994cf6ad",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "public-vote-comparison": {
+      "repository": "libre-ai/public-vote-comparison",
+      "ref": "f8fe30c00f5c23be701db2d8c10a6ae7d0dc3081",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -153,9 +192,12 @@
     "ai-work-supervision",
     "organization-data-lifecycle",
     "ai-model-policy",
+    "ai-practice-workbench",
     "learning-session-facilitation",
-    "personal-knowledge-workspace",
+    "personal-knowledge-notebook",
+    "information-feed-filter",
     "travel-itinerary-planner",
+    "public-vote-comparison",
     "collaborative-data-sync",
     "execution-continuity-evaluator",
     "execution-sandbox",

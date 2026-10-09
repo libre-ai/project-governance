@@ -31,20 +31,12 @@
       "publicName": "Libre AI Model Policy"
     },
     {
-      "repository": "libre-ai/ai-practice-workbench",
-      "publicName": "Libre AI Practice Workbench"
-    },
-    {
       "repository": "libre-ai/learning-session-facilitation",
       "publicName": "Libre AI Learning Session Facilitation"
     },
     {
       "repository": "libre-ai/personal-knowledge-workspace",
       "publicName": "Libre AI Knowledge Workspace"
-    },
-    {
-      "repository": "libre-ai/information-feed-filter",
-      "publicName": "Libre AI Information Feed Filter"
     },
     {
       "repository": "libre-ai/travel-itinerary-planner",
