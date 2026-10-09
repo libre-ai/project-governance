@@ -3,6 +3,8 @@ import {
   gradeAnswer,
   gradeQuestionnaire,
   parseQuestionnaire,
+  QUESTIONNAIRE_SCHEMA_VERSION,
+  type Questionnaire,
   type QuestionnaireItem,
 } from "./grading";
 import questionnaireJson from "./questionnaire.json";
@@ -22,13 +24,13 @@ const ITEM: QuestionnaireItem = {
     {
       id: "open-source",
       description: "an open-source software lab",
-      source: "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+      source: "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
       patterns: ["open[- ]source", "software lab"],
     },
     {
       id: "governed-agents",
       description: "built by AI agents under a governed method",
-      source: "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+      source: "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
       patterns: ["ai agents", "polaris"],
     },
   ],
@@ -62,8 +64,8 @@ describe("gradeAnswer", () => {
 
 describe("gradeQuestionnaire", () => {
   test("aggregates per-question scores and totals", () => {
-    const questionnaire = {
-      schemaVersion: "libre-ai.cold-reader-questionnaire.v1" as const,
+    const questionnaire: Questionnaire = {
+      schemaVersion: QUESTIONNAIRE_SCHEMA_VERSION,
       items: [ITEM],
     };
     const graded = gradeQuestionnaire(
@@ -76,8 +78,8 @@ describe("gradeQuestionnaire", () => {
   });
 
   test("a missing answer scores zero instead of crashing", () => {
-    const questionnaire = {
-      schemaVersion: "libre-ai.cold-reader-questionnaire.v1" as const,
+    const questionnaire: Questionnaire = {
+      schemaVersion: QUESTIONNAIRE_SCHEMA_VERSION,
       items: [ITEM],
     };
     const graded = gradeQuestionnaire(questionnaire, new Map());
@@ -95,7 +97,7 @@ describe("parseQuestionnaire", () => {
 
   test("rejects an element without a public source", () => {
     const broken = {
-      schemaVersion: "libre-ai.cold-reader-questionnaire.v1",
+      schemaVersion: QUESTIONNAIRE_SCHEMA_VERSION,
       items: [
         {
           id: "q",
@@ -109,7 +111,7 @@ describe("parseQuestionnaire", () => {
 
   test("rejects an invalid regular expression at parse time, not at grading time", () => {
     const broken = {
-      schemaVersion: "libre-ai.cold-reader-questionnaire.v1",
+      schemaVersion: QUESTIONNAIRE_SCHEMA_VERSION,
       items: [
         {
           id: "q",
@@ -125,7 +127,7 @@ describe("parseQuestionnaire", () => {
 
   test("rejects duplicate question ids", () => {
     const broken = {
-      schemaVersion: "libre-ai.cold-reader-questionnaire.v1",
+      schemaVersion: QUESTIONNAIRE_SCHEMA_VERSION,
       items: [
         { id: "q", question: "?", expectedElements: [ITEM.expectedElements[0]] },
         { id: "q", question: "??", expectedElements: [ITEM.expectedElements[0]] },
@@ -144,6 +146,13 @@ describe("the committed questionnaire", () => {
     expect(ids).toContain("how-to-verify-a-claim");
     expect(ids).toContain("how-to-contribute");
     expect(questionnaire.items.length).toBeGreaterThanOrEqual(4);
+  });
+
+  test("a grid written for the v1 version is refused, not graded", () => {
+    // v1 cited sources the public surfaces no longer state; a score under it is
+    // not comparable with a v2 score, so it must fail to load.
+    const stale = { ...questionnaireJson, schemaVersion: "libre-ai.cold-reader-questionnaire.v1" };
+    expect(() => parseQuestionnaire(JSON.stringify(stale))).toThrow(/schemaVersion/);
   });
 
   test("every expected element cites a public raw.githubusercontent.com source", () => {

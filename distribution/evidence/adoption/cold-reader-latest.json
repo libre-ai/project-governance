@@ -1,20 +1,20 @@
 {
   "schemaVersion": "libre-ai.cold-reader.v1",
   "status": "pending",
-  "generatedAt": "2026-07-24T13:46:26.752Z",
+  "generatedAt": "2026-10-09T18:28:12.226Z",
   "pendingReason": "no cold-reader backend configured (set COLD_READER_CMD, or COLD_READER_BASE_URL + COLD_READER_MODEL [+ COLD_READER_API_KEY])",
   "surfaces": [
     {
       "id": "org-profile",
-      "url": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md"
+      "url": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md"
     },
     {
-      "id": "monorepo-readme",
-      "url": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md"
+      "id": "governance-readme",
+      "url": "https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/README.md"
     }
   ],
   "questionnaire": {
-    "schemaVersion": "libre-ai.cold-reader-questionnaire.v1",
+    "schemaVersion": "libre-ai.cold-reader-questionnaire.v2",
     "questions": 4,
     "expectedElements": 13
   }

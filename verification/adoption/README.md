@@ -62,14 +62,30 @@ a browser engine.
 `cold-reader/` decorrelates the reviewers: the agents that build this
 repository share a provider and a context window, so their reading of the
 public surfaces cannot count as independent adoption evidence. The runner
-submits ONLY the public surfaces (organization profile README and monorepo
-README, fetched raw and anonymously on the branch each repository serves —
-the raw `HEAD` segment, never a written branch name; `publicRawUrl` in
+submits ONLY the public surfaces (organization profile README of
+`libre-ai/.github` and README of `libre-ai/project-governance`, fetched raw
+and anonymously on the branch each repository serves — the raw `HEAD`
+segment, never a written branch name; `publicRawUrl` in
 `cold-reader/cold-reader.ts`) to a model with zero project context,
 one request per question, and grades the answers against the versioned grid
 `cold-reader/questionnaire.json` (scoring rule and strict parsing in
-`cold-reader/grading.ts`; every expected element cites the public source that
-states it).
+`cold-reader/grading.ts`; every expected element cites, on `HEAD`, one of the
+surfaces the reader is given).
+
+**Target and grid version (owner arbitration, 2026-10-09).** The second
+surface used to be the README of the hub `libre-ai/libre-ai`, archived
+read-only on 2026-07-30. It now is the README of `project-governance`. The
+grid moved with it, to `libre-ai.cold-reader-questionnaire.v2`: measured on
+2026-10-09 against the surfaces as they then read, 8 of the 13 v1 elements
+were matched by none of their own patterns in the source they cited (the
+profile README had changed too), so all 13 were re-sourced on what the two
+READMEs state. **A v1 score is not comparable with a v2 score**; the verdict
+records the grid version it was graded under, and the parser refuses a v1
+grid. Two tests keep the target honest (`cold-reader/cold-reader.test.ts`):
+no surface may point at a repository that `ecosystem/repositories.v1.yaml`
+does not declare `active` (read from the inventory, not written in the
+test), and every grid source must be one of the surfaces the reader is
+given.
 
 The backend is pluggable through environment variables — no provider is
 hardcoded, so the reviewer can be a self-hosted EU endpoint (sovereignty) and

@@ -5,8 +5,8 @@
  * Doctrinal purpose — decorrelate the reviewers: the agents that build this
  * repository share a provider and a context window, so their reading of the
  * public surfaces cannot count as independent. This runner submits ONLY the
- * public surfaces (the organization profile README and the monorepo README,
- * fetched raw and anonymously) to a model from ANOTHER provider with zero
+ * public surfaces (the organization profile README and the project-governance
+ * README, fetched raw and anonymously) to a model from ANOTHER provider with zero
  * project context, then grades the answers against the versioned grid in
  * `questionnaire.json`.
  *
@@ -69,14 +69,17 @@ export const PUBLIC_SURFACES: readonly PublicSurface[] = [
     url: publicRawUrl("libre-ai/.github", "profile/README.md"),
   },
   {
-    // Open owner decision (2026-10-09): this surface still points at the hub
-    // archived read-only on 2026-07-30 (ecosystem/repositories.v1.yaml,
-    // `lifecycle: archived`). Its replacement is not a mechanical re-point:
-    // the questionnaire grid cites this README as the source of 6 of its 13
-    // expected elements, and 2 elements grade the answer on naming the hub
-    // itself, so the target and the grid move together.
-    id: "monorepo-readme",
-    url: publicRawUrl("libre-ai/libre-ai", "README.md"),
+    // Owner arbitration (chat, 2026-10-09): the second surface is the README
+    // of project-governance, the doctrine and fleet-tooling authority. It
+    // replaced the README of the hub archived read-only on 2026-07-30
+    // (ecosystem/repositories.v1.yaml, `lifecycle: archived`): a cold reader
+    // fed an archived repository reads a description of work that no longer
+    // happens there. The grid moved with the target (questionnaire v2), so a
+    // score recorded against the v1 grid is not comparable with a v2 score —
+    // accepted in the same arbitration. cold-reader.test.ts refuses any
+    // surface the inventory does not declare `active`.
+    id: "governance-readme",
+    url: publicRawUrl("libre-ai/project-governance", "README.md"),
   },
 ];
 
