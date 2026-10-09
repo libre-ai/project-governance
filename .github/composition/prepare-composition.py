@@ -54,6 +54,36 @@ for _target in (
     DEPENDENCIES[_target] = tuple(name for name in OVERRIDE_SOURCES if name != _target)
 
 
+# Cargo crates a target consumes from a composed sibling. The target declares
+# them as `git = <url>, rev = <composed ref>` so that Dependabot can resolve its
+# manifest on its own; the composition then substitutes the verified sibling
+# checkout for that git source (cargo source replacement), so CI still compiles
+# the exact tree it checked out. This table is static on purpose: deriving it
+# from the target's own Cargo.toml would let the code under validation choose
+# which source the composition trusts.
+CARGO_SIBLING_SOURCES = {
+    target: ({"package": "libre-ai-contract-types", "repository": "schemas-and-contracts", "path": "crates/sdk-rs"},)
+    for target in ("artifact-verification", "execution-continuity-evaluator", "execution-sandbox")
+}
+
+
+def cargo_sources(manifest, target, selected):
+    sources = []
+    for source in CARGO_SIBLING_SOURCES.get(target, ()):
+        name = source["repository"]
+        if name not in selected:
+            raise ValueError("Cargo sibling source is not part of the composition")
+        row = manifest["repositories"][name]
+        sources.append({
+            "package": source["package"],
+            "repository": row["repository"],
+            "url": "https://github.com/" + row["repository"],
+            "rev": revision(row["ref"]),
+            "path": name + "/" + source["path"],
+        })
+    return sources
+
+
 def checks(target):
     if target == "database-policy-inspector":
         return [
@@ -128,6 +158,7 @@ def prepare(manifest, target, target_revision=None):
     return {
         "target": target,
         "checkouts": checkouts,
+        "cargoSources": cargo_sources(manifest, target, selected),
         "install": install,
         "setup": setup,
         "checks": [{"cwd": target, "argv": argv} for argv in checks(target)],
