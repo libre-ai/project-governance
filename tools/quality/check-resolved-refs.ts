@@ -24,9 +24,12 @@
  * WHAT IT REFUSES is narrow on purpose, and the scope is the argument:
  *
  *   - Only a ref handed to a REQUEST — a REST `?ref=`, a GraphQL `<branch>:`
- *     expression, a `trees/<branch>` path, a `compare/…<branch>` range, an
- *     action pinned `@<branch>`. A branch name in prose, in a variable, or in a
- *     message is not a request and is not this guard's business.
+ *     expression (literal or built in a template), a `trees/<branch>` path, a
+ *     `git/ref/heads/<branch>` path, a `compare/…<branch>` range, an action
+ *     pinned `@<branch>`, a raw.githubusercontent.com URL whose branch segment
+ *     is written. A branch name in prose, in a variable, or in a message is not
+ *     a request and is not this guard's business. JSON is read with the code,
+ *     because a grid or a recorded verdict can carry the URL it fetches.
  *   - Only in NON-TEST source. A test whose object is the pattern must contain
  *     the pattern: the assertion that locks a fix in place has to name the form
  *     it forbids, and a guard that flagged it would be refusing its own
@@ -105,6 +108,30 @@ export const REF_PATTERNS: readonly RefPattern[] = [
     pattern: new RegExp(String.raw`uses:\s*[\w.-]+/[\w.-]+(?:/[^@\s]+)?@(?:${BRANCHES})\b`),
     says: "pin a reusable workflow or action by sha, never by branch",
   },
+  // The three forms below were added on 2026-10-09 after this guard reported
+  // zero written refs over a tree that carried them: the cold reader fetched
+  // two raw URLs and its grid cited thirteen, each with the branch segment
+  // written down, and the hub-orphans gate built its GraphQL expression in a
+  // template instead of passing it as a literal. The guard missed the first
+  // because it had no raw-URL form and did not read JSON, the second because
+  // its expression form required the literal to follow `expression:` directly.
+  {
+    id: "raw-url-branch",
+    pattern: new RegExp(
+      String.raw`raw\.githubusercontent\.com/[^/\s"'\`]+/[^/\s"'\`]+/(?:refs/heads/)?(?:${BRANCHES})/`,
+    ),
+    says: "use the `HEAD` path segment — raw.githubusercontent.com resolves it to the branch the repository serves",
+  },
+  {
+    id: "graphql-built-expression",
+    pattern: new RegExp(String.raw`["'\`](?:${BRANCHES}):\$\{`),
+    says: "build the expression on `HEAD:` — it resolves whatever branch the repository serves",
+  },
+  {
+    id: "git-ref-path",
+    pattern: new RegExp(String.raw`/git/refs?/heads/(?:${BRANCHES})\b`),
+    says: "read the repository's `default_branch` from its own metadata, then ask for that ref",
+  },
 ] as const;
 
 export interface RefFinding {
@@ -117,6 +144,10 @@ export interface RefFinding {
 
 export interface RefScan {
   readonly filesScanned: number;
+  /** filesScanned split by extension — it sums to filesScanned and is printed on every run. */
+  readonly filesByExtension: Readonly<Record<string, number>>;
+  /** Tests and fixtures of the pattern, read but exempt — counted so the total is accounted for. */
+  readonly patternSubjects: number;
   readonly findings: readonly RefFinding[];
   /** Lines that matched but carried a reasoned allowance — counted, never hidden. */
   readonly allowed: readonly RefFinding[];
@@ -142,7 +173,15 @@ const SCANNED_EXTENSIONS = new Set([
   ".py",
   ".yml",
   ".yaml",
+  // JSON carries request targets too: the cold-reader grid cited its sources
+  // as raw URLs, and a recorded verdict copies the URLs it fetched.
+  ".json",
 ]);
+
+function extensionOf(path: string): string {
+  const dot = path.lastIndexOf(".");
+  return dot === -1 ? "" : path.slice(dot);
+}
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "target", ".git", "dist", "build"]);
 
 export function isScannedFile(path: string): boolean {
@@ -157,10 +196,18 @@ export function scanForWrittenRefs(
 ): RefScan {
   const findings: RefFinding[] = [];
   const allowed: RefFinding[] = [];
+  const filesByExtension: Record<string, number> = {};
   let filesScanned = 0;
+  let patternSubjects = 0;
   for (const file of files) {
-    if (!isScannedFile(file.path) || isPatternSubject(file.path)) continue;
+    if (!isScannedFile(file.path)) continue;
+    if (isPatternSubject(file.path)) {
+      patternSubjects += 1;
+      continue;
+    }
     filesScanned += 1;
+    const extension = extensionOf(file.path);
+    filesByExtension[extension] = (filesByExtension[extension] ?? 0) + 1;
     const lines = file.text.split("\n");
     for (const [index, line] of lines.entries()) {
       for (const { id, pattern, says } of REF_PATTERNS) {
@@ -181,7 +228,7 @@ export function scanForWrittenRefs(
       }
     }
   }
-  return { filesScanned, findings, allowed };
+  return { filesScanned, filesByExtension, patternSubjects, findings, allowed };
 }
 
 /**
@@ -315,8 +362,12 @@ if (import.meta.main) {
         : `${scan.filesScanned} non-test files across ${SCANNED_ROOTS.length} roots carry no written default-branch ref (${REF_PATTERNS.length} patterns, ${scan.allowed.length} reasoned allowance(s)), and ${workflows.length} workflow(s) list ${servedBranch} where they filter`,
     );
   }
+  const byExtension = Object.entries(scan.filesByExtension)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([extension, count]) => `${extension} ${count}`)
+    .join(", ");
   console.log(
-    `Resolved refs: ${scan.filesScanned} non-test file(s) scanned, ${REF_PATTERNS.length} pattern(s), ${scan.findings.length} written ref(s), ${scan.allowed.length} reasoned allowance(s), ${missing.length} workflow(s) missing the served branch (${servedBranch ?? "served branch unresolved — workflow filters not judged"})`,
+    `Resolved refs: ${scan.filesScanned} non-test file(s) scanned (${byExtension}), ${scan.patternSubjects} test/fixture file(s) exempt as pattern subjects, ${REF_PATTERNS.length} pattern(s), ${scan.findings.length} written ref(s), ${scan.allowed.length} reasoned allowance(s), ${missing.length} workflow(s) missing the served branch (${servedBranch ?? "served branch unresolved — workflow filters not judged"})`,
   );
   for (const finding of scan.allowed) {
     console.log(`  allowed  ${finding.file}:${finding.line}  ${finding.id}`);
