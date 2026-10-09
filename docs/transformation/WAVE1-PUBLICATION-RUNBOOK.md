@@ -37,8 +37,12 @@ was reserved by the owner on 2026-07-22.
 - **Automation:** `.github/workflows/release.yml` (manual dispatch, dry-run by
   default; the publish job needs the `npm-publish` environment) and
   `tools/release/bump-version.ts` (linked bump).
-- **Mirrors:** `tools/release/mirror-satellites.sh` (git subtree split → push;
-  not executed — repos do not exist yet).
+- **Mirrors:** none. The former mirror script, which split `packages/contracts`,
+  `packages/ui`, `packages/auth-web` and `distribution/templates/starter` and
+  pushed them to `libre-ai/{sdk-ts,ui,auth,starter}`, was never executed and was
+  removed on 2026-10-09 (owner decision Y24): its four target repositories were
+  retired by the 2026-10-07 consolidation (ADR-0041), and none of its source
+  directories exists in this repository.
 
 ## Owner steps (next week, in order)
 
@@ -67,11 +71,10 @@ was reserved by the owner on 2026-07-22.
    to extract the starter template out of the workspace and install it from the npm
    registry; on success, a dated evidence JSON is written to `distribution/evidence/`.
    Commit the produced evidence.
-6. **Mirror repositories** — create `libre-ai/sdk-ts`, `libre-ai/ui`,
-   `libre-ai/auth`, `libre-ai/starter` (public, empty, no README); disable issues/PRs;
-   then run `tools/release/mirror-satellites.sh`; protect `main` on each mirror.
-   Decide whether `web-platform` gets a reserved mirror name (npm-only until
-   then).
+6. **Mirror repositories** — withdrawn on 2026-10-09 (owner decision Y24). There
+   are no mirror repositories to create and no mirror script to run: the four
+   mirror names were retired by the 2026-10-07 consolidation (ADR-0041), and the
+   script was removed.
 7. **Inventory + evidence** — update `ecosystem/repositories.v1.yaml`
    (satellites → published state), append the publication entry to
    `distribution/evidence/gate-acceptance-log.md`, regenerate a coverage
