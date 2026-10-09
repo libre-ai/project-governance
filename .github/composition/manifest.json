@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "fdbf43dcdbf2a74a35c497090cec5a7e402144d2",
+      "ref": "c5423307b23488a7fd37127a6e4053cbb8ce98bc",
       "dependencies": [],
       "check": [["bun", "run", "check"]]
     },
@@ -15,7 +15,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "775f04bba84b8d544e3b47bf3eb43d05861e573b",
+      "ref": "a15568d66c285501229710bb18b8c5aa24700dfb",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -27,7 +27,7 @@
     },
     "application-development-toolkit": {
       "repository": "libre-ai/application-development-toolkit",
-      "ref": "5ec3630ece2a768872dfb67171c9b7fbf21a1aa9",
+      "ref": "9e817e7394bfc1b747b06c5000a11dec9d314614",
       "dependencies": ["project-governance", "schemas-and-contracts", "ai-work-supervision"],
       "check": [["bun", "run", "check"]]
     },
