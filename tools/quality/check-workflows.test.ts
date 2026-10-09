@@ -188,7 +188,11 @@ describe("validate-composition keeps the evidence of a red browser suite", () =>
 
   test("the upload is bounded, unique per target and attempt, and excludes installed packages", () => {
     const options = steps[upload]?.with ?? {};
-    expect(options.name).toBe("e2e-${{ inputs.target }}-${{ github.run_attempt }}");
+    // GitHub expressions, assembled so the literal is not mistaken for a
+    // JavaScript template that lost its backticks.
+    const expression = (body: string): string => ["$", "{{ ", body, " }}"].join("");
+    const target = expression("inputs.target");
+    expect(options.name).toBe(`e2e-${target}-${expression("github.run_attempt")}`);
     expect(options["if-no-files-found"]).toBe("ignore");
     expect(Number(options["retention-days"])).toBe(7);
     // Hidden files stay excluded by the action's default; opting in would ship
@@ -197,9 +201,9 @@ describe("validate-composition keeps the evidence of a red browser suite", () =>
     const paths = String(options.path).trim().split("\n");
     expect(paths).toEqual([
       "e2e-evidence-summary.json",
-      "composition/${{ inputs.target }}/**/test-results/**",
-      "composition/${{ inputs.target }}/**/playwright-report/**",
-      "!composition/${{ inputs.target }}/**/node_modules/**",
+      `composition/${target}/**/test-results/**`,
+      `composition/${target}/**/playwright-report/**`,
+      `!composition/${target}/**/node_modules/**`,
     ]);
   });
 });
