@@ -6,7 +6,7 @@ name: Adoption proof
 # friction log — the objective readability backlog) is published as a run
 # artifact and in the job summary.
 #
-# The loop reproduces libre-ai/governance itself (verification/adoption/
+# The loop reproduces libre-ai/project-governance itself (verification/adoption/
 # reproduce.ts carries the reasoning and the migration citations for why —
 # it cloned the now-frozen libre-ai/libre-ai hub until 2026-08-19, which is
 # why the previous three scheduled runs failed with "Module not found").

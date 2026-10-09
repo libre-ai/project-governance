@@ -26,7 +26,7 @@
   "scripts": {
     "check:bun": "bun ../../tools/quality/check-bun-minimum.ts",
     "precheck": "bun run check:bun",
-    "check": "bun test src",
+    "check": "bun run test",
     "pretest": "bun run check:bun",
     "test": "bun test src"
   }

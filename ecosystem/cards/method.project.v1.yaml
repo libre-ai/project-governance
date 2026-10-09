@@ -51,12 +51,12 @@ non_goals:
   - "Shipping any couche-1 product: products are governed by, not part of, product zero."
   - "Human-process ceremony: no criterion may rest on human bandwidth (I-13, no-human-limitation)."
 dependencies:
-  - on: libre-ai/governance
+  - on: libre-ai/project-governance
     why: "hosts the doctrine, the gates and this card"
-  - on: libre-ai/orchestrator
+  - on: libre-ai/execution-continuity-evaluator
     why: "decision core and review fan-out of the method's agent loops"
     pinned: "consumed by SHA where used"
-  - on: libre-ai/harness
+  - on: libre-ai/execution-sandbox
     why: "capability boundary of the method's future runtime"
 maturity: usable
 confidence: medium

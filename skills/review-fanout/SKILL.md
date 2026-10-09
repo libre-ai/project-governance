@@ -19,8 +19,8 @@ Ce skill est un pointeur. Il ne reformule jamais `docs/reviews/AGENT-REVIEW-PROT
 
 ## Ce que fait l'outil
 
-- Orchestrateur : `tools/review/fanout.ts`, dans le dépôt `libre-ai/orchestrator` — pas dans `governance`, où vit ce skill. `tools/review/fanout.ts` n'existe pas ici ; la commande ci-dessous échoue sur fichier introuvable si elle est lancée depuis `governance`.
-- Depuis un clone de `libre-ai/orchestrator`, à sa racine : `bun tools/review/fanout.ts <plan.json> [--dry-run] [--force]`.
+- Orchestrateur : `tools/review/fanout.ts`, dans le dépôt `libre-ai/execution-continuity-evaluator` — pas dans `governance`, où vit ce skill. `tools/review/fanout.ts` n'existe pas ici ; la commande ci-dessous échoue sur fichier introuvable si elle est lancée depuis `governance`.
+- Depuis un clone de `libre-ai/execution-continuity-evaluator`, à sa racine : `bun tools/review/fanout.ts <plan.json> [--dry-run] [--force]`.
 - Concurrence par défaut : 5 passes en parallèle, jamais séquentiel par habitude.
 - Chaque passe vise un commit immuable et un rôle, dans un worktree détaché ; une passe s'invalide elle-même si le worktree ressort sale.
 - Verdict machine-lisible : une enveloppe JSON par passe, forme `review-verdict.v0.1` (validation dans `tools/review/fanout-core.ts`), exactement un verdict parmi `approve`, `approve-with-minor-reservations`, `reject`.
