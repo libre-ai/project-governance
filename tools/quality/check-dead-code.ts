@@ -358,10 +358,13 @@ for (const manifestPath of manifests) {
       if (dependency === "typescript") continue;
       const escaped = dependency.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       // A dependency is used when it is imported by specifier OR read at its
-      // installed path. The vendored-authority gates consume contract pins the
-      // second way — `"node_modules/@libre-ai/contracts-authority/contracts/
-      // authz"` — and a specifier-only regex called that dead while the gate
-      // it feeds was running. Reading a package's files is using it.
+      // installed path. The vendored-authority gate once consumed its contract
+      // pin the second way — `"node_modules/@libre-ai/contracts-authority/
+      // contracts/authz"` — and a specifier-only regex called that dead while
+      // the gate it fed was running. Reading a package's files is using it.
+      // (That pin left the manifest on 2026-10-09 for a hash-verified archive
+      // under `.tools/`, crates/ecosystem-engine/contracts-authority.pin.json;
+      // the rule stays for any manifest that reads a package by path.)
       const imported = new RegExp(`["'](?:node_modules/)?${escaped}(/[^"']*)?["']`).test(corpus);
       const inScripts = new RegExp(`\\b${escaped.split("/").pop()}\\b`).test(scripts);
       if (!imported && !inScripts) unusedDependencies.push(`${manifestPath}: ${dependency}`);

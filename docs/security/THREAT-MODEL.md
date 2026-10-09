@@ -87,53 +87,61 @@ Six surfaces span the constellation, each with distinct threat models.
 
 ## STRIDE + LINDDUN per surface
 
+The "Invariant" column cites entries of the invariants register
+([`INVARIANTS.md`](../decisions/INVARIANTS.md)) that carry the threat. Where no
+register entry carries it, the cell says so ("no register invariant") and names
+the document that covers it, or "not covered": a gap stays visible rather than
+being filled by an unrelated citation. `tools/quality/check-threat-model-citations.ts`
+fails on any cited `I-xx` absent from the register; whether a cited entry is the
+right one remains a review matter (realigned 2026-10-09).
+
 ### Local-only apps
 
 | Threat                                           | STRIDE/Privacy          | Control                                                   | Residual Risk                                       | Invariant |
 | ------------------------------------------------ | ----------------------- | --------------------------------------------------------- | --------------------------------------------------- | --------- |
-| Injected script modifies Boussole state          | Tampering               | local CSP, service-worker, IndexedDB integrity check      | timing attack on local sync                         | I-04      |
-| Export JSON modified after generation            | Tampering               | K3 envelope (HMAC over snapshot)                          | user can trivially forge; mitigation is UX friction | I-03      |
-| Notebook blocks synced to remote without consent | Detectability (privacy) | feature flag (export-to-session); no automatic cloud sync | user must explicitly export                         | I-14      |
+| Injected script modifies Boussole state          | Tampering               | local CSP, service-worker, IndexedDB integrity check      | timing attack on local sync                         | no register invariant — not covered |
+| Export JSON modified after generation            | Tampering               | K3 envelope (HMAC over snapshot)                          | user can trivially forge; mitigation is UX friction | no register invariant — not covered (K3 binds recalled payloads, not exports) |
+| Notebook blocks synced to remote without consent | Detectability (privacy) | feature flag (export-to-session); no automatic cloud sync | user must explicitly export                         | I-21      |
 
 ### Server + RLS apps
 
 | Threat                                           | STRIDE/Privacy  | Control                                                                                 | Residual Risk                                                | Invariant |
 | ------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| Browser session cookie stolen / fixed            | Spoofing        | session rotation on auth, SameSite=Strict, HttpOnly; revocation invalidates immediately | compromise of device memory (XSS still live)                 | I-02      |
-| SQL injection via mission command                | Tampering       | parameterized queries, RLS row filter (tenant check at DB level)                        | compromise of application process (still live after fixes)   | I-02      |
-| Cross-tenant membership leak (e.g., invite list) | Info disclosure | RLS policy `current_tenant() = tenant_id`; RBAC checks before query                     | misconfigured RLS rule or policy bypass                      | I-01      |
-| LLM provider adapter receives full mission state | Info disclosure | K1 Biscuit attenuated to session + mission_id + `draft`; operation limit                | adapter vendor misuse (separate contractual gate)            | I-06      |
-| Revocation bypass (cached Biscuit)               | Elevation       | revocation check before policy eval; max 30s cache; unavailable → deny                  | cache poisoning or async lag (application-level mitigations) | I-08      |
+| Browser session cookie stolen / fixed            | Spoofing        | session rotation on auth, SameSite=Strict, HttpOnly; revocation invalidates immediately | compromise of device memory (XSS still live)                 | I-09      |
+| SQL injection via mission command                | Tampering       | parameterized queries, RLS row filter (tenant check at DB level)                        | compromise of application process (still live after fixes)   | I-09 (RLS containment only; query parameterization carries no register invariant) |
+| Cross-tenant membership leak (e.g., invite list) | Info disclosure | RLS policy `current_tenant() = tenant_id`; RBAC checks before query                     | misconfigured RLS rule or policy bypass                      | I-09      |
+| LLM provider adapter receives full mission state | Info disclosure | K1 Biscuit attenuated to session + mission_id + `draft`; operation limit                | adapter vendor misuse (separate contractual gate)            | I-09      |
+| Revocation bypass (cached Biscuit)               | Elevation       | revocation check before policy eval; max 30s cache; unavailable → deny                  | cache poisoning or async lag (application-level mitigations) | I-09      |
 
 ### Agent fleet
 
 | Threat                                                    | STRIDE/Privacy              | Control                                                                                                  | Residual Risk                                                                       | Invariant |
 | --------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------- |
-| Agent token reused across missions                        | Elevation                   | K1 Biscuit includes mission_id; authorizer check; per-mission issuance                                   | token leaked to lateral mission (physical compromise or accessor bug)               | I-09      |
-| Malicious tool output (e.g. fabricated source code)       | Tampering + Info disclosure | K2 classify as `operational` (not authority); K3 envelope all recall; decision-log requires human review | agent or human approves fabricated result (distinct gate: human-touch surface I-17) | I-07      |
-| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-10      |
+| Agent token reused across missions                        | Elevation                   | K1 Biscuit includes mission_id; authorizer check; per-mission issuance                                   | token leaked to lateral mission (physical compromise or accessor bug)               | I-18      |
+| Malicious tool output (e.g. fabricated source code)       | Tampering + Info disclosure | K2 classify as `operational` (not authority); K3 envelope all recall; decision-log requires human review | agent or human approves fabricated result (distinct gate: human-touch surface I-17) | I-18      |
+| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-18, I-17 |
 
 ### Collab relay
 
 | Threat                                                             | STRIDE/Privacy  | Control                                                                                     | Residual Risk                                                | Invariant |
 | ------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | I-11      |
-| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge  | I-12      |
-| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro)                  | relay owns transport; client must authenticate sender        | I-13      |
+| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
+| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge  | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
+| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro)                  | relay owns transport; client must authenticate sender        | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
 
 ### Published npm bricks
 
 | Threat                                                     | STRIDE/Privacy | Control                                                                      | Residual Risk                                          | Invariant |
 | ---------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------ | --------- |
-| `@libre-ai/envelope` HMAC downgrade (old version consumed) | Spoofing       | contract version pinned; breaking change → new contract + dual-verify window | consumer forgets to pin (package.json lock discipline) | I-15      |
-| Transitive dep (`jose`, `biscuit-auth`, `openssl`) has CVE | Tampering      | bun.lock lock, `bun audit`, per-release SBOM                                 | zero-day (operational, not architectural)              | I-19      |
+| `@libre-ai/envelope` HMAC downgrade (old version consumed) | Spoofing       | contract version pinned; breaking change → new contract + dual-verify window | consumer forgets to pin (package.json lock discipline) | no register invariant — `envelope.v1` contract lock (`LOOP-SECURITY-KERNEL.md`, K3) |
+| Transitive dep (`jose`, `biscuit-auth`, `openssl`) has CVE | Tampering      | bun.lock lock, `bun audit`, per-release SBOM                                 | zero-day (operational, not architectural)              | I-26      |
 
 ### Review orchestrator
 
 | Threat                                                              | STRIDE/Privacy        | Control                                                                                     | Residual Risk                                           | Invariant |
 | ------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------- |
 | LLM prompt-injection via evidence text (see §2.1)                   | Tampering + Elevation | K3 structural defense + deny-by-default                                                     | well-known risk; depends on planner/refusal design      | I-18      |
-| Proof references a revoked authority (K2 deriving from operational) | Elevation             | K2 `requireAuthorityFor()` fails closed unless sealed authority; classification locked gate | reviewer approves mixed-reliability outcome (I-17 gate) | I-16      |
+| Proof references a revoked authority (K2 deriving from operational) | Elevation             | K2 `requireAuthorityFor()` fails closed unless sealed authority; classification locked gate | reviewer approves mixed-reliability outcome (I-17 gate) | I-18      |
 
 ---
 
@@ -195,9 +203,9 @@ Six surfaces span the constellation, each with distinct threat models.
 
 2. **Delay between detection and revocation** (max 1h until Biscuit expires): can be reduced by orchestrator triggering immediate Biscuit refresh + revocation check, not yet specified.
 
-3. **Quorum bypass** (two-agent colluding): separate open question; I-09 assumes single-agent compromise. Two-agent quorum is not currently enforced.
+3. **Quorum bypass** (two-agent colluding): separate open question; the agent-identity controls of I-18 assume single-agent compromise. Two-agent quorum is not currently enforced, and no register invariant covers it.
 
-**Invariant:** I-09 (per-agent revocation + capability_scope are the sole defenses; depend on timely revocation and tight capability spec).
+**Invariant:** I-18 (agent identity — fleet, mission, capabilities — and per-agent revocation are the sole defenses; they depend on timely revocation and tight capability spec).
 
 ---
 
@@ -233,7 +241,7 @@ Six surfaces span the constellation, each with distinct threat models.
 
 3. **GitHub Actions compromise** (CI/CD): if actions runner is compromised, bun.lock + source can be altered. Mitigation: signed commits (DCO), branch protection, limited action permissions (pending E10/E11 improvements).
 
-**Invariant:** I-19 (supply-chain risk is managed operationally; no zero-trust guarantee).
+**Invariant:** I-26 (dependency advisories: periodic fleet control plus differential per-PR gate) covers the known-advisory half only. No register invariant covers zero-day, typosquatting or CI compromise: supply-chain risk is managed operationally; no zero-trust guarantee.
 
 ---
 
@@ -241,14 +249,14 @@ Six surfaces span the constellation, each with distinct threat models.
 
 | ID  | Risk                                             | Probability | Impact   | Mitigation                                         | Owner              | Invariant  |
 | --- | ------------------------------------------------ | ----------- | -------- | -------------------------------------------------- | ------------------ | ---------- |
-| R1  | Compromise of Biscuit signing key                | low         | critical | key rotation 90d, emergency revoke, two-key window | G4 (control-plane) | I-08       |
-| R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-01       |
-| R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-08, I-09 |
+| R1  | Compromise of Biscuit signing key                | low         | critical | key rotation 90d, emergency revoke, two-key window | G4 (control-plane) | I-09       |
+| R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-09       |
+| R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-09, I-18 |
 | R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate)   | design review      | I-18       |
-| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | I-11       |
-| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | I-12       |
-| R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | I-09       |
-| R8  | Zero-day in biscuit-auth or OpenMLS              | very low    | critical | vendor security monitoring, timely patch SLA       | dependency manager | I-19       |
+| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
+| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
+| R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | no register invariant — not covered |
+| R8  | Zero-day in biscuit-auth or OpenMLS              | very low    | critical | vendor security monitoring, timely patch SLA       | dependency manager | I-26 (advisory half only; zero-day not covered) |
 
 ---
 
