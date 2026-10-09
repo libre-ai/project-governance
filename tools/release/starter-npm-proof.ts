@@ -90,6 +90,27 @@ export function rewriteManifestForRegistry(
 }
 
 /**
+ * The version every `workspace:*` ref is rewritten to, or a refusal.
+ *
+ * `Manifest` declares no `version`, so it resolves through the index signature
+ * as `unknown`, and `contractsManifest.version as string` made an absent field
+ * pass as a version: `rewriteManifestForRegistry` then wrote `^undefined` into
+ * every `@libre-ai/*` dependency of the starter. The install that follows
+ * fails with a 404 naming `@libre-ai`, which is exactly the shape
+ * `isPrePublicationFailure` reads as "not published yet" — so a malformed
+ * manifest would have been reported as the expected pre-publication state.
+ * The function already fails closed on an unresolvable catalog ref; this is
+ * the same refusal for the ref it had no way to refuse.
+ */
+export function linkedVersionOf(manifest: Manifest, path: string): string {
+  const version = manifest.version;
+  if (typeof version !== "string" || version === "") {
+    throw new Error(`${path} carries no string \`version\`: nothing to rewrite workspace refs to`);
+  }
+  return version;
+}
+
+/**
  * A `bun install` failure is the *expected* pre-publication state only when the
  * registry returns 404/E404 for an `@libre-ai` package (they are not published
  * yet). Requiring BOTH the not-found code AND the scope avoids misreading a real
@@ -147,10 +168,9 @@ if (import.meta.main) {
     const testingCatalog = workspaces?.catalogs?.testing || {};
 
     // Get linked version from packages/contracts.
-    const contractsManifest = await readManifest(
-      resolve(repositoryRoot, "packages/contracts/package.json"),
-    );
-    const linkedVersion = contractsManifest.version as string;
+    const contractsManifestPath = "packages/contracts/package.json";
+    const contractsManifest = await readManifest(resolve(repositoryRoot, contractsManifestPath));
+    const linkedVersion = linkedVersionOf(contractsManifest, contractsManifestPath);
 
     // 2. Copy starter template to temp directory.
     const tempDir = await mkdtemp(join(tmpdir(), "starter-npm-proof-"));

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { isPrePublicationFailure, rewriteManifestForRegistry } from "./starter-npm-proof";
+import {
+  isPrePublicationFailure,
+  linkedVersionOf,
+  rewriteManifestForRegistry,
+} from "./starter-npm-proof";
 
 // Rewrite the starter template manifest for registry consumption: replace
 // workspace:* refs with the linked version, and catalog:/catalog:testing refs
@@ -120,5 +124,42 @@ describe("isPrePublicationFailure", () => {
 
   test("false for a 404 unrelated to the @libre-ai scope", () => {
     expect(isPrePublicationFailure("GET https://registry.npmjs.org/left-pad - 404")).toBe(false);
+  });
+});
+
+// `Manifest` declares no `version`, so it arrives as `unknown` and the cast
+// that stood here let an absent field through as a version: every
+// `workspace:*` ref was rewritten to `^undefined`, and the install that
+// follows fails with a 404 naming `@libre-ai` — the shape
+// `isPrePublicationFailure` reads as "not published yet". A malformed manifest
+// would have been reported as the expected pre-publication state.
+describe("linkedVersionOf", () => {
+  test("returns the version when the manifest declares one", () => {
+    expect(linkedVersionOf({ name: "@libre-ai/contracts", version: "0.4.1" }, "p.json")).toBe(
+      "0.4.1",
+    );
+  });
+
+  test("refuses a manifest with no version instead of yielding undefined", () => {
+    expect(() => linkedVersionOf({ name: "@libre-ai/contracts" }, "p.json")).toThrow(
+      "p.json carries no string `version`",
+    );
+  });
+
+  test("refuses a non-string version", () => {
+    expect(() => linkedVersionOf({ version: 1 }, "p.json")).toThrow("no string `version`");
+    expect(() => linkedVersionOf({ version: "" }, "p.json")).toThrow("no string `version`");
+  });
+
+  test("the refusal is what keeps ^undefined out of the rewritten manifest", () => {
+    // Discriminating in the other direction: the rewrite itself cannot refuse,
+    // because by its own signature the version is already a string.
+    const rewritten = rewriteManifestForRegistry(
+      { dependencies: { "@libre-ai/contracts": "workspace:*" } },
+      { linkedVersion: String(undefined), catalog: {}, testingCatalog: {} },
+    );
+    expect((rewritten.dependencies as Record<string, unknown>)["@libre-ai/contracts"]).toBe(
+      "^undefined",
+    );
   });
 });
