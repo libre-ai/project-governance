@@ -144,3 +144,16 @@ generations:
       authority no longer serves. libre-ai/project-website is the consumer that
       must carry it: its served branch fails `portfolio.scope_invalid` against
       the served portfolio, and it moves its pins together with its parser.
+  - sha: 7c2238d6185e59d446586688ca7db32e6a17d3e0
+    added_on: 2026-10-09
+    note: >-
+      the composition manifest composes project-governance at fdbf43dc (#35),
+      whose portfolio, brand family and composition tooling name
+      libre-ai/personal-knowledge-workspace (LEXICON §14, renamed by the owner
+      on 2026-10-09); under d083dd33 the composition still checks that
+      repository out under its former name, which resolves only through
+      GitHub's rename redirect. libre-ai/personal-knowledge-workspace moves its
+      pins together with its composition target, and libre-ai/project-website
+      together with its parser. No further generation is declared before the
+      13 forge repositories still on 2024a488 move here: one more would put
+      them beyond the two-generation grace window.
