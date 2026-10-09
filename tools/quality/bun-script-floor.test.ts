@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { enforcesFloorFirst, findFloorBypasses, floorBypassNote } from "./bun-script-floor";
+import {
+  enforcesFloorFirst,
+  FLOOR_HOOK,
+  findFloorBypasses,
+  findNestedHookViolations,
+  findRootFloorViolations,
+  floorBypassNote,
+} from "./bun-script-floor";
 
 const ROOT = "check:bun:runtime";
 const NESTED = "check:bun";
@@ -209,4 +216,125 @@ test("the note says which hook does not fire and both ways to fix it", () => {
   expect(note).toContain("bun run test");
   expect(note).toContain("bun run check:bun:runtime");
   expect(note).toContain("&&");
+});
+
+// Adversarial review of PR #55 (2026-10-09): each of these ran the suite
+// after a failed floor while the gate passed. Quotes and backslashes are
+// normalised away and options before `test` tolerated before detection.
+describe("bun test however it is spelled", () => {
+  const spellings: Readonly<Record<string, string>> = {
+    quoted: 'bun "test" src',
+    single: "bun 'test'",
+    "split-test": "bun t''est",
+    "split-bun": "b''un test",
+    backslash: "bun te\\st",
+    smol: "bun --smol test",
+    "bun-bun": "bun --bun test",
+    "several-options": "bun --smol --bun -c=x test",
+  };
+
+  test("every spelling is detected as bun test", () => {
+    expect(findFloorBypasses(spellings, NESTED)).toEqual(Object.keys(spellings).sort());
+  });
+
+  test("still not bun test: bun run test, bunx, a longer word, an option value apart", () => {
+    expect(
+      findFloorBypasses(
+        { a: "bun run test", b: "bunx test", c: "bun testify", d: 'bun "run" test' },
+        NESTED,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a carriage return is a line break, so it breaks the && chain", () => {
+    expect(enforcesFloorFirst("bun run check:bun:runtime && true\rbun test", ROOT)).toBe(false);
+  });
+});
+
+describe("findRootFloorViolations", () => {
+  const names = (scripts: Record<string, string>) =>
+    findRootFloorViolations(scripts).map((violation) => violation.script);
+
+  test("c00-c05: a suite behind || after the floor is refused however spelled", () => {
+    const attacks = {
+      c00: "bun run check:bun:runtime && false || bun test",
+      c01: 'bun run check:bun:runtime && false || bun "test"',
+      c02: "bun run check:bun:runtime && false || bun --smol test",
+      c03: "bun run check:bun:runtime && false || bun t''est",
+      c04: "bun run check:bun:runtime && false || b''un test",
+      c05: "bun run check:bun:runtime && false || $(echo bun) test",
+    };
+    expect(names(attacks)).toEqual(Object.keys(attacks));
+  });
+
+  test("the floor first, chained by &&, is accepted", () => {
+    expect(names({ "check:unit": "bun run check:bun:runtime && bun test src" })).toEqual([]);
+  });
+
+  test("presuite with nothing declared as suite is an ordinary script", () => {
+    expect(names({ presuite: "bun --smol test probe" })).toEqual(["presuite"]);
+    expect(names({ presuite: "bun run check:bun:runtime && bun test probe" })).toEqual([]);
+  });
+
+  test("the hook of a declared script is exempt only at its exact value", () => {
+    const lint = "bun run check:bun:runtime && biome ci .";
+    expect(names({ lint, prelint: FLOOR_HOOK })).toEqual([]);
+    expect(names({ lint, prelint: "bun test probe" })).toEqual(["prelint"]);
+    expect(names({ lint, prelint: `${FLOOR_HOOK} && bun test probe` })).toEqual(["prelint"]);
+    expect(names({ test: "bun test", pretest: FLOOR_HOOK })).toEqual([]);
+  });
+
+  test("a hook on the floor scripts themselves is refused: it would recurse", () => {
+    expect(
+      names({
+        "check:bun:runtime": "bun tools/quality/check-bun-minimum.ts",
+        "precheck:bun:runtime": FLOOR_HOOK,
+        "check:bun": "bun run check:bun:runtime && bun tools/quality/check-bun-manifests.ts",
+        "precheck:bun": FLOOR_HOOK,
+      }),
+    ).toEqual(["precheck:bun", "precheck:bun:runtime"]);
+  });
+
+  test("check, build and check:toolchain chain only by && after check:bun", () => {
+    expect(
+      names({
+        check: "bun run check:bun && bun run lint",
+        build: "bun run check:bun && false || bun run x",
+        "check:toolchain": "bun run check:bun:runtime && bun x.ts",
+      }),
+    ).toEqual(["build", "check:toolchain"]);
+  });
+
+  test("the floor scripts and test are bound elsewhere, by exact value", () => {
+    expect(
+      names({ "check:bun:runtime": "anything", "check:bun": "anything", test: "anything" }),
+    ).toEqual([]);
+  });
+});
+
+describe("findNestedHookViolations", () => {
+  const names = (scripts: Record<string, string>) =>
+    findNestedHookViolations(scripts).map((violation) => violation.script);
+
+  test("every script needs its hook", () => {
+    expect(names({ "check:bun": "bun x.ts", test: "bun test", check: "bun run test" })).toEqual([
+      "precheck",
+      "pretest",
+    ]);
+  });
+
+  test("presuite with nothing declared as suite needs a hook of its own", () => {
+    expect(names({ "check:bun": "bun x.ts", presuite: "bun test" })).toEqual(["prepresuite"]);
+  });
+
+  test("a declared hook is exactly the floor, reported once", () => {
+    expect(names({ test: "bun test", pretest: "bun test probe" })).toEqual(["pretest"]);
+    expect(names({ test: "bun test", pretest: FLOOR_HOOK })).toEqual([]);
+  });
+
+  test("a hook on check:bun is refused: it would recurse", () => {
+    expect(names({ "check:bun": "bun x.ts", "precheck:bun": FLOOR_HOOK })).toEqual([
+      "precheck:bun",
+    ]);
+  });
 });
