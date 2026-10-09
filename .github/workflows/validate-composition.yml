@@ -75,6 +75,19 @@ jobs:
             --target "$INPUT_TARGET" --revision "$INPUT_TARGET_REF" \
             --root "$GITHUB_WORKSPACE/composition" --phase prepare
 
+      # SCRATCH PROOF ONLY (branch artifacts-proof, never merged): plant
+      # evidence, a node_modules decoy and a hidden file, then fail.
+      - name: Scratch proof - plant evidence and fail
+        shell: bash
+        run: |
+          base="$GITHUB_WORKSPACE/composition/$INPUT_TARGET"
+          mkdir -p "$base/proof-a/test-results/case-firefox" "$base/proof-b/playwright-report" "$base/node_modules/decoy/test-results"
+          printf 'trace' > "$base/proof-a/test-results/case-firefox/trace.zip"
+          printf '{}' > "$base/proof-a/test-results/.last-run.json"
+          printf '<html></html>' > "$base/proof-b/playwright-report/index.html"
+          printf 'decoy' > "$base/node_modules/decoy/test-results/trace.zip"
+          exit 1
+
       - name: Install verified Bun and Node toolchains
         shell: bash
         run: |
