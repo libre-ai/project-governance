@@ -20,9 +20,13 @@
  *     made every module its own consumer by way of its own test: a tree
  *     reachable only from its tests was declared reached. Tests are still not
  *     reported as dead — the runner discovers them — but they no longer keep
- *     their subject alive. Measured on 2026-10-08: `tools/convergence/` (4
- *     files, 579 lines, imported by nothing but its own two test files) was
- *     green under the old rule.
+ *     their subject alive. Measured on 2026-10-08: one tree of 4 files and 579
+ *     lines, imported by nothing but its own two test files, was green under
+ *     the old rule and is named by the first entry of the forgetting register
+ *     dated 2026-10-09. Its path is deliberately NOT written here — naming an
+ *     evicted path in living code is what `check-forgotten.ts` refuses, and a
+ *     gate whose own documentation resurrects content by reference would need
+ *     an allowance shaped like itself.
  *   - A SELF-MENTION IS NOT AN INVOCATION. Both string-path sweeps below read
  *     every tracked file, the scanned file included, so a usage block in a
  *     script's own header (`bun tools/x/y.ts --flag`) named it as its own

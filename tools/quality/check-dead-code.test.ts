@@ -21,9 +21,12 @@ import { join } from "node:path";
  *   - a self-mention is not an invocation: a file naming its own command line
  *     is named, while a module that DECLARES itself a command is not.
  *
- * Before the correction both cases passed green: `tools/convergence/` (4 files,
- * 579 lines, importers = its own two test files) was reported reachable, and the
- * usage block in a gate's header kept that gate alive by itself.
+ * Before the correction both cases passed green: a tree of 4 files and 579
+ * lines whose only importers were its own two test files was reported
+ * reachable, and the usage block in a gate's header kept that gate alive by
+ * itself. That tree is the first entry of the forgetting register dated
+ * 2026-10-09; its path is not written here, because naming an evicted path in
+ * living code is what `check-forgotten.ts` refuses.
  */
 describe("check-dead-code gate", () => {
   const SCRIPT = join(import.meta.dir, "check-dead-code.ts");
