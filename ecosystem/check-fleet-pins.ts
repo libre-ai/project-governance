@@ -36,6 +36,18 @@
  * Reading one occurrence of one of them (the previous implementation matched a
  * single `uses:` in `ci.yml`) let one correct pin answer for a whole
  * repository: an unpinned `@main` beside it was invisible.
+ *
+ * A fifth surface is not a governance pin and is judged on its own terms: a
+ * `git = "https://github.com/libre-ai/<r>", rev = <sha>` source in the root
+ * Cargo.toml. The composition compiles the sibling checkout in its place
+ * (cargo source replacement, .github/composition/run-composition.py), and
+ * that replacement only applies when the rev is exactly the ref the
+ * repository's governance generation composes for `<r>`. A rev that drifts
+ * from it is therefore either a red composition or, worse, a silent network
+ * fetch of another tree; this gate names it before either happens, and holds
+ * the card's `pinned: github:libre-ai/<r>#` to the same rev. Only the root
+ * manifest is read: a workspace member declaring its own libre-ai source is
+ * outside this gate by construction.
  */
 
 import {
@@ -53,6 +65,8 @@ export interface RepositorySources {
   readonly manifest: string | null;
   /** The repository's project card text (its `card:` path), or null when unreadable/absent. */
   readonly projectCard: string | null;
+  /** Root Cargo.toml text, or null when the repository has none. */
+  readonly cargo: string | null;
 }
 
 export interface PinSighting {
@@ -221,6 +235,194 @@ export function auditRepository(
   return failures;
 }
 
+/**
+ * The single governance generation a repository consumes, or null when it
+ * carries none, several, or an undeclared one (those cases already fail in
+ * `auditRepository`). The authority itself consumes no generation: its own
+ * served head is the composition its Cargo sources must agree with.
+ */
+export function consumedGeneration(
+  repository: string,
+  sources: RepositorySources,
+  generations: readonly string[],
+): string | null {
+  const refs = new Set(collectSightings(sources).map((sighting) => sighting.ref));
+  if (refs.size === 0 && repository === `libre-ai/${CURRENT_AUTHORITY}`) return "HEAD";
+  if (refs.size !== 1) return null;
+  const ref = [...refs][0] as string;
+  return COMMIT_SHA.test(ref) && generations.includes(ref) ? ref : null;
+}
+
+export interface CargoSourcePin {
+  /** Dependency table the source is declared in, e.g. "dependencies" or "patch.crates-io". */
+  readonly table: string;
+  readonly name: string;
+  /** Repository name inside the organization, e.g. "schemas-and-contracts". */
+  readonly repository: string;
+  readonly rev: string;
+}
+
+export interface CargoSourceScan {
+  readonly pins: readonly CargoSourcePin[];
+  readonly failures: readonly string[];
+  /** The manifest could not be parsed: nothing was measured, which is never zero pins. */
+  readonly unparseable: boolean;
+}
+
+const LIBRE_AI_GIT_URL = /^https:\/\/github\.com\/libre-ai\/([A-Za-z0-9._-]+?)(?:\.git)?$/;
+// The independent count: every `git = "...libre-ai/..."` written outside a
+// full-line comment. A declaration form the walk below does not visit would
+// otherwise read as "no pin here".
+const RAW_LIBRE_AI_GIT = /\bgit\s*=\s*["'][^"'\n]*libre-ai\//gi;
+const DEPENDENCY_TABLES = ["dependencies", "dev-dependencies", "build-dependencies"] as const;
+
+function tableOf(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function dependencyTables(manifest: Record<string, unknown>): [string, Record<string, unknown>][] {
+  const tables: [string, Record<string, unknown>][] = [];
+  for (const key of DEPENDENCY_TABLES) tables.push([key, tableOf(manifest[key])]);
+  for (const [cfg, value] of Object.entries(tableOf(manifest.target))) {
+    for (const key of DEPENDENCY_TABLES)
+      tables.push([`target.${cfg}.${key}`, tableOf(tableOf(value)[key])]);
+  }
+  tables.push(["workspace.dependencies", tableOf(tableOf(manifest.workspace).dependencies)]);
+  for (const [registry, value] of Object.entries(tableOf(manifest.patch))) {
+    tables.push([`patch.${registry}`, tableOf(value)]);
+  }
+  return tables;
+}
+
+export function collectCargoSourcePins(repository: string, text: string): CargoSourceScan {
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = tableOf(Bun.TOML.parse(text));
+  } catch (error) {
+    return {
+      pins: [],
+      failures: [`${repository}: cannot parse Cargo.toml — ${(error as Error).message}`],
+      unparseable: true,
+    };
+  }
+  const pins: CargoSourcePin[] = [];
+  const failures: string[] = [];
+  let parsed = 0;
+  for (const [table, entries] of dependencyTables(manifest)) {
+    for (const [name, value] of Object.entries(entries)) {
+      const declaration = tableOf(value);
+      const git = declaration.git;
+      if (typeof git !== "string" || !git.toLowerCase().includes("libre-ai/")) continue;
+      parsed += 1;
+      const where = `${repository}: Cargo.toml ${table}.${name}`;
+      const url = LIBRE_AI_GIT_URL.exec(git);
+      if (url === null) {
+        failures.push(
+          `${where} — ${git} is not an https://github.com/libre-ai/<repository> source`,
+        );
+        continue;
+      }
+      if ("branch" in declaration || "tag" in declaration) {
+        failures.push(`${where} — a branch or tag is a moving ref, pin a 40-character rev`);
+        continue;
+      }
+      const rev = declaration.rev;
+      if (typeof rev !== "string" || !COMMIT_SHA.test(rev)) {
+        failures.push(`${where} — rev ${String(rev)} is not a 40-character commit sha`);
+        continue;
+      }
+      pins.push({ table, name, repository: url[1] as string, rev });
+    }
+  }
+  const raw = text
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .reduce((count, line) => count + (line.match(RAW_LIBRE_AI_GIT)?.length ?? 0), 0);
+  if (raw !== parsed) {
+    failures.push(
+      `${repository}: Cargo.toml writes ${raw} libre-ai git source(s) but ${parsed} were read from its dependency tables — a declaration form this gate does not walk`,
+    );
+  }
+  return { pins, failures, unparseable: false };
+}
+
+export interface CargoSourceAudit {
+  readonly drift: readonly string[];
+  readonly unverifiable: readonly string[];
+  /** Pins compared to a composed ref read at the consumed generation. */
+  readonly checked: number;
+}
+
+/**
+ * `generation` is the sha (or "HEAD" for the authority) whose composition
+ * manifest the pins must agree with; `composedManifest` is that manifest's
+ * text, null when it could not be read — which leaves the pins unverified,
+ * never green.
+ */
+export function auditCargoSources(
+  repository: string,
+  scan: CargoSourceScan,
+  generation: string | null,
+  composedManifest: string | null,
+  projectCard: string | null,
+): CargoSourceAudit {
+  const drift = scan.unparseable ? [] : [...scan.failures];
+  const unverifiable = scan.unparseable ? [...scan.failures] : [];
+  let checked = 0;
+  if (scan.pins.length === 0) return { drift, unverifiable, checked };
+
+  for (const pin of scan.pins) {
+    const pattern = new RegExp(
+      `github:libre-ai\\/${pin.repository.replace(/[.]/g, "\\.")}#([^"'\\s,}]+)`,
+      "g",
+    );
+    for (const match of (projectCard ?? "").matchAll(pattern)) {
+      if (match[1] !== pin.rev) {
+        drift.push(
+          `${repository}: project card pins libre-ai/${pin.repository}#${match[1]} but Cargo.toml ${pin.table}.${pin.name} compiles rev ${pin.rev}`,
+        );
+      }
+    }
+  }
+
+  if (generation === null) {
+    drift.push(
+      `${repository}: ${scan.pins.length} Cargo source pin(s) cannot be checked against a composed ref — the repository carries no single declared governance generation`,
+    );
+    return { drift, unverifiable, checked };
+  }
+  let repositories: Record<string, unknown> | null = null;
+  if (composedManifest !== null) {
+    try {
+      repositories = tableOf(tableOf(JSON.parse(composedManifest)).repositories);
+    } catch {
+      repositories = null;
+    }
+  }
+  if (repositories === null) {
+    unverifiable.push(
+      `${repository}: composition manifest of libre-ai/${CURRENT_AUTHORITY}@${generation} could not be read — ${scan.pins.length} Cargo source pin(s) left unverified`,
+    );
+    return { drift, unverifiable, checked };
+  }
+  for (const pin of scan.pins) {
+    const composed = tableOf(repositories[pin.repository]).ref;
+    checked += 1;
+    if (typeof composed !== "string") {
+      drift.push(
+        `${repository}: Cargo.toml ${pin.table}.${pin.name} pins libre-ai/${pin.repository}, which generation ${generation} does not compose`,
+      );
+    } else if (composed !== pin.rev) {
+      drift.push(
+        `${repository}: Cargo.toml ${pin.table}.${pin.name} pins libre-ai/${pin.repository} rev ${pin.rev} but generation ${generation} composes ${composed}`,
+      );
+    }
+  }
+  return { drift, unverifiable, checked };
+}
+
 interface FetchOutcome {
   /** File content, or null when the path does not exist. */
   readonly text: string | null;
@@ -283,7 +485,11 @@ async function readSourcesViaRest(
   if (card.error !== null) {
     return { error: `${repository}: cannot read ${cardPath} — ${card.error}` };
   }
-  return { workflows, manifest: manifest.text, projectCard: card.text };
+  const cargo = await ghApi(`repos/${repository}/contents/Cargo.toml`, true);
+  if (cargo.error !== null) {
+    return { error: `${repository}: cannot read Cargo.toml — ${cargo.error}` };
+  }
+  return { workflows, manifest: manifest.text, projectCard: card.text, cargo: cargo.text };
 }
 
 // --- GraphQL primary path: same escape from the shared REST quota as
@@ -326,6 +532,7 @@ export function buildFleetPinsQuery(targets: readonly FleetPinTarget[]): string 
       `      ... on Tree { entries { name type object { ... on Blob { text } } } }`,
       `    }`,
       `    manifest: object(expression: "HEAD:package.json") { ... on Blob { text } }`,
+      `    cargo: object(expression: "HEAD:Cargo.toml") { ... on Blob { text } }`,
       `    card: object(expression: ${cardExpression}) { ... on Blob { text } }`,
       `  }`,
     ].join("\n");
@@ -342,6 +549,7 @@ interface GraphQLFleetPinsRepoNode {
   readonly workflowsTree?: { readonly entries?: readonly (GraphQLTreeEntry | null)[] } | null;
   readonly manifest?: { readonly text?: string | null } | null;
   readonly card?: { readonly text?: string | null } | null;
+  readonly cargo?: { readonly text?: string | null } | null;
 }
 
 /**
@@ -366,7 +574,8 @@ export function parseFleetPinsRepoNode(node: unknown): RepositorySources | null 
   }
   const manifest = typeof typed.manifest?.text === "string" ? typed.manifest.text : null;
   const projectCard = typeof typed.card?.text === "string" ? typed.card.text : null;
-  return { workflows, manifest, projectCard };
+  const cargo = typeof typed.cargo?.text === "string" ? typed.cargo.text : null;
+  return { workflows, manifest, projectCard, cargo };
 }
 
 const GRAPHQL_UNRESOLVED_REPO =
@@ -432,6 +641,75 @@ async function fetchFleetPinSources(
   );
 }
 
+const COMPOSITION_MANIFEST = ".github/composition/manifest.json";
+
+/**
+ * One aliased Blob read of the authority's composition manifest per consumed
+ * generation. A generation is a commit sha, or `HEAD` for the authority's own
+ * served head — never a branch name, which would read whatever that branch
+ * holds today instead of what the generation composed.
+ */
+export function buildComposedManifestsQuery(generations: readonly string[]): string {
+  const blobs = generations.map((generation, index) => {
+    if (generation !== "HEAD" && !COMMIT_SHA.test(generation)) {
+      throw new Error(`a generation is a commit sha or HEAD, got: ${generation}`);
+    }
+    const expression = JSON.stringify(`${generation}:${COMPOSITION_MANIFEST}`);
+    return `    g${index}: object(expression: ${expression}) { ... on Blob { text } }`;
+  });
+  return [
+    "query {",
+    `  authority: repository(owner: "libre-ai", name: ${JSON.stringify(CURRENT_AUTHORITY)}) {`,
+    ...blobs,
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+export function parseComposedManifests(
+  generations: readonly string[],
+  data: Readonly<Record<string, unknown>> | undefined,
+): Map<string, string | null> {
+  const authority = tableOf(data?.authority);
+  return new Map(
+    generations.map((generation, index) => {
+      const text = tableOf(authority[`g${index}`]).text;
+      return [generation, typeof text === "string" ? text : null];
+    }),
+  );
+}
+
+/** Unreadable is null, and null leaves the pins it would have judged unverified. */
+async function fetchComposedManifests(
+  generations: readonly string[],
+): Promise<Map<string, string | null>> {
+  if (generations.length === 0) return new Map();
+  const query = buildComposedManifestsQuery(generations);
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const { stdout } = await ghGraphQLRaw(query);
+    try {
+      const parsed: unknown = JSON.parse(stdout);
+      if (hasUsableGraphQLData(parsed)) return parseComposedManifests(generations, parsed.data);
+    } catch {
+      // Not valid JSON — fall through to retry/backoff.
+    }
+    const wait = RETRY_DELAYS_MS[attempt];
+    if (wait !== undefined) await delay(wait);
+  }
+  const result = new Map<string, string | null>();
+  for (const generation of generations) {
+    // Omitting ?ref= serves the authority's served branch; a generation is
+    // always passed as its sha.
+    const ref = generation === "HEAD" ? "" : `?ref=${generation}`;
+    const file = await ghApi(
+      `repos/libre-ai/${CURRENT_AUTHORITY}/contents/${COMPOSITION_MANIFEST}${ref}`,
+      true,
+    );
+    result.set(generation, file.error === null ? file.text : null);
+  }
+  return result;
+}
+
 export function selectFleetPinTargets(
   repositories: readonly Pick<InventoryEntry, "repository" | "visibility" | "lifecycle" | "card">[],
 ): FleetPinTarget[] {
@@ -479,6 +757,14 @@ if (import.meta.main) {
   const unreadable: string[] = [];
   let covered = 0;
   let inspected = 0;
+  let cargoRead = 0;
+  let cargoPins = 0;
+  const cargoAudits: {
+    readonly repository: string;
+    readonly scan: CargoSourceScan;
+    readonly generation: string | null;
+    readonly card: string | null;
+  }[] = [];
   for (const target of targets) {
     const sources = fetched.get(target.repository) ?? {
       error: `${target.repository}: no fetch outcome recorded for this repository`,
@@ -490,6 +776,21 @@ if (import.meta.main) {
         detail: sources.error,
       });
       continue;
+    }
+    // The Cargo surface is read before the governance-pin early exit: the
+    // authority consumes no generation yet carries a libre-ai Cargo source.
+    if (sources.cargo !== null) {
+      cargoRead += 1;
+      const scan = collectCargoSourcePins(target.repository, sources.cargo);
+      cargoPins += scan.pins.length;
+      if (scan.pins.length > 0 || scan.failures.length > 0) {
+        cargoAudits.push({
+          repository: target.repository,
+          scan,
+          generation: consumedGeneration(target.repository, sources, generationShas),
+          card: sources.projectCard,
+        });
+      }
     }
     const sightings = collectSightings(sources);
     if (sightings.length === 0) {
@@ -504,7 +805,8 @@ if (import.meta.main) {
         target.cardDeclared &&
         sources.workflows.size === 0 &&
         sources.manifest === null &&
-        sources.projectCard === null
+        sources.projectCard === null &&
+        sources.cargo === null
       ) {
         unreadable.push(target.repository);
       }
@@ -514,6 +816,31 @@ if (import.meta.main) {
     inspected += sightings.length;
     for (const detail of auditRepository(target.repository, sources, generationShas)) {
       failures.push({ repository: target.repository, kind: "drift", detail });
+    }
+  }
+
+  const composedManifests = await fetchComposedManifests([
+    ...new Set(
+      cargoAudits
+        .map((audit) => audit.generation)
+        .filter((generation): generation is string => generation !== null),
+    ),
+  ]);
+  let cargoChecked = 0;
+  for (const entry of cargoAudits) {
+    const audit = auditCargoSources(
+      entry.repository,
+      entry.scan,
+      entry.generation,
+      entry.generation === null ? null : (composedManifests.get(entry.generation) ?? null),
+      entry.card,
+    );
+    cargoChecked += audit.checked;
+    for (const detail of audit.drift) {
+      failures.push({ repository: entry.repository, kind: "drift", detail });
+    }
+    for (const detail of audit.unverifiable) {
+      failures.push({ repository: entry.repository, kind: "unable-to-verify", detail });
     }
   }
 
@@ -564,13 +891,20 @@ if (import.meta.main) {
       true,
       `${inspected} pins across ${covered} repositories match the ${generationShas.length} declared generations`,
     );
+    report.check(
+      "fleet cargo sources",
+      true,
+      `${cargoChecked} cargo source pin(s) equal the ref their governance generation composes`,
+    );
   }
   // Said on the success line, not in a note only GATE_VERBOSE expands: a
   // "2 assertion(s) hold" stood for a fleet of twenty-four targets. This was an
   // ad-hoc console.log of its own until `GateReport.volume` generalised it.
   report.volume(
     `${inspected} pin(s) read across ${covered} of ${targets.length} target(s), ` +
-      `${unreadable.length} unreadable, against ${generationShas.length} declared generation(s)`,
+      `${unreadable.length} unreadable, against ${generationShas.length} declared generation(s); ` +
+      `${cargoPins} cargo source pin(s) read across ${cargoRead} Cargo.toml(s), ` +
+      `${cargoChecked} checked against composed refs`,
   );
   concludeGate("Fleet pins", report);
 }

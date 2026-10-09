@@ -1,0 +1,18 @@
+# Cargo workspace root of the doctrine authority.
+#
+# The engine is a member rather than its own workspace root so that one
+# manifest, one lockfile and one `[patch]` live at the repository root. That
+# is also what makes its Rust dependencies watchable: the canonical Dependabot
+# cargo variant declares `directory: "/"`, so a nested manifest would have
+# left the 181 crates of this lockfile unwatched — a supply-chain surface the
+# fleet already covers everywhere else.
+[workspace]
+members = ["crates/ecosystem-engine"]
+resolver = "3"
+[patch.crates-io]
+# I-28: a vendored patch has a single home in the fleet, and a secondary
+# consumer pins that home by rev under the orphan-rev gate. The home moved
+# from the retired `authz-biscuit` to `capability-authorization`, which
+# carries `third_party/biscuit-auth-6.0.0` (name = "biscuit-auth", 6.0.0)
+# and patches it by path for its own build.
+biscuit-auth = { git = "https://github.com/libre-ai/capability-authorization", rev = "7ce06366663ff8b4329d0bc25f589c8ef830aef0" }

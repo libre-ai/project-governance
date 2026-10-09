@@ -1,8 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  auditCargoSources,
   auditRepository,
+  buildComposedManifestsQuery,
   buildFleetPinsQuery,
+  collectCargoSourcePins,
   collectSightings,
+  consumedGeneration,
+  parseComposedManifests,
   parseFleetPinsBatchResponse,
   parseFleetPinsRepoNode,
   type RepositorySources,
@@ -41,10 +46,12 @@ const sources = (
   workflows: Record<string, string>,
   manifest: string | null,
   projectCard: string | null = null,
+  cargo: string | null = null,
 ): RepositorySources => ({
   workflows: new Map(Object.entries(workflows)),
   manifest,
   projectCard,
+  cargo,
 });
 
 const projectCard = (sha: string) =>
@@ -331,7 +338,8 @@ describe("buildFleetPinsQuery", () => {
       { repository: "libre-ai/demo", card: "project.v1.yaml", cardDeclared: true },
     ]);
     expect(query).not.toContain("main:");
-    expect(query.match(/HEAD:/g)).toHaveLength(3);
+    expect(query.match(/HEAD:/g)).toHaveLength(4);
+    expect(query).toContain('cargo: object(expression: "HEAD:Cargo.toml")');
   });
 });
 
@@ -347,12 +355,14 @@ describe("parseFleetPinsRepoNode", () => {
       },
       manifest: { text: '{"name":"demo"}' },
       card: { text: "pinned: x" },
+      cargo: { text: "[package]\n" },
     });
     expect(sources?.workflows.get("ci.yml")).toBe("on: push\n");
     expect(sources?.workflows.has("README.md")).toBe(false);
     expect(sources?.workflows.has("sub")).toBe(false);
     expect(sources?.manifest).toBe('{"name":"demo"}');
     expect(sources?.projectCard).toBe("pinned: x");
+    expect(sources?.cargo).toBe("[package]\n");
   });
 
   test("reads a repository with no workflows directory, no manifest and no card as legitimately empty, not an error", () => {
@@ -361,7 +371,12 @@ describe("parseFleetPinsRepoNode", () => {
       manifest: null,
       card: null,
     });
-    expect(sources).toEqual({ workflows: new Map(), manifest: null, projectCard: null });
+    expect(sources).toEqual({
+      workflows: new Map(),
+      manifest: null,
+      projectCard: null,
+      cargo: null,
+    });
   });
 
   test("returns null only when the repository node itself is absent", () => {
@@ -404,6 +419,7 @@ describe("the retired authority", () => {
         ]),
         manifest: null,
         projectCard: null,
+        cargo: null,
       },
       [sha],
     );
@@ -423,6 +439,7 @@ describe("the retired authority", () => {
         ]),
         manifest: null,
         projectCard: null,
+        cargo: null,
       },
       [sha],
     );
@@ -445,5 +462,206 @@ describe("selectFleetPinTargets — a declared card is not a defaulted one", () 
       { repository: "libre-ai/with-card", card: "project.v1.yaml", cardDeclared: true },
       { repository: "libre-ai/.github", card: "project.v1.yaml", cardDeclared: false },
     ]);
+  });
+});
+
+// The fifth surface. Texts are the real files read on 2026-10-09: the
+// execution-sandbox manifest as served (path form), the authority's own
+// Cargo.toml, the ECE card, and the composition manifest of generation
+// 2024a488 — the one 19 consumers carry.
+const fixture = (name: string) =>
+  Bun.file(new URL(`fixtures/cargo-sources/${name}`, import.meta.url)).text();
+const COMPOSED = "4f3d53c3ecd96e7064057afd1587de41b66f13c1";
+const CARD_PIN = "d2767988c7b1a00b304b76c5d5ac92b93898bf30";
+const GENERATION = "2024a4884b314df99be457618be9c3b48a0287f7";
+const SIBLING_PATH = '{ version = "=0.1.0", path = "../schemas-and-contracts/crates/sdk-rs" }';
+const gitForm = (rev: string) =>
+  `{ version = "=0.1.0", git = "https://github.com/libre-ai/schemas-and-contracts", rev = "${rev}" }`;
+const sandbox = async (declaration: string) =>
+  (await fixture("execution-sandbox.path.Cargo.toml")).replace(SIBLING_PATH, declaration);
+
+describe("collectCargoSourcePins", () => {
+  test("the served path form carries no libre-ai source; the git form carries exactly one", async () => {
+    const served = await fixture("execution-sandbox.path.Cargo.toml");
+    expect(served).toContain(SIBLING_PATH);
+    expect(collectCargoSourcePins("libre-ai/execution-sandbox", served)).toEqual({
+      pins: [],
+      failures: [],
+      unparseable: false,
+    });
+    expect(
+      collectCargoSourcePins("libre-ai/execution-sandbox", await sandbox(gitForm(COMPOSED))),
+    ).toEqual({
+      pins: [
+        {
+          table: "dependencies",
+          name: "libre-ai-contract-types",
+          repository: "schemas-and-contracts",
+          rev: COMPOSED,
+        },
+      ],
+      failures: [],
+      unparseable: false,
+    });
+  });
+
+  test("the authority's patch.crates-io source is read", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/project-governance",
+      await fixture("project-governance.Cargo.toml"),
+    );
+    expect(scan.pins).toEqual([
+      {
+        table: "patch.crates-io",
+        name: "biscuit-auth",
+        repository: "capability-authorization",
+        rev: "7ce06366663ff8b4329d0bc25f589c8ef830aef0",
+      },
+    ]);
+    expect(scan.failures).toEqual([]);
+  });
+
+  test("a branch, a tag, a short sha or a missing rev is refused", async () => {
+    const url = "https://github.com/libre-ai/schemas-and-contracts";
+    for (const declaration of [
+      `{ git = "${url}", branch = "migrate/recover-code" }`,
+      `{ git = "${url}", tag = "v0.1.0" }`,
+      `{ git = "${url}", rev = "${COMPOSED}", branch = "migrate/recover-code" }`,
+      `{ git = "${url}", rev = "4f3d53c3" }`,
+      `{ git = "${url}" }`,
+      `{ git = "ssh://git@github.com/libre-ai/schemas-and-contracts", rev = "${COMPOSED}" }`,
+    ]) {
+      const scan = collectCargoSourcePins("libre-ai/execution-sandbox", await sandbox(declaration));
+      expect(scan.pins).toEqual([]);
+      expect(scan.failures).toHaveLength(1);
+    }
+  });
+
+  test("target and workspace tables are walked; a form the walk misses fails on the raw count", async () => {
+    const url = "https://github.com/libre-ai/schemas-and-contracts";
+    const walked = `[target.'cfg(unix)'.dev-dependencies]\nx = { git = "${url}", rev = "${COMPOSED}" }\n[workspace.dependencies]\ny = { git = "${url}", rev = "${COMPOSED}" }\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", walked).pins.map((pin) => pin.table)).toEqual([
+      "target.cfg(unix).dev-dependencies",
+      "workspace.dependencies",
+    ]);
+    const unwalked = `[unknown-table]\nx = { git = "${url}", rev = "${COMPOSED}" }\n`;
+    const scan = collectCargoSourcePins("libre-ai/demo", unwalked);
+    expect(scan.pins).toEqual([]);
+    expect(scan.failures).toEqual([
+      "libre-ai/demo: Cargo.toml writes 1 libre-ai git source(s) but 0 were read from its dependency tables — a declaration form this gate does not walk",
+    ]);
+  });
+
+  test("an unparseable manifest is a failure, never zero pins", () => {
+    const scan = collectCargoSourcePins("libre-ai/demo", "[dependencies\nx = 1");
+    expect(scan.unparseable).toBe(true);
+    expect(scan.failures[0]).toContain("cannot parse Cargo.toml");
+    const audit = auditCargoSources("libre-ai/demo", scan, GENERATION, null, null);
+    expect(audit.unverifiable).toHaveLength(1);
+  });
+});
+
+describe("auditCargoSources", () => {
+  test("the composed rev at the consumed generation passes, and is counted", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/execution-sandbox",
+      await sandbox(gitForm(COMPOSED)),
+    );
+    const audit = auditCargoSources(
+      "libre-ai/execution-sandbox",
+      scan,
+      GENERATION,
+      await fixture("manifest-2024a488.json"),
+      `pinned: "github:libre-ai/schemas-and-contracts#${COMPOSED}"`,
+    );
+    expect(audit).toEqual({ drift: [], unverifiable: [], checked: 1 });
+  });
+
+  test("the card's d2767988 written as the cargo rev fails, naming both shas", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/execution-sandbox",
+      await sandbox(gitForm(CARD_PIN)),
+    );
+    const audit = auditCargoSources(
+      "libre-ai/execution-sandbox",
+      scan,
+      GENERATION,
+      await fixture("manifest-2024a488.json"),
+      null,
+    );
+    expect(audit.drift).toEqual([
+      `libre-ai/execution-sandbox: Cargo.toml dependencies.libre-ai-contract-types pins libre-ai/schemas-and-contracts rev ${CARD_PIN} but generation ${GENERATION} composes ${COMPOSED}`,
+    ]);
+  });
+
+  test("a card pinning another rev than the cargo source fails", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/execution-continuity-evaluator",
+      await sandbox(gitForm(COMPOSED)),
+    );
+    const audit = auditCargoSources(
+      "libre-ai/execution-continuity-evaluator",
+      scan,
+      GENERATION,
+      await fixture("manifest-2024a488.json"),
+      await fixture("execution-continuity-evaluator.project.v1.yaml"),
+    );
+    // The served ECE card carries d2767988 on three entries.
+    expect(audit.drift).toHaveLength(3);
+    expect(audit.drift[0]).toContain(`schemas-and-contracts#${CARD_PIN} but Cargo.toml`);
+  });
+
+  test("an unreadable composed manifest leaves the pins unverified, never green", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/execution-sandbox",
+      await sandbox(gitForm(COMPOSED)),
+    );
+    const audit = auditCargoSources("libre-ai/execution-sandbox", scan, GENERATION, null, null);
+    expect(audit.drift).toEqual([]);
+    expect(audit.unverifiable).toHaveLength(1);
+    expect(audit.checked).toBe(0);
+  });
+
+  test("no single declared generation fails", async () => {
+    const scan = collectCargoSourcePins(
+      "libre-ai/execution-sandbox",
+      await sandbox(gitForm(COMPOSED)),
+    );
+    expect(
+      auditCargoSources("libre-ai/execution-sandbox", scan, null, null, null).drift,
+    ).toHaveLength(1);
+  });
+});
+
+describe("consumedGeneration", () => {
+  test("a single declared governance sha is the generation; the authority uses its served head", () => {
+    expect(consumedGeneration("libre-ai/demo", sources({}, gitDep(G1)), generations)).toBe(G1);
+    expect(
+      consumedGeneration("libre-ai/demo", sources({}, gitDep(UNDECLARED)), generations),
+    ).toBeNull();
+    expect(consumedGeneration("libre-ai/demo", sources({}, null), generations)).toBeNull();
+    expect(consumedGeneration("libre-ai/project-governance", sources({}, null), generations)).toBe(
+      "HEAD",
+    );
+  });
+});
+
+describe("buildComposedManifestsQuery", () => {
+  test("reads the manifest at the generation sha, never at a branch name", () => {
+    const query = buildComposedManifestsQuery([GENERATION, "HEAD"]);
+    expect(query).toContain(`"${GENERATION}:.github/composition/manifest.json"`);
+    expect(query).toContain('"HEAD:.github/composition/manifest.json"');
+    expect(query).not.toContain("main:");
+    expect(() => buildComposedManifestsQuery(["migrate/recover-code"])).toThrow();
+    expect(
+      parseComposedManifests([GENERATION, "HEAD"], {
+        authority: { g0: { text: "{}" }, g1: null },
+      }),
+    ).toEqual(
+      new Map([
+        [GENERATION, "{}"],
+        ["HEAD", null],
+      ]),
+    );
   });
 });

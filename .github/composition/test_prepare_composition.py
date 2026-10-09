@@ -80,6 +80,30 @@ class CompositionTests(unittest.TestCase):
             names = {row["path"] for row in module.prepare(self.manifest, target)["checkouts"]}
             self.assertEqual(names, required | {target})
 
+    def test_cargo_sources_pin_the_composed_sibling_revision(self):
+        ref = self.manifest["repositories"]["schemas-and-contracts"]["ref"]
+        for target in ("artifact-verification", "execution-continuity-evaluator", "execution-sandbox"):
+            plan = module.prepare(self.manifest, target)
+            self.assertEqual(plan["cargoSources"], [{
+                "package": "libre-ai-contract-types",
+                "repository": "libre-ai/schemas-and-contracts",
+                "url": "https://github.com/libre-ai/schemas-and-contracts",
+                "rev": ref,
+                "path": "schemas-and-contracts/crates/sdk-rs",
+            }])
+            self.assertIn("schemas-and-contracts", [row["path"] for row in plan["checkouts"]])
+        for target in ("database-policy-inspector", "project-governance", "schemas-and-contracts"):
+            self.assertEqual(module.prepare(self.manifest, target)["cargoSources"], [])
+
+    def test_cargo_source_follows_the_manifest_not_the_target_revision(self):
+        # The rev comes from the composed sibling's manifest row; a target
+        # revision override cannot move it.
+        overridden = module.prepare(self.manifest, "execution-sandbox", "a" * 40)
+        self.assertEqual(overridden["cargoSources"][0]["rev"], self.manifest["repositories"]["schemas-and-contracts"]["ref"])
+        moved = json.loads(json.dumps(self.manifest))
+        moved["repositories"]["schemas-and-contracts"]["ref"] = "b" * 40
+        self.assertEqual(module.prepare(moved, "execution-sandbox")["cargoSources"][0]["rev"], "b" * 40)
+
     def test_cli_emits_argv_only_and_rejects_duplicate_json(self):
         result = subprocess.run([sys.executable, str(HERE / "prepare-composition.py"), "--target", "database-policy-inspector"], capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
