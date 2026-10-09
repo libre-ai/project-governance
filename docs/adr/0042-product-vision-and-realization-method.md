@@ -1,15 +1,15 @@
 # ADR-0042 — Vision produit et méthode de réalisation
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08
+- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08 ; §9 et §10 ajoutés sur arbitrage du 2026-10-09. Owner-arbitration: 2026-10-09
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), dont le point 2 (« consolider les familles de dépôts existantes ») reçoit ici sa règle de découpage
 - **Cite sans la répéter :** ADR-0041 pour la topologie de l'autorité, l'inventaire et l'admission des destinations par bascule de branche par défaut
 - **Amende :** ADR-0041, préambule « N'autorise pas » (aucun transfert d'autorité au-delà des transferts tracés), pour le seul domaine Connaissance (§7)
-- **Déroge :** I-09 (« tenant obligatoire + RLS »), pour la seule v0 mono-utilisateur de Work Supervision (§5)
+- **Déroge :** I-09 (« tenant obligatoire + RLS »), pour la seule v0 mono-utilisateur de Work Supervision (§5), et pour le seul P40, outil local mono-poste (§9)
 - **Remplace :** un point du mandat du 2026-09-15 — Notebook comme première épreuve (remplacé par l'ordre du §3). Le second point initialement remplacé, macOS natif dès le premier palier de plateformes, est rétabli par le §8
 - **Applique :** I-03 (un sujet, une autorité), I-04 (noms conformes à l'architecture, préservation des URLs levée), I-06 (stack), I-08 (discipline de preuve), I-11 (licences), I-13 (la méthode est le produit zéro), I-14 (portefeuille par couches, aucun décompte codé en dur), I-16 (naissance d'un repository), I-19 (dogfooding d'abord), I-21 (frontière code / données), I-27 (gate de parité après dogfooding)
 - **Autorise :** la sortie du gel de P02, P07, P33 et P39 ; l'ouverture des PR du §7 une fois leurs préconditions remplies
-- **N'autorise pas :** la création d'un dépôt ; l'activation d'un produit ; le renommage ou l'archivage d'un dépôt hors des préconditions du §7 ; l'adoption d'une brique GPL avant la revue juridique du §4 ; une promesse de plateforme non qualifiée
+- **N'autorise pas :** la création d'un dépôt ; l'activation d'un produit ; le renommage ou l'archivage d'un dépôt hors des préconditions du §7 ; l'adoption d'une brique GPL avant la revue juridique du §4 (portée précisée par le §10) ; une promesse de plateforme non qualifiée
 
 ## Contexte
 
@@ -123,11 +123,14 @@ dépendances, sous la politique suivante :
   première adoption d'une brique GPL ;
 - interdites : AGPL et SSPL.
 
+Ce qu'est « adopter une brique GPL » est précisé par le §10.
+
 ### 5. Modèle de données et dérogation de la fabrique
 
 Les produits du catalogue utilisent le tenant `organization` dès le premier
 produit. Les produits serveur suivent Bun et PostgreSQL, avec tenant et RLS
-(I-09), et sont local-first quand leur fiche l'exige.
+(I-09), et sont local-first quand leur fiche l'exige. P40 en est exempté
+nommément (§9).
 
 **Dérogation à I-09.** Work Supervision v0 est mono-utilisateur : sans tenant,
 sans rôles, sans approbation tierce. Son stockage est SQLite, avec un journal
@@ -213,7 +216,7 @@ Une interface web n'est pas promise au premier palier. Les produits serveur
 (Bun + PostgreSQL, §5) sont servis à l'application par leur API. Le contenu du
 deuxième palier sera fixé par un ADR ultérieur. La fabrique n'est pas
 concernée : son moteur et ses terminaux restent en CLI/TUI et son cockpit en
-web (§3).
+web (§3). P40 est exempté nommément de l'extension (§9).
 
 Conséquences :
 
@@ -225,6 +228,67 @@ Conséquences :
   l'extension, et sur leur partage d'un même cœur ;
 - le point du mandat du 2026-09-15 « macOS natif dès le premier palier » est
   rétabli.
+
+### 9. Exemption nommée de P40 (§5 et §8) — amendement du 2026-10-09
+
+Owner-arbitration: 2026-10-09 — option A de la question Q2 de la spécification v2
+de Square Control (privée), qui regroupe les constats S-B7, A-B6 et U-B5 de sa
+vague de revue.
+
+P40 (agencement des fenêtres, Square Control) est un outil local mono-poste : il
+n'a ni serveur, ni base partagée, ni donnée partagée, ni second utilisateur, et
+il ne joue aucun rôle dans un navigateur. Sa frontière d'isolation est le compte
+macOS : droits du fichier de configuration et autorisation Accessibilité accordée
+par utilisateur. Deux règles du catalogue ne s'y appliquent donc pas :
+
+- **§5 (tenant `organization`, Bun + PostgreSQL/RLS).** Aucun mécanisme (RLS,
+  autorisation) n'appliquerait un champ `organization` dans P40. Ce serait une
+  frontière déclarée sans être appliquée, contraire à I-08. P40 n'a pas de
+  tenant ; c'est une **dérogation nommée à I-09** (« tenant obligatoire + RLS »)
+  pour le seul P40, de même forme que celle de Work Supervision v0. Ses données
+  concernent une personne et restent sur son poste, ce qui est la règle d'I-21 ;
+- **§8 (extension navigateur et hôte de native messaging).** L'extension
+  n'aurait aucune fonction propre au navigateur. Elle ouvrirait en revanche un
+  canal du navigateur vers un processus qui détient l'autorisation
+  Accessibilité, par un manifeste d'hôte installé dans le profil de
+  l'utilisateur. P40 n'a pas d'extension.
+
+P40 garde le reste du §8 : son premier palier est une application macOS native,
+adaptateur d'interface de son cœur Rust (§6). Le reste de l'ADR s'applique sans
+changement, dont la matrice de parité et I-27.
+
+Conditions de réouverture, chacune par ADR :
+
+- si des agencements deviennent partageables entre personnes, le tenant
+  `organization` s'applique au service de partage, pas au client local ;
+- si une fonction de P40 exige ce que seul un navigateur voit, l'exemption du §8
+  est réexaminée.
+
+L'exemption vaut pour le seul P40. Elle ne crée pas de catégorie « outil local »
+où un autre produit pourrait se ranger sans son propre arbitrage.
+
+### 10. Appeler un exécutable GPL déjà installé — précision du §4, 2026-10-09
+
+Owner-arbitration: 2026-10-09 — décision D-1 du plan de Work Supervision v0
+(privé) : les worktrees sont créés par le `git` du système, appelé en processus
+séparé.
+
+Appeler, dans un processus séparé et sans liaison ni redistribution, un
+exécutable sous GPL **déjà installé** sur la machine de l'utilisateur n'est pas
+« adopter une brique GPL » au sens du §4. Cet usage ne déclenche pas la revue
+juridique préalable. Le cas qui motive la précision est `git`, appelé par Work
+Supervision pour ses worktrees.
+
+Reste une adoption soumise au §4, revue juridique comprise :
+
+- distribuer un binaire GPL, seul ou avec un produit libre-ai ;
+- l'embarquer dans un paquet, une image ou une application ;
+- le télécharger ou l'installer pour l'utilisateur ;
+- se lier à une bibliothèque GPL, statiquement ou dynamiquement.
+
+Le code libre-ai reste sous les licences d'I-11 ; aucun code GPL n'y est copié.
+Si l'exécutable manque, le produit le signale ; l'installer à la place de
+l'utilisateur serait une adoption au sens ci-dessus.
 
 ## Conséquences et limites
 
