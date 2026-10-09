@@ -1,3 +1,4 @@
+import { findFloorBypasses, floorBypassNote } from "./bun-script-floor";
 import { isBunVersionAtLeast } from "./bun-version";
 import { concludeGate, GateReport } from "./gate-report";
 
@@ -95,6 +96,12 @@ for (const [name, command] of Object.entries(root.scripts ?? {})) {
     failures.push(`package.json: ${name} must enforce the Bun floor first`);
   }
 }
+// Declaring `pretest` is not the same as firing it: bun fires a `pre<script>`
+// hook only for `bun run <script>`. Everything above asserts the hook exists
+// and reads exactly right; this asserts something invokes it.
+for (const script of findFloorBypasses(root.scripts ?? {})) {
+  failures.push(`package.json: ${floorBypassNote(script)}`);
+}
 
 const manifestPaths = new Set<string>();
 for (const pattern of [
@@ -134,6 +141,13 @@ for (const path of [...manifestPaths].sort()) {
     if (manifest.scripts?.[`pre${script}`] !== "bun run check:bun") {
       failures.push(`${path}: pre${script} must enforce the Bun floor`);
     }
+  }
+  // The nested requirement above is existence only — a manifest satisfies it
+  // while no path ever fires the hook, which is the state this workspace
+  // manifest was in on 2026-10-09 (`check` was a bare `bun test src`). The
+  // floor the gate is supposed to lay was therefore never verified for it.
+  for (const script of findFloorBypasses(manifest.scripts ?? {})) {
+    failures.push(`${path}: ${floorBypassNote(script)}`);
   }
 }
 
