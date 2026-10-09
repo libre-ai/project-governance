@@ -1,0 +1,31 @@
+# Data of tools/fleet/bump-generation.ts — what the bump tool must know that
+# no repository can tell it. Kept as data, never as literals in the tool: an
+# exception written into the code that enforces the rule is invisible to review
+# (resolve-never-hardcode §4).
+schema_version: libre-ai.fleet-bump.v1
+
+# The identity every bump commit is authored and signed off with. signalement
+# admits only this identity and requires the sign-off as the LAST line of the
+# message; the tool commits with `-s` and appends nothing after it, on every
+# repository alike.
+commit_identity:
+  name: Constantin Jais
+  email: 74049135+constantin-jais@users.noreply.github.com
+
+# The secret `--apply` reads its write token from. Creating it is an owner act
+# (docs/toolchain/FLEET-BUMP.md); while it is absent the workflow plans only and
+# says so.
+apply_token_secret: FLEET_BUMP_TOKEN
+
+# Governance shas a consumer carries on a pin-shaped line ON PURPOSE, which a
+# bump must never move. Matched on repository, path and sha together: the same
+# sha elsewhere, or another sha on the same path, is not exempted. Each entry is
+# reported as "left" with its reason on every plan.
+historical_sites:
+  - repository: libre-ai/application-development-toolkit
+    path: .github/workflows/playwright-guid-diagnostic.yml
+    sha: 8a27b8f5bf774fad04b8478fa9179eefdba0eaf7
+    reason: >-
+      the Playwright GUID diagnostic replays the composition tooling of the CI
+      run it investigates (docs/playwright-guid-diagnostic.md); moving it would
+      change what the diagnostic reproduces

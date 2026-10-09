@@ -1,0 +1,50 @@
+# Project state card — the state authority since ADR-0020 (design §6.2).
+# The README status section is generated from this card (sentinels).
+schema_version: libre-ai.project.v1
+project: application-development-toolkit
+repository: libre-ai/application-development-toolkit
+kind: satellite
+layer: couche-4
+statement:
+  for: "contributors assessing and developing this project's intended uses"
+  who_faces: "recovered sources whose current integrated behavior still requires verification"
+  enables: "inspecting the recovered implementation and running its declared checks before admission"
+  producing:
+    - "reproducible qualification evidence for the intended scope"
+  without_depending_on:
+    - "an implicit transfer of historical authority or an assumed passing CI run"
+summary: "application-development-toolkit: recovered sources with documentary integration under review."
+current_situation: >-
+  Recovered source snapshot 5ec3630ece2a768872dfb67171c9b7fbf21a1aa9 is present.
+  Product tests and CI were not rerun for this documentary integration; historical
+  evidence is not qualification of this tree. No product admission or authority
+  transfer is established. Historical responsibilities were held by libre-ai/ui,
+  a repository since retired.
+scope:
+  - "Present consistent loading, success and error states across application screens."
+  - "Give web adapters a common approach to handling requests and responses."
+  - "Test a shared component within the application that uses it."
+non_goals:
+  - "Claiming operational readiness merely from the presence of recovered code."
+  - "Transferring historical authority or consumers without separate reviewed admission."
+dependencies:
+  - on: libre-ai/project-governance
+    why: "Current fleet doctrine and reusable verification workflows."
+    pinned: "github:libre-ai/project-governance#7c2238d6185e59d446586688ca7db32e6a17d3e0"
+maturity: idea
+confidence: medium
+exposure: idea
+freshness:
+  last_verified_on: 2026-10-08
+scope_stability: unstable
+phases:
+  - id: admission
+    title: "Bounded capability admission"
+    note: "Recovered code is present. Documentary checks do not accept product qualification criteria."
+    exit_criteria:
+      - id: qualified-scope
+        text: "Select a useful module and verify its exact exports in a clean consumer. Test the actual supported browsers, keyboard use, narrow layouts and relevant display modes. Verify local asset handling and response behavior for any admitted web module. Review merged-source rights, dependencies and visual assets separately; test infrastructure does not prove a production database or application journey."
+        weight: 1
+        status: pending
+benchmark:
+  none: "No benchmark was executed for this integrated tree."
