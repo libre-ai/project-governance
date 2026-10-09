@@ -1,0 +1,13 @@
+name: licensing
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  licensing:
+    uses: libre-ai/project-governance/.github/workflows/reusable-licensing.yml@1c8b37c80beb41f640982768ec27304a911e0b8e
+    with:
+      tooling_ref: 1c8b37c80beb41f640982768ec27304a911e0b8e

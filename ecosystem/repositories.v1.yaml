@@ -11,6 +11,14 @@ updated_on: 2026-10-09
 # 2026-10-09 : ai-practice-workbench et information-feed-filter passent a
 # `lifecycle: archived` (ADR-0042 §7 acte 3, decision Y16) ; check-inventory-drift
 # compare desormais lifecycle et etat archive GitHub dans les deux sens.
+# Angle mort CI (2026-10-09) : les workflows lancent ce gate avec le jeton par
+# defaut (`github.token`), qui ne voit pas le depot prive `product-research`.
+# Sa presence, sa visibilite et son etat archive ne sont donc PAS verifies en
+# CI : le gate le compte comme « unverifiable (private, token scope) » et
+# imprime `N reconciled + M unverifiable = declares`. Seul un jeton du
+# proprietaire (`GH_TOKEN=$(gh auth token)`) le reconcilie. build-index.ts
+# n'admet ce depot prive qu'en `lifecycle: active` : c'est ce couplage qui
+# empeche de declarer archive un depot prive que la CI ne peut pas lire.
 # 2026-10-07 : l'inventaire passe de 37 entrees (generation aux noms courts,
 # `updated_on: 2026-09-11`) a 24. Les 19 destinations exposent desormais leur
 # code : leur branche par defaut est `migrate/recover-code`, dont `main`

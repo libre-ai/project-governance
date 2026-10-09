@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type AllowlistEntry,
   AUTHORIZATION_MARKER,
+  allowlistedNames,
   assertAllowlistReasons,
   findOperationalReferences,
   HISTORICAL_ALLOWLIST,
   isAllowlisted,
   isAuthorizedLine,
   isTestSource,
+  measureNameScopedEntries,
   OPERATIONAL_KEYS,
   RETIRED_REPOSITORY_NAMES,
 } from "./check-retired-repository-names";
@@ -271,5 +274,43 @@ describe("the served tree", () => {
     expect(
       files.filter((file) => !isTestSource(file.path) && !isAllowlisted(file.path)).length,
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("name-scoped allow-list entries", () => {
+  const scoped: AllowlistEntry[] = [
+    { path: "docs/material.json", names: ["public-vote-comparison"], reason: "measured" },
+  ];
+  const url = (name: string) => `https://github.com/${ORG}/${name}`;
+
+  test("a name-scoped file is still scanned, and only the listed name is authorised", () => {
+    const files = [
+      {
+        path: "docs/material.json",
+        text: [url("public-vote-comparison"), url("feed-radar")].join("\n"),
+      },
+    ];
+    expect(isAllowlisted("docs/material.json", scoped)).toBe(false);
+    expect([...allowlistedNames("docs/material.json", scoped)]).toEqual(["public-vote-comparison"]);
+    expect(findOperationalReferences(files, scoped).map((reference) => reference.name)).toEqual([
+      "feed-radar",
+    ]);
+    expect(measureNameScopedEntries(files, scoped)).toEqual({ authorised: 1, stale: [] });
+  });
+
+  test("a name-scoped entry that matches nothing any more is reported as stale", () => {
+    const files = [{ path: "docs/material.json", text: url("feed-radar") }];
+    expect(measureNameScopedEntries(files, scoped)).toEqual({
+      authorised: 0,
+      stale: [{ path: "docs/material.json", name: "public-vote-comparison" }],
+    });
+  });
+
+  test("docs/portfolio-material.json is name-scoped, not exempted whole", () => {
+    expect(isAllowlisted("docs/portfolio-material.json")).toBe(false);
+    expect([...allowlistedNames("docs/portfolio-material.json")].sort()).toEqual([
+      "personal-knowledge-notebook",
+      "public-vote-comparison",
+    ]);
   });
 });

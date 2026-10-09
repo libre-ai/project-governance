@@ -47,11 +47,28 @@ than as a script each repository copies.
   repository that does not call `validate-composition.yml` runs
   `bun <governance checkout>/tools/quality/check-advisory-waivers.ts --root=.`
   in one of its own required checks.
-- **What it reads.** Every tracked waiver mechanism: `[advisories] ignore`
-  in `.cargo/audit.toml` and `deny.toml` (strings or `{ id, reason }`
-  tables), `[[IgnoredVulns]]` in `osv-scanner.toml` (`ignoreUntil` is the
-  expiry), and `--ignore` flags of `bun audit` / `cargo audit` command lines
-  in workflows, `package.json` scripts and shell scripts.
+<!-- allow-audit-flag-fixture: this policy names `--ignore` flags of audit commands; it waives nothing. -->
+
+- **What it reads.** Every tracked waiver mechanism:
+  - `[advisories] ignore` in `.cargo/audit.toml` and in cargo-deny's three
+    file names, `deny.toml`, `.deny.toml` and `.cargo/deny.toml` (strings,
+    `{ id, reason }` or `{ crate, reason }` tables);
+  - in `osv-scanner.toml`, every `IgnoredVulns` entry (any spelling the
+    scanner's decoder accepts: `[[IgnoredVulns]]`, quoted, lower-case, or an
+    inline array) and every `[[PackageOverrides]]` with `ignore = true` or
+    `vulnerability.ignore = true`;
+  - `--ignore` flags of `bun audit`, `bun pm audit` and `cargo [+toolchain]
+    audit` command lines in workflows, composite actions (`action.yml`),
+    `package.json` scripts, shell and bash scripts, Makefiles and justfiles —
+    commands continued with `\` and YAML block scalars (`|`, `>`) included.
+  - **Equivalent mechanisms** (owner decision 2026-10-09): each of these
+    stops an advisory from failing, so each is a waiver and carries the same
+    metadata on its line — `[graph] exclude` entries in a cargo-deny file;
+    `[advisories] unmaintained` or `unsound` set to any scope but `"all"`;
+    `[advisories] vulnerability` or `notice` set to anything but `"deny"`;
+    `severity_threshold` in `.cargo/audit.toml`; `cargo deny ... -A` / `-W`
+    (`--allow` / `--warn`) on an advisory code (`vulnerability`,
+    `unmaintained`, `unsound`, `notice`, `yanked`); `bun audit --audit-level`.
 - **What an entry carries,** on the same line as its id (for a table, in its
   `reason`):
 
@@ -64,8 +81,15 @@ than as a script each repository copies.
   ```
 
   `expires=` is a real ISO 8601 date (dated); `ref=` is a tracked
-  repository-relative path or an `https` URL (referenced); the remaining text
-  is the justification. The file's `waiver-review-anchor` is the date the
+  repository-relative FILE other than the waiver file itself, or an `https`
+  URL (referenced) — a directory is not a record; the remaining text is the
+  justification, which needs at least ten characters in two words once paths
+  are removed (`ok` or `see docs/x.md` is not one). osv-scanner has its own
+  expiry fields and only they count: `ignoreUntil` (`effectiveUntil` for an
+  override); an `expires=` written in its `reason` is refused, since the
+  scanner never reads it. On a command line, each `--ignore` value must be a
+  literal advisory id (`RUSTSEC-`, `GHSA-`, `CVE-`): an id behind a variable
+  cannot be judged. The file's `waiver-review-anchor` is the date the
   list was last read against the resolved graph; no entry may expire before
   it or more than 365 days after it (bounded). An advisory waived in two files
   carries the same date in both. A `package.json` cannot carry a comment, so
@@ -85,10 +109,26 @@ than as a script each repository copies.
   verifying the waiver list against a live graph stays a reviewed, local
   operation, recorded in the waiver's `ref=`.
 - **It fails closed.** A tracked waiver source it cannot read, cannot parse,
-  or whose ignore list its line reading and a TOML parser disagree on is a
-  failure, never zero waivers. Each run prints its volume —
-  `N waiver(s) read across M file(s), K expiring within 30 days` — and a
-  repository with no source to read fails as having asserted nothing.
+  or that its positional TOML reader and `Bun.TOML` do not read identically
+  is a failure, never zero waivers; so is an `IgnoredVulns` or
+  `ignore = true` occurrence in an osv-scanner file that no key accounts for.
+  Every tracked text file is swept for a waiver-shaped flag (`--ignore`,
+  `--audit-level`, `-A`/`-W`) near an audit command: one that no reader
+  attributes to an entry — a YAML plain scalar continued on the next line,
+  an argument array in a script — fails as unparseable. A test fixture or a
+  document that only describes such flags says so with the marker
+  `allow-audit-flag-fixture` and is listed by name on every run; the marker
+  is not read in a workflow, action, manifest, script, Makefile or justfile.
+  Each run prints its volume — `N waiver(s) read across I inspected of C
+  classified file(s) (S skipped: reasons), K expiring within 30 days` —
+  where inspected plus skipped equals classified, and a repository with no
+  source to read fails as having asserted nothing.
+- **One reading, reused.** `readWaiverFile(path, text)` in
+  `tools/quality/advisory-waivers.ts` is the gate's reading of one file, and
+  `readRepositoryWaivers(root)` in `tools/quality/check-advisory-waivers.ts`
+  its reading of a work tree. Any other control that reports waivers (the
+  periodic fleet advisory report) calls one of them; a second parser would
+  see a different list.
 
 **Provenance.** The design is that of `scripts/advisory-waiver-gate.sh`, the
 fleet's first instance, merged in `feed-radar` as `4f0f2bbc` on 2026-07-26

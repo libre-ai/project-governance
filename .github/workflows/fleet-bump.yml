@@ -1,0 +1,70 @@
+name: Fleet bump
+
+# Plans — and, once the owner provides a write token, proposes — the pull
+# request that moves every consumer to the most recent declared generation.
+# It runs when the register of generations changes on the served branch: a
+# declared generation is step 2 of the procedure in ecosystem/fleet-pins.v1.yaml,
+# and this workflow is step 3. It never merges: each consumer's required checks
+# and a reviewer do. Owner steps to enable apply: docs/toolchain/FLEET-BUMP.md.
+on:
+  push:
+    branches: [main, migrate/recover-code]
+    paths:
+      - ecosystem/fleet-pins.v1.yaml
+      - tools/fleet/**
+      - .github/workflows/fleet-bump.yml
+  workflow_dispatch:
+    inputs:
+      to:
+        description: Target generation (40-character sha); empty means the most recent declared one
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fleet-bump
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan the bump of every consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # The tool uses Bun built-ins and `gh` only — no `bun install`, so the plan
+      # does not depend on the dependency supply chain it may be asked to move.
+      #
+      # Without the apply token the default token cannot read private
+      # repositories, so they are excluded BY NAME (--public-only prints each
+      # one) rather than reported as unreadable or, worse, left out silently.
+      - name: Plan, then apply when the owner has provided the token
+        env:
+          FLEET_BUMP_TOKEN: ${{ secrets.FLEET_BUMP_TOKEN }}
+          DEFAULT_TOKEN: ${{ github.token }}
+          TARGET: ${{ inputs.to }}
+        run: |
+          arguments=(--summary "$GITHUB_STEP_SUMMARY")
+          if [ -n "$TARGET" ]; then arguments+=(--to "$TARGET"); fi
+          if [ -n "$FLEET_BUMP_TOKEN" ]; then
+            export GH_TOKEN="$FLEET_BUMP_TOKEN"
+            arguments+=(--apply)
+          else
+            export GH_TOKEN="$DEFAULT_TOKEN"
+            arguments+=(--dry-run --public-only)
+            echo "apply disabled: no FLEET_BUMP_TOKEN"
+            echo "apply disabled: no FLEET_BUMP_TOKEN" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          bun tools/fleet/bump-generation.ts "${arguments[@]}"

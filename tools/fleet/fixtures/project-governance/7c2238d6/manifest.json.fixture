@@ -1,0 +1,195 @@
+{
+  "schemaVersion": "libre-ai.ci-composition.v1",
+  "repositories": {
+    "project-governance": {
+      "repository": "libre-ai/project-governance",
+      "ref": "fdbf43dcdbf2a74a35c497090cec5a7e402144d2",
+      "dependencies": [],
+      "check": [["bun", "run", "check"]]
+    },
+    "schemas-and-contracts": {
+      "repository": "libre-ai/schemas-and-contracts",
+      "ref": "4f3d53c3ecd96e7064057afd1587de41b66f13c1",
+      "dependencies": ["project-governance"],
+      "check": [["bun", "run", "check"]]
+    },
+    "ai-work-supervision": {
+      "repository": "libre-ai/ai-work-supervision",
+      "ref": "775f04bba84b8d544e3b47bf3eb43d05861e573b",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "application-development-toolkit": {
+      "repository": "libre-ai/application-development-toolkit",
+      "ref": "5ec3630ece2a768872dfb67171c9b7fbf21a1aa9",
+      "dependencies": ["project-governance", "schemas-and-contracts", "ai-work-supervision"],
+      "check": [["bun", "run", "check"]]
+    },
+    "organization-data-lifecycle": {
+      "repository": "libre-ai/organization-data-lifecycle",
+      "ref": "cf5c85999b72930a2388a80951305b9b4934d3f2",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "application-development-toolkit"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "ai-model-policy": {
+      "repository": "libre-ai/ai-model-policy",
+      "ref": "ba35dba3f2736b243439c3ab3ad41fea6236eb3d",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "ai-practice-workbench": {
+      "repository": "libre-ai/ai-practice-workbench",
+      "ref": "9c25bf51b5588a388f1117975205627921e8e00c",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "learning-session-facilitation": {
+      "repository": "libre-ai/learning-session-facilitation",
+      "ref": "65cba786203702bcff237754543777f1916e490d",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "personal-knowledge-workspace": {
+      "repository": "libre-ai/personal-knowledge-workspace",
+      "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "information-feed-filter": {
+      "repository": "libre-ai/information-feed-filter",
+      "ref": "7ee92fea4a53c58dff4dad3d66101cae74b99709",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "travel-itinerary-planner": {
+      "repository": "libre-ai/travel-itinerary-planner",
+      "ref": "d3e164cf01ebaebb4d1ad9f9cd393c72994cf6ad",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    },
+    "collaborative-data-sync": {
+      "repository": "libre-ai/collaborative-data-sync",
+      "ref": "a3d90ebd80d721901b2cb0d0bbcd46897a9cd13b",
+      "dependencies": ["project-governance"],
+      "check": [["bun", "run", "check"]]
+    },
+    "execution-continuity-evaluator": {
+      "repository": "libre-ai/execution-continuity-evaluator",
+      "ref": "85a10dcf6a49d603d46cd066e6a3f2936f75060a",
+      "dependencies": ["project-governance", "schemas-and-contracts"],
+      "check": [["bun", "run", "check"]]
+    },
+    "execution-sandbox": {
+      "repository": "libre-ai/execution-sandbox",
+      "ref": "c5f2761e935582e2dab488ca1675e2eb6b7ad7e8",
+      "dependencies": ["project-governance", "schemas-and-contracts"],
+      "check": [["bun", "run", "check"]]
+    },
+    "capability-authorization": {
+      "repository": "libre-ai/capability-authorization",
+      "ref": "7ce06366663ff8b4329d0bc25f589c8ef830aef0",
+      "dependencies": ["project-governance", "schemas-and-contracts"],
+      "check": [["bun", "run", "check"]]
+    },
+    "database-policy-inspector": {
+      "repository": "libre-ai/database-policy-inspector",
+      "ref": "d27dd3007dceb684585b94702de9f11fa5e8af72",
+      "dependencies": [],
+      "check": [
+        ["cargo", "fmt", "--all", "--check"],
+        ["cargo", "clippy", "--locked", "--all-targets", "--all-features", "--", "-D", "warnings"],
+        ["cargo", "test", "--locked", "--all-features"]
+      ]
+    },
+    "artifact-verification": {
+      "repository": "libre-ai/artifact-verification",
+      "ref": "388d032367060c0905c791997bd0efc61b2a85a9",
+      "dependencies": ["project-governance", "schemas-and-contracts"],
+      "check": [["bun", "run", "check"]]
+    },
+    "project-website": {
+      "repository": "libre-ai/project-website",
+      "ref": "7cc7155ce7693abfbaf48de15bb42e185e3c2d62",
+      "dependencies": [
+        "project-governance",
+        "schemas-and-contracts",
+        "ai-work-supervision",
+        "application-development-toolkit",
+        "organization-data-lifecycle",
+        "ai-model-policy"
+      ],
+      "check": [["bun", "run", "check"]]
+    }
+  },
+  "installOrder": [
+    "project-governance",
+    "schemas-and-contracts",
+    "application-development-toolkit",
+    "ai-work-supervision",
+    "organization-data-lifecycle",
+    "ai-model-policy",
+    "ai-practice-workbench",
+    "learning-session-facilitation",
+    "personal-knowledge-workspace",
+    "information-feed-filter",
+    "travel-itinerary-planner",
+    "collaborative-data-sync",
+    "execution-continuity-evaluator",
+    "execution-sandbox",
+    "capability-authorization",
+    "database-policy-inspector",
+    "artifact-verification",
+    "project-website"
+  ]
+}

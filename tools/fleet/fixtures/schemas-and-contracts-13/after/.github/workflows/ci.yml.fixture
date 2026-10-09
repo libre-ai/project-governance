@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+    branches: [main, migrate/recover-code]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Source composition and package quality run once in code-validation.yml.
+# These checks retain file attribution and declared/effective licence matching.
+# DCO is not a portfolio-wide migration requirement.
+jobs:
+  licensing:
+    name: Licensing
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          persist-credentials: false
+      - name: Checkout immutable current governance tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: libre-ai/project-governance
+          ref: 1c8b37c80beb41f640982768ec27304a911e0b8e
+          path: tooling
+          persist-credentials: false
+      - name: Install pinned REUSE toolchain
+        # Retain the historical resolved versions, without the old repository.
+        run: |
+          python3 -m venv "$RUNNER_TEMP/licensing"
+          "$RUNNER_TEMP/licensing/bin/python" -m pip install --disable-pip-version-check \
+            attrs==26.1.0 boolean.py==5.0 charset-normalizer==3.4.9 click==8.4.2 \
+            Jinja2==3.1.6 license-expression==30.4.4 MarkupSafe==3.0.3 \
+            python-debian==1.1.1 python-magic==0.4.27 \
+            'reuse[charset-normalizer]==6.2.0' tomlkit==0.15.1
+          echo "$RUNNER_TEMP/licensing/bin" >> "$GITHUB_PATH"
+      - name: Verify file attribution
+        working-directory: source
+        run: reuse lint
+      - name: Install verified toolchains
+        run: |
+          bash tooling/.github/composition/install-toolchains.sh \
+            "$GITHUB_WORKSPACE/tooling/toolchains/bun.json" \
+            "$GITHUB_WORKSPACE/tooling/toolchains/notebook-qualification.json"
+      - name: Compare declared and effective package licences
+        working-directory: source
+        run: bun ../tooling/tools/quality/check-declared-licenses.ts

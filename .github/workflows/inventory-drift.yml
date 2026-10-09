@@ -9,7 +9,10 @@ name: Inventory drift
 #     renamed or re-exposed without an inventory update fails the same day
 #     instead of waiting for the weekly truth-drift audit.
 # A declared-private repository (product-research) is handled by the checker itself:
-# private + not observable with the default token is consistent, not drift.
+# private + not observable with the default token below is counted as
+# UNVERIFIABLE — its presence, visibility and archived state are a CI blind
+# spot, printed as `N reconciled + M unverifiable (private, token scope)`;
+# only an owner-scoped token reconciles it (see the gate's header).
 on:
   push:
     # The served branch is listed: with `[main]` alone this workflow had
