@@ -8,20 +8,50 @@
  * divergence, so drift blocks the pull request that would ship it instead of
  * waiting for the weekly truth-drift audit.
  *
- * Private repositories: the default CI token only lists public repositories.
- * An entry declared `private` that is NOT observable is therefore consistent,
- * not drift (fail-open on that single case, by design and logged); a declared
- * `private` entry that IS observable as public is a real leak and fails.
+ * Every comparison is one assertion. Each declared repository that is
+ * observable yields three — presence, visibility, lifecycle — and each
+ * divergence is the failing comparison itself, so the assertion count printed
+ * on success is the number of facts actually compared, not a summary of them.
+ *
+ * Private repositories, and the blind spot they leave. The CI workflows run
+ * this gate with `GH_TOKEN: ${{ github.token }}` (inventory-drift.yml,
+ * truth-drift.yml): an installation token scoped to this repository, which
+ * lists the organization's public repositories only. An entry declared
+ * `private` and `active` that is NOT observable is therefore counted as
+ * UNVERIFIABLE — neither reconciled nor drift — and the success line says so:
+ * `N reconciled + M unverifiable (private, token scope) = declared`. Presence,
+ * visibility and archived state of such an entry are not read in CI; only an
+ * owner-scoped token (`GH_TOKEN=$(gh auth token)`) reads them, and then the
+ * entry is reconciled like any other. A declared `private` entry that IS
+ * observable as public is a real leak and fails whatever the token.
+ *
+ * The coupling that keeps that blind spot bounded: build-index.ts admits
+ * exactly one private entry (`libre-ai/product-research`), and only with
+ * `lifecycle: active`. Nothing here can therefore claim, from CI, that a
+ * private repository is archived. If that doctrine constraint is ever lifted,
+ * the branch below still fails an archived claim that cannot be read (it is
+ * checked before the private case), so CI would turn red rather than green on
+ * every such entry until an owner-scoped token is provided.
  *
  * Lifecycle (ADR-0042 §7, act 3): `lifecycle` is compared with GitHub's
  * archived state in both directions. Before this, an inventory could declare a
  * repository archived while it stayed writable, or GitHub could archive one the
  * inventory still called active, and both read green. Every declared-archived
  * entry yields one named assertion and their count is printed. An archived
- * entry that is not observable is a drift whatever its visibility: the
- * private-fail-open above exists because a private repository is invisible by
- * construction, and extending it to an archived claim would turn "cannot read
- * the archived state" into "the archived state holds".
+ * entry that is not observable is a drift whatever its visibility: extending
+ * the private case to an archived claim would turn "cannot read the archived
+ * state" into "the archived state holds".
+ *
+ * Reading the organization (adversarial review of PR #48, 2026-10-09). A
+ * listing that lost information is unreadable, never a shorter listing: a
+ * GraphQL page is rejected when `gh` exits non-zero or `errors` is non-empty,
+ * even if `data` is present; a single malformed node, a missing `pageInfo` or
+ * a missing `totalCount` makes the page unreadable; the collected listing must
+ * have exactly `totalCount` distinct names; an exhausted page budget throws.
+ * An unreadable GraphQL answer falls back to REST; if REST cannot answer
+ * either, the gate fails as "unable to verify". Before this, a FORBIDDEN node
+ * served with exit 1, a node missing `isArchived`, or a page without
+ * `pageInfo` each read green with "0 drift(s)".
  *
  * Usage: bun ecosystem/check-inventory-drift.ts   (requires `gh` + GH_TOKEN)
  */
@@ -52,78 +82,134 @@ export interface ArchivedAssertion {
   evidence: string;
 }
 
+export type ComparisonKind = "presence" | "visibility" | "lifecycle";
+
+/** One compared fact. A failing comparison IS a drift; there is no other kind. */
+export interface Comparison {
+  name: string;
+  kind: ComparisonKind;
+  holds: boolean;
+  evidence: string;
+}
+
+/** How the declared entries split; the four counts are derived independently. */
+export interface InventoryPartition {
+  /** Declared AND observable: every fact about them was compared. */
+  reconciled: number;
+  /** Declared private and active, not observable with this token. */
+  unverifiable: string[];
+  /** Declared, not observable, and not excusable by the token scope (a drift). */
+  missing: number;
+  declared: number;
+}
+
 export interface Reconciliation {
-  /** Divergences that must fail the check. */
+  /** Divergences that must fail the check — the evidence of the failing comparisons. */
   drifts: string[];
   /** Consistent-but-unverifiable cases, logged for the record. */
   notes: string[];
   /** Exactly one entry per repository the inventory declares archived. */
   archived: ArchivedAssertion[];
+  /** Every fact compared, in report order. */
+  comparisons: Comparison[];
+  partition: InventoryPartition;
 }
 
 export function reconcileInventory(
   declared: DeclaredRepository[],
   live: LiveRepository[],
 ): Reconciliation {
-  const drifts: string[] = [];
   const notes: string[] = [];
   const archived: ArchivedAssertion[] = [];
+  const comparisons: Comparison[] = [];
+  const unverifiable: string[] = [];
+  let missing = 0;
   const declaredByName = new Map(declared.map((repo) => [repo.name, repo]));
   const liveByName = new Map(live.map((repo) => [repo.name, repo]));
+  const compare = (name: string, kind: ComparisonKind, holds: boolean, evidence: string) => {
+    comparisons.push({ name, kind, holds, evidence });
+  };
 
   for (const repo of live) {
     const entry = declaredByName.get(repo.name);
     if (entry === undefined) {
-      drifts.push(
+      compare(
+        repo.name,
+        "presence",
+        false,
         `DRIFT: repository '${repo.name}' is observable on GitHub but absent from the inventory`,
       );
       continue;
     }
+    compare(repo.name, "presence", true, "declared and observable");
     const liveVisibility = repo.isPrivate ? "private" : "public";
-    if (entry.visibility !== liveVisibility) {
-      drifts.push(
-        `DRIFT: repository '${repo.name}' declared ${entry.visibility} but observable as ${liveVisibility}`,
-      );
-    }
+    compare(
+      repo.name,
+      "visibility",
+      entry.visibility === liveVisibility,
+      entry.visibility === liveVisibility
+        ? `declared and observable as ${liveVisibility}`
+        : `DRIFT: repository '${repo.name}' declared ${entry.visibility} but observable as ${liveVisibility}`,
+    );
     if (entry.lifecycle === "archived") {
       if (repo.isArchived) {
-        archived.push({
-          name: repo.name,
-          holds: true,
-          evidence: "declared archived and observable as archived",
-        });
+        const evidence = "declared archived and observable as archived";
+        compare(repo.name, "lifecycle", true, evidence);
+        archived.push({ name: repo.name, holds: true, evidence });
       } else {
         const drift = `DRIFT: '${repo.name}' declared archived but observable as active`;
-        drifts.push(drift);
+        compare(repo.name, "lifecycle", false, drift);
         archived.push({ name: repo.name, holds: false, evidence: drift });
       }
     } else if (repo.isArchived) {
-      drifts.push(`DRIFT: '${repo.name}' is archived on GitHub but declared active`);
+      compare(
+        repo.name,
+        "lifecycle",
+        false,
+        `DRIFT: '${repo.name}' is archived on GitHub but declared active`,
+      );
+    } else {
+      compare(repo.name, "lifecycle", true, "declared active and observable as active");
     }
   }
 
   for (const entry of declared) {
     if (liveByName.has(entry.name)) continue;
     if (entry.lifecycle === "archived") {
-      // Checked before the private fail-open on purpose: an archived claim that
+      // Checked before the private case on purpose: an archived claim that
       // cannot be read is unverified, never consistent.
       const drift = `DRIFT: '${entry.name}' declared archived but not observable — its archived state cannot be verified`;
-      drifts.push(drift);
+      compare(entry.name, "lifecycle", false, drift);
       archived.push({ name: entry.name, holds: false, evidence: drift });
+      missing += 1;
       continue;
     }
     if (entry.visibility === "private") {
       notes.push(
-        `NOTE: '${entry.name}' declared private and not observable with this token — consistent, unverifiable here`,
+        `NOTE: '${entry.name}' declared private and not observable with this token — presence, visibility and archived state unverifiable here (token scope); an owner-scoped GH_TOKEN reconciles it`,
       );
+      unverifiable.push(entry.name);
       continue;
     }
-    drifts.push(
+    compare(
+      entry.name,
+      "presence",
+      false,
       `DRIFT: inventory declares '${entry.name}' public but it is not observable (deleted, renamed, or made private)`,
     );
+    missing += 1;
   }
 
-  return { drifts, notes, archived };
+  const reconciled = declared.filter((entry) => liveByName.has(entry.name)).length;
+  return {
+    drifts: comparisons
+      .filter((comparison) => !comparison.holds)
+      .map((comparison) => comparison.evidence),
+    notes,
+    archived,
+    comparisons,
+    partition: { reconciled, unverifiable, missing, declared: declared.length },
+  };
 }
 
 /**
@@ -201,6 +287,7 @@ export function buildOrgRepositoriesQuery(organization: string, cursor: string |
     `query {`,
     `  organization(login: ${JSON.stringify(organization)}) {`,
     `    repositories(first: 100${after}) {`,
+    `      totalCount`,
     `      pageInfo { hasNextPage endCursor }`,
     `      nodes { name isPrivate isArchived }`,
     `    }`,
@@ -213,99 +300,218 @@ interface GraphQLRepoListPage {
   readonly nodes: readonly LiveRepository[];
   readonly hasNextPage: boolean;
   readonly endCursor: string | null;
+  /** Repositories the connection announces for this token, across all pages. */
+  readonly totalCount: number;
 }
 
 /**
- * Pure parse of one page's `data` payload — `null` distinguishes "the
- * response did not carry the shape we asked for" (retry, then fall back)
- * from "the organization has zero repositories on this page" (a real,
- * structurally-present empty `nodes: []`), same 404-is-an-answer contract
- * the rest of this fleet's gates use.
+ * Pure parse of one page's `data` payload. `null` means "this page did not
+ * carry everything we asked for" (retry, then fall back) — distinct from a
+ * real, structurally-present empty `nodes: []`. A page is all or nothing:
+ * dropping one malformed node would turn "could not read repository X" into
+ * "repository X does not exist", which on an undeclared repository is a
+ * missed drift and on a declared one is a fabricated one.
  */
 export function parseOrgRepositoriesPage(data: unknown): GraphQLRepoListPage | null {
   const repositories = (
     data as {
       readonly organization?: {
         readonly repositories?: {
+          readonly totalCount?: unknown;
           readonly pageInfo?: {
-            readonly hasNextPage?: boolean;
-            readonly endCursor?: string | null;
-          };
-          readonly nodes?: readonly ({
-            readonly name?: string;
-            readonly isPrivate?: boolean;
-            readonly isArchived?: boolean;
-          } | null)[];
+            readonly hasNextPage?: unknown;
+            readonly endCursor?: unknown;
+          } | null;
+          readonly nodes?: unknown;
         } | null;
       } | null;
     }
   )?.organization?.repositories;
   if (repositories === undefined || repositories === null) return null;
-  // A node without `isArchived` is dropped like any other malformed node: the
-  // lifecycle comparison must never read an absent field as "not archived".
-  const nodes = (repositories.nodes ?? [])
-    .filter(
-      (node): node is { name: string; isPrivate: boolean; isArchived: boolean } =>
-        node !== null &&
-        typeof node.name === "string" &&
-        typeof node.isPrivate === "boolean" &&
-        typeof node.isArchived === "boolean",
-    )
-    .map(({ name, isPrivate, isArchived }) => ({ name, isPrivate, isArchived }));
-  return {
-    nodes,
-    hasNextPage: repositories.pageInfo?.hasNextPage ?? false,
-    endCursor: repositories.pageInfo?.endCursor ?? null,
-  };
+  const { totalCount, pageInfo, nodes } = repositories;
+  if (typeof totalCount !== "number" || !Number.isInteger(totalCount) || totalCount < 0) {
+    return null;
+  }
+  // A missing pageInfo must never read as "last page": that is how a
+  // truncated listing would pass for a complete one.
+  if (pageInfo === undefined || pageInfo === null) return null;
+  const { hasNextPage, endCursor } = pageInfo;
+  if (typeof hasNextPage !== "boolean") return null;
+  if (endCursor !== null && typeof endCursor !== "string") return null;
+  if (hasNextPage && endCursor === null) return null;
+  if (!Array.isArray(nodes)) return null;
+  const parsed: LiveRepository[] = [];
+  for (const node of nodes as unknown[]) {
+    const candidate = node as {
+      readonly name?: unknown;
+      readonly isPrivate?: unknown;
+      readonly isArchived?: unknown;
+    } | null;
+    // The lifecycle comparison must never read an absent field as "not
+    // archived", nor a null node (FORBIDDEN on one repository) as absent.
+    if (
+      candidate === null ||
+      typeof candidate !== "object" ||
+      typeof candidate.name !== "string" ||
+      candidate.name.length === 0 ||
+      typeof candidate.isPrivate !== "boolean" ||
+      typeof candidate.isArchived !== "boolean"
+    ) {
+      return null;
+    }
+    parsed.push({
+      name: candidate.name,
+      isPrivate: candidate.isPrivate,
+      isArchived: candidate.isArchived,
+    });
+  }
+  return { nodes: parsed, hasNextPage, endCursor, totalCount };
 }
+
+export interface GraphQLRawResponse {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export type PageReading =
+  | { readonly ok: true; readonly page: GraphQLRepoListPage }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * One raw `gh api graphql` answer → a page, or the reason it is unusable.
+ *
+ * `ghGraphQLRaw` documents that other gates read `data` regardless of the exit
+ * code, because their multi-alias batches tolerate a NOT_FOUND on one alias.
+ * This query has a single root field: any error belongs to the listing itself
+ * (a FORBIDDEN node, a SAML-protected repository, a timeout), so a non-zero
+ * exit or a non-empty `errors` makes the whole answer unusable even when a
+ * `data` object came with it.
+ */
+export function readOrgRepositoriesResponse(raw: GraphQLRawResponse): PageReading {
+  let parsed: { data?: unknown; errors?: unknown };
+  try {
+    parsed = JSON.parse(raw.stdout) as { data?: unknown; errors?: unknown };
+  } catch {
+    return { ok: false, reason: raw.stderr.trim() || `gh api graphql: body is not JSON` };
+  }
+  if (parsed === null || typeof parsed !== "object") {
+    return { ok: false, reason: "gh api graphql: body is not a JSON object" };
+  }
+  if (parsed.errors !== undefined && parsed.errors !== null) {
+    if (!Array.isArray(parsed.errors)) {
+      return { ok: false, reason: "GraphQL errors: not an array" };
+    }
+    if (parsed.errors.length > 0) {
+      const described = (parsed.errors as { type?: unknown; message?: unknown }[]).map((error) =>
+        [error?.type, error?.message]
+          .filter((part) => typeof part === "string" && part.length > 0)
+          .join(": "),
+      );
+      return { ok: false, reason: `GraphQL errors: ${described.join("; ")}` };
+    }
+  }
+  if (raw.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: raw.stderr.trim() || `gh api graphql failed (exit ${raw.exitCode})`,
+    };
+  }
+  const page = parseOrgRepositoriesPage(parsed.data);
+  if (page === null) {
+    return {
+      ok: false,
+      reason:
+        "response did not carry the requested shape (totalCount, pageInfo, and every node with name, isPrivate and isArchived)",
+    };
+  }
+  return { ok: true, page };
+}
+
+export type GraphQLRunner = (query: string) => Promise<GraphQLRawResponse>;
+
+/** The effects `fetchLiveRepositories` needs, injectable so its contract is testable. */
+export interface FetchDependencies {
+  readonly graphql: GraphQLRunner;
+  readonly rest: () => Promise<LiveRepository[]>;
+  readonly retryDelaysMs: readonly number[];
+}
+
+const DEFAULT_DEPENDENCIES: FetchDependencies = {
+  graphql: ghGraphQLRaw,
+  rest: fetchLiveRepositoriesViaRest,
+  retryDelaysMs: RETRY_DELAYS_MS,
+};
 
 const MAX_ORG_PAGES = 20; // safety cap: 2000 repositories, far beyond this fleet's real size
 
 async function fetchOrgRepositoriesPage(
   organization: string,
   cursor: string | null,
+  dependencies: FetchDependencies,
 ): Promise<GraphQLRepoListPage | null> {
   const query = buildOrgRepositoriesQuery(organization, cursor);
   let lastError = "";
-  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
-    const { stdout, stderr, exitCode } = await ghGraphQLRaw(query);
-    try {
-      const parsed = JSON.parse(stdout) as { data?: unknown };
-      if (parsed.data !== undefined) {
-        const page = parseOrgRepositoriesPage(parsed.data);
-        if (page !== null) return page;
-      }
-    } catch {
-      // Not valid JSON (or an unexpected shape) — fall through to retry.
-    }
-    lastError = stderr.trim() || `gh api graphql failed (exit ${exitCode})`;
-    const wait = RETRY_DELAYS_MS[attempt];
+  for (let attempt = 0; attempt <= dependencies.retryDelaysMs.length; attempt++) {
+    const reading = readOrgRepositoriesResponse(await dependencies.graphql(query));
+    if (reading.ok) return reading.page;
+    lastError = reading.reason;
+    const wait = dependencies.retryDelaysMs[attempt];
     if (wait !== undefined) await delay(wait);
   }
   console.error(`GraphQL organization repository page fetch failed after retries: ${lastError}`);
   return null;
 }
 
-/** `null` means the listing could not be answered at all — caller falls back to REST, never assumes an empty organization. */
+/**
+ * `null` means a page could not be read — the caller falls back to REST, never
+ * assumes a shorter organization. A listing that reads but does not add up
+ * (count, duplicates, page budget) throws: that is an inconsistent answer, not
+ * an unavailable one, and no fallback should be allowed to paper over it.
+ */
 async function fetchLiveRepositoriesViaGraphQL(
   organization: string,
+  dependencies: FetchDependencies,
 ): Promise<LiveRepository[] | null> {
   const collected: LiveRepository[] = [];
+  const seen = new Set<string>();
+  let announced: number | null = null;
   let cursor: string | null = null;
   for (let page = 0; page < MAX_ORG_PAGES; page++) {
-    const result = await fetchOrgRepositoriesPage(organization, cursor);
+    const result = await fetchOrgRepositoriesPage(organization, cursor, dependencies);
     if (result === null) return null;
-    collected.push(...result.nodes);
-    if (!result.hasNextPage || result.endCursor === null) return collected;
+    if (announced === null) announced = result.totalCount;
+    for (const node of result.nodes) {
+      if (seen.has(node.name)) {
+        throw new Error(
+          `unable to verify the ${organization} organization: repository '${node.name}' listed twice across pages`,
+        );
+      }
+      seen.add(node.name);
+      collected.push(node);
+    }
+    if (!result.hasNextPage) {
+      if (collected.length !== announced) {
+        throw new Error(
+          `unable to verify the ${organization} organization: collected ${collected.length} repositories but the organization announced ${announced} (totalCount)`,
+        );
+      }
+      return collected;
+    }
     cursor = result.endCursor;
   }
-  return collected;
+  throw new Error(
+    `unable to verify the ${organization} organization: page budget exhausted after ${MAX_ORG_PAGES} pages with more announced`,
+  );
 }
 
 /** Every repository the token can list, fail-closed; shared with check-truth-drift.ts. */
-export async function fetchLiveRepositories(): Promise<LiveRepository[]> {
+export async function fetchLiveRepositories(
+  dependencies: FetchDependencies = DEFAULT_DEPENDENCIES,
+): Promise<LiveRepository[]> {
   return (
-    (await fetchLiveRepositoriesViaGraphQL(ORGANIZATION)) ?? (await fetchLiveRepositoriesViaRest())
+    (await fetchLiveRepositoriesViaGraphQL(ORGANIZATION, dependencies)) ??
+    (await dependencies.rest())
   );
 }
 
@@ -322,11 +528,11 @@ if (import.meta.main) {
   });
 
   const live = await fetchLiveRepositories();
-  const { drifts, notes, archived } = reconcileInventory(declared, live);
+  const { drifts, notes, archived, comparisons, partition } = reconcileInventory(declared, live);
   for (const note of notes) console.log(note);
   const declaredArchived = declared.filter((entry) => entry.lifecycle === "archived").length;
-  // One assertion per declared-archived entry, printed whether it holds or not,
-  // so the archived claims are counted rather than inferred from silence.
+  // One line per declared-archived entry, printed whether it holds or not, so
+  // the archived claims are counted rather than inferred from silence.
   for (const assertion of archived) {
     console.log(
       `ARCHIVED ${assertion.holds ? "holds" : "FAILS"}: '${assertion.name}' — ${assertion.evidence}`,
@@ -337,40 +543,34 @@ if (import.meta.main) {
       `repositor${declaredArchived === 1 ? "y" : "ies"}, ` +
       `${archived.filter((assertion) => assertion.holds).length} holding`,
   );
+
   const { concludeGate, GateReport } = await import("../tools/quality/gate-report");
   const report = new GateReport();
-  if (archived.length !== declaredArchived) {
-    report.check(
-      "archived assertions",
-      false,
-      `${archived.length} assertion(s) for ${declaredArchived} declared-archived repositories`,
-    );
+  for (const comparison of comparisons) {
+    report.check(`${comparison.kind} '${comparison.name}'`, comparison.holds, comparison.evidence);
   }
-  const archivedDrifts = new Set(
-    archived.filter((assertion) => !assertion.holds).map((assertion) => assertion.evidence),
+  // The partition is the volume claim made checkable: every declared entry is
+  // either reconciled, unverifiable for a stated reason, or a counted drift.
+  // An inventory of zero entries reconciling against a live organization is a
+  // broken read, not an agreement.
+  const accounted = partition.reconciled + partition.unverifiable.length + partition.missing;
+  report.check(
+    `${ORGANIZATION} inventory partition`,
+    partition.declared > 0 && accounted === partition.declared,
+    partition.declared === 0
+      ? "the inventory declares no repository — the reconciliation asserted nothing"
+      : `${partition.reconciled} reconciled + ${partition.unverifiable.length} unverifiable + ` +
+          `${partition.missing} missing = ${accounted}, for ${partition.declared} declared`,
   );
-  for (const assertion of archived) {
-    report.check(`archived '${assertion.name}'`, assertion.holds, assertion.evidence);
-  }
-  for (const drift of drifts) {
-    // An archived drift is already recorded by its own named assertion above.
-    if (archivedDrifts.has(drift)) continue;
-    report.check(drift.split(":")[0] ?? drift, false, drift);
-  }
-  if (drifts.length === 0) {
-    // An inventory of zero declared repositories reconciling against a live
-    // organization is a broken read, not an agreement.
-    report.check(
-      `${ORGANIZATION} inventory`,
-      declared.length > 0,
-      declared.length > 0
-        ? `${declared.length} declared repositories match the observable organization`
-        : "the inventory declares no repository — the reconciliation asserted nothing",
-    );
-  }
+  const undeclaredObserved = live.filter(
+    (repository) => !declared.some((entry) => entry.name === repository.name),
+  ).length;
   report.volume(
-    `${declared.length} declared repositor${declared.length === 1 ? "y" : "ies"} reconciled ` +
-      `against ${live.length} observed in the ${ORGANIZATION} organization, ` +
+    `${partition.reconciled} reconciled + ${partition.unverifiable.length} unverifiable ` +
+      `(private, token scope)` +
+      (partition.missing > 0 ? ` + ${partition.missing} missing` : "") +
+      ` = ${partition.declared} declared; ${live.length} observed in the ${ORGANIZATION} ` +
+      `organization (${undeclaredObserved} undeclared); ${comparisons.length} comparison(s), ` +
       `${archived.length} archived assertion(s), ${drifts.length} drift(s)`,
   );
   concludeGate("Inventory drift", report);
