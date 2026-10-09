@@ -1,19 +1,19 @@
 # ADR-0045 — Isolation par construction contre l'injection de prompt indirecte
 
-- **Statut :** proposed — doctrine de couche 3 (K4) : revue indépendante puis fusion par le propriétaire, qui constitue la signature ; aucune fusion automatique
+- **Statut :** accepted — arbitrage propriétaire du 2026-10-09 par questions structurées (ADR-0022/I-24) ; I-32 et D66 sont en vigueur ; cette acceptation autorise la conception d'un contrat candidat, pas son Specification Lock ni une capacité runtime
 - **Date :** 2026-10-09
-- **Arbitrage :** le propriétaire a engagé en chat la rédaction de cet ADR ; l'acceptation reste à sa signature. Owner-arbitration: 2026-10-09
+- **Arbitrage :** le propriétaire a engagé en chat la rédaction de cet ADR, puis a tranché ses cinq questions (section « Décisions du propriétaire »). Owner-arbitration: 2026-10-09 — décisions Q1–Q5 tranchées en chat le 2026-10-09 ; acceptation
 - **Portée :** tout runtime de la flotte qui place un modèle de langage devant un contenu non fiable et lui confie, dans le même contexte ou par ses sorties, un outil à effet.
 - **Étend :** I-18 (noyau de sécurité des boucles) ; K2 et K3 de `docs/specifications/LOOP-SECURITY-KERNEL.md` ; `docs/security/AGENT-RUNTIME-DOCTRINE.md` §1 et §4 ; ADR-0032 D3 et D5 ; ADR-0034 D1 et D2.
 - **Applique :** I-17 (surface à touche humaine fermée), I-19 (dogfooding d'abord : aucun code avant un consommateur).
-- **Autorise :** l'inscription au registre de l'invariant candidat I-32 et de la décision D66 ; la conception, dans `libre-ai/schemas-and-contracts`, d'un contrat candidat de version majeure `execution-plan-body.v4` et de ses vecteurs rouges.
-- **N'autorise pas :** la modification d'un contrat verrouillé (`execution-plan-body.v3` reste identique à l'octet) ; un Specification Lock ; l'ouverture d'une capacité runtime ; la reprise de code, de prompt ou de libellé d'une source étudiée ; la modification de `docs/security/THREAT-MODEL.md` avant acceptation.
+- **Autorise :** l'inscription au registre de l'invariant I-32 et de la décision D66 ; la mise à jour de la lacune d'application de `docs/security/THREAT-MODEL.md` décrite aux Conséquences ; la conception, dans `libre-ai/schemas-and-contracts`, d'un contrat candidat de version majeure `execution-plan-body.v4` et de ses vecteurs rouges.
+- **N'autorise pas :** la modification d'un contrat verrouillé (`execution-plan-body.v3` reste identique à l'octet) ; un Specification Lock ; l'ouverture d'une capacité runtime ; la reprise de code, de prompt ou de libellé d'une source étudiée ; une modification de `docs/security/THREAT-MODEL.md` au-delà de celle décrite aux Conséquences.
 
 ## Contexte
 
 **Il faut trancher avant le premier client.** Le relevé de flotte du 2026-10-09 ne trouve aucun client de modèle de langage en production : seuls deux outils de forge appellent un modèle, le lecteur à froid (`verification/adoption/cold-reader/cold-reader.ts`) et l'orchestrateur de revues en éventail, et le noyau d'orchestration ne tourne qu'en simulation. *Hypothèse :* ce relevé n'est pas re-mesuré par cet ADR. Une frontière posée après le premier client devient une migration de ce client. Posée avant, elle n'est qu'une contrainte de conception.
 
-**La lacune est déclarée, pas comblée.** Le modèle de menace classe l'injection de prompt par texte de preuve en risque connu, « depends on planner/refusal design » (`docs/security/THREAT-MODEL.md:135`). Sa troisième mitigation, planification seule et refus d'abord, porte une lacune d'application déclarée : elle dépend de la conception du planificateur et du refus, et aucun des cinq contrôles du noyau de sécurité des boucles ne la spécifie (`docs/security/THREAT-MODEL.md:159`, paraphrasé). Le risque résiduel R4 est « medium / high » et se repose sur la revue humaine (`docs/security/THREAT-MODEL.md:247`). Aucun document de doctrine ne dit quelle architecture d'agent rend cette lacune fermable.
+**La lacune est déclarée, pas comblée.** Le modèle de menace classe l'injection de prompt par texte de preuve en risque connu, « depends on planner/refusal design » (`docs/security/THREAT-MODEL.md@6f780d5:143`). Sa troisième mitigation, planification seule et refus d'abord, porte une lacune d'application déclarée : elle dépend de la conception du planificateur et du refus, et aucun des cinq contrôles du noyau de sécurité des boucles ne la spécifie (`docs/security/THREAT-MODEL.md@6f780d5:167`, paraphrasé). Le risque résiduel R4 est « medium / high » et se repose sur la revue humaine (`docs/security/THREAT-MODEL.md@6f780d5:255`). Ces citations visent l'état du fichier avant sa mise à jour par cet ADR. Aucun document de doctrine ne dit quelle architecture d'agent rend cette lacune fermable.
 
 **L'enveloppe K3 et le spotlighting sont une défense en profondeur, pas une isolation.**
 
@@ -48,7 +48,7 @@ Le modèle privilégié lit le contenu non fiable, sous enveloppe. Le refus et l
 - **Sécurité :** aucun des deux canaux n'est fermé. La garantie repose sur un modèle qui obéirait au marquage, ce qu'aucune mesure adaptative ne soutient (arXiv:2510.09023). La revue humaine ne voit que ce qu'on lui présente, et le canal de données produit des appels d'apparence légitime.
 - **Qualité :** aucune propriété n'est vérifiable par un test. Un vecteur rouge peut montrer une faille, aucun ne peut montrer l'absence de faille.
 - **Performance :** aucun coût.
-- **Complétude :** la lacune de `THREAT-MODEL.md:159` reste ouverte et non spécifiable.
+- **Complétude :** la lacune de `THREAT-MODEL.md@6f780d5:167` reste ouverte et non spécifiable.
 
 ### Option B — Action-Selector et Plan-Then-Execute : plan fixé depuis la seule requête de confiance
 
@@ -77,23 +77,34 @@ Le modèle privilégié reçoit la seule requête de confiance et écrit un prog
 - **Performance :** coût d'utilité mesuré par les auteurs sur AgentDojo : 77 % des tâches résolues avec sécurité prouvable, contre 84 % sans défense (arXiv:2503.18813). Le coût de l'interprétation est négligeable devant les appels de modèle, mais *non mesuré dans la flotte*.
 - **Complétude :** couvre la composition de tâches que l'option B n'exprime pas. Exige un interpréteur et un vocabulaire de capacités, qui n'existent pas.
 
-## Décision proposée
+## Décision
 
 1. **Trois invariants, indépendants du pattern.** La doctrine fixe les propriétés, pas une implémentation. Un runtime de la flotte n'est conforme que s'il tient les trois.
 
    - **INV-a — Aucune chaîne non fiable devant un modèle qui détient un outil à effet.** Aucune chaîne dérivée d'un contenu non fiable n'entre dans le contexte d'un modèle qui détient un outil à effet, directement, par interpolation d'un objet typé, par un résumé ou une compaction, ou par le rapport d'un autre agent. Ces valeurs y circulent comme références opaques, résolues par un composant déterministe hors du modèle. *Est un outil à effet* tout outil dont l'accès déclaré est `write`, `execute` ou `network` au sens d'`execution-plan-body`. Un accès `network` en lecture compte comme un effet, puisqu'une URL suffit à exfiltrer. Le marquage K3 ne fait pas d'une chaîne non fiable une chaîne admise.
-   - **INV-b — Provenance par valeur, politique sur l'argument.** Chaque valeur porte sa provenance et l'ensemble de ses lecteurs autorisés, propagés à toute valeur qui en dépend, y compris par une condition. Avant chaque appel d'outil, une politique déterministe juge **chaque argument** et son graphe de dépendances, pas seulement l'action. Elle refuse, ou renvoie à une décision humaine typée, un argument dont une dépendance non fiable n'est pas admise pour cet outil et ce paramètre.
+   - **INV-b — Provenance par valeur, politique sur l'argument.** Chaque valeur porte sa provenance et l'ensemble de ses lecteurs autorisés, propagés à toute valeur qui en dépend, y compris par une condition. Avant chaque appel d'outil, une politique déterministe juge **chaque argument** et son graphe de dépendances, pas seulement l'action. Elle refuse, fermé, un argument dont une dépendance non fiable n'est pas admise pour cet outil et ce paramètre. Le refus est terminal pour cet appel : il ne renvoie vers aucune décision humaine (Q5).
    - **INV-c — Sortie de quarantaine à vocabulaire fermé.** La sortie d'un composant de quarantaine est validée par un schéma à vocabulaire fermé : énumérations, booléens, nombres bornés, identifiants validés contre un référentiel. Un échec ou un manque d'information se signale par un booléen ou un code fermé, jamais par du texte libre. Dire ce qui manque serait un canal de retour vers le planificateur. Une valeur non fermée (un texte à afficher, un corps de message) n'est pas une sortie de quarantaine : c'est une donnée non fiable soumise à INV-a et INV-b.
 
-2. **Réalisations admises.** L'option B tient INV-a par construction et INV-c par les résultats fermés d'ADR-0034 D1. Elle tient INV-b dès qu'aucun argument d'outil ne dépend d'un contenu non fiable, ou qu'une politique le juge. L'option D tient les trois. L'option C n'est admise qu'avec INV-b, ce qui la ramène à une forme de D. Le choix du pattern se fait par tâche, dans le plan, et non par runtime : Action-Selector pour le routage, Plan-Then-Execute pour une transaction, Code-Then-Execute pour une composition.
+2. **Réalisation par défaut : Plan-Then-Execute sur le graphe d'ADR-0034 (option B, Q2).** Elle tient INV-a par construction et INV-c par les résultats fermés d'ADR-0034 D1. Elle tient INV-b dès qu'aucun argument d'outil ne dépend d'un contenu non fiable, ou que la politique d'argument le juge. L'Action-Selector, forme de l'option B où aucune sortie d'outil ne revient au modèle, est admis pour le routage. Le choix entre ces deux formes se fait par tâche, dans le plan, et non par runtime.
+
+   **Évolution admise : Code-Then-Execute à la CaMeL (option D).** Elle tient les trois invariants et couvre la composition que l'option B n'exprime pas. Elle n'est pas la réalisation par défaut : son interpréteur, son langage restreint et son vocabulaire de capacités s'ouvrent plus tard, par leur propre incrément contractuel, sous ADR-0032 D5. L'option C n'est admise qu'avec INV-b, ce qui la ramène à une forme de D.
 
 3. **L'option A est rejetée comme isolation et conservée comme défense en profondeur.** K3, K2, le refus d'abord et la revue humaine restent obligatoires. Aucun d'eux ne compte pour INV-a, INV-b ou INV-c.
 
-4. **Condition d'activation.** Aucun runtime qui met un modèle en présence d'un contenu non fiable et d'un outil à effet n'est activé avant de tenir les trois invariants et de faire passer leurs vecteurs rouges. La portée de cette condition sur l'outillage de forge existant est une question ouverte (Q1).
+4. **Condition d'activation et portée (Q1).** Aucun runtime qui met un modèle en présence d'un contenu non fiable et d'un outil à effet n'est activé avant de tenir les trois invariants et de faire passer leurs vecteurs rouges. La condition couvre les produits **et la forge**.
 
-5. **Articulation avec la Rule of Two.** La « Agents Rule of Two » (Meta, 2025-10-31) demande qu'une session autonome réunisse au plus deux propriétés parmi : traiter une entrée non fiable, accéder à des systèmes sensibles ou à des données privées, changer un état ou communiquer à l'extérieur. Au-delà, il faut une supervision. Elle reste un critère de revue par session. Les trois invariants ne la remplacent pas : ils ferment les deux canaux décrits ci-dessus, pas la manipulation d'un texte présenté à une personne. Un effet externe irréversible garde sa décision humaine typée (ADR-0034 D5), même dans un runtime conforme.
+   - L'orchestrateur de revues en éventail est couvert. Il fait lire à des agents qui détiennent des outils des différences de code non fiables. Il continue de tourner sous I-17, avec supervision humaine, jusqu'à sa **date de conformité : 2026-12-31**.
+   - Tout autre outil de forge qui réunit un modèle, un contenu non fiable et un outil à effet suit la même échéance.
+   - À la date de conformité, un outil de forge qui ne tient pas les trois invariants et ne fait pas passer leurs vecteurs rouges est suspendu jusqu'à sa conformité.
+   - La doctrine ne fixe aucune convention de date d'échéance. Celle-ci a été proposée à la rédaction, à environ douze semaines de l'acceptation, et inscrite comme telle. Seul un amendement de cet ADR la déplace.
 
-6. **Registre.** L'invariant candidat I-32 résume INV-a à INV-c. La décision D66 enregistre cet ADR. Les deux prennent effet à la fusion par le propriétaire.
+5. **Foyer de la politique d'argument : le harness (Q3).** Le harness est l'autorité unique de la politique d'argument, conformément à I-03. Il la revalide à chaque invocation, comme il revalide déjà chaque invocation selon ADR-0032 D3. L'Orchestrator détient le graphe autorisé et son digest. Il ne juge pas les arguments et ne duplique pas la politique.
+
+6. **Conduite sur un refus de politique : refus fermé seul (Q5).** Un refus de la politique d'argument termine l'appel sans effet. Il ne produit aucune demande de décision humaine, puisqu'une telle demande rouvrirait une surface d'hameçonnage présentée à une personne, hors du périmètre de CaMeL. La décision humaine typée d'ADR-0034 D5 reste une étape préautorisée du plan, décidée avant l'exécution. Elle n'est jamais l'issue d'un refus.
+
+7. **Articulation avec la Rule of Two.** La « Agents Rule of Two » (Meta, 2025-10-31) demande qu'une session autonome réunisse au plus deux propriétés parmi : traiter une entrée non fiable, accéder à des systèmes sensibles ou à des données privées, changer un état ou communiquer à l'extérieur. Au-delà, il faut une supervision. Elle reste un critère de revue par session. Les trois invariants ne la remplacent pas : ils ferment les deux canaux décrits ci-dessus, pas la manipulation d'un texte présenté à une personne. Un effet externe irréversible garde sa décision humaine typée (ADR-0034 D5), même dans un runtime conforme.
+
+8. **Registre (Q4).** I-32 est un invariant distinct, qui résume INV-a à INV-c. Il n'amende pas le texte d'I-18, qu'il étend. La décision D66 enregistre cet ADR. Les deux sont en vigueur depuis la fusion de cet ADR.
 
 ## Conséquences
 
@@ -105,18 +116,21 @@ Le modèle privilégié reçoit la seule requête de confiance et écrit un prog
   4. une suite d'attaques adaptatives (AgentDojo ou équivalent), avec le taux d'utilité et le taux d'attaque réussie rapportés ensemble.
 
   Chaque vecteur se prouve en neutralisant le contrôle qu'il vérifie : il doit rougir sans lui.
-- **Modèle de menace.** Après acceptation, et seulement alors, la lacune de `docs/security/THREAT-MODEL.md:159` est remplacée par un renvoi vers cet ADR et I-32, et la ligne `:135` et le risque R4 (`:247`) sont réévalués. Cet ADR ne modifie pas ce fichier.
+- **Modèle de menace.** La pull request d'acceptation met à jour `docs/security/THREAT-MODEL.md`. La lacune d'application de la mitigation « Planning-only + refusal-first » de §1 est remplacée par un renvoi vers cet ADR et I-32. La ligne « LLM prompt-injection via evidence text » du tableau de l'orchestrateur de revues et le risque R4 citent I-32 à côté d'I-18. Leur probabilité et leur impact restent inchangés : aucun runtime ne tient encore les trois invariants, et l'orchestrateur de revues tourne sous supervision humaine jusqu'à sa date de conformité.
 - **Noyau de sécurité des boucles.** INV-b complète la vérification de `capability_scope` à la frontière d'outil, différée dans K1 faute de consommateur runtime (`docs/specifications/LOOP-SECURITY-KERNEL.md:68-71`). L'une porte sur l'outil et la ressource, l'autre sur l'origine de l'argument. INV-b est une granularité plus fine que K2 (fiabilité par charge utile, `:77-92`). Elle ne la remplace pas.
 - **ADR-0032 D5.** CaMeL, FIDES et le Dual LLM sont des sources de recherche non normatives. Toute reprise suit les neuf étapes, à commencer par l'épinglage de la source, de sa révision et de sa licence. La licence d'une implémentation de référence n'est pas vérifiée ici. La source pédagogique propriétaire ne fournit que la question.
-- **Autorités.** La politique d'argument est revalidée à chaque invocation par le harness, conformément à ADR-0032 D3, où le harness « revalide chaque invocation ». Le placement exact entre Orchestrator et harness relève de l'incrément contractuel (Q3).
+- **Autorités.** Le harness est l'autorité unique de la politique d'argument (décision 5). L'incrément contractuel place donc l'entrée de provenance des politiques d'argument dans la surface que le harness revalide, pas dans un état de l'Orchestrator.
+- **Forge.** L'orchestrateur de revues en éventail doit tenir les trois invariants, et faire passer leurs vecteurs rouges, au plus tard le 2026-12-31. Faute de quoi il est suspendu à cette date (décision 4).
 
-## Questions ouvertes pour le propriétaire
+## Décisions du propriétaire
 
-- **Q1 — Portée sur l'outillage de forge.** L'orchestrateur de revues en éventail fait lire à des agents qui détiennent des outils des différences de code non fiables. Il réunit donc les trois propriétés de la Rule of Two. Trois réponses possibles : (a) produits seulement, la forge restant sous I-17 et supervision humaine ; (b) forge incluse, avec une échéance de conformité ; (c) forge incluse dès l'acceptation, ce qui suspend l'éventail jusqu'à conformité.
-- **Q2 — Réalisation par défaut.** Commencer par l'option B sur le graphe d'ADR-0034 (structure existante, expressivité réduite), ou viser directement l'option D (interpréteur à écrire, composition couverte) ?
-- **Q3 — Foyer de la politique d'argument.** Harness, qui revalide déjà chaque invocation, ou Orchestrator, qui détient le graphe ? Une seule autorité selon I-03.
-- **Q4 — Forme au registre.** Un invariant distinct I-32, comme proposé, ou un amendement du texte d'I-18 ?
-- **Q5 — Conduite sur un refus de politique.** Refus fermé seul, ou renvoi vers une décision humaine typée (ADR-0034 D5) ? Le renvoi rouvre une surface d'hameçonnage présentée à la personne, hors du périmètre de CaMeL.
+Les cinq questions ouvertes de la proposition ont été tranchées en chat le 2026-10-09. Owner-arbitration: 2026-10-09
+
+- **Q1 — Portée sur l'outillage de forge : forge incluse, avec échéance.** Parmi les trois réponses proposées (produits seulement ; forge incluse avec échéance ; forge incluse dès l'acceptation), la deuxième est retenue. L'orchestrateur de revues en éventail est couvert. Il continue sous I-17 avec supervision humaine jusqu'à sa date de conformité, fixée au 2026-12-31 (décision 4).
+- **Q2 — Réalisation par défaut : option B.** Plan-Then-Execute sur le graphe d'ADR-0034. L'option D, à la CaMeL, reste une évolution admise plus tard (décision 2).
+- **Q3 — Foyer de la politique d'argument : le harness.** C'est l'autorité unique, conformément à I-03 (décision 5).
+- **Q4 — Forme au registre : invariant distinct.** I-32 reste distinct d'I-18 (décision 8).
+- **Q5 — Conduite sur un refus de politique : refus fermé seul.** Un refus ne renvoie vers aucune décision humaine (décision 6).
 
 ## Sources
 
