@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 Libre AI contributors
+# SPDX-License-Identifier: EUPL-1.2
+name: Playwright GUID diagnostic (not a product gate)
+'on':
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/playwright-guid-diagnostic.yml'
+      - 'scripts/diagnostics/**'
+      - 'docs/playwright-guid-diagnostic.md'
+permissions:
+  contents: read
+jobs:
+  observe-native-linux:
+    if: >-
+      github.repository == 'libre-ai/application-development-toolkit' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feat/forge-realization'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout the immutable diagnostic PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: diagnostic
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Checkout historical immutable composition tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: libre-ai/project-governance
+          ref: 8a27b8f5bf774fad04b8478fa9179eefdba0eaf7
+          path: tooling
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Prepare exact historical product sources
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/run-composition.py \
+            --target application-development-toolkit \
+            --revision 5ec3630ece2a768872dfb67171c9b7fbf21a1aa9 \
+            --root "$GITHUB_WORKSPACE/composition" --phase prepare
+      - name: Install checksum-verified Bun and Node
+        shell: bash
+        run: |
+          bash tooling/.github/composition/install-toolchains.sh \
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/bun.json" \
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json"
+      - name: Install existing pinned licensing checker without elevation
+        run: pipx install reuse==6.2.0
+      - name: Install frozen composition and reproduce its root checks
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/run-composition.py \
+            --target application-development-toolkit \
+            --revision 5ec3630ece2a768872dfb67171c9b7fbf21a1aa9 \
+            --root "$GITHUB_WORKSPACE/composition" --phase check
+      - name: Validate diagnostic privacy, bounds and installed transport
+        working-directory: diagnostic
+        env:
+          TOOLKIT_DIAG_TEST_WORKSPACE: ${{ github.workspace }}/composition/application-development-toolkit/packages/starter/starter
+        run: >-
+          node --test --experimental-test-coverage
+          --test-coverage-include='scripts/diagnostics/*.cjs'
+          --test-coverage-exclude='scripts/diagnostics/*.test.cjs'
+          --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80
+          scripts/diagnostics/diagnostic.test.cjs
+      - name: Install exact Playwright browsers with existing product system dependencies
+        working-directory: composition/application-development-toolkit/packages/ui
+        run: bun x --no-install playwright install --with-deps chromium firefox webkit
+      - name: Reproduce the product build
+        working-directory: composition/application-development-toolkit
+        run: bun run build
+      - name: Observe one starter suite with bounded opaque output
+        shell: bash
+        run: |
+          node diagnostic/scripts/diagnostics/run.cjs \
+            "$GITHUB_WORKSPACE/composition" "$GITHUB_WORKSPACE/diagnostic-output"
+      - name: Upload only validated opaque evidence
+        if: ${{ always() && hashFiles('diagnostic-output/export-ready') != '' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: opaque-playwright-guid-order
+          path: diagnostic-output/sanitized/*.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: State the diagnostic boundary
+        if: always()
+        shell: bash
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'SUMMARY'
+          This separate diagnostic observes historical product SHA 5ec3630ece2a768872dfb67171c9b7fbf21a1aa9.
+          It does not qualify composition/validate, required checks, a fix, or the candidate product.
+          Missing dependencies, incomplete journals, interruption and product failure remain failures.
+          No raw product logs, URLs, headers, cookies, bodies or traces are uploaded.
+          SUMMARY

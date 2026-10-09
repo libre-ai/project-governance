@@ -1,0 +1,14 @@
+name: Context hygiene
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  context-hygiene:
+    uses: libre-ai/project-governance/.github/workflows/reusable-context-hygiene.yml@7c2238d6185e59d446586688ca7db32e6a17d3e0
