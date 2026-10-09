@@ -9,8 +9,8 @@ import sys
 ORDER = (
     "project-governance", "schemas-and-contracts", "application-development-toolkit",
     "ai-work-supervision", "organization-data-lifecycle", "ai-model-policy",
-    "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-workspace",
-    "information-feed-filter", "travel-itinerary-planner",
+    "learning-session-facilitation", "personal-knowledge-workspace",
+    "travel-itinerary-planner",
     "collaborative-data-sync", "execution-continuity-evaluator", "execution-sandbox",
     "capability-authorization", "database-policy-inspector", "artifact-verification",
     "project-website",
@@ -24,10 +24,8 @@ DEPENDENCIES = {
     "application-development-toolkit": (*BASE, "ai-work-supervision"),
     "organization-data-lifecycle": UI,
     "ai-model-policy": UI,
-    "ai-practice-workbench": UI,
     "learning-session-facilitation": (*UI, "organization-data-lifecycle"),
     "personal-knowledge-workspace": UI,
-    "information-feed-filter": (*BASE, "ai-model-policy"),
     "travel-itinerary-planner": ("project-governance",),
     "collaborative-data-sync": ("project-governance",),
     "execution-continuity-evaluator": BASE,
@@ -46,9 +44,9 @@ OVERRIDE_SOURCES = (
     "application-development-toolkit", "organization-data-lifecycle", "ai-model-policy",
 )
 for _target in (
-    "ai-work-supervision", "ai-model-policy", "ai-practice-workbench",
+    "ai-work-supervision", "ai-model-policy",
     "learning-session-facilitation", "personal-knowledge-workspace",
-    "information-feed-filter", "travel-itinerary-planner",
+    "travel-itinerary-planner",
     "project-website",
 ):
     DEPENDENCIES[_target] = tuple(name for name in OVERRIDE_SOURCES if name != _target)

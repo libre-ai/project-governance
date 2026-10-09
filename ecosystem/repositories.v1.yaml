@@ -7,7 +7,10 @@ authority: >
   the portfolio is the twenty observed destinations plus the four repositories
   kept outside the migration lot. The historical short-name generation is
   preserved as verified archive bundles and is no longer the public topology.
-updated_on: 2026-10-07
+updated_on: 2026-10-09
+# 2026-10-09 : ai-practice-workbench et information-feed-filter passent a
+# `lifecycle: archived` (ADR-0042 §7 acte 3, decision Y16) ; check-inventory-drift
+# compare desormais lifecycle et etat archive GitHub dans les deux sens.
 # 2026-10-07 : l'inventaire passe de 37 entrees (generation aux noms courts,
 # `updated_on: 2026-09-11`) a 24. Les 19 destinations exposent desormais leur
 # code : leur branche par defaut est `migrate/recover-code`, dont `main`
@@ -63,7 +66,7 @@ repositories:
     role: reserved-product-home
     layer: couche-1
     visibility: public
-    lifecycle: active
+    lifecycle: archived # ADR-0042 §7 acte 3, Y16 ; perimetre rejoint personal-knowledge-workspace
     owns:
       - professional training for sourced AI practice
   - repository: libre-ai/learning-session-facilitation
@@ -87,7 +90,7 @@ repositories:
     role: reserved-product-home
     layer: couche-1
     visibility: public
-    lifecycle: active
+    lifecycle: archived # ADR-0042 §7 acte 3, Y16 ; perimetre rejoint personal-knowledge-workspace
     owns:
       - explainable feed selection and portable curation
   - repository: libre-ai/travel-itinerary-planner

@@ -13,6 +13,16 @@
  * not drift (fail-open on that single case, by design and logged); a declared
  * `private` entry that IS observable as public is a real leak and fails.
  *
+ * Lifecycle (ADR-0042 §7, act 3): `lifecycle` is compared with GitHub's
+ * archived state in both directions. Before this, an inventory could declare a
+ * repository archived while it stayed writable, or GitHub could archive one the
+ * inventory still called active, and both read green. Every declared-archived
+ * entry yields one named assertion and their count is printed. An archived
+ * entry that is not observable is a drift whatever its visibility: the
+ * private-fail-open above exists because a private repository is invisible by
+ * construction, and extending it to an archived claim would turn "cannot read
+ * the archived state" into "the archived state holds".
+ *
  * Usage: bun ecosystem/check-inventory-drift.ts   (requires `gh` + GH_TOKEN)
  */
 
@@ -25,12 +35,21 @@ export interface DeclaredRepository {
   /** Bare repository name, without the organization prefix. */
   name: string;
   visibility: "public" | "private";
+  lifecycle: "active" | "archived";
 }
 
 export interface LiveRepository {
   /** Bare repository name as listed by the GitHub API. */
   name: string;
   isPrivate: boolean;
+  isArchived: boolean;
+}
+
+/** One per declared-archived entry: the claim, and whether GitHub bears it out. */
+export interface ArchivedAssertion {
+  name: string;
+  holds: boolean;
+  evidence: string;
 }
 
 export interface Reconciliation {
@@ -38,6 +57,8 @@ export interface Reconciliation {
   drifts: string[];
   /** Consistent-but-unverifiable cases, logged for the record. */
   notes: string[];
+  /** Exactly one entry per repository the inventory declares archived. */
+  archived: ArchivedAssertion[];
 }
 
 export function reconcileInventory(
@@ -46,6 +67,7 @@ export function reconcileInventory(
 ): Reconciliation {
   const drifts: string[] = [];
   const notes: string[] = [];
+  const archived: ArchivedAssertion[] = [];
   const declaredByName = new Map(declared.map((repo) => [repo.name, repo]));
   const liveByName = new Map(live.map((repo) => [repo.name, repo]));
 
@@ -63,10 +85,33 @@ export function reconcileInventory(
         `DRIFT: repository '${repo.name}' declared ${entry.visibility} but observable as ${liveVisibility}`,
       );
     }
+    if (entry.lifecycle === "archived") {
+      if (repo.isArchived) {
+        archived.push({
+          name: repo.name,
+          holds: true,
+          evidence: "declared archived and observable as archived",
+        });
+      } else {
+        const drift = `DRIFT: '${repo.name}' declared archived but observable as active`;
+        drifts.push(drift);
+        archived.push({ name: repo.name, holds: false, evidence: drift });
+      }
+    } else if (repo.isArchived) {
+      drifts.push(`DRIFT: '${repo.name}' is archived on GitHub but declared active`);
+    }
   }
 
   for (const entry of declared) {
     if (liveByName.has(entry.name)) continue;
+    if (entry.lifecycle === "archived") {
+      // Checked before the private fail-open on purpose: an archived claim that
+      // cannot be read is unverified, never consistent.
+      const drift = `DRIFT: '${entry.name}' declared archived but not observable — its archived state cannot be verified`;
+      drifts.push(drift);
+      archived.push({ name: entry.name, holds: false, evidence: drift });
+      continue;
+    }
     if (entry.visibility === "private") {
       notes.push(
         `NOTE: '${entry.name}' declared private and not observable with this token — consistent, unverifiable here`,
@@ -78,7 +123,7 @@ export function reconcileInventory(
     );
   }
 
-  return { drifts, notes };
+  return { drifts, notes, archived };
 }
 
 /**
@@ -101,7 +146,7 @@ async function fetchLiveRepositoriesViaRest(): Promise<LiveRepository[]> {
         "--paginate",
         `orgs/${ORGANIZATION}/repos?per_page=100`,
         "--jq",
-        ".[] | [.name, (.private | tostring)] | @tsv",
+        ".[] | [.name, (.private | tostring), (.archived | tostring)] | @tsv",
       ],
       { stdout: "pipe", stderr: "pipe" },
     );
@@ -116,11 +161,15 @@ async function fetchLiveRepositoriesViaRest(): Promise<LiveRepository[]> {
         .map((line) => line.trim())
         .filter((line) => line.length > 0)
         .map((line) => {
-          const [name, isPrivate] = line.split("\t");
-          if (name === undefined || (isPrivate !== "true" && isPrivate !== "false")) {
+          const [name, isPrivate, isArchived] = line.split("\t");
+          if (
+            name === undefined ||
+            (isPrivate !== "true" && isPrivate !== "false") ||
+            (isArchived !== "true" && isArchived !== "false")
+          ) {
             throw new Error(`unexpected gh api output line: ${JSON.stringify(line)}`);
           }
-          return { name, isPrivate: isPrivate === "true" };
+          return { name, isPrivate: isPrivate === "true", isArchived: isArchived === "true" };
         });
     }
     // Retried below on any non-zero exit (rate limit, other 4xx/5xx, network)
@@ -153,7 +202,7 @@ export function buildOrgRepositoriesQuery(organization: string, cursor: string |
     `  organization(login: ${JSON.stringify(organization)}) {`,
     `    repositories(first: 100${after}) {`,
     `      pageInfo { hasNextPage endCursor }`,
-    `      nodes { name isPrivate }`,
+    `      nodes { name isPrivate isArchived }`,
     `    }`,
     `  }`,
     `}`,
@@ -185,16 +234,24 @@ export function parseOrgRepositoriesPage(data: unknown): GraphQLRepoListPage | n
           readonly nodes?: readonly ({
             readonly name?: string;
             readonly isPrivate?: boolean;
+            readonly isArchived?: boolean;
           } | null)[];
         } | null;
       } | null;
     }
   )?.organization?.repositories;
   if (repositories === undefined || repositories === null) return null;
-  const nodes = (repositories.nodes ?? []).filter(
-    (node): node is { name: string; isPrivate: boolean } =>
-      node !== null && typeof node.name === "string" && typeof node.isPrivate === "boolean",
-  );
+  // A node without `isArchived` is dropped like any other malformed node: the
+  // lifecycle comparison must never read an absent field as "not archived".
+  const nodes = (repositories.nodes ?? [])
+    .filter(
+      (node): node is { name: string; isPrivate: boolean; isArchived: boolean } =>
+        node !== null &&
+        typeof node.name === "string" &&
+        typeof node.isPrivate === "boolean" &&
+        typeof node.isArchived === "boolean",
+    )
+    .map(({ name, isPrivate, isArchived }) => ({ name, isPrivate, isArchived }));
   return {
     nodes,
     hasNextPage: repositories.pageInfo?.hasNextPage ?? false,
@@ -261,15 +318,43 @@ if (import.meta.main) {
         `inventory entry outside the ${ORGANIZATION} organization: ${entry.repository}`,
       );
     }
-    return { name, visibility: entry.visibility };
+    return { name, visibility: entry.visibility, lifecycle: entry.lifecycle };
   });
 
   const live = await fetchLiveRepositories();
-  const { drifts, notes } = reconcileInventory(declared, live);
+  const { drifts, notes, archived } = reconcileInventory(declared, live);
   for (const note of notes) console.log(note);
+  const declaredArchived = declared.filter((entry) => entry.lifecycle === "archived").length;
+  // One assertion per declared-archived entry, printed whether it holds or not,
+  // so the archived claims are counted rather than inferred from silence.
+  for (const assertion of archived) {
+    console.log(
+      `ARCHIVED ${assertion.holds ? "holds" : "FAILS"}: '${assertion.name}' — ${assertion.evidence}`,
+    );
+  }
+  console.log(
+    `${archived.length} archived assertion(s) for ${declaredArchived} declared-archived ` +
+      `repositor${declaredArchived === 1 ? "y" : "ies"}, ` +
+      `${archived.filter((assertion) => assertion.holds).length} holding`,
+  );
   const { concludeGate, GateReport } = await import("../tools/quality/gate-report");
   const report = new GateReport();
+  if (archived.length !== declaredArchived) {
+    report.check(
+      "archived assertions",
+      false,
+      `${archived.length} assertion(s) for ${declaredArchived} declared-archived repositories`,
+    );
+  }
+  const archivedDrifts = new Set(
+    archived.filter((assertion) => !assertion.holds).map((assertion) => assertion.evidence),
+  );
+  for (const assertion of archived) {
+    report.check(`archived '${assertion.name}'`, assertion.holds, assertion.evidence);
+  }
   for (const drift of drifts) {
+    // An archived drift is already recorded by its own named assertion above.
+    if (archivedDrifts.has(drift)) continue;
     report.check(drift.split(":")[0] ?? drift, false, drift);
   }
   if (drifts.length === 0) {
@@ -286,7 +371,7 @@ if (import.meta.main) {
   report.volume(
     `${declared.length} declared repositor${declared.length === 1 ? "y" : "ies"} reconciled ` +
       `against ${live.length} observed in the ${ORGANIZATION} organization, ` +
-      `${drifts.length} drift(s)`,
+      `${archived.length} archived assertion(s), ${drifts.length} drift(s)`,
   );
   concludeGate("Inventory drift", report);
 }

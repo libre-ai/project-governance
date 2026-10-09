@@ -88,10 +88,8 @@ l'élision déjà signée du préfixe « ai- ». Une seule exception nommée :
 | --- | --- |
 | libre-ai/ai-work-supervision | Libre AI Work Supervision |
 | libre-ai/ai-model-policy | Libre AI Model Policy |
-| libre-ai/ai-practice-workbench | Libre AI Practice Workbench |
 | libre-ai/learning-session-facilitation | Libre AI Learning Session Facilitation |
 | libre-ai/personal-knowledge-workspace | Libre AI Knowledge Workspace |
-| libre-ai/information-feed-filter | Libre AI Information Feed Filter |
 | libre-ai/travel-itinerary-planner | Libre AI Travel Itinerary Planner |
 <!-- libre-ai:brand:product-family:end -->
 

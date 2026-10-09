@@ -29,12 +29,12 @@ class ProductChecks(unittest.TestCase):
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def test_plan_is_side_effect_free_and_has_eight_roots(self):
+    def test_plan_is_side_effect_free_and_has_six_roots(self):
         result = self.call('--target', 'all', '--gate', 'root', '--plan')
         self.assertEqual(result.returncode, 0, result.stderr)
         plan = json.loads(result.stdout)
-        self.assertEqual(len(plan['steps']), 8)
-        self.assertEqual(len({x['target'] for x in plan['steps']}), 8)
+        self.assertEqual(len(plan['steps']), 6)
+        self.assertEqual(len({x['target'] for x in plan['steps']}), 6)
         self.assertTrue(all(x['argv'][1:] == ['run', 'check'] for x in plan['steps']))
         self.assertFalse(self.log.exists())
         self.assertFalse(plan['executed'])
@@ -73,7 +73,7 @@ class ProductChecks(unittest.TestCase):
 
     def test_e2e_plan_preserves_sequential_worker_and_notebook_cwd(self):
         plan=json.loads(self.call('--target','all','--gate','e2e','--plan').stdout)
-        self.assertEqual(len(plan['steps']),4)
+        self.assertEqual(len(plan['steps']),3)
         self.assertTrue(all(x['argv'][-1]=='--workers=1' for x in plan['steps']))
         notebook=next(x for x in plan['steps'] if x['target']=='personal-knowledge-workspace')
         self.assertEqual(notebook['cwd'],'personal-knowledge-workspace/apps/notebook')
