@@ -8,8 +8,8 @@ import {
   readCargoIgnoreSource,
   readMetadata,
   readOsvSource,
-  scanIgnoreArray,
   type SourceReading,
+  scanIgnoreArray,
   unreadableSource,
   volumeLine,
 } from "./advisory-waivers";
@@ -253,13 +253,14 @@ describe("sources that cannot be read are failures, never zero waivers", () => {
   });
 
   test("UNPARSEABLE: `advisories.ignore` that is not an array", () => {
-    expect(codes([audit(`[advisories]\nignore = "RUSTSEC-2026-0174"\n`)])).toEqual([
-      "UNPARSEABLE",
-    ]);
+    expect(codes([audit(`[advisories]\nignore = "RUSTSEC-2026-0174"\n`)])).toEqual(["UNPARSEABLE"]);
   });
 
   test("UNPARSEABLE: an osv table line that is not key = value", () => {
-    const reading = readOsvSource("osv-scanner.toml", "[[IgnoredVulns]]\nid = 'GHSA-x'\nnonsense\n");
+    const reading = readOsvSource(
+      "osv-scanner.toml",
+      "[[IgnoredVulns]]\nid = 'GHSA-x'\nnonsense\n",
+    );
     expect(reading.error).toContain("line 3");
   });
 
@@ -275,7 +276,11 @@ describe("sources that cannot be read are failures, never zero waivers", () => {
   });
 
   test("a deny.toml without an ignore list is a readable source with no waiver", () => {
-    const reading = readCargoIgnoreSource("deny.toml", "cargo-deny", `[advisories]\nyanked = "deny"\n`);
+    const reading = readCargoIgnoreSource(
+      "deny.toml",
+      "cargo-deny",
+      `[advisories]\nyanked = "deny"\n`,
+    );
     expect(reading.error).toBeNull();
     expect(reading.entries).toEqual([]);
     expect(codes([reading])).toEqual([]);
@@ -363,7 +368,8 @@ jobs:
   });
 
   test("audit commands: a continued command is followed onto its next line", () => {
-    const script = "bun audit \\\n  --ignore=GHSA-7p8r-x3mc-p8w7\necho done --ignore=not-an-audit\n";
+    const script =
+      "bun audit \\\n  --ignore=GHSA-7p8r-x3mc-p8w7\necho done --ignore=not-an-audit\n";
     const reading = readAuditCommandSource("scripts/audit.sh", script);
     expect(reading.entries.map((entry) => entry.id)).toEqual(["GHSA-7p8r-x3mc-p8w7"]);
   });

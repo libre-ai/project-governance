@@ -389,7 +389,12 @@ export function readOsvSource(file: string, text: string): SourceReading {
   const flush = () => {
     if (current === null) return;
     const until = current.until === null ? "" : ` expires=${current.until}`;
-    entries.push({ file, line: current.line, id: current.id, metadata: `${current.reason}${until}` });
+    entries.push({
+      file,
+      line: current.line,
+      id: current.id,
+      metadata: `${current.reason}${until}`,
+    });
     current = null;
   };
   for (let index = 0; index < lines.length; index += 1) {
@@ -461,12 +466,17 @@ export function readAuditCommandSource(file: string, text: string): SourceReadin
 }
 
 export function readSource(file: string, kind: WaiverSourceKind, text: string): SourceReading {
-  if (kind === "cargo-audit" || kind === "cargo-deny") return readCargoIgnoreSource(file, kind, text);
+  if (kind === "cargo-audit" || kind === "cargo-deny")
+    return readCargoIgnoreSource(file, kind, text);
   if (kind === "osv-scanner") return readOsvSource(file, text);
   return readAuditCommandSource(file, text);
 }
 
-export function unreadableSource(file: string, kind: WaiverSourceKind, reason: string): SourceReading {
+export function unreadableSource(
+  file: string,
+  kind: WaiverSourceKind,
+  reason: string,
+): SourceReading {
   return { file, kind, entries: [], anchor: null, error: `could not be read: ${reason}` };
 }
 
@@ -575,7 +585,8 @@ export function evaluateWaivers(
         defects.push({
           code: "UNREFERENCED",
           where: label,
-          message: "carries no `ref=`; a date with no record behind it is a renewal with nothing to read",
+          message:
+            "carries no `ref=`; a date with no record behind it is a renewal with nothing to read",
         });
       } else if (!refResolves(metadata.ref, options.refExists)) {
         defects.push({
