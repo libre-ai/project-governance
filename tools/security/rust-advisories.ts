@@ -28,7 +28,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
 import { evaluateWaivers } from "../quality/advisory-waivers";
-import { readRepository } from "../quality/check-advisory-waivers";
+import { readRepositoryWaivers } from "../quality/check-advisory-waivers";
 import { countLockedPackages } from "../quality/check-dependency-policy";
 
 /** The cargo-deny invocation of the periodic control: advisories only, JSON diagnostics. */
@@ -215,7 +215,8 @@ function namesFinding(id: string, finding: AdvisoryFinding): boolean {
 
 /**
  * The waivers of one checkout, read EXACTLY as the advisory-waivers gate reads
- * them (its own `readRepository` and `evaluateWaivers`, no second parser), and
+ * them (its own `readRepositoryWaivers` and `evaluateWaivers`, no second
+ * parser — ADVISORY-WAIVER-POLICY.md, "One reading, reused"), and
  * the tracked file list of the same checkout.
  *
  * An ignored advisory is covered when at least one entry naming it passes the
@@ -237,7 +238,7 @@ export function readCheckoutWaivers(
     .decode(listing.stdout)
     .split("\0")
     .filter((path) => path !== "");
-  const { readings, refExists } = readRepository(root);
+  const { readings, isTrackedFile } = readRepositoryWaivers(root);
   const coverage: WaiverCoverage = (config, finding) => {
     const reading = readings.find((candidate) => candidate.file === config);
     if (reading === undefined) {
@@ -254,7 +255,10 @@ export function readCheckoutWaivers(
     }
     const reasons: string[] = [];
     for (const entry of entries) {
-      const evaluation = evaluateWaivers([{ ...reading, entries: [entry] }], { today, refExists });
+      const evaluation = evaluateWaivers([{ ...reading, entries: [entry] }], {
+        today,
+        isTrackedFile,
+      });
       if (evaluation.defects.length === 0) {
         return { covered: true, waiver: `${entry.file}:${entry.line}` };
       }
