@@ -98,11 +98,14 @@ for (const [name, command] of Object.entries(root.scripts ?? {})) {
 }
 // Declaring `pretest` is not the same as firing it: bun fires a `pre<script>`
 // hook only for `bun run <script>`. Everything above asserts the hook exists
-// and reads exactly right; this asserts something invokes it.
-for (const script of findFloorBypasses(root.scripts ?? {})) {
-  failures.push(`package.json: ${floorBypassNote(script)}`);
+// and reads exactly right; this asserts something invokes it — the hook, or
+// the root runtime floor bound above (`check:bun:runtime`) run first.
+const ROOT_FLOOR_SCRIPT = "check:bun:runtime";
+for (const script of findFloorBypasses(root.scripts ?? {}, ROOT_FLOOR_SCRIPT)) {
+  failures.push(`package.json: ${floorBypassNote(script, ROOT_FLOOR_SCRIPT)}`);
 }
 
+const NESTED_FLOOR_SCRIPT = "check:bun";
 const manifestPaths = new Set<string>();
 for (const pattern of [
   "apps/*/package.json",
@@ -146,8 +149,10 @@ for (const path of [...manifestPaths].sort()) {
   // while no path ever fires the hook, which is the state this workspace
   // manifest was in on 2026-10-09 (`check` was a bare `bun test src`). The
   // floor the gate is supposed to lay was therefore never verified for it.
-  for (const script of findFloorBypasses(manifest.scripts ?? {})) {
-    failures.push(`${path}: ${floorBypassNote(script)}`);
+  // A nested manifest's runtime floor is its own `check:bun`, bound above to
+  // the runtime minimum check (or the template's standalone guard).
+  for (const script of findFloorBypasses(manifest.scripts ?? {}, NESTED_FLOOR_SCRIPT)) {
+    failures.push(`${path}: ${floorBypassNote(script, NESTED_FLOOR_SCRIPT)}`);
   }
 }
 
