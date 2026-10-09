@@ -226,9 +226,36 @@ export function buildReport(register: ForgottenRegister, findings: readonly Find
 
   const paths = register.entries.reduce((n, entry) => n + entry.evicted_paths.length, 0);
   const files = register.entries.reduce((n, entry) => n + (entry.file_count ?? 0), 0);
+  // The success line names the entries, not only how many there are.
+  //
+  // An eviction silences other gates by construction: the files leave the
+  // tree, so the gate that used to see them stops reporting on them, and
+  // nothing in ITS output connects that new silence to a decision. This line
+  // is where the connection lives — it is the only line a CI reader sees. Until
+  // 2026-10-09 it carried the three counters and no name: the eviction of that
+  // day moved them from 5/7/58 to 6/8/62, which told a reader that something
+  // had been forgotten and never what. The names were already recorded, one per
+  // assertion, but `GATE_VERBOSE` is the only way to read those and nobody sets
+  // it in CI.
+  //
+  // Ids, never paths: rule 2 forbids a tracked file to name an evicted path, so
+  // writing one here would make the guard flag its own source — which is why
+  // every path in this file is illustrative. An id is not a path, and these are
+  // read from the register at runtime, so this line stays correct for entries
+  // that do not exist yet.
+  //
+  // No truncation threshold. Entries are appended, so any cap would hide the
+  // most recent eviction — precisely the one whose arrival moved the counters,
+  // and the only reason this line was changed. Measured on the register of
+  // 2026-10-09: six ids are 211 characters, the whole success line 324. The
+  // register grows by owner decision, a few entries a year, so a line that is
+  // long before it is unreadable is the right trade. A reader who wants it
+  // short can count; a reader who wants to know what was forgotten cannot
+  // invent the name.
   report.volume(
     `${register.entries.length} register entr${register.entries.length === 1 ? "y" : "ies"}, ` +
-      `${paths} evicted path(s), ${files} evicted file(s) declared`,
+      `${paths} evicted path(s), ${files} evicted file(s) declared: ` +
+      register.entries.map((entry) => entry.id).join(", "),
   );
   return report;
 }
