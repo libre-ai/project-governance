@@ -9,7 +9,7 @@ import sys
 ORDER = (
     "project-governance", "schemas-and-contracts", "application-development-toolkit",
     "ai-work-supervision", "organization-data-lifecycle", "ai-model-policy",
-    "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-notebook",
+    "ai-practice-workbench", "learning-session-facilitation", "personal-knowledge-workspace",
     "information-feed-filter", "travel-itinerary-planner",
     "collaborative-data-sync", "execution-continuity-evaluator", "execution-sandbox",
     "capability-authorization", "database-policy-inspector", "artifact-verification",
@@ -26,7 +26,7 @@ DEPENDENCIES = {
     "ai-model-policy": UI,
     "ai-practice-workbench": UI,
     "learning-session-facilitation": (*UI, "organization-data-lifecycle"),
-    "personal-knowledge-notebook": UI,
+    "personal-knowledge-workspace": UI,
     "information-feed-filter": (*BASE, "ai-model-policy"),
     "travel-itinerary-planner": ("project-governance",),
     "collaborative-data-sync": ("project-governance",),
@@ -47,7 +47,7 @@ OVERRIDE_SOURCES = (
 )
 for _target in (
     "ai-work-supervision", "ai-model-policy", "ai-practice-workbench",
-    "learning-session-facilitation", "personal-knowledge-notebook",
+    "learning-session-facilitation", "personal-knowledge-workspace",
     "information-feed-filter", "travel-itinerary-planner",
     "project-website",
 ):

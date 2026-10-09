@@ -41,6 +41,15 @@ describe("the retired list", () => {
     expect(RETIRED_REPOSITORY_NAMES as readonly string[]).toContain("web-platform");
   });
 
+  // LEXICON §14: the Knowledge domain repository was renamed. The old name is
+  // retired; the new one must never be, or the gate would reject the inventory.
+  test("the renamed Knowledge repository: old name in, new name out", () => {
+    expect(RETIRED_REPOSITORY_NAMES as readonly string[]).toContain("personal-knowledge-notebook");
+    expect(RETIRED_REPOSITORY_NAMES as readonly string[]).not.toContain(
+      "personal-knowledge-workspace",
+    );
+  });
+
   test("holds bare names only, so the list cannot match the forms it declares", () => {
     for (const name of RETIRED_REPOSITORY_NAMES) expect(name).not.toContain("/");
     const asDataFile = [{ path: "gate.ts", text: RETIRED_REPOSITORY_NAMES.join("\n") }];

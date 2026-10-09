@@ -183,7 +183,7 @@ jobs:
       #
       # Where it IS enforced, measured 2026-10-08 across the twenty-four
       # repositories of ecosystem/repositories.v1.yaml: exactly one wires it —
-      # personal-knowledge-notebook, as check:no-transmission over
+      # personal-knowledge-workspace, as check:no-transmission over
       # apps/notebook/src, inside its aggregated check. The two product
       # repositories this comment used to name no longer resolve. ADR-0016 and
       # ADR-0017 carry dated corrections for the claims that rested on them.
