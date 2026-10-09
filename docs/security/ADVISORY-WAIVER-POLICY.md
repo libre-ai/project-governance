@@ -2,8 +2,8 @@
 
 - **Status:** doctrine — applies to every repository in the fleet that
   waives or ignores a published advisory (`cargo deny`/`cargo audit`
-  ignore lists, `bun audit` exclusions, or an equivalent mechanism in any
-  other ecosystem the fleet adopts).
+  ignore lists, `bun audit` exclusions, `osv-scanner` ignores, or an
+  equivalent mechanism in any other ecosystem the fleet adopts).
 - **Scope:** the discipline a waiver must carry to be legitimate. Not in
   scope: which gate blocks a pull request versus a periodic fleet scan —
   that split is `ADR-0021` (D1/D2/D3), unchanged by this document.
@@ -25,41 +25,81 @@ any repository, in any waiver mechanism, carries three properties:
    nobody re-reads.
 
 A **required** gate verifies these three properties mechanically, on every
-change to the waiver list, in every repository that carries one. A policy
+change to the waiver list, in every repository that carries one — see
+[The implementation](#the-implementation). A policy
 without a gate that enforces it is a convention, and a convention is what
 produced the drift this policy exists to close (see below).
 
-## The reference implementation, not a template to copy blindly
+## The implementation
 
-`libre-ai/feed-radar` carries the fleet's only proven instance:
-`scripts/advisory-waiver-gate.sh`, folded into an existing required check
-rather than given a workflow of its own, and `docs/adr/0005-dependency-
-advisory-waivers.md`, its dated record. Three entries currently expire
-`2026-09-30`. The gate's own header is the worked argument for every
-design choice below — read it before writing a second instance, rather
-than re-deriving the same tradeoffs from zero:
+The gate is `tools/quality/check-advisory-waivers.ts`; its rules are the pure
+module `tools/quality/advisory-waivers.ts`, unit-tested in
+`tools/quality/advisory-waivers.test.ts` and end-to-end in
+`tools/quality/check-advisory-waivers.test.ts`. Owner decision 2026-10-09:
+it lives in this authority and reaches the fleet through the template, rather
+than as a script each repository copies.
 
-- two tiers, split by whether the verdict depends on the clock: file-content
-  rules (dated, referenced, not already lapsed at the last review, within
-  horizon, coherent across files if more than one waiver mechanism exists)
-  fail immediately on a bad commit; the expiry-passed check is the only
-  clock-dependent verdict, and it is pre-announced with a warning window
-  rather than flipping red overnight with no commit to point at;
-- the gate does **not** call `cargo audit`/`cargo deny` (or an equivalent
-  live advisory fetch) itself — a network-fetching, database-dependent
-  scan wired into a required check turns `main` red on an upstream
-  publication with no local commit; verifying the waiver list against a
-  live graph stays a reviewed, local operation, recorded in the ADR, not
-  a CI step;
-- portability of the date arithmetic matters more than it looks: the
-  gate's civil-date conversion runs identically on the local shell and the
-  CI runner because it avoids both GNU-only and BSD-only `date` flags.
+- **Where it runs.** `.github/workflows/validate-composition.yml`, the
+  reusable workflow every product repository's `code-validation.yml` calls,
+  runs it on the target's tracked files, from the tooling generation the
+  caller pinned — a repository picks it up when it moves to that generation.
+  This repository runs it in `bun run check` (`check:advisory-waivers`). A
+  repository that does not call `validate-composition.yml` runs
+  `bun <governance checkout>/tools/quality/check-advisory-waivers.ts --root=.`
+  in one of its own required checks.
+- **What it reads.** Every tracked waiver mechanism: `[advisories] ignore`
+  in `.cargo/audit.toml` and `deny.toml` (strings or `{ id, reason }`
+  tables), `[[IgnoredVulns]]` in `osv-scanner.toml` (`ignoreUntil` is the
+  expiry), and `--ignore` flags of `bun audit` / `cargo audit` command lines
+  in workflows, `package.json` scripts and shell scripts.
+- **What an entry carries,** on the same line as its id (for a table, in its
+  `reason`):
 
-This document does not add a new gate. A repository that waives an
-advisory and has no such gate yet is out of compliance with this policy
-from the day its first waiver is committed — bringing it into compliance
-means porting `advisory-waiver-gate.sh`'s design to that repository's own
-manifest format, not inventing a fourth property.
+  ```toml
+  # waiver-review-anchor: 2026-07-26
+  [advisories]
+  ignore = [
+      "RUSTSEC-2026-0174", # http-types via the optional stripe feature; expires=2026-09-30; ref=docs/adr/0005-dependency-advisory-waivers.md
+  ]
+  ```
+
+  `expires=` is a real ISO 8601 date (dated); `ref=` is a tracked
+  repository-relative path or an `https` URL (referenced); the remaining text
+  is the justification. The file's `waiver-review-anchor` is the date the
+  list was last read against the resolved graph; no entry may expire before
+  it or more than 365 days after it (bounded). An advisory waived in two files
+  carries the same date in both. A `package.json` cannot carry a comment, so
+  an exclusion written there always fails: put it on a line that can say when
+  it ends.
+- **Two tiers, split by whether the verdict depends on the clock.** Every
+  rule above is a pure function of the committed files and fails on the
+  commit that breaks it. The only clock-dependent verdict is the passed
+  expiry, judged against `--today` (default: the runner's UTC date): it is
+  announced on every run for the 30 days before it blocks, rather than
+  flipping red overnight with no commit to point at. A review anchor dated
+  after today also fails — it is the one way to stretch the horizon without
+  reviewing anything.
+- **It never runs `cargo audit`, `cargo deny` or `bun audit`.** A
+  network-fetching, database-dependent scan wired into a required check turns
+  a branch red on an upstream publication with no local commit (`ADR-0021`);
+  verifying the waiver list against a live graph stays a reviewed, local
+  operation, recorded in the waiver's `ref=`.
+- **It fails closed.** A tracked waiver source it cannot read, cannot parse,
+  or whose ignore list its line reading and a TOML parser disagree on is a
+  failure, never zero waivers. Each run prints its volume —
+  `N waiver(s) read across M file(s), K expiring within 30 days` — and a
+  repository with no source to read fails as having asserted nothing.
+
+**Provenance.** The design is that of `scripts/advisory-waiver-gate.sh`, the
+fleet's first instance, merged in `feed-radar` as `4f0f2bbc` on 2026-07-26
+with that repository's dated record `docs/adr/0005-dependency-advisory-waivers.md`.
+`feed-radar` was retired by the 2026-10-07 consolidation and its successor is
+archived without the script; the source survives only in the donor mirror
+preserved under `archives/libre-ai-donors-20261007/`. The rules A–F of its
+header are carried over; the reference check, the justification check, the
+future-anchor check, the fail-closed reading and the sources beyond Cargo are
+additions. The original's portability concern (no GNU- or BSD-only `date`
+flags) disappears with the port to Bun: date arithmetic is `Date.UTC`.
 
 ## Why this is fleet policy, not repository convention
 

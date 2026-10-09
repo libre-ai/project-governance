@@ -81,6 +81,17 @@ jobs:
             "$GITHUB_WORKSPACE/composition/project-governance/toolchains/bun.json" \
             "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json"
 
+      # docs/security/ADVISORY-WAIVER-POLICY.md: every waived advisory is dated,
+      # referenced and bounded, verified by a required gate. Run on the target's
+      # tracked files before the install-and-check phase, from the tooling
+      # generation the caller pinned. It never fetches an advisory database; the
+      # only clock-dependent verdict (a passed expiry) is announced 30 days ahead.
+      - name: Advisory waiver discipline
+        shell: bash
+        run: |
+          bun tooling/tools/quality/check-advisory-waivers.ts \
+            --root="$GITHUB_WORKSPACE/composition/$INPUT_TARGET"
+
       - name: Install Rust compiler and required components
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
