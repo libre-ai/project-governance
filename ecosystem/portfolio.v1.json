@@ -51,30 +51,6 @@
       }
     },
     {
-      "repository": "ai-practice-workbench",
-      "repositoryId": "1372583118",
-      "group": "products",
-      "name": {
-        "en": "Libre AI Practice Workbench",
-        "fr": "Libre AI Practice Workbench"
-      },
-      "role": {
-        "en": "Learn through practice with AI while understanding the sources you use and the work you have done yourself. This proposed product is for learners who want a clear exercise, room to try things and a way to reflect on what they learned.",
-        "fr": "Apprendre en pratiquant avec l’IA, tout en comprenant les sources utilisées et le travail réalisé par soi-même. Ce produit vise les personnes qui souhaitent un exercice clair, de la place pour essayer et un moyen de réfléchir à leurs acquis."
-      },
-      "status": "code_integration_local",
-      "sourceReadmes": {
-        "en": {
-          "path": "README.md",
-          "sha256": "93be35f993e2c0487786c50db8f5f3fe14bc61e9deb6df8532425a77a685c7f4"
-        },
-        "fr": {
-          "path": "README.fr.md",
-          "sha256": "fd8f2acd5c8e01c108e53b08caefd9cd1281317d56800f3755c0a038c8924a18"
-        }
-      }
-    },
-    {
       "repository": "learning-session-facilitation",
       "repositoryId": "1372583150",
       "group": "products",
@@ -119,30 +95,6 @@
         "fr": {
           "path": "README.fr.md",
           "sha256": "276b6b88c92aef50e2774ce74f937984328dfcfd94c1b6d10e54a9993a87b044"
-        }
-      }
-    },
-    {
-      "repository": "information-feed-filter",
-      "repositoryId": "1372583247",
-      "group": "products",
-      "name": {
-        "en": "Libre AI Information Feed Filter",
-        "fr": "Libre AI Information Feed Filter"
-      },
-      "role": {
-        "en": "Turn information subscriptions into a selection you can inspect and understand. This proposed product is for people following several sources who want to decide what deserves their attention without relying on unexplained recommendations.",
-        "fr": "Transformer vos abonnements à des sources d’information en une sélection que vous pouvez examiner et comprendre. Ce produit vise les personnes suivant plusieurs sources qui souhaitent choisir leurs lectures, sans recommandations inexpliquées."
-      },
-      "status": "code_integration_local",
-      "sourceReadmes": {
-        "en": {
-          "path": "README.md",
-          "sha256": "630e6428a1b865523776bf127980e2a9707b4dd5f91faf9167d8e6539e77b7b9"
-        },
-        "fr": {
-          "path": "README.fr.md",
-          "sha256": "08546fbcd7810e7d8b3e5fe5be3e3efebffa9ea4aa6fab44469273d908a8cad1"
         }
       }
     },

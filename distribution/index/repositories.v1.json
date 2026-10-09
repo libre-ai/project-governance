@@ -2,7 +2,7 @@
   "schema_version": "libre-ai.repository-index.v2",
   "source": "ecosystem/repositories.v1.yaml",
   "source_schema_version": "libre-ai.repositories.v2",
-  "source_updated_on": "2026-10-07",
+  "source_updated_on": "2026-10-09",
   "repositories": [
     {
       "repository": "libre-ai/.github",
@@ -27,7 +27,7 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active",
+      "lifecycle": "archived",
       "card": "project.v1.yaml"
     },
     {
@@ -116,7 +116,7 @@
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",
-      "lifecycle": "active",
+      "lifecycle": "archived",
       "card": "project.v1.yaml"
     },
     {

@@ -15,17 +15,14 @@ import sys
 TARGETS = (
     "ai-work-supervision",
     "ai-model-policy",
-    "ai-practice-workbench",
     "learning-session-facilitation",
     "personal-knowledge-workspace",
-    "information-feed-filter",
     "travel-itinerary-planner",
     "project-website",
 )
 GATES = ("root", "native", "wasm", "e2e")
 E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
-    "ai-practice-workbench": ("apps/practices", "test:e2e"),
     "personal-knowledge-workspace": ("apps/notebook", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }

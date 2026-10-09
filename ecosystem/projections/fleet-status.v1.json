@@ -19,7 +19,7 @@
       "project": "ai-practice-workbench",
       "kind": "product",
       "layer": "couche-1",
-      "summary": "ai-practice-workbench: recovered sources with documentary integration under review.",
+      "summary": "archived; its scope moved to libre-ai/personal-knowledge-workspace",
       "display": "Avancement non calculable — périmètre à clarifier",
       "maturity": "idea",
       "confidence": "medium",
@@ -43,7 +43,7 @@
       "project": "information-feed-filter",
       "kind": "product",
       "layer": "couche-1",
-      "summary": "information-feed-filter: recovered sources with documentary integration under review.",
+      "summary": "archived; its scope moved to libre-ai/personal-knowledge-workspace",
       "display": "Avancement non calculable — périmètre à clarifier",
       "maturity": "idea",
       "confidence": "medium",
@@ -84,7 +84,7 @@
       "maturity": "specified",
       "confidence": "medium",
       "exposure": "spec-published",
-      "last_verified_on": "2026-10-06"
+      "last_verified_on": "2026-10-07"
     },
     {
       "repository": "libre-ai/travel-itinerary-planner",
@@ -112,7 +112,7 @@
     },
     {
       "repository": "libre-ai/execution-continuity-evaluator",
-      "project": "orchestrator",
+      "project": "execution-continuity-evaluator",
       "kind": "satellite",
       "layer": "couche-2",
       "summary": "Cœur Rust sans effet pour le contrôle et les décisions authorized-execution, avec preuves de rejeu déterministe et outillage de revue.",
@@ -124,7 +124,7 @@
     },
     {
       "repository": "libre-ai/execution-sandbox",
-      "project": "harness",
+      "project": "execution-sandbox",
       "kind": "satellite",
       "layer": "couche-2",
       "summary": "Bibliothèque candidate de confinement attesté : cœur Rust et module hôte présents, dépendances explicitement bornées, qualification Linux et admission du garde encore ouvertes.",
