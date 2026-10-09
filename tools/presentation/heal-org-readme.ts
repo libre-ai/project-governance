@@ -30,7 +30,8 @@
  * step, and the skip line names what is missing.
  *
  * With the token: a fixed branch `heal/org-readme` in `.github` (recreated
- * from `main` when no pull request is open from it, appended to otherwise),
+ * from the branch `.github` serves, read from its metadata, when no pull
+ * request is open from it, appended to otherwise),
  * one commit per drifting profile README through the Contents API with the
  * token's identity as author and a matching `Signed-off-by` trailer, one pull
  * request — found by head branch, never duplicated. Idempotent: a file the
@@ -129,6 +130,25 @@ export function findOpenPullRequest(pulls: readonly OpenPullRequest[]): number |
   return pulls.find((pull) => pull.headRefName === HEAL_BRANCH)?.number ?? null;
 }
 
+/**
+ * The branch `.github` serves, read from its own metadata (`GET repos/{repo}`),
+ * never written here: the heal branch is cut from it and the pull request
+ * targets it. A written branch name is right only while the repository keeps
+ * serving that name — the class ADR-0041 §7 names. A metadata payload without
+ * a usable `default_branch` throws: guessing a base would open a pull request
+ * against the wrong tree.
+ */
+export function readDefaultBranch(metadata: unknown): string {
+  const branch =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as Record<string, unknown>).default_branch
+      : undefined;
+  if (typeof branch !== "string" || branch.length === 0) {
+    throw new Error(`${HEAL_REPOSITORY}: repository metadata carries no default_branch`);
+  }
+  return branch;
+}
+
 // ---------------------------------------------------------------------------
 // CLI (network I/O — not unit-tested; the logic above is)
 
@@ -195,15 +215,17 @@ function openPullRequest(api: Api, healed: readonly HealedFile[], runUrl: string
     "number,headRefName",
   ]) as OpenPullRequest[];
   const existing = findOpenPullRequest(pulls);
+  const baseBranch = readDefaultBranch(api.json(["api", `repos/${HEAL_REPOSITORY}`]));
 
   // No open pull request: the branch, if any, is a leftover of a merged or
-  // closed one — recreate it from main so the diff is exactly this heal.
+  // closed one — recreate it from the served branch so the diff is exactly
+  // this heal.
   if (existing === null) {
     if (refExists(api, HEAL_BRANCH)) {
       api.run(["api", "-X", "DELETE", `repos/${HEAL_REPOSITORY}/git/refs/heads/${HEAL_BRANCH}`]);
     }
-    const mainSha = (
-      api.json(["api", `repos/${HEAL_REPOSITORY}/git/ref/heads/main`]) as {
+    const baseSha = (
+      api.json(["api", `repos/${HEAL_REPOSITORY}/git/ref/heads/${baseBranch}`]) as {
         object: { sha: string };
       }
     ).object.sha;
@@ -215,7 +237,7 @@ function openPullRequest(api: Api, healed: readonly HealedFile[], runUrl: string
       "-f",
       `ref=refs/heads/${HEAL_BRANCH}`,
       "-f",
-      `sha=${mainSha}`,
+      `sha=${baseSha}`,
     ]);
   }
 
@@ -258,7 +280,7 @@ function openPullRequest(api: Api, healed: readonly HealedFile[], runUrl: string
       "-R",
       HEAL_REPOSITORY,
       "--base",
-      "main",
+      baseBranch,
       "--head",
       HEAL_BRANCH,
       "--title",

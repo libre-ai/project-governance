@@ -6,6 +6,7 @@ import {
   HEAL_BRANCH,
   HEAL_SECRET,
   healCommitMessage,
+  readDefaultBranch,
   skipMessage,
   spliceStatusSection,
 } from "./heal-org-readme";
@@ -108,5 +109,21 @@ describe("findOpenPullRequest", () => {
   test("returns null when no open pull request comes from the heal branch", () => {
     expect(findOpenPullRequest([{ number: 3, headRefName: "feature/other" }])).toBeNull();
     expect(findOpenPullRequest([])).toBeNull();
+  });
+});
+
+describe("readDefaultBranch — the heal base is resolved, never written", () => {
+  test("returns the branch the repository metadata declares", () => {
+    // A branch other than the documentary default, so a written fallback
+    // could not pass this test by coincidence.
+    expect(readDefaultBranch({ default_branch: "migrate/recover-code" })).toBe(
+      "migrate/recover-code",
+    );
+  });
+
+  test("throws rather than guessing a base", () => {
+    expect(() => readDefaultBranch({})).toThrow(/default_branch/);
+    expect(() => readDefaultBranch({ default_branch: "" })).toThrow(/default_branch/);
+    expect(() => readDefaultBranch(null)).toThrow(/default_branch/);
   });
 });

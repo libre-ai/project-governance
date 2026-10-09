@@ -1,110 +1,115 @@
 {
-  "schemaVersion": "libre-ai.cold-reader-questionnaire.v1",
+  "schemaVersion": "libre-ai.cold-reader-questionnaire.v2",
   "items": [
     {
       "id": "what-is-libre-ai",
       "question": "In your own words: what is Libre AI? What kind of organization is it and what makes its way of working unusual?",
       "expectedElements": [
         {
-          "id": "open-source-lab",
-          "description": "An independent open-source software lab building a product line/portfolio, not a single product.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+          "id": "inspectable-ai-tools",
+          "description": "A set of planned AI tools you can inspect, modify and deploy where you choose — several products, not a single application.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
           "patterns": [
-            "open[- ]?source",
-            "software lab",
-            "product line",
-            "portfolio",
-            "constellation"
+            "inspect(ed)?,? (and )?modif",
+            "deploy (it |them )?where(ver)? you choose",
+            "planned products",
+            "(several|multiple|a set of) (planned )?(ai )?(products|projects|tools)"
           ]
         },
         {
-          "id": "agents-under-governance",
-          "description": "The portfolio is built by AI agents operating under a governed method (Polaris) with human control gates.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
-          "patterns": [
-            "ai agents",
-            "polaris",
-            "human governance",
-            "control gates?",
-            "governed method"
-          ]
+          "id": "software-method-evidence",
+          "description": "It offers the software together with the method and the evidence used to build it: own the factory instead of renting the product.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": ["method", "own the factory", "rent(s|ing)? (you )?the product"]
         },
         {
           "id": "sovereignty-commitments",
-          "description": "Sovereignty/explainability commitments: open code, data under user control, traceable decisions, reversibility.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
-          "patterns": ["sovereign", "explainab", "traceab", "reversib", "local[- ]first"]
+          "description": "Open, sovereign and explainable; users keep control over sources and decisions.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": [
+            "sovereign",
+            "explainab",
+            "control over (their |your )?(sources|decisions)",
+            "keep(s|ing)? control"
+          ]
         },
         {
           "id": "honest-status",
-          "description": "Honest status: nothing is released yet; foundations are being rebuilt from a clean base.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+          "description": "Honest status: nothing is released yet — none of the repositories is an application you can install.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
           "patterns": [
             "nothing is released",
-            "not (yet )?released",
+            "not (yet )?(been )?released",
             "no release",
-            "clean base",
-            "rebuild",
-            "early stage"
+            "none (of them )?is a released",
+            "not (yet )?installable",
+            "can(not|'t) (yet )?(be )?install"
           ]
         }
       ]
     },
     {
       "id": "where-is-the-evidence",
-      "question": "Where would you look for this project's published evidence (gates passed, verdicts, reports)? Name the concrete locations you can find.",
+      "question": "Where would you look for this project's published evidence (checks passed, verdicts, recorded state)? Name the concrete locations you can find.",
       "expectedElements": [
         {
-          "id": "central-repository",
-          "description": "The central repository libre-ai/libre-ai is where all current work and its record live.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
-          "patterns": ["libre-ai/libre-ai", "central repositor", "base repositor", "monorepo"]
+          "id": "per-repository-state-card",
+          "description": "What is actually proven for a project is recorded in that repository's own state card.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": ["state cards?", "project\\.v1\\.yaml", "own card"]
         },
         {
-          "id": "evidence-directory",
-          "description": "The public evidence trail lives in distribution/evidence/ (gate acceptance log, reports, commitment hashes).",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
-          "patterns": ["distribution/evidence", "gate acceptance log", "evidence trail"]
+          "id": "evidence-link",
+          "description": "The organization profile links a public evidence page (\"See the evidence\").",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": ["see the evidence", "libre-ai\\.fr", "#preuves", "evidence page"]
         },
         {
-          "id": "self-documenting-forge",
-          "description": "The forge documents itself: every pull request, decision and gate passed is visible in the repository.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
-          "patterns": [
-            "documents itself",
-            "self[- ]document",
-            "every pull request",
-            "visible in (the|this) forge",
-            "gates? (passed|and evidence) are published"
-          ]
+          "id": "evidence-part-of-product",
+          "description": "It is built in an open factory where evidence is part of the product.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": ["evidence is part of the product", "open factory", "part of the product"]
         }
       ]
     },
     {
       "id": "how-to-verify-a-claim",
-      "question": "The project states that nothing goes in the shop window that cannot be verified. Concretely, how would YOU verify one of its claims yourself, using only what is public?",
+      "question": "The project states that its public pages claim nothing more than what is recorded as proven. Concretely, how would YOU verify one of its claims yourself, using only what is public?",
       "expectedElements": [
         {
-          "id": "machine-readable-inventory",
-          "description": "Check the machine-readable inventory ecosystem/repositories.v1.yaml against the observable GitHub organization.",
-          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+          "id": "state-card-bounds-claims",
+          "description": "Compare the claim with the project's own state card: the organization profile claims nothing more than those cards do.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
           "patterns": [
-            "repositories\\.v1\\.yaml",
-            "machine[- ]readable (inventory|source)",
-            "ecosystem/"
+            "state cards?",
+            "project\\.v1\\.yaml",
+            "(claims? )?(nothing )?more than (th(o|e)se |the )?cards"
           ]
         },
         {
           "id": "doctrine-registers",
-          "description": "Trace a claim to its published record: the invariants register, ADRs, or a dated evidence report.",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
-          "patterns": ["invariants?", "adr", "decision register", "evidence report"]
+          "description": "Trace the claim to its recorded decision: the ADRs, the invariant and decision registers, the consolidation decision or the migration record.",
+          "source": "https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/README.md",
+          "patterns": [
+            "\\badrs?\\b",
+            "invariants?",
+            "decision registers?",
+            "registres?",
+            "consolidation decision",
+            "migration record"
+          ]
         },
         {
-          "id": "gates-on-merges",
-          "description": "Every merge carries a DCO sign-off and green required checks — the CI gates are the enforcement.",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
-          "patterns": ["dco", "sign[- ]?off", "required checks?", "green checks?", "ci gate"]
+          "id": "rerun-the-checks",
+          "description": "Re-run the shared checks yourself (bun install --frozen-lockfile, then bun run check), knowing they cover defined patterns and do not replace code review.",
+          "source": "https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/README.md",
+          "patterns": [
+            "bun run check",
+            "re-?run (the )?(shared )?checks",
+            "run the checks",
+            "frozen[- ]lockfile",
+            "tools/quality"
+          ]
         }
       ]
     },
@@ -113,27 +118,40 @@
       "question": "You want to contribute a change or act on this project. What does it require from you, and where does the work actually happen?",
       "expectedElements": [
         {
-          "id": "work-happens-centrally",
-          "description": "Issues and pull requests for every product happen in the central repository libre-ai/libre-ai.",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
+          "id": "work-per-repository",
+          "description": "Each repository carries its own implementation and its own checks: the work happens in the repository of the project concerned.",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
           "patterns": [
-            "libre-ai/libre-ai",
-            "central repositor",
-            "issues and pull requests",
-            "happen(s)? here"
+            "each repositor(y|ies)",
+            "its own checks",
+            "own implementation",
+            "per[- ]repositor",
+            "in (the|that|each) (project'?s? )?(own )?repositor"
           ]
         },
         {
-          "id": "dco-required",
-          "description": "Every commit must carry a DCO sign-off.",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
-          "patterns": ["dco", "sign[- ]?off", "developer certificate"]
+          "id": "checks-before-sharing",
+          "description": "Contributions are checked before they are shared — tool versions, declared licenses, secrets and personal data in Git-tracked files — with the Bun version set in toolchains/.",
+          "source": "https://raw.githubusercontent.com/libre-ai/project-governance/HEAD/README.md",
+          "patterns": [
+            "tool versions?",
+            "declared licen[cs]es?",
+            "secrets?",
+            "personal data",
+            "toolchains/",
+            "bun version"
+          ]
         },
         {
           "id": "contributing-doc",
-          "description": "CONTRIBUTING.md (with SECURITY.md) documents the contribution flow.",
-          "source": "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
-          "patterns": ["contributing\\.md", "contributing guide", "security\\.md"]
+          "description": "The organization profile links the contribution guide (CONTRIBUTING.md) and a private vulnerability-reporting route (SECURITY.md).",
+          "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
+          "patterns": [
+            "contributing\\.md",
+            "contribut(ion|ing) guide",
+            "security\\.md",
+            "report(ing)? a vulnerability"
+          ]
         }
       ]
     }

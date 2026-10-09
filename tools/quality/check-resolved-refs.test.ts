@@ -19,6 +19,14 @@ describe("scanForWrittenRefs — a ref handed to a request", () => {
     ["tree-path", 'ghApi("repos/o/r/git/trees/main?recursive=1")'],
     ["compare-range", 'ghApi("repos/o/r/compare/abc123...main")'],
     ["action-branch-pin", "    uses: libre-ai/project-governance/.github/workflows/x.yml@main"],
+    [
+      "raw-url-branch",
+      'url: "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",',
+    ],
+    // `$` and `{` are concatenated: these lines are SOURCE text under test, and a
+    // placeholder written inside a plain string is what the linter refuses.
+    ["graphql-built-expression", "const expression = JSON.stringify(`main:$" + "{path}`);"],
+    ["git-ref-path", 'api.json(["api", `repos/$' + "{REPO}/git/ref/heads/main`])"],
   ];
 
   for (const [id, line] of cases) {
@@ -39,6 +47,44 @@ describe("scanForWrittenRefs — a ref handed to a request", () => {
   test("every declared pattern is exercised by a case above", () => {
     expect(new Set(cases.map(([id]) => id))).toEqual(new Set(REF_PATTERNS.map((p) => p.id)));
   });
+
+  // The blind spot of 2026-10-09: the cold-reader grid cited thirteen sources
+  // as raw URLs on a written branch, in a JSON file this guard did not read.
+  test("a raw URL on a written branch is refused in a JSON file", () => {
+    const scan = scanForWrittenRefs([
+      file(
+        "verification/adoption/cold-reader/questionnaire.json",
+        '          "source": "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",',
+      ),
+    ]);
+    expect(scan.findings.map((f) => f.id)).toEqual(["raw-url-branch"]);
+    expect(scan.filesByExtension).toEqual({ ".json": 1 });
+  });
+
+  test("the refs/heads form of a raw URL is refused too", () => {
+    const scan = scanForWrittenRefs([
+      file("tools/x.ts", "fetch(`https://raw.githubusercontent.com/o/r/refs/heads/master/a.md`)"),
+    ]);
+    expect(scan.findings.map((f) => f.id)).toEqual(["raw-url-branch"]);
+  });
+});
+
+describe("scanForWrittenRefs — the volume it examined", () => {
+  test("files by extension sum to files scanned, and pattern subjects are counted apart", () => {
+    const scan = scanForWrittenRefs([
+      file("ecosystem/a.ts", ""),
+      file("ecosystem/b.ts", ""),
+      file("distribution/c.json", "{}"),
+      file(".github/workflows/d.yml", ""),
+      file("ecosystem/a.test.ts", ""),
+      file("ecosystem/fixtures/e.json", "{}"),
+    ]);
+    expect(scan.filesByExtension).toEqual({ ".ts": 2, ".json": 1, ".yml": 1 });
+    expect(Object.values(scan.filesByExtension).reduce((sum, n) => sum + n, 0)).toBe(
+      scan.filesScanned,
+    );
+    expect(scan.patternSubjects).toBe(2);
+  });
 });
 
 describe("scanForWrittenRefs — what is NOT a request", () => {
@@ -51,6 +97,10 @@ describe("scanForWrittenRefs — what is NOT a request", () => {
     "if (import.meta.main) {",
     "expect(message).toBe(\"Merge branch 'main' into feature\");",
     "  - repository: libre-ai/project-governance",
+    'url: "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",',
+    "const expression = JSON.stringify(`HEAD:$" + "{path}`);",
+    "api.json([`repos/$" + "{repo}/git/ref/heads/$" + "{baseBranch}`]);",
+    '  "description": "a main: idea, see the maintainers"',
   ];
 
   for (const line of innocent) {

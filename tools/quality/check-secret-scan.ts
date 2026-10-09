@@ -32,7 +32,19 @@ export interface SecretFinding {
   readonly line: number;
 }
 
-const IGNORED_PREFIXES = ["node_modules/", "target/", "dist/", ".git/", "docs/reviews/"];
+// `.tools/contracts-authority/` is the hash-verified archive of another
+// repository (project-governance's pin, crates/ecosystem-engine/
+// contracts-authority.pin.json) — gitignored and never committed here, exactly
+// what `node_modules/` held before 2026-10-09; its own repository scans it.
+// Exact prefix, not `.tools/`: nothing else under that directory is exempted.
+const IGNORED_PREFIXES = [
+  "node_modules/",
+  "target/",
+  "dist/",
+  ".git/",
+  "docs/reviews/",
+  ".tools/contracts-authority/",
+];
 // Nested workspaces (a repository can carry a sub-package with its own
 // node_modules since the split — e.g. orchestrator's tools/review):
 const IGNORED_SEGMENTS = ["/node_modules/", "/target/", "/dist/"];
