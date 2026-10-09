@@ -157,8 +157,21 @@ export interface RetiredReference {
  * An entry ending in `/` authorises a whole subtree. A bare path with no
  * reason is refused by `assertAllowlistReasons`: an authorisation without a
  * reason is how an allow-list becomes a place to hide findings.
+ *
+ * An entry carrying `names` is NAME-SCOPED: the file stays scanned, and only
+ * references to the listed names are authorised. A whole-file exemption
+ * justified by one name hides every other retired name that later lands in the
+ * same file; a name-scoped one cannot. A name-scoped entry that no longer
+ * matches any reference fails the gate — an exemption that exempts nothing is
+ * stale and must be removed, not left as a place for the next finding to hide.
  */
-export const HISTORICAL_ALLOWLIST: readonly { readonly path: string; readonly reason: string }[] = [
+export interface AllowlistEntry {
+  readonly path: string;
+  readonly reason: string;
+  readonly names?: readonly (typeof RETIRED_REPOSITORY_NAMES)[number][];
+}
+
+export const HISTORICAL_ALLOWLIST: readonly AllowlistEntry[] = [
   {
     path: "docs/adr/",
     reason:
@@ -185,8 +198,9 @@ export const HISTORICAL_ALLOWLIST: readonly { readonly path: string; readonly re
   },
   {
     path: "docs/portfolio-material.json",
+    names: ["public-vote-comparison", "personal-knowledge-notebook"],
     reason:
-      "MEASURED 2026-10-08: two references to public-vote-comparison, deleted by the owner the same day. The file is authored, not generated — nothing under tools/ or ecosystem/ writes it — and it feeds the portfolio chain shared with the website, whose repair is a declared lot of the session holding it. This entry must be removed once that lot lands",
+      "owner-signed portfolio material pending regeneration; regenerating it is an owner act (step 9 of the rename plan) and is not done by a gate fix. MEASURED 2026-10-09, lines 8 and 15 (the en and fr bodies): two references to public-vote-comparison, deleted by the owner on 2026-10-08, and two to personal-knowledge-notebook, renamed personal-knowledge-workspace by LEXICON §14 — the whole-file form of this entry, justified by public-vote-comparison alone, hid the second pair. The same bodies also link ai-practice-workbench and information-feed-filter, archived on 2026-10-09 (ADR-0042 §7, act 3) with redirect to personal-knowledge-workspace; archived is not retired, so this gate does not report them, and they are named here so the regeneration covers them. The file is authored, not generated — nothing under tools/ or ecosystem/ writes it — and it feeds the portfolio chain shared with the website. Scoped to the two names: any other retired name in this file is reported. This entry must be removed once the material is regenerated",
   },
   {
     path: "ecosystem/cards/method.project.v1.yaml",
@@ -208,10 +222,29 @@ export function isAuthorizedLine(line: string): boolean {
   return line.slice(at + AUTHORIZATION_MARKER.length).trim().length > 0;
 }
 
-export function isAllowlisted(path: string): boolean {
-  return HISTORICAL_ALLOWLIST.some((entry) =>
-    entry.path.endsWith("/") ? path.startsWith(entry.path) : path === entry.path,
-  );
+function entryCovers(entry: AllowlistEntry, path: string): boolean {
+  return entry.path.endsWith("/") ? path.startsWith(entry.path) : path === entry.path;
+}
+
+/** Whole-file (or whole-subtree) exemption: the file is not scanned at all. */
+export function isAllowlisted(
+  path: string,
+  entries: readonly AllowlistEntry[] = HISTORICAL_ALLOWLIST,
+): boolean {
+  return entries.some((entry) => entry.names === undefined && entryCovers(entry, path));
+}
+
+/** Names authorised in `path` by name-scoped entries; the file is still scanned. */
+export function allowlistedNames(
+  path: string,
+  entries: readonly AllowlistEntry[] = HISTORICAL_ALLOWLIST,
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const entry of entries) {
+    if (entry.names === undefined || !entryCovers(entry, path)) continue;
+    for (const name of entry.names) names.add(name);
+  }
+  return names;
 }
 
 /** Every allow-list entry carries a reason; the gate refuses to run otherwise. */
@@ -257,6 +290,20 @@ function patterns(): readonly { readonly form: OperationalForm; readonly source:
  */
 export function findOperationalReferences(
   files: readonly { readonly path: string; readonly text: string }[],
+  entries: readonly AllowlistEntry[] = HISTORICAL_ALLOWLIST,
+): RetiredReference[] {
+  return findAllOperationalReferences(files, entries).filter(
+    (reference) => !allowlistedNames(reference.path, entries).has(reference.name),
+  );
+}
+
+/**
+ * Every reference outside test sources and whole-file exemptions, name-scoped
+ * exemptions NOT applied — what those exemptions are measured against.
+ */
+export function findAllOperationalReferences(
+  files: readonly { readonly path: string; readonly text: string }[],
+  entries: readonly AllowlistEntry[] = HISTORICAL_ALLOWLIST,
 ): RetiredReference[] {
   const compiled = patterns().map((pattern) => ({
     form: pattern.form,
@@ -265,7 +312,7 @@ export function findOperationalReferences(
   const seen = new Set<string>();
   const references: RetiredReference[] = [];
   for (const file of files) {
-    if (isTestSource(file.path) || isAllowlisted(file.path)) continue;
+    if (isTestSource(file.path) || isAllowlisted(file.path, entries)) continue;
     const lines = file.text.split("\n");
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index] ?? "";
@@ -283,6 +330,30 @@ export function findOperationalReferences(
     }
   }
   return references;
+}
+
+/**
+ * What the name-scoped entries actually authorise, and which of their names
+ * no longer match anything. Pure, so the stale-entry failure is testable.
+ */
+export function measureNameScopedEntries(
+  files: readonly { readonly path: string; readonly text: string }[],
+  entries: readonly AllowlistEntry[] = HISTORICAL_ALLOWLIST,
+): { authorised: number; stale: { path: string; name: string }[] } {
+  const unscoped = findAllOperationalReferences(files, entries);
+  let authorised = 0;
+  const stale: { path: string; name: string }[] = [];
+  for (const entry of entries) {
+    if (entry.names === undefined) continue;
+    for (const name of entry.names) {
+      const matched = unscoped.filter(
+        (reference) => reference.name === name && entryCovers(entry, reference.path),
+      ).length;
+      authorised += matched;
+      if (matched === 0) stale.push({ path: entry.path, name });
+    }
+  }
+  return { authorised, stale };
 }
 
 const READABLE = /\.(md|ya?ml|json|jsonc|ts|tsx|rs|toml|txt|sh|sql)$/;
@@ -326,6 +397,18 @@ if (import.meta.main) {
     );
   }
 
+  // A name-scoped exemption must still be exempting something; otherwise the
+  // finding it was written for is gone and the entry is a stale authorisation.
+  const nameScoped = measureNameScopedEntries(files);
+  const nameScopedAuthorised = nameScoped.authorised;
+  for (const stale of nameScoped.stale) {
+    report.check(
+      `${stale.path} [${stale.name}]`,
+      false,
+      "name-scoped allow-list entry matches no reference any more: remove the name (or the entry) — a stale authorisation is where the next finding hides",
+    );
+  }
+
   for (const reference of findOperationalReferences(files)) {
     report.check(
       `${reference.path}:${reference.line}`,
@@ -346,8 +429,10 @@ if (import.meta.main) {
     `${scanned.length} of ${files.length} readable tracked source(s) scanned, against ` +
       `${RETIRED_REPOSITORY_NAMES.length} retired repository name(s) in ` +
       `${patterns().length} operational form(s); NOT scanned: ${excludedByAllowlist} file(s) ` +
-      `under ${HISTORICAL_ALLOWLIST.length} historical allow-list entry(ies) and ` +
-      `${excludedAsTests} test source(s)`,
+      `under ${HISTORICAL_ALLOWLIST.filter((entry) => entry.names === undefined).length} ` +
+      `whole-file historical allow-list entry(ies) and ${excludedAsTests} test source(s); ` +
+      `${nameScopedAuthorised} reference(s) authorised by ` +
+      `${HISTORICAL_ALLOWLIST.filter((entry) => entry.names !== undefined).length} name-scoped entry(ies)`,
   );
   concludeGate("Retired repository names", report);
 }

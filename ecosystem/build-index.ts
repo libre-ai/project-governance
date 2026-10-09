@@ -167,6 +167,13 @@ function toEntry(value: unknown, index: number): InventoryEntry {
     entry.canonical_paths = asStringArray(record.canonical_paths, `${path}.canonical_paths`);
   }
   if (entry.visibility === "private") {
+    // Doctrine constraint, and a coupling with check-inventory-drift.ts: the CI
+    // token cannot see a private repository, so that gate counts the entry as
+    // unverifiable (presence, visibility and archived state unread). Requiring
+    // `lifecycle: active` here is what keeps an archived claim out of that
+    // blind spot. Lifting it is a doctrine decision, and would make the
+    // inventory gate fail in CI on the archived private entry until an
+    // owner-scoped token is provided — see the header of that gate.
     const exactPrivateShape =
       entry.repository === "libre-ai/product-research" &&
       entry.role === "administrative-private" &&
