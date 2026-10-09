@@ -173,12 +173,27 @@ jobs:
       # Wired here, in the Q01 writePath, rather than in the root package.json.
       - run: bun tools/quality/check-secret-scan.ts
       - run: bun tools/quality/check-no-clever-production.ts
-      # The Front-C local-only guarantee (WP-G3-B01/P01) is no longer checked
-      # HERE: both apps left with the ADR-0020 dispatch, and from then until
+      # The Front-C local-only guarantee (WP-G3-B01/P01) is not checked HERE,
+      # and cannot be: both apps left with the ADR-0020 dispatch, this
+      # repository tracks no file under apps/, and from the dispatch until
       # 2026-08-04 this step scanned an empty glob and passed — green over
-      # nothing. The scanner now requires the caller to name its roots, and its
-      # enforcement point is the product repositories (boussole-politique,
-      # ai-practices) through the pinned governance tooling.
+      # nothing. The scanner now requires the caller to name its roots and
+      # fails on a root matching no file, so a root invented here to have
+      # something to scan would be the defect, not the wiring.
+      #
+      # Where it IS enforced, measured 2026-10-08 across the twenty-four
+      # repositories of ecosystem/repositories.v1.yaml: exactly one wires it —
+      # personal-knowledge-workspace, as check:no-transmission over
+      # apps/notebook/src, inside its aggregated check. The two product
+      # repositories this comment used to name no longer resolve. ADR-0016 and
+      # ADR-0017 carry dated corrections for the claims that rested on them.
+      #
+      # What this repository DOES owe, as the publisher of that executable: a
+      # run of it. tools/quality/check-no-transmission.test.ts exercises the
+      # script itself — mandatory roots, the empty-root refusal, the volume
+      # line, a planted primitive — and `bun run test` is a link of the
+      # `bun run check` chain run above, so the half a consumer invokes is
+      # executed here on every run instead of only its pure scanner.
       # Personal-data boundary (ADR-0012, I-21/I-22): this repository publishes
       # code, never instance data. Curated organisation records belong to a
       # private tenant, anything about a natural person stays on-device.

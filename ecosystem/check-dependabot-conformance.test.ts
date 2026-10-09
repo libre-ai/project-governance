@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
-
+import type { RepoDependabotState } from "./check-dependabot-conformance";
 import {
+  attachEcosystemScans,
   buildBatchQuery,
   fetchPublicFleetDependabot,
+  findEcosystemManifests,
   firstDifference,
   loadTemplates,
   parseBatchResponse,
+  parseTreeResponse,
   reviewDependabot,
+  scanTree,
   selectVariant,
   splitTemplate,
+  summarizeVolume,
   TEMPLATE_VARIANTS,
 } from "./check-dependabot-conformance";
 
@@ -182,6 +187,7 @@ describe("reviewDependabot", () => {
         config: { text: null, error: "must not be observed" },
         manifests: null,
         fetchError: "must not be observed",
+        ecosystemScan: null,
       },
       templates,
     );
@@ -197,7 +203,12 @@ describe("reviewDependabot", () => {
   test("archived entries are exempt, asserted rather than skipped", () => {
     const outcome = reviewDependabot(
       { ...active("libre-ai/libre-ai"), lifecycle: "archived" },
-      { config: { text: null, error: null }, manifests: null, fetchError: null },
+      {
+        config: { text: null, error: null },
+        manifests: null,
+        fetchError: null,
+        ecosystemScan: null,
+      },
       templates,
     );
     expect(outcome.failures).toEqual([]);
@@ -212,6 +223,7 @@ describe("reviewDependabot", () => {
         config: { text: templates["github-actions"], error: null },
         manifests: { workflows: true, cargoToml: false },
         fetchError: null,
+        ecosystemScan: null,
       },
       templates,
     );
@@ -226,6 +238,7 @@ describe("reviewDependabot", () => {
         config: { text: null, error: null },
         manifests: { workflows: true, cargoToml: true },
         fetchError: null,
+        ecosystemScan: null,
       },
       templates,
     );
@@ -241,6 +254,7 @@ describe("reviewDependabot", () => {
         config: { text: driftedFixture, error: null },
         manifests: { workflows: true, cargoToml: true },
         fetchError: null,
+        ecosystemScan: null,
       },
       templates,
     );
@@ -256,6 +270,7 @@ describe("reviewDependabot", () => {
         config: { text: templates["github-actions"], error: null },
         manifests: { workflows: true, cargoToml: true },
         fetchError: null,
+        ecosystemScan: null,
       },
       templates,
     );
@@ -276,6 +291,7 @@ describe("reviewDependabot", () => {
         config: { text: withdrawn, error: null },
         manifests: { workflows: true, cargoToml: false },
         fetchError: null,
+        ecosystemScan: null,
       },
       templates,
     );
@@ -290,6 +306,7 @@ describe("reviewDependabot", () => {
         config: { text: null, error: "rate limited" },
         manifests: null,
         fetchError: "rate limited",
+        ecosystemScan: null,
       },
       templates,
     );
@@ -303,8 +320,9 @@ describe("reviewDependabot", () => {
       active("libre-ai/odd"),
       {
         config: { text: null, error: null },
-        manifests: { workflows: false, cargoToml: false },
+        manifests: { workflows: false, cargoToml: true },
         fetchError: null,
+        ecosystemScan: scanTree(["Cargo.toml"]),
       },
       templates,
     );
@@ -371,11 +389,13 @@ describe("GraphQL fleet batch", () => {
       config: { text: templates["github-actions"], error: null },
       manifests: { workflows: true, cargoToml: false },
       fetchError: null,
+      ecosystemScan: null,
     });
     expect(states.get("libre-ai/db-inspect")).toEqual({
       config: { text: null, error: null },
       manifests: { workflows: true, cargoToml: true },
       fetchError: null,
+      ecosystemScan: null,
     });
     expect(states.get("libre-ai/notebook")?.config.text).toBe(driftedFixture);
     const gone = states.get("libre-ai/gone");
@@ -390,4 +410,234 @@ describe("GraphQL fleet batch", () => {
       expect(states.get(repository)?.fetchError).not.toBeNull();
     }
   });
+});
+
+describe("findEcosystemManifests", () => {
+  test("names every manifest Dependabot could watch, anywhere in the tree", () => {
+    expect(
+      findEcosystemManifests([
+        "README.md",
+        ".github/workflows/ci.yml",
+        "crates/core/Cargo.toml",
+        "apps/web/package.json",
+        "apps/web/bun.lock",
+        "tools/licensing/requirements.txt",
+        "pyproject.toml",
+        "deploy/Dockerfile",
+        "actions/setup/action.yml",
+        ".gitmodules",
+        "go.mod",
+      ]),
+    ).toEqual([
+      { path: ".github/workflows/ci.yml", ecosystem: "github-actions" },
+      { path: "crates/core/Cargo.toml", ecosystem: "cargo" },
+      { path: "apps/web/package.json", ecosystem: "npm/bun" },
+      { path: "apps/web/bun.lock", ecosystem: "npm/bun" },
+      { path: "tools/licensing/requirements.txt", ecosystem: "pip/uv" },
+      { path: "pyproject.toml", ecosystem: "pip/uv" },
+      { path: "deploy/Dockerfile", ecosystem: "docker" },
+      { path: "actions/setup/action.yml", ecosystem: "github-actions" },
+      { path: ".gitmodules", ecosystem: "gitsubmodule" },
+      { path: "go.mod", ecosystem: "gomod" },
+    ]);
+  });
+
+  test("the measured tree of libre-ai/.github (main, 2026-10-08) holds no manifest", () => {
+    expect(
+      findEcosystemManifests([
+        "CONTRIBUTING.md",
+        "LICENSES/CC-BY-4.0.txt",
+        "SECURITY.md",
+        "docs/portfolio-material.json",
+        "llms.txt",
+        "profile/README.fr.md",
+        "profile/README.md",
+      ]),
+    ).toEqual([]);
+  });
+
+  test("a workflow directory entry that is not YAML is not a workflow", () => {
+    expect(findEcosystemManifests([".github/workflows/README.md"])).toEqual([]);
+  });
+
+  test("every ecosystem present in the fleet on 2026-10-08 is detected", () => {
+    // The manifest kinds the 22 public trees actually carried when this gate
+    // learned the empty case. If one of them stopped being detected, a
+    // repository carrying only that kind would read as "nothing to watch".
+    for (const path of [
+      ".github/workflows/ci.yml",
+      "Cargo.toml",
+      "package.json",
+      "bun.lock",
+      "tools/licensing/requirements.txt",
+    ]) {
+      expect(`${path}: ${findEcosystemManifests([path]).length}`).toBe(`${path}: 1`);
+    }
+  });
+});
+
+describe("reviewDependabot — repositories with no workflow and no Cargo.toml", () => {
+  const empty = { workflows: false, cargoToml: false };
+  const dotGithubTree = [
+    "CONTRIBUTING.md",
+    "LICENSES/CC-BY-4.0.txt",
+    "SECURITY.md",
+    "docs/portfolio-material.json",
+    "llms.txt",
+    "profile/README.fr.md",
+    "profile/README.md",
+  ];
+
+  test("libre-ai/.github as measured: no ecosystem to watch is a counted success", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/.github"),
+      {
+        config: { text: null, error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: scanTree(dotGithubTree),
+      },
+      templates,
+    );
+    expect(outcome).toEqual({
+      failures: [],
+      notes: [
+        "no ecosystem to watch — 7 file(s) scanned at the default branch, none is a manifest Dependabot can watch",
+      ],
+      exempt: false,
+    });
+  });
+
+  test("a manifest the variants do not cover stays red and names it", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/odd"),
+      {
+        config: { text: null, error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: scanTree(["README.md", "package.json", "bun.lock"]),
+      },
+      templates,
+    );
+    expect(outcome.failures.length).toBe(1);
+    expect(outcome.failures[0]).toContain("no template variant published for manifest set");
+    expect(outcome.failures[0]).toContain("package.json (npm/bun)");
+    expect(outcome.failures[0]).toContain("bun.lock (npm/bun)");
+  });
+
+  test("a nested Cargo.toml without workflows stays red", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/odd"),
+      {
+        config: { text: null, error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: scanTree(["crates/core/Cargo.toml"]),
+      },
+      templates,
+    );
+    expect(outcome.failures[0]).toContain("crates/core/Cargo.toml (cargo)");
+  });
+
+  test("a configuration on a repository with nothing to watch is a failure", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/.github"),
+      {
+        config: { text: templates["github-actions"], error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: scanTree(dotGithubTree),
+      },
+      templates,
+    );
+    expect(outcome.failures).toEqual([
+      ".github/dependabot.yml is present but the repository has no ecosystem to watch — every `updates` entry would be a job error; remove the file",
+    ]);
+  });
+
+  test("an unreadable tree is unable-to-verify, never nothing-to-watch", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/.github"),
+      {
+        config: { text: null, error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: { kind: "unreadable", reason: "rate limited" },
+      },
+      templates,
+    );
+    expect(outcome.failures).toEqual([
+      "unable to prove the repository has no ecosystem to watch: rate limited",
+    ]);
+  });
+
+  test("a missing scan is a failure, never nothing-to-watch", () => {
+    const outcome = reviewDependabot(
+      active("libre-ai/.github"),
+      {
+        config: { text: null, error: null },
+        manifests: empty,
+        fetchError: null,
+        ecosystemScan: null,
+      },
+      templates,
+    );
+    expect(outcome.failures.length).toBe(1);
+    expect(outcome.failures[0]).toContain("no tree scan recorded");
+  });
+});
+
+describe("parseTreeResponse", () => {
+  test("keeps blob paths and counts them", () => {
+    const scan = parseTreeResponse(
+      JSON.stringify({
+        truncated: false,
+        tree: [
+          { path: "profile", type: "tree" },
+          { path: "profile/README.md", type: "blob" },
+          { path: "llms.txt", type: "blob" },
+        ],
+      }),
+    );
+    expect(scan).toEqual({ kind: "scanned", files: 2, manifests: [] });
+  });
+
+  test("a truncated tree cannot prove emptiness", () => {
+    const scan = parseTreeResponse(JSON.stringify({ truncated: true, tree: [] }));
+    expect(scan.kind).toBe("unreadable");
+  });
+
+  test("an unparseable response is unreadable", () => {
+    expect(parseTreeResponse("not json").kind).toBe("unreadable");
+  });
+});
+
+describe("summarizeVolume", () => {
+  test("states how many repositories were graded, empty, exempt", () => {
+    expect(summarizeVolume({ graded: 20, nothingToWatch: 1, exempt: 2, failed: 1 })).toBe(
+      "24 inventory entries examined: 20 graded against a variant, 1 with no ecosystem to watch, 2 exempt, 1 failing",
+    );
+  });
+});
+
+test("attachEcosystemScans scans only reachable repositories that select no variant", async () => {
+  const base = { config: { text: null, error: null }, fetchError: null, ecosystemScan: null };
+  const states = new Map<string, RepoDependabotState>([
+    ["libre-ai/graded", { ...base, manifests: { workflows: true, cargoToml: false } }],
+    ["libre-ai/.github", { ...base, manifests: { workflows: false, cargoToml: false } }],
+    ["libre-ai/gone", { ...base, manifests: null, fetchError: "unreachable" }],
+  ]);
+  const scanned: string[] = [];
+  await attachEcosystemScans(states, async (repository) => {
+    scanned.push(repository);
+    return scanTree(["README.md"]);
+  });
+  expect(scanned).toEqual(["libre-ai/.github"]);
+  expect(states.get("libre-ai/.github")?.ecosystemScan).toEqual({
+    kind: "scanned",
+    files: 1,
+    manifests: [],
+  });
+  expect(states.get("libre-ai/graded")?.ecosystemScan).toBeNull();
+  expect(states.get("libre-ai/gone")?.ecosystemScan).toBeNull();
 });

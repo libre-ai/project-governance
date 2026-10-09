@@ -3,7 +3,7 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "39530653840320b0eb76c98c9167d8036d508de1",
+      "ref": "fdbf43dcdbf2a74a35c497090cec5a7e402144d2",
       "dependencies": [],
       "check": [["bun", "run", "check"]]
     },
@@ -79,8 +79,8 @@
       ],
       "check": [["bun", "run", "check"]]
     },
-    "personal-knowledge-notebook": {
-      "repository": "libre-ai/personal-knowledge-notebook",
+    "personal-knowledge-workspace": {
+      "repository": "libre-ai/personal-knowledge-workspace",
       "ref": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
       "dependencies": [
         "project-governance",
@@ -181,7 +181,7 @@
     "ai-model-policy",
     "ai-practice-workbench",
     "learning-session-facilitation",
-    "personal-knowledge-notebook",
+    "personal-knowledge-workspace",
     "information-feed-filter",
     "travel-itinerary-planner",
     "collaborative-data-sync",

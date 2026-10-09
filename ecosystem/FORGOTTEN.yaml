@@ -134,6 +134,33 @@ entries:
       - tools/quality/check-toolchain.ts
       - docs/toolchain/BUN-QUALIFICATION.md
 
+  - id: forgotten.convergence-anchor-instrument
+    evicted_paths:
+      - tools/convergence/
+    file_count: 4
+    reason: >-
+      Vérificateur d'ancrage verbatim des propositions de convergence, porté depuis
+      `crates/rag/src/verify.rs` d'un dépôt antérieur, et son vérificateur de lot sur
+      un export Radar curaté. Mesure au 2026-10-08, sur clone frais de la branche
+      servie : zéro consommateur hors ses propres tests — absent de `package.json`,
+      d'un workflow, et de tout autre fichier de l'arbre ; les deux seuls importateurs
+      sont ses deux fichiers de test. Le gate de code mort ne pouvait pas le voir : il
+      traitait un fichier de test comme une entrée, de sorte qu'un module atteignable
+      depuis son seul test était déclaré atteint. Corrigé, le gate le nomme — 139
+      entrées et zéro constat avant, 83 entrées et deux constats après, les deux
+      versions lancées sur le même arbre de 150 sources. Le code fonctionne (22 tests
+      verts) et son hypothèse reste ouverte ; ce qui manque est le corpus de
+      propositions sur lequel la mesurer, qui ne vit pas dans ce dépôt. L'option
+      écartée était de lui écrire une interface de commande : elle aurait rendu le gate
+      vert en fabriquant une fausse entrée, c'est-à-dire en reproduisant exactement le
+      défaut que cette correction retire.
+    decided_by: owner
+    decided_on: 2026-10-09
+    adr: ADR-0019
+    recoverable_at: f032f233396b96574646756a118f87562bfa1440
+    survives_as:
+      - ecosystem/objects/hypotheses/convergence-requires-verbatim-anchoring.json
+
 # Fichiers autorisés à nommer un chemin évincé. Toute autre citation échoue : c'est ce
 # qui empêche un document futur de ressusciter le contenu par référence. La liste est
 # une donnée, pas une exception codée en dur dans le garde-fou.
@@ -144,3 +171,12 @@ citation_allowlist:
   # daté et clos. Il nomme ce que le dépôt contenait à l'import, pas ce qu'il sert —
   # le réécrire pour effacer une ligne falsifierait la preuve qu'il est.
   - docs/migration/source.json
+  # Revue de mesure du 2026-10-08, datée et close, qui EST la preuve sur laquelle
+  # l'arbitrage de `forgotten.convergence-anchor-instrument` a été rendu : elle nomme
+  # les chemins qu'elle a mesurés et les compteurs avant/après du gate corrigé. Même
+  # raison que le relevé de migration ci-dessus — la réécrire pour effacer un chemin
+  # falsifierait la preuve qu'elle est. Les deux fichiers du gate qui décrivaient le
+  # même cas ne sont PAS ici : ils sont du code vivant, et ils ont été réécrits pour
+  # décrire le cas sans nommer le chemin, comme `check-forgotten.ts` le fait pour sa
+  # propre documentation.
+  - docs/reviews/unwired-gates-2026-10-08/REVIEW.md

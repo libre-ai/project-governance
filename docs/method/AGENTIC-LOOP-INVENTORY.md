@@ -123,7 +123,7 @@ branche de tête, jamais dupliquée.
   **Pull requests : Read and write** (Metadata : Read, implicite) ; aucune
   autre permission, aucun autre dépôt ;
 - le déposer comme secret de dépôt `ORG_README_HEAL_TOKEN` sur
-  `libre-ai/governance` (Settings → Secrets and variables → Actions).
+  `libre-ai/project-governance` (Settings → Secrets and variables → Actions).
 
 Points que seul le premier run rouge avec le secret prouvera : le chemin
 API n'est pas testé unitairement ; si `.github` porte un check DCO,

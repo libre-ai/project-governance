@@ -13,7 +13,7 @@ Prérequis : Git, Python 3.11 ou supérieur, Bash, curl, Rustup et un accès aux
 
 ```sh
 set -eu
-TARGET=personal-knowledge-notebook
+TARGET=personal-knowledge-workspace
 TARGET_REVISION=3c4e38605152fff7b5e6f94d5c1557ac94ea5956
 TOOLING_REVISION=ed87f3fa5b9285adc08e7a07a94853872cb1bb16
 WORKSPACE="$(mktemp -d)"
@@ -71,7 +71,7 @@ Sur **macOS ARM64**, réutilisez l’installateur Notebook au commit qualifié, 
 ```sh
 curl --fail --location --proto '=https' --proto-redir '=https' --max-time 120 \
   --output "$WORKSPACE/install-macos-toolchains.sh" \
-  https://raw.githubusercontent.com/libre-ai/personal-knowledge-notebook/3c4e38605152fff7b5e6f94d5c1557ac94ea5956/.github/scripts/install-macos-toolchains.sh
+  https://raw.githubusercontent.com/libre-ai/personal-knowledge-workspace/3c4e38605152fff7b5e6f94d5c1557ac94ea5956/.github/scripts/install-macos-toolchains.sh
 printf '%s  %s\n' \
   621479c80cd1be892d4d33e989b94f3cf22a21bcaf46dffe90ecb5805f7b840a \
   "$WORKSPACE/install-macos-toolchains.sh" | shasum -a 256 --check

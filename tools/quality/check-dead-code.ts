@@ -13,6 +13,36 @@
  * zero entries fails: a broken glob or a moved directory must turn this gate
  * red, never silently green.
  *
+ * Two things a reachability walk must refuse to count as consumption, or it
+ * certifies as live exactly the code nothing uses:
+ *
+ *   - A TEST IS A HARNESS, NOT AN ENTRY POINT. Treating `x.test.ts` as an entry
+ *     made every module its own consumer by way of its own test: a tree
+ *     reachable only from its tests was declared reached. Tests are still not
+ *     reported as dead — the runner discovers them — but they no longer keep
+ *     their subject alive. Measured on 2026-10-08: one tree of 4 files and 579
+ *     lines, imported by nothing but its own two test files, was green under
+ *     the old rule and is named by the first entry of the forgetting register
+ *     dated 2026-10-09. Its path is deliberately NOT written here — naming an
+ *     evicted path in living code is what `check-forgotten.ts` refuses, and a
+ *     gate whose own documentation resurrects content by reference would need
+ *     an allowance shaped like itself.
+ *   - A SELF-MENTION IS NOT AN INVOCATION. Both string-path sweeps below read
+ *     every tracked file, the scanned file included, so a usage block in a
+ *     script's own header (`bun tools/x/y.ts --flag`) named it as its own
+ *     caller. A file documenting how to run itself proves nothing about who
+ *     runs it, so a resolved target equal to its host is skipped. The rule has
+ *     to hold in BOTH sweeps: the same header line matches the generic
+ *     path-like pattern and the command pattern, so excluding self in one of
+ *     them changes no verdict.
+ *
+ * What replaces them is narrower and objective: a module that DECLARES itself a
+ * command (`import.meta.main`, a shebang, a top-level read of the process
+ * command line) is an entry point. That is a property of the code, not of who
+ * happens to mention it. The class this gate still cannot see is therefore an
+ * executable that nothing invokes — reachable by construction, wired nowhere;
+ * answering that needs the caller inventory, not the module graph.
+ *
  * Deliberately NOT reported as dead, because they are reached by mechanisms a
  * module graph cannot see:
  *   - a package's public entry points (`exports`/`main`/`bin`) and everything
@@ -125,10 +155,24 @@ function importsOf(file: string): string[] {
 // ---------------------------------------------------------------- entry points
 const entryPoints = new Set<string>();
 
+// An executable module is reachable by construction: an operator or a consumer
+// RUNS it, and no module graph can show that. The marker is the module's own
+// declaration that it is a command — the `import.meta.main` idiom every gate in
+// this repository uses, a shebang, or a top-level read of the process command
+// line. This is what the two rules removed above were standing in for, badly: a
+// test treated as an entry kept its subject alive, and a usage block treated as
+// an invocation kept its own file alive. Both were proxies for "this is a
+// script"; the script says so itself.
+const isExecutable = (p: string) =>
+  /^#!|\bimport\.meta\.main\b|\bprocess\.argv\b|\bBun\.argv\b/.test(read(p));
+
 for (const file of sourceFiles) {
-  // Harness-discovered: bun test, Playwright testMatch, and config modules that
-  // a runner loads by path rather than by import.
-  if (isHarness(file) || /\.config\.tsx?$/.test(file)) entryPoints.add(file);
+  if (isHarness(file)) continue;
+  // Config modules a runner loads by path rather than by import, and commands.
+  // Test files are deliberately absent: see "A TEST IS A HARNESS" above. They
+  // are excluded from the unreached verdict instead, where their discovery by
+  // the runner is the honest reason they are not dead.
+  if (/\.config\.tsx?$/.test(file) || isExecutable(file)) entryPoints.add(file);
 }
 
 // Declared public surface of every workspace package.
@@ -171,7 +215,7 @@ const PATH_LIKE = /(?:^|[\s"'`(=,:])((?:\.{0,2}\/)?[\w.@/-]+\.tsx?)(?=$|[\s"'`),
 for (const host of REFERENCING_HOSTS) {
   for (const match of read(host).matchAll(PATH_LIKE)) {
     const target = resolveNamedPath(match[1] as string, host);
-    if (target) entryPoints.add(target);
+    if (target && target !== host) entryPoints.add(target);
   }
 }
 
@@ -185,7 +229,7 @@ for (const host of tracked) {
   if (/\.(png|jpg|jpeg|gif|svg|ico|wasm|zip|pdf|woff2?)$/.test(host)) continue;
   for (const match of read(host).matchAll(COMMAND_INVOCATION)) {
     const target = resolveNamedPath(match[1] as string, host);
-    if (target) entryPoints.add(target);
+    if (target && target !== host) entryPoints.add(target);
   }
 }
 
@@ -202,7 +246,10 @@ while (pending.length > 0) {
     if (target && !reached.has(target)) pending.push(target);
   }
 }
-const unreachedFiles = sourceFiles.filter((file) => !reached.has(file)).sort();
+// A harness is not an entry point (it keeps nothing alive) and is not dead
+// either (the runner discovers it by filename). It is therefore excluded from
+// the verdict rather than from the walk.
+const unreachedFiles = sourceFiles.filter((file) => !isHarness(file) && !reached.has(file)).sort();
 
 // --------------------------------------------- 2. exported but never referenced
 // Public surface = package entry points plus their transitive re-export closure.

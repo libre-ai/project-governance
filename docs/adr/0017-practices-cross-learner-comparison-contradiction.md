@@ -76,6 +76,50 @@ Aucune action n'est requise ni prise dans `ai-practices` par cette clôture : il
 
 Pour mémoire du débat original : jusqu'à sa clôture ci-dessus, cet ADR n'avait lui-même réécrit aucun non-objectif, desserré aucun garde-fou, ni modifié aucun statut d'ADR dans un autre dépôt — la clôture de 2026-08-18 (§Résolution) reste de cette nature : un constat de fait, pas un acte de ce type. La question de savoir si « v1 » qualifiait une phase ou un principe durable n'est pas tranchée en tant que telle par cet ADR ; elle cesse seulement d'être bloquante ici, la contradiction qui la rendait urgente ayant disparu par ailleurs. La seule voie identifiée pour la rouvrir est la note prospective de la Résolution.
 
+## Correction (2026-10-08) — ce que le garde-fou local-only applique aujourd'hui
+
+Cinq lignes de cet ADR citent `tools/quality/check-no-transmission.ts` **au
+présent**, comme un mécanisme qui interdit en CI toute primitive réseau dans
+`apps/practices` : la ligne de portée, le quatrième élément concordant du
+§Contexte, un énoncé dans chacune des options A et B, et la note prospective de
+la §Résolution. Cette application n'existe plus. La correction est datée ici
+plutôt qu'écrite par réécriture de ces lignes — c'est la forme déjà employée
+par l'ADR-0012 D4 — et **aucune décision de cet ADR ne change**.
+
+Mesuré le 2026-10-08, sur clone frais de la branche servie et par interrogation
+des vingt-quatre dépôts que déclare `ecosystem/repositories.v1.yaml` :
+
+- `apps/practices/` n'est pas dans l'arbre de ce dépôt : zéro fichier suivi sous
+  `apps/` depuis la répartition de l'ADR-0020. Les deux autres chemins de la
+  ligne de portée — la spécification produit et le contrat OpenAPI de Practices
+  — n'y sont pas davantage.
+- Le dépôt produit qui les avait reçus est supprimé : son nom ne résout plus.
+  Mesuré par le **code de sortie** de l'API, non par sa sortie — le corps d'un
+  404 s'écrit sur la sortie standard, de sorte qu'une sortie non vide ne prouve
+  pas une présence.
+- Son foyer consolidé, `libre-ai/ai-practice-workbench`, ne câble pas ce
+  garde-fou : son manifeste, lu sur sa branche servie, ne déclare aucun script
+  qui le nomme.
+- Un seul dépôt de la flotte le câble, et il n'est pas Practices :
+  `libre-ai/personal-knowledge-notebook`, en `check:no-transmission` scopé
+  `apps/notebook/src`, dans sa chaîne `check` agrégée. C'est exactement
+  l'application que l'ADR-0012 D4 et l'ADR-0028 §2.3-2.4 enregistrent, et elle
+  est vraie.
+
+Ce qui reste vrai sans le garde-fou : le non-objectif de la spécification
+produit (« no cross-learner comparison », « v1 stores no learner aggregate on
+the server ») et le code de refus `practices.nominative_aggregate_forbidden`
+étaient déjà trois des quatre éléments concordants du §Contexte, et la clôture
+sur l'option A repose sur le constat de la §Résolution — la disparition de
+l'artefact contradictoire —, pas sur le garde-fou.
+
+Ce qui n'est plus vrai : qu'un mécanisme empêche aujourd'hui une primitive
+réseau d'entrer dans Practices. À la reprise de Practices, le câblage est à
+refaire dans son dépôt comme Notebook l'a fait. Le garde-fou exige désormais que
+l'appelant nomme ses racines et échoue sur une racine qui ne correspond à aucun
+fichier, de sorte qu'un câblage oublié ne peut plus se présenter comme un scan
+vert — c'est ce qu'il a fait de la répartition jusqu'au 2026-08-04.
+
 ## Invariant
 
 No invariant — this ADR records the factual dissolution of a contradiction

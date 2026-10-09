@@ -75,8 +75,8 @@ class ProductChecks(unittest.TestCase):
         plan=json.loads(self.call('--target','all','--gate','e2e','--plan').stdout)
         self.assertEqual(len(plan['steps']),4)
         self.assertTrue(all(x['argv'][-1]=='--workers=1' for x in plan['steps']))
-        notebook=next(x for x in plan['steps'] if x['target']=='personal-knowledge-notebook')
-        self.assertEqual(notebook['cwd'],'personal-knowledge-notebook/apps/notebook')
+        notebook=next(x for x in plan['steps'] if x['target']=='personal-knowledge-workspace')
+        self.assertEqual(notebook['cwd'],'personal-knowledge-workspace/apps/notebook')
         self.assertFalse(plan['linuxQualificationClaimed'])
 
     def test_unsupported_gate_refuses_empty_success(self):
@@ -84,10 +84,10 @@ class ProductChecks(unittest.TestCase):
 
     def test_action_incremental_default_is_removed_only_for_qualified_builds(self):
         self.directories("ai-model-policy")
-        self.directories("personal-knowledge-notebook","apps/notebook")
+        self.directories("personal-knowledge-workspace","apps/notebook")
         self.tool.write_text("#!"+sys.executable+"\nimport json,os\nfrom pathlib import Path\nwith Path(os.environ[\"TEST_LOG\"]).open(\"a\") as f: f.write(json.dumps({k:os.environ[k] for k in [\"CARGO_INCREMENTAL\",\"RUSTFLAGS\"] if k in os.environ})+\"\\n\")\n")
         self.env["CARGO_INCREMENTAL"]="0"
-        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-notebook","wasm"),("personal-knowledge-notebook","e2e")]:
+        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-workspace","wasm"),("personal-knowledge-workspace","e2e")]:
             result=self.call("--target",target,"--gate",gate)
             self.assertEqual(result.returncode,0,result.stderr)
         values=[json.loads(line) for line in self.log.read_text().splitlines()]
