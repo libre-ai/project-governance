@@ -21,7 +21,6 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.3",
-    "@libre-ai/contracts-authority": "github:libre-ai/schemas-and-contracts#d2767988c7b1a00b304b76c5d5ac92b93898bf30",
     "@types/bun": "1.3.14",
     "typescript": "7.0.2"
   },
@@ -58,11 +57,12 @@
     "check:secret-scan": "bun run check:bun:runtime && bun tools/quality/check-secret-scan.ts",
     "check:personal-data": "bun run check:bun:runtime && bun tools/quality/check-personal-data-boundary.ts",
     "check:composition": "bun run check:bun:runtime && python3 -B -m unittest discover -s .github/composition -p 'test_*.py'",
-    "check:vendored": "bun run check:bun:runtime && bun crates/ecosystem-engine/scripts/check-vendored.ts",
+    "fetch:contracts-authority": "bun run check:bun:runtime && bun crates/ecosystem-engine/scripts/fetch-contracts-authority.ts",
+    "check:vendored": "bun run check:bun:runtime && bun run fetch:contracts-authority && bun crates/ecosystem-engine/scripts/check-vendored.ts",
     "check:patch-rev": "bun run check:bun:runtime && bun crates/ecosystem-engine/scripts/check-patch-rev.ts",
     "check:rust:fmt": "bun run check:bun:runtime && cargo fmt --all --check",
     "check:rust:clippy": "bun run check:bun:runtime && cargo clippy --locked --all-targets --all-features -- -D warnings",
-    "check:rust:test": "bun run check:bun:runtime && cargo test --locked --all-features",
+    "check:rust:test": "bun run check:bun:runtime && bun run fetch:contracts-authority && cargo test --locked --all-features",
     "check:projection": "bun run check:bun:runtime && cargo run --locked --bin ecosystem-project -- --objects ecosystem/objects --output ecosystem/projections/public.v1.json --check",
     "check:dependency-policy": "bun run check:bun:runtime && bun test tools/quality/check-dependency-policy.test.ts && bun tools/quality/check-dependency-policy.ts",
     "check:rust": "bun run check:bun:runtime && bun run check:dependency-policy && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test",
