@@ -63,7 +63,9 @@ a browser engine.
 repository share a provider and a context window, so their reading of the
 public surfaces cannot count as independent adoption evidence. The runner
 submits ONLY the public surfaces (organization profile README and monorepo
-README, fetched raw and anonymously) to a model with zero project context,
+README, fetched raw and anonymously on the branch each repository serves —
+the raw `HEAD` segment, never a written branch name; `publicRawUrl` in
+`cold-reader/cold-reader.ts`) to a model with zero project context,
 one request per question, and grades the answers against the versioned grid
 `cold-reader/questionnaire.json` (scoring rule and strict parsing in
 `cold-reader/grading.ts`; every expected element cites the public source that
