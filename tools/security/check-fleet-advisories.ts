@@ -2,9 +2,18 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildIndex, PRIVATE_CROSS_REPOSITORY_NOTE } from "../../ecosystem/build-index";
+import { RETRY_DELAYS_MS } from "../../ecosystem/github-fleet";
 import { acquireCargoDeny, type VerifiedCargoDeny } from "../quality/check-dependency-policy";
 import { concludeGate, GateReport } from "../quality/gate-report";
-import { auditScope, readAudit, selectPublicAdvisoryRepositories } from "./advisories";
+import {
+  bunVolumeHolds,
+  bunVolumeLine,
+  type ContentsRead,
+  classifyContentsRead,
+  examineBunRepository,
+  selectPublicAdvisoryRepositories,
+  tallyBun,
+} from "./advisories";
 import {
   cargoLockPaths,
   denyAdvisoryArguments,
@@ -54,57 +63,73 @@ for (const entry of inventory.repositories.filter(
   report.check(entry.repository, true, PRIVATE_CROSS_REPOSITORY_NOTE);
 }
 
-for (const repository of repositories) {
-  const raw = (path: string) =>
-    gh(["api", `repos/${repository}/contents/${path}`, "-H", "Accept: application/vnd.github.raw"]);
-  const manifest = raw("package.json");
-  if (!manifest.ok) {
-    // Asserted, not skipped: "this repository has no JS dependency surface"
-    // is a statement about the repository, and it counts as an inspection.
-    report.check(repository, true, "no package.json — no JS dependency surface to audit");
-    continue;
-  }
-  const scope = auditScope(manifest.stdout);
-  if (scope.kind === "unparseable") {
-    report.check(repository, false, `package.json unparseable — ${scope.detail}`);
-    continue;
-  }
-  if (scope.kind === "nothing-to-audit") {
-    // A manifest without any dependency field cannot carry a lockfile: Bun
-    // deletes an empty one ("No packages! Deleted empty lockfile"). Asking
-    // for bun.lock here asked for an artifact that cannot exist (carriere,
-    // 2026-09-07). Asserted out loud, never skipped in silence.
-    report.check(
-      repository,
-      true,
-      "package.json declares no dependency — nothing to audit (Bun persists no empty lockfile)",
-    );
-    continue;
-  }
-  const lockfile = raw("bun.lock");
-  if (!lockfile.ok) {
-    // A manifest without a lockfile cannot be audited AND breaks the fleet's
-    // pinning discipline — red on both counts.
-    report.check(repository, false, "package.json without bun.lock — unpinned, unauditable");
-    continue;
-  }
+// --- Bun: package.json + bun.lock of the served branch ---
+//
+// No `?ref=`: the contents API then reads the repository's served branch.
+// A 404 is the forge's answer that the file is not there; anything else —
+// 403, quota, 5xx, network, a malformed body — is a question left
+// unanswered, retried and then reported as a failure, never as "no
+// package.json" (classifyContentsRead). A 404 for a repository that no longer
+// resolves at all is not swallowed by this half either: the Rust half below
+// reads the same repository's served tree and fails on it.
 
+function readContents(repository: string, path: string): ContentsRead {
+  let read: ContentsRead = { kind: "unreadable", detail: "never attempted" };
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const call = Bun.spawnSync(
+      [
+        "gh",
+        "api",
+        `repos/${repository}/contents/${path}`,
+        "-H",
+        "Accept: application/vnd.github.raw",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    read = classifyContentsRead(
+      call.exitCode,
+      new TextDecoder().decode(call.stdout),
+      new TextDecoder().decode(call.stderr),
+    );
+    if (read.kind !== "unreadable") return read;
+    const wait = RETRY_DELAYS_MS[attempt];
+    if (wait !== undefined) Bun.sleepSync(wait);
+  }
+  return read;
+}
+
+function runBunAudit(repository: string, manifest: string, lockfile: string) {
   const name = repository.split("/").at(-1) ?? "repository";
   const dir = mkdtempSync(join(tmpdir(), `fleet-audit-${name}-`));
-  writeFileSync(join(dir, "package.json"), manifest.stdout);
-  writeFileSync(join(dir, "bun.lock"), lockfile.stdout);
-  const audit = Bun.spawnSync(["bun", "audit"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
-  const output = new TextDecoder().decode(audit.stdout) + new TextDecoder().decode(audit.stderr);
-  const reading = readAudit(audit.exitCode, output);
-
-  if (!reading.ran) {
-    report.check(repository, false, reading.detail);
-  } else if (reading.advisories.length > 0) {
-    report.check(repository, false, `lockfile carries ${reading.advisories.join(", ")}`);
-  } else {
-    report.check(repository, true, "lockfile audited, no advisory");
+  try {
+    writeFileSync(join(dir, "package.json"), manifest);
+    writeFileSync(join(dir, "bun.lock"), lockfile);
+    const audit = Bun.spawnSync(["bun", "audit"], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+    return {
+      exitCode: audit.exitCode,
+      output: new TextDecoder().decode(audit.stdout) + new TextDecoder().decode(audit.stderr),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 }
+
+const bunExaminations = repositories.map((repository) =>
+  examineBunRepository(
+    repository,
+    (path) => readContents(repository, path),
+    (manifest, lockfile) => runBunAudit(repository, manifest, lockfile),
+  ),
+);
+for (const examination of bunExaminations) {
+  report.check(examination.repository, examination.ok, examination.note);
+}
+const bunTally = tallyBun(repositories.length, bunExaminations);
+const bunVolume = bunVolumeLine(bunTally);
+if (!bunVolumeHolds(bunTally)) {
+  report.check("Bun volume", false, bunVolume);
+}
+console.log(`Bun advisories: ${bunVolume}`);
 
 // --- Rust: every tracked Cargo.lock of the served branch (I-26, after Y44) ---
 //
@@ -263,8 +288,7 @@ if (rust.declared !== rust.lockfiles + rust.shadowed + rust.failed) {
   report.check("Rust volume", false, rustVolume);
 }
 // Printed whatever the verdict: a failing run must still say what it read.
-console.log(
-  `Fleet advisories volume — ${repositories.length} public living repositories; ${rustVolume}`,
-);
-report.volume(`${repositories.length} public living repositories; ${rustVolume}`);
+const fleetVolume = `${repositories.length} public living repositories; ${bunVolume}; ${rustVolume}`;
+console.log(`Fleet advisories volume — ${fleetVolume}`);
+report.volume(fleetVolume);
 concludeGate("Fleet advisories", report);

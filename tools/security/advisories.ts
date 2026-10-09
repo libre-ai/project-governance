@@ -81,6 +81,213 @@ export function auditScope(manifestText: string): AuditScope {
   return { kind: "nothing-to-audit" };
 }
 
+/**
+ * One read of a file through the contents API, classified.
+ *
+ * Three answers, never two: the file is there, the forge said it is not
+ * (`absent`), or the question went unanswered (`unreadable`). Before
+ * 2026-10-09 the Bun half of the fleet control collapsed the last two —
+ * any non-zero `gh` exit read as "no package.json", so a 403, a quota, a 5xx
+ * or a dropped connection was counted as a repository with no JS dependency
+ * surface, and passed. Same contract as the Rust half (`answered`) and as the
+ * fleet gates' `ghWithRetry`: a 404 is an answer, anything else is not.
+ */
+export type ContentsRead =
+  | { readonly kind: "found"; readonly text: string }
+  | { readonly kind: "absent" }
+  | { readonly kind: "unreadable"; readonly detail: string };
+
+/** `gh api` prints the HTTP status of a rejected request as `(HTTP 404)` on stderr. */
+const NOT_FOUND = /\(HTTP 404\)/;
+
+/**
+ * Classify one `gh api repos/<r>/contents/<path>` call made with the raw media
+ * type. Pure, so every class of failure is tested without a network.
+ *
+ * A raw read that succeeds returns the file's bytes. An empty body, or the
+ * JSON metadata envelope / directory listing the endpoint returns when the raw
+ * media type is not honoured, is not the file: it is a malformed answer, and
+ * reading it as the file would let a metadata object pass as a manifest that
+ * declares no dependency.
+ */
+export function classifyContentsRead(
+  exitCode: number,
+  stdout: string,
+  stderr: string,
+): ContentsRead {
+  if (exitCode !== 0) {
+    if (NOT_FOUND.test(stderr)) return { kind: "absent" };
+    const reason = stderr.trim().split("\n")[0] ?? "";
+    return {
+      kind: "unreadable",
+      detail: reason === "" ? `gh exited ${exitCode} without a message` : reason,
+    };
+  }
+  if (stdout.trim() === "") {
+    return { kind: "unreadable", detail: "contents API answered an empty body" };
+  }
+  if (isContentsEnvelope(stdout)) {
+    return {
+      kind: "unreadable",
+      detail: "contents API answered metadata instead of the raw file",
+    };
+  }
+  return { kind: "found", text: stdout };
+}
+
+function isContentsEnvelope(body: string): boolean {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    // Not JSON at all (bun.lock carries trailing commas): certainly not the envelope.
+    return false;
+  }
+  if (Array.isArray(parsed)) return true;
+  if (parsed === null || typeof parsed !== "object") return false;
+  const record = parsed as Record<string, unknown>;
+  return typeof record.sha === "string" && "_links" in record && "type" in record;
+}
+
+/** Reads one path of the repository under examination; injected for tests. */
+export type ContentsReader = (path: string) => ContentsRead;
+
+/** Runs `bun audit` over a manifest and its lockfile; injected for tests. */
+export type BunAuditRunner = (
+  manifest: string,
+  lockfile: string,
+) => { readonly exitCode: number; readonly output: string };
+
+/**
+ * Where one repository landed. The four outcomes partition the fleet, so the
+ * volume line can prove that every repository was accounted for.
+ */
+export type BunOutcome = "absent" | "nothing-to-audit" | "audited" | "failed";
+
+export interface BunExamination {
+  readonly repository: string;
+  readonly outcome: BunOutcome;
+  readonly ok: boolean;
+  readonly advisories: readonly string[];
+  readonly note: string;
+}
+
+/** Examine the Bun dependency surface of one repository's served branch. */
+export function examineBunRepository(
+  repository: string,
+  read: ContentsReader,
+  audit: BunAuditRunner,
+): BunExamination {
+  const result = (outcome: BunOutcome, ok: boolean, note: string, advisories: string[] = []) => ({
+    repository,
+    outcome,
+    ok,
+    advisories,
+    note,
+  });
+
+  const manifest = read("package.json");
+  if (manifest.kind === "unreadable") {
+    return result(
+      "failed",
+      false,
+      `package.json unreadable (${manifest.detail}) — JS dependency surface unknown`,
+    );
+  }
+  if (manifest.kind === "absent") {
+    // Asserted, not skipped: the forge answered 404, which is a statement
+    // about the repository and counts as an inspection.
+    return result("absent", true, "no package.json — no JS dependency surface to audit");
+  }
+  const scope = auditScope(manifest.text);
+  if (scope.kind === "unparseable") {
+    return result("failed", false, `package.json unparseable — ${scope.detail}`);
+  }
+  if (scope.kind === "nothing-to-audit") {
+    // A manifest without any dependency field cannot carry a lockfile: Bun
+    // deletes an empty one ("No packages! Deleted empty lockfile"). Asking
+    // for bun.lock here asked for an artifact that cannot exist (carriere,
+    // 2026-09-07). Asserted out loud, never skipped in silence.
+    return result(
+      "nothing-to-audit",
+      true,
+      "package.json declares no dependency — nothing to audit (Bun persists no empty lockfile)",
+    );
+  }
+  const lockfile = read("bun.lock");
+  if (lockfile.kind === "unreadable") {
+    return result(
+      "failed",
+      false,
+      `bun.lock unreadable (${lockfile.detail}) — lockfile state unknown`,
+    );
+  }
+  if (lockfile.kind === "absent") {
+    // A manifest without a lockfile cannot be audited AND breaks the fleet's
+    // pinning discipline — red on both counts.
+    return result("failed", false, "package.json without bun.lock — unpinned, unauditable");
+  }
+
+  const run = audit(manifest.text, lockfile.text);
+  const reading = readAudit(run.exitCode, run.output);
+  if (!reading.ran) return result("failed", false, reading.detail);
+  if (reading.advisories.length > 0) {
+    return result(
+      "audited",
+      false,
+      `lockfile carries ${reading.advisories.join(", ")}`,
+      reading.advisories,
+    );
+  }
+  return result("audited", true, "lockfile audited, no advisory");
+}
+
+export interface BunVolume {
+  readonly repositories: number;
+  readonly absent: number;
+  readonly nothingToAudit: number;
+  readonly audited: number;
+  readonly failed: number;
+  readonly advisories: number;
+}
+
+export function tallyBun(repositories: number, examinations: readonly BunExamination[]): BunVolume {
+  const count = (outcome: BunOutcome) =>
+    examinations.filter((examination) => examination.outcome === outcome).length;
+  return {
+    repositories,
+    absent: count("absent"),
+    nothingToAudit: count("nothing-to-audit"),
+    audited: count("audited"),
+    failed: count("failed"),
+    advisories: examinations.reduce((sum, examination) => sum + examination.advisories.length, 0),
+  };
+}
+
+/**
+ * The volume line of the Bun half. `repositories` must equal absent +
+ * nothing-to-audit + audited + failed; a mismatch is a counting defect of the
+ * control itself and is said on the line rather than hidden.
+ */
+export function bunVolumeLine(volume: BunVolume): string {
+  const sum = volume.absent + volume.nothingToAudit + volume.audited + volume.failed;
+  const mismatch =
+    sum === volume.repositories
+      ? ""
+      : ` — COUNTING DEFECT: ${sum} accounted for, ${volume.repositories} examined`;
+  return (
+    `Bun: ${volume.repositories} repositories = ${volume.absent} without package.json + ` +
+    `${volume.nothingToAudit} with nothing to audit + ${volume.audited} audited + ` +
+    `${volume.failed} failed, ${volume.advisories} advisory(ies)${mismatch}`
+  );
+}
+
+export function bunVolumeHolds(volume: BunVolume): boolean {
+  return (
+    volume.absent + volume.nothingToAudit + volume.audited + volume.failed === volume.repositories
+  );
+}
+
 export interface AuditReading {
   /** The audit RAN — clean or with findings. False means it could not answer. */
   readonly ran: boolean;
