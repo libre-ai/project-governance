@@ -64,7 +64,8 @@
     "check:rust:clippy": "bun run check:bun:runtime && cargo clippy --locked --all-targets --all-features -- -D warnings",
     "check:rust:test": "bun run check:bun:runtime && cargo test --locked --all-features",
     "check:projection": "bun run check:bun:runtime && cargo run --locked --bin ecosystem-project -- --objects ecosystem/objects --output ecosystem/projections/public.v1.json --check",
-    "check:rust": "bun run check:bun:runtime && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test",
+    "check:dependency-policy": "bun run check:bun:runtime && bun test tools/quality/check-dependency-policy.test.ts && bun tools/quality/check-dependency-policy.ts",
+    "check:rust": "bun run check:bun:runtime && bun run check:dependency-policy && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test",
     "check:projection:digest": "bun run check:bun:runtime && bun ecosystem/check-projection-digest.ts",
     "check:resolved-refs": "bun run check:bun:runtime && bun tools/quality/check-resolved-refs.ts",
     "check:consumable": "bun run check:bun:runtime && bun tools/quality/check-consumable-manifest.ts"
