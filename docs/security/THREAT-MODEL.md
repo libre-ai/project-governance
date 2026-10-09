@@ -140,7 +140,7 @@ right one remains a review matter (realigned 2026-10-09).
 
 | Threat                                                              | STRIDE/Privacy        | Control                                                                                     | Residual Risk                                           | Invariant |
 | ------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------- |
-| LLM prompt-injection via evidence text (see §2.1)                   | Tampering + Elevation | K3 structural defense + deny-by-default                                                     | well-known risk; depends on planner/refusal design      | I-18      |
+| LLM prompt-injection via evidence text (see §2.1)                   | Tampering + Elevation | K3 structural defense + deny-by-default; isolation by construction specified (ADR-0045), not yet enforced | well-known risk; human supervision under I-17 until the 2026-12-31 conformity date (ADR-0045 decision 4) | I-18, I-32 |
 | Proof references a revoked authority (K2 deriving from operational) | Elevation             | K2 `requireAuthorityFor()` fails closed unless sealed authority; classification locked gate | reviewer approves mixed-reliability outcome (I-17 gate) | I-18      |
 
 ---
@@ -164,11 +164,11 @@ right one remains a review matter (realigned 2026-10-09).
 
 - **Planning-only + refusal-first** (Polaris) :
   - Agent does not auto-execute; human reads plan + refusals before approval.
-  - **Enforcement gap:** depends on planner/refusal design; not specified in K1–K5.
+  - **Enforcement gap — specified, not yet enforced:** the planner/refusal design is now specified by [ADR-0045](../adr/0045-indirect-prompt-injection-isolation-by-construction.md) and I-32, not by K1–K5. Three properties close both injection channels by construction: no untrusted string before a model holding an effectful tool; per-value provenance with a deterministic per-argument policy whose refusal is closed, owned by the harness; closed-vocabulary quarantine output. The default realization is Plan-Then-Execute on the ADR-0034 graph. No runtime holds the three properties yet. No runtime that combines untrusted content with an effectful tool is activated before it holds them and passes their red vectors. The fan-out review orchestrator runs under I-17 human supervision until its 2026-12-31 conformity date, and is suspended at that date if not conformant.
 
-**Residual risk:** A sophisticated injection bypasses envelope escaping (e.g. via unicode) or evades refusal logic. **Mitigation assumption:** K4 independent review catches on re-read; envelope + classification + planning-first reduce attack surface but do not eliminate risk.
+**Residual risk:** A sophisticated injection bypasses envelope escaping (e.g. via unicode) or evades refusal logic. **Mitigation assumption:** K4 independent review catches on re-read; envelope + classification + planning-first reduce attack surface but do not eliminate risk. Until a runtime enforces I-32, this assumption remains the only one in force.
 
-**Invariant:** I-18 (loop security kernel: `operational` data never authority, signed integrity envelope on every recall — the layers above; no invariant claims they make injection impossible).
+**Invariant:** I-18 (loop security kernel: `operational` data never authority, signed integrity envelope on every recall — the layers above, which do not make injection impossible); I-32 (isolation by construction — specified, enforcement pending the first conformant runtime).
 
 ---
 
@@ -252,7 +252,7 @@ right one remains a review matter (realigned 2026-10-09).
 | R1  | Compromise of Biscuit signing key                | low         | critical | key rotation 90d, emergency revoke, two-key window | G4 (control-plane) | I-09       |
 | R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-09       |
 | R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-09, I-18 |
-| R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate)   | design review      | I-18       |
+| R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate); isolation by construction specified by ADR-0045, enforcement pending — rating unchanged until a runtime passes the I-32 red vectors | design review      | I-18, I-32 |
 | R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
 | R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
 | R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | no register invariant — not covered |
