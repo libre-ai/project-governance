@@ -34,10 +34,13 @@ const firstPartyLicences = new Set(["EUPL-1.2", "Apache-2.0", "CC-BY-4.0"]);
  * attacker controls. `bun.lock` records where each package actually came from,
  * so only packages resolved from `github:libre-ai/` are first-party here.
  */
-async function firstPartyFromLockfile(): Promise<ReadonlySet<string>> {
+async function firstPartyFromLockfile(): Promise<ReadonlySet<string> | null> {
   const names = new Set<string>();
   const lock = Bun.file("bun.lock");
-  if (!(await lock.exists())) return names;
+  // An absent lockfile is not "no first-party package": it is provenance this
+  // gate cannot read, and every first-party licence would then be judged as an
+  // unreviewed third-party one — or, worse, a later relaxation would pass them.
+  if (!(await lock.exists())) return null;
   const text = await lock.text();
   for (const match of text.matchAll(/"(@?[^"]+)":\s*\[\s*"[^"]*@(github:libre-ai\/|workspace:)/g)) {
     const name = match[1];
@@ -46,15 +49,16 @@ async function firstPartyFromLockfile(): Promise<ReadonlySet<string>> {
   return names;
 }
 
-const firstParty = await firstPartyFromLockfile();
+const lockfileProvenance = await firstPartyFromLockfile();
+const firstParty: ReadonlySet<string> = lockfileProvenance ?? new Set<string>();
 
 /**
  * The installed package a manifest path belongs to — the segment right after
  * the LAST `node_modules/`, scope included.
  *
  * A git-dep installs a whole repository, so manifests of its own workspace
- * members appear inside its tree (`.../@libre-ai/contracts-authority/packages/
- * envelope/package.json`). Those are not installed dependencies and were never
+ * members appear inside its tree (in a consumer, `.../@libre-ai/governance/
+ * packages/classification/package.json`). Those are not installed dependencies and were never
  * resolved by this repository: they are files of the first-party package that
  * owns the path, and they inherit its provenance. Judging them on their own
  * name would again make the gate trust a string.
@@ -73,7 +77,14 @@ function owningPackage(path: string): string | undefined {
 }
 
 const failures: string[] = [];
+if (lockfileProvenance === null) {
+  failures.push("bun.lock: absent — first-party provenance unreadable, run bun install");
+}
 const checked = new Set<string>();
+// Only installed JavaScript is audited. In project-governance the contracts
+// authority is no longer installed: `.tools/contracts-authority` is a
+// hash-verified first-party archive whose files are read as data, never imported
+// or executed (crates/ecosystem-engine/scripts/contracts-authority.ts).
 const glob = new Bun.Glob("node_modules/**/package.json");
 
 for await (const path of glob.scan({ cwd: ".", dot: true, onlyFiles: true })) {

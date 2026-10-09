@@ -20,19 +20,37 @@
  * inspected zero files exits non-zero — per pair, not only overall — so an
  * emptied directory cannot pass silently behind a sibling that still has files.
  */
-import { readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
+import { CHECKOUT_DIR, checkoutState, FETCH_COMMAND, readPin } from "./contracts-authority";
 
 // Repository-root relative: this gate runs from the root like every other
-// `check:*` of this repository, where `node_modules` is installed.
+// `check:*` of this repository.
 const CRATE = "crates/ecosystem-engine";
+
+// The authority side is the pinned checkout, never `node_modules` (see
+// `./contracts-authority.ts`). An absent or stale checkout is a named failure:
+// read as "no counterpart", it would blame every vendored file instead of the
+// one missing input, and against a stale one the gate would compare the wrong pin.
+const pin = await readPin().catch((error: Error) => {
+  console.error(`Vendored drift gate: ${error.message}`);
+  process.exit(1);
+});
+const state = await checkoutState(pin);
+if (state !== "current") {
+  console.error(
+    `Vendored drift gate: the contracts authority checkout ${CHECKOUT_DIR} is ${state} ` +
+      `for ${pin.repository}#${pin.commit} — run \`${FETCH_COMMAND}\``,
+  );
+  process.exit(1);
+}
 
 const PAIRS: ReadonlyArray<{ source: string; vendored: string }> = [
   {
-    source: "node_modules/@libre-ai/contracts-authority/contracts/authz",
+    source: `${CHECKOUT_DIR}/contracts/authz`,
     vendored: `${CRATE}/vendored/authz`,
   },
   {
-    source: "node_modules/@libre-ai/contracts-authority/contracts/wit",
+    source: `${CHECKOUT_DIR}/contracts/wit`,
     vendored: `${CRATE}/vendored/wit`,
   },
 ];
@@ -60,6 +78,10 @@ const write = process.argv.includes("--write");
 const issues: string[] = [];
 let total = 0;
 for (const pair of PAIRS) {
+  if (!existsSync(pair.source)) {
+    issues.push(`${pair.source}: directory absent from the pinned checkout`);
+    continue;
+  }
   const wanted = walk(pair.vendored);
   let inPair = 0;
   for (const name of wanted) {
@@ -94,4 +116,7 @@ if (total === 0) {
   );
   process.exit(1);
 }
-console.log(`Vendored artefacts byte-exact against their authority pins (${total} files)`);
+console.log(
+  `Vendored artefacts byte-exact against their authority pin ` +
+    `${pin.repository}#${pin.commit.slice(0, 8)} (${total} files)`,
+);

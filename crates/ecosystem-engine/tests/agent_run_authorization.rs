@@ -161,12 +161,41 @@ fn revocation_allows(token: &Biscuit, store: RevocationStore<'_>) -> bool {
         .is_some_and(|root_id| !revoked.contains(root_id))
 }
 
+#[derive(Deserialize)]
+struct ContractsAuthorityPin {
+    repository: String,
+    commit: String,
+    integrity: String,
+}
+
+/// The pinned contracts authority checkout, `.tools/contracts-authority` at the
+/// repository root (written by `bun run fetch:contracts-authority`; see
+/// `scripts/contracts-authority.ts` for why it is no longer a Bun dependency).
+/// An absent or stale checkout fails here, by name, instead of surfacing as an
+/// unreadable policy file or — worse — as vectors of another pin.
 fn contract_root() -> PathBuf {
-    // The crate moved under `crates/` of the repository that installs the
-    // contracts authority pin, so `node_modules` is two levels up — not beside
-    // the manifest as it was when this crate had its own repository.
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../node_modules/@libre-ai/contracts-authority/contracts")
+    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pin_path = crate_dir.join("contracts-authority.pin.json");
+    let pin: ContractsAuthorityPin = serde_json::from_str(
+        &fs::read_to_string(&pin_path)
+            .unwrap_or_else(|error| panic!("{}: pin unreadable: {error}", pin_path.display())),
+    )
+    .unwrap_or_else(|error| panic!("{}: pin malformed: {error}", pin_path.display()));
+    let checkout = crate_dir.join("../../.tools/contracts-authority");
+    let expected = format!("{}#{} {}\n", pin.repository, pin.commit, pin.integrity);
+    let stamp = fs::read_to_string(checkout.join(".pin")).unwrap_or_else(|error| {
+        panic!(
+            "contracts authority checkout absent at {} ({error}) — run `bun run fetch:contracts-authority`",
+            checkout.display()
+        )
+    });
+    assert_eq!(
+        stamp,
+        expected,
+        "contracts authority checkout is stale against {} — run `bun run fetch:contracts-authority`",
+        pin_path.display()
+    );
+    checkout.join("contracts")
 }
 
 #[test]
