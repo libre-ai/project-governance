@@ -174,3 +174,16 @@ generations:
       personal-knowledge-workspace with its Bun floor fix. Every other
       consumer stays on 7c2238d6, inside the two-generation grace window; no
       further generation is declared before they move.
+  - sha: 1c8b37c80beb41f640982768ec27304a911e0b8e
+    added_on: 2026-10-09
+    note: >-
+      the composition manifest composes project-governance at da0c3b6f, after
+      the Bun floor rule fix (#55: a bun test script whose first command is
+      the runtime floor, chained only by &&, is accepted) and the
+      advisory-waiver gate (#56). Declared by owner decision of 2026-10-09
+      despite the note of 46061644: under 46061644 the rule of #47 refused
+      every Bun suite of execution-continuity-evaluator and execution-sandbox,
+      whose test script is cargo test, so those two move here from 7c2238d6
+      instead. With this declaration 7c2238d6 is two generations behind, the
+      grace limit: every consumer still on it must move before another
+      generation is declared, and none may sit on anything older.
