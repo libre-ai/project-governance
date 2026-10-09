@@ -148,7 +148,7 @@
     },
     {
       "repository": "libre-ai/capability-authorization",
-      "project": "authz-biscuit",
+      "project": "capability-authorization",
       "kind": "satellite",
       "layer": "couche-3",
       "summary": "Autorisation interne Biscuit Ed25519, refus par défaut : émission, atténuation, vérification, révocation et rotation à deux clés.",
@@ -220,7 +220,7 @@
     },
     {
       "repository": "libre-ai/schemas-and-contracts",
-      "project": "contracts",
+      "project": "schemas-and-contracts",
       "kind": "authority",
       "layer": "transverse",
       "summary": "Autorité canonique des contrats : catalogue, vecteurs, politiques de compatibilité.",
