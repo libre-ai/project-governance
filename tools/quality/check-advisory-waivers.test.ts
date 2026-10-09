@@ -56,7 +56,10 @@ describe("check-advisory-waivers", () => {
     const root = repository({ ".cargo/audit.toml": DATED, [REF]: "# ADR\n", "package.json": "{}" });
     const { exitCode, output } = run(root, "2026-08-15");
     expect(exitCode).toBe(0);
-    expect(output).toContain("1 waiver(s) read across 2 file(s), 0 expiring within 30 days");
+    expect(output).toContain(
+      "1 waiver(s) read across 1 inspected of 2 classified file(s) (1 skipped: 1 no audit command), 0 expiring within 30 days",
+    );
+    expect(output).toContain("3 tracked file(s): 3 swept as text, 0 binary, 0 not swept");
   });
 
   test("inside the warning window it warns and passes", () => {

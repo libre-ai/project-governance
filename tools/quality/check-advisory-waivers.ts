@@ -1,9 +1,9 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
   classifySource,
   evaluateWaivers,
-  readSource,
+  readWaiverFile,
   type SourceReading,
   unreadableSource,
   volumeLine,
@@ -57,44 +57,115 @@ function trackedFiles(root: string): string[] {
     .filter((path) => path !== "");
 }
 
-export function readRepository(root: string): {
-  readings: SourceReading[];
-  refExists: (ref: string) => boolean;
-} {
+/** How the tracked tree was swept; the counters sum to `tracked`. */
+export interface SweepCounters {
+  readonly tracked: number;
+  /** Text files read (classified or not). */
+  readonly swept: number;
+  /** Files with a NUL byte: no command line or TOML lives there. */
+  readonly binary: number;
+  /** Tracked paths that are not regular files (symlinks, submodules), by name. */
+  readonly notRegular: readonly string[];
+  /** Unclassified files that could not be read, by name. */
+  readonly unreadable: readonly string[];
+}
+
+export interface RepositoryWaivers {
+  readonly readings: SourceReading[];
+  readonly isTrackedFile: (path: string) => boolean;
+  readonly sweep: SweepCounters;
+}
+
+/**
+ * Every advisory-waiver source of a git work tree, read as the gate reads it.
+ *
+ * Exported for any control that needs the waivers of a cloned repository; a
+ * control that fetches files one by one calls `readWaiverFile` from
+ * ./advisory-waivers.ts directly. Both are the gate's own reading.
+ */
+export function readRepositoryWaivers(root: string): RepositoryWaivers {
   const tracked = trackedFiles(root);
   const trackedSet = new Set(tracked);
   const readings: SourceReading[] = [];
+  const notRegular: string[] = [];
+  const unreadable: string[] = [];
+  let swept = 0;
+  let binary = 0;
+  const regular = new Set<string>();
   for (const path of tracked) {
-    const kind = classifySource(path);
-    if (kind === null) continue;
-    let text: string;
+    const absolute = join(root, path);
+    let isFile: boolean;
     try {
-      text = readFileSync(join(root, path), "utf8");
+      isFile = lstatSync(absolute).isFile();
     } catch (error) {
-      readings.push(unreadableSource(path, kind, (error as Error).message));
+      // A tracked path missing from the work tree: if its name is a waiver
+      // source it is a failure, otherwise it cannot be swept and is named.
+      const reading = readWaiverFile(path, "");
+      if (reading !== null && reading.kind !== "other-text") {
+        readings.push(unreadableSource(path, reading.kind, (error as Error).message));
+      } else {
+        unreadable.push(path);
+      }
       continue;
     }
+    if (!isFile) {
+      // A waiver source behind a symlink is still read by its tool; the gate
+      // does not follow links (the repository versions the link, not its
+      // target), so it refuses rather than reading nothing.
+      const kind = classifySource(path);
+      if (kind !== null) {
+        readings.push(unreadableSource(path, kind, "not a regular file (symlink or submodule)"));
+      } else {
+        notRegular.push(path);
+      }
+      continue;
+    }
+    regular.add(path);
+    let bytes: Buffer;
+    try {
+      bytes = readFileSync(absolute);
+    } catch (error) {
+      const reading = readWaiverFile(path, "");
+      if (reading !== null && reading.kind !== "other-text") {
+        readings.push(unreadableSource(path, reading.kind, (error as Error).message));
+      } else {
+        unreadable.push(path);
+      }
+      continue;
+    }
+    if (bytes.includes(0)) {
+      binary += 1;
+      continue;
+    }
+    swept += 1;
+    const text = bytes.toString("utf8");
     if (path.endsWith("package.json")) {
       try {
         JSON.parse(text);
       } catch (error) {
         readings.push({
           file: path,
-          kind,
+          kind: "audit-command",
           entries: [],
           anchor: null,
           error: `is not valid JSON: ${(error as Error).message}`,
+          unattributed: [],
+          skipped: null,
         });
         continue;
       }
     }
-    readings.push(readSource(path, kind, text));
+    const reading = readWaiverFile(path, text);
+    if (reading !== null) readings.push(reading);
   }
-  // Tracked only: a ref to a file present on disk but never committed is not a
-  // record anyone else can read.
-  const refExists = (ref: string) =>
-    trackedSet.has(ref) || tracked.some((path) => path.startsWith(`${ref}/`));
-  return { readings, refExists };
+  // Tracked regular files only: a record present on disk but never committed is
+  // not one anyone else can read, and a directory is not a record.
+  const isTrackedFile = (path: string) => trackedSet.has(path) && regular.has(path);
+  return {
+    readings,
+    isTrackedFile,
+    sweep: { tracked: tracked.length, swept, binary, notRegular, unreadable },
+  };
 }
 
 if (import.meta.main) {
@@ -104,17 +175,20 @@ if (import.meta.main) {
     console.error(`Advisory waivers: --root ${args.root} does not exist`);
     process.exit(2);
   }
-  const { readings, refExists } = readRepository(args.root);
-  const evaluation = evaluateWaivers(readings, { today: args.today, refExists });
+  const { readings, isTrackedFile, sweep } = readRepositoryWaivers(args.root);
+  const evaluation = evaluateWaivers(readings, { today: args.today, isTrackedFile });
 
-  // Every readable source is one assertion — it was read, and its waivers (if
-  // any) were judged. Zero sources leaves the report empty, and an empty report
-  // fails: a repository with no workflow, no manifest and no Cargo policy was
-  // not examined, it was skipped.
+  // Every classified source is one assertion — it was read and its waivers (if
+  // any) judged, or it was skipped with its reason. Zero sources leaves the
+  // report empty, and an empty report fails: a repository with no workflow, no
+  // manifest and no Cargo policy was not examined, it was skipped.
   for (const reading of readings) {
-    if (reading.error === null) {
-      report.check(reading.file, true, `${reading.kind}: ${reading.entries.length} waiver(s) read`);
-    }
+    if (reading.error !== null) continue;
+    const note =
+      reading.skipped === null
+        ? `${reading.kind}: ${reading.entries.length} waiver(s) read`
+        : `${reading.kind}: skipped, ${reading.skipped}`;
+    report.check(reading.file, true, note);
   }
   for (const line of evaluation.clean) report.check(line, true, "dated, referenced, bounded");
   for (const defect of evaluation.defects) {
@@ -122,6 +196,14 @@ if (import.meta.main) {
   }
   report.volume(volumeLine(evaluation));
 
+  const notSwept = [
+    ...sweep.notRegular.map((path) => `${path} (not a regular file)`),
+    ...sweep.unreadable.map((path) => `${path} (unreadable)`),
+  ];
+  console.log(
+    `Advisory waivers: ${sweep.tracked} tracked file(s): ${sweep.swept} swept as text, ` +
+      `${sweep.binary} binary, ${notSwept.length} not swept${notSwept.length === 0 ? "" : `: ${notSwept.join(", ")}`}`,
+  );
   console.log(`Advisory waivers: ${volumeLine(evaluation)}; judged at ${args.today} (UTC)`);
   for (const warning of evaluation.warnings) console.warn(`Advisory waivers: WARN ${warning}`);
   concludeGate("Advisory waivers", report);
