@@ -132,7 +132,7 @@ Six surfaces span the constellation, each with distinct threat models.
 
 | Threat                                                              | STRIDE/Privacy        | Control                                                                                     | Residual Risk                                           | Invariant |
 | ------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------- | --------- |
-| LLM prompt-injection via evidence text (see §2.1)                   | Tampering + Elevation | K3 structural defense + deny-by-default                                                     | well-known risk; depends on planner/refusal design      | I-05      |
+| LLM prompt-injection via evidence text (see §2.1)                   | Tampering + Elevation | K3 structural defense + deny-by-default                                                     | well-known risk; depends on planner/refusal design      | I-18      |
 | Proof references a revoked authority (K2 deriving from operational) | Elevation             | K2 `requireAuthorityFor()` fails closed unless sealed authority; classification locked gate | reviewer approves mixed-reliability outcome (I-17 gate) | I-16      |
 
 ---
@@ -160,7 +160,7 @@ Six surfaces span the constellation, each with distinct threat models.
 
 **Residual risk:** A sophisticated injection bypasses envelope escaping (e.g. via unicode) or evades refusal logic. **Mitigation assumption:** K4 independent review catches on re-read; envelope + classification + planning-first reduce attack surface but do not eliminate risk.
 
-**Invariant:** I-05 (prompt-injection defense is layered, not 100%-proof).
+**Invariant:** I-18 (loop security kernel: `operational` data never authority, signed integrity envelope on every recall — the layers above; no invariant claims they make injection impossible).
 
 ---
 
@@ -244,7 +244,7 @@ Six surfaces span the constellation, each with distinct threat models.
 | R1  | Compromise of Biscuit signing key                | low         | critical | key rotation 90d, emergency revoke, two-key window | G4 (control-plane) | I-08       |
 | R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-01       |
 | R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-08, I-09 |
-| R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate)   | design review      | I-05       |
+| R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate)   | design review      | I-18       |
 | R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | I-11       |
 | R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | I-12       |
 | R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | I-09       |
