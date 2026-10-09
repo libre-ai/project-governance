@@ -45,9 +45,30 @@
  * repository's governance generation composes for `<r>`. A rev that drifts
  * from it is therefore either a red composition or, worse, a silent network
  * fetch of another tree; this gate names it before either happens, and holds
- * the card's `pinned: github:libre-ai/<r>#` to the same rev. Only the root
- * manifest is read: a workspace member declaring its own libre-ai source is
- * outside this gate by construction.
+ * the card's `pinned: github:libre-ai/<r>#` to the same rev.
+ *
+ * What is read, and what is not:
+ *   - the root Cargo.toml and the Cargo.toml of every literal
+ *     `[workspace] members` path, at the served branch; a glob member, or a
+ *     member whose manifest is absent, is unable-to-verify, never skipped;
+ *   - dependency tables (including `target.<cfg>.*` and
+ *     `workspace.dependencies`), every `[patch.<registry>]` and `[replace]`.
+ *     An entry under `[patch."<libre-ai url>"]`, or a `[replace]` key naming a
+ *     libre-ai location, must itself be a pinned libre-ai git source: a
+ *     `path =` override fails. A `[replace]` or `[patch.crates-io]` entry that
+ *     overrides a libre-ai crate by its package name alone is not recognisable
+ *     here (the gate does not know the crate names); the composition runner
+ *     refuses it for the package it substitutes;
+ *   - an independent count of every key and string value of the parsed
+ *     manifest naming a libre-ai GitHub location, percent-decoded and
+ *     lowercased: one this walk did not judge as a source fails, except the
+ *     package metadata fields `repository`, `homepage` and `documentation`
+ *     (exempted, and counted);
+ *   - `.cargo/config.toml` is not read here: the composition runner refuses a
+ *     committed one that redirects a source;
+ *   - the card comparison runs only for a repository carrying a cargo pin: a
+ *     card pinning `github:libre-ai/<r>#<sha>` with no cargo source for `<r>`
+ *     is not compared to anything.
  */
 
 import {
@@ -254,7 +275,9 @@ export function consumedGeneration(
 }
 
 export interface CargoSourcePin {
-  /** Dependency table the source is declared in, e.g. "dependencies" or "patch.crates-io". */
+  /** Manifest the source is declared in: "Cargo.toml" or "<member>/Cargo.toml". */
+  readonly manifest: string;
+  /** Table the source is declared in, e.g. "dependencies", "patch.crates-io" or "replace". */
   readonly table: string;
   readonly name: string;
   /** Repository name inside the organization, e.g. "schemas-and-contracts". */
@@ -267,14 +290,31 @@ export interface CargoSourceScan {
   readonly failures: readonly string[];
   /** The manifest could not be parsed: nothing was measured, which is never zero pins. */
   readonly unparseable: boolean;
+  /**
+   * Every key or string value of the parsed manifest naming a libre-ai GitHub
+   * location, after percent-decoding and lowercasing. It sums exactly:
+   * references = judged + exempted + unjudged, and every unjudged one is a failure.
+   */
+  readonly references: number;
+  /** References in a metadata field cargo never resolves a source from. */
+  readonly exempted: number;
 }
 
 const LIBRE_AI_GIT_URL = /^https:\/\/github\.com\/libre-ai\/([A-Za-z0-9._-]+?)(?:\.git)?$/;
-// The independent count: every `git = "...libre-ai/..."` written outside a
-// full-line comment. A declaration form the walk below does not visit would
-// otherwise read as "no pin here".
-const RAW_LIBRE_AI_GIT = /\bgit\s*=\s*["'][^"'\n]*libre-ai\//gi;
+// The independent count runs over parsed text, never over raw lines: a TOML
+// escape (`libre-ai`), a quoted `[replace]` key or a percent-encoded org
+// (`libre%2Dai`) is still a libre-ai source to cargo and to GitHub, and a raw
+// regex read all three as "no pin here". `www.`, a trailing host dot, a port,
+// an scp-style `git@github.com:` and repeated slashes are folded in too.
+const LIBRE_AI_REFERENCE = /github\.com\.?(?::\d*)?[/:]+libre-ai(?:\/|$)/;
 const DEPENDENCY_TABLES = ["dependencies", "dev-dependencies", "build-dependencies"] as const;
+// Fields cargo reads as package metadata, never as a dependency source. Named
+// one by one: a whole `metadata` table is tool-specific and stays counted.
+const CARGO_METADATA_FIELDS = new Set(
+  ["package", "workspace.package"].flatMap((table) =>
+    ["repository", "homepage", "documentation"].map((field) => `${table}.${field}`),
+  ),
+);
 
 function tableOf(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -282,41 +322,171 @@ function tableOf(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function dependencyTables(manifest: Record<string, unknown>): [string, Record<string, unknown>][] {
-  const tables: [string, Record<string, unknown>][] = [];
-  for (const key of DEPENDENCY_TABLES) tables.push([key, tableOf(manifest[key])]);
-  for (const [cfg, value] of Object.entries(tableOf(manifest.target))) {
+/** Percent-decoded to a fixpoint (a `%252D` is a `%2D` one layer down), then lowercased. */
+function normalisedReference(text: string): string {
+  let current = text;
+  for (;;) {
+    const next = current.replace(/%([0-9a-fA-F]{2})/g, (_, hex: string) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    );
+    if (next === current) return current.toLowerCase();
+    current = next;
+  }
+}
+
+export function namesLibreAi(text: string): boolean {
+  return LIBRE_AI_REFERENCE.test(normalisedReference(text));
+}
+
+/** Every key and string value of a parsed TOML tree, with the key path that reaches it. */
+function stringsOf(
+  value: unknown,
+  path: readonly string[],
+  out: (readonly string[])[],
+  texts: string[],
+): void {
+  if (typeof value === "string") {
+    out.push(path);
+    texts.push(value);
+  } else if (Array.isArray(value)) {
+    value.forEach((item, index) => {
+      stringsOf(item, [...path, String(index)], out, texts);
+    });
+  } else if (typeof value === "object" && value !== null) {
+    for (const [key, item] of Object.entries(value)) {
+      out.push([...path, key]);
+      texts.push(key);
+      stringsOf(item, [...path, key], out, texts);
+    }
+  }
+}
+
+interface DeclarationTable {
+  /** Key path of the table inside the manifest. */
+  readonly path: readonly string[];
+  /** Display form, e.g. "target.cfg(unix).dependencies". */
+  readonly label: string;
+  /**
+   * Every entry is an override of a libre-ai source whatever it points to:
+   * a `[patch."<libre-ai url>"]` table, or the `[replace]` table, whose keys
+   * are judged one by one.
+   */
+  readonly keyedByLibreAi: (name: string) => boolean;
+}
+
+function declarationTables(manifest: Record<string, unknown>): DeclarationTable[] {
+  const never = () => false;
+  const tables: DeclarationTable[] = [];
+  for (const key of DEPENDENCY_TABLES)
+    tables.push({ path: [key], label: key, keyedByLibreAi: never });
+  for (const cfg of Object.keys(tableOf(manifest.target))) {
     for (const key of DEPENDENCY_TABLES)
-      tables.push([`target.${cfg}.${key}`, tableOf(tableOf(value)[key])]);
+      tables.push({
+        path: ["target", cfg, key],
+        label: `target.${cfg}.${key}`,
+        keyedByLibreAi: never,
+      });
   }
-  tables.push(["workspace.dependencies", tableOf(tableOf(manifest.workspace).dependencies)]);
-  for (const [registry, value] of Object.entries(tableOf(manifest.patch))) {
-    tables.push([`patch.${registry}`, tableOf(value)]);
+  tables.push({
+    path: ["workspace", "dependencies"],
+    label: "workspace.dependencies",
+    keyedByLibreAi: never,
+  });
+  for (const registry of Object.keys(tableOf(manifest.patch))) {
+    const keyed = namesLibreAi(registry);
+    tables.push({
+      path: ["patch", registry],
+      label: `patch.${registry}`,
+      keyedByLibreAi: () => keyed,
+    });
   }
+  tables.push({ path: ["replace"], label: "replace", keyedByLibreAi: namesLibreAi });
   return tables;
 }
 
-export function collectCargoSourcePins(repository: string, text: string): CargoSourceScan {
+function entriesAt(
+  manifest: Record<string, unknown>,
+  path: readonly string[],
+): Record<string, unknown> {
+  return path.reduce<Record<string, unknown>>((table, key) => tableOf(table[key]), manifest);
+}
+
+function startsWith(path: readonly string[], prefix: readonly string[]): boolean {
+  return prefix.length <= path.length && prefix.every((key, index) => path[index] === key);
+}
+
+/** Literal member paths of a root manifest's `[workspace]`, and the glob ones this gate cannot enumerate. */
+export function workspaceMembers(text: string): {
+  readonly literal: string[];
+  readonly unlisted: string[];
+} {
+  let manifest: Record<string, unknown>;
+  try {
+    manifest = tableOf(Bun.TOML.parse(text));
+  } catch {
+    // collectCargoSourcePins reports the parse failure; nothing to enumerate here.
+    return { literal: [], unlisted: [] };
+  }
+  const members = tableOf(manifest.workspace).members;
+  const literal: string[] = [];
+  const unlisted: string[] = [];
+  for (const member of Array.isArray(members) ? members : []) {
+    const path = typeof member === "string" ? member.replace(/\/+$/, "") : "";
+    const parts = path.split("/");
+    if (
+      path === "" ||
+      path.startsWith("/") ||
+      /[*?[\]]/.test(path) ||
+      parts.some((part) => part === "." || part === "..")
+    ) {
+      unlisted.push(String(member));
+    } else {
+      literal.push(path);
+    }
+  }
+  return { literal, unlisted };
+}
+
+export function collectCargoSourcePins(
+  repository: string,
+  text: string,
+  file = "Cargo.toml",
+): CargoSourceScan {
   let manifest: Record<string, unknown>;
   try {
     manifest = tableOf(Bun.TOML.parse(text));
   } catch (error) {
     return {
       pins: [],
-      failures: [`${repository}: cannot parse Cargo.toml — ${(error as Error).message}`],
+      failures: [`${repository}: cannot parse ${file} — ${(error as Error).message}`],
       unparseable: true,
+      references: 0,
+      exempted: 0,
     };
   }
   const pins: CargoSourcePin[] = [];
   const failures: string[] = [];
-  let parsed = 0;
-  for (const [table, entries] of dependencyTables(manifest)) {
-    for (const [name, value] of Object.entries(entries)) {
+  // Key paths under which every reference was judged as (part of) a source.
+  const judged: (readonly string[])[] = [];
+  for (const table of declarationTables(manifest)) {
+    const keyedTable = table.path[0] === "patch" && namesLibreAi(table.path[1] as string);
+    // The registry key of `[patch."<libre-ai url>"]` is judged through its entries.
+    if (keyedTable) judged.push(table.path);
+    for (const [name, value] of Object.entries(entriesAt(manifest, table.path))) {
       const declaration = tableOf(value);
       const git = declaration.git;
-      if (typeof git !== "string" || !git.toLowerCase().includes("libre-ai/")) continue;
-      parsed += 1;
-      const where = `${repository}: Cargo.toml ${table}.${name}`;
+      const gitNamesLibreAi = typeof git === "string" && namesLibreAi(git);
+      if (!gitNamesLibreAi && !table.keyedByLibreAi(name)) continue;
+      judged.push([...table.path, name]);
+      const where = `${repository}: ${file} ${table.label}.${name}`;
+      if (typeof git !== "string") {
+        // A `path =` patch or a registry replace of a libre-ai source compiles
+        // a tree no revision names.
+        failures.push(
+          `${where} — overrides a libre-ai source without a git source, pin an https://github.com/libre-ai/<repository> rev`,
+        );
+        continue;
+      }
       const url = LIBRE_AI_GIT_URL.exec(git);
       if (url === null) {
         failures.push(
@@ -333,19 +503,27 @@ export function collectCargoSourcePins(repository: string, text: string): CargoS
         failures.push(`${where} — rev ${String(rev)} is not a 40-character commit sha`);
         continue;
       }
-      pins.push({ table, name, repository: url[1] as string, rev });
+      pins.push({ manifest: file, table: table.label, name, repository: url[1] as string, rev });
     }
   }
-  const raw = text
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("#"))
-    .reduce((count, line) => count + (line.match(RAW_LIBRE_AI_GIT)?.length ?? 0), 0);
-  if (raw !== parsed) {
+  const paths: (readonly string[])[] = [];
+  const texts: string[] = [];
+  stringsOf(manifest, [], paths, texts);
+  let references = 0;
+  let exempted = 0;
+  paths.forEach((path, index) => {
+    if (!namesLibreAi(texts[index] as string)) return;
+    references += 1;
+    if (judged.some((prefix) => startsWith(path, prefix))) return;
+    if (CARGO_METADATA_FIELDS.has(path.join("."))) {
+      exempted += 1;
+      return;
+    }
     failures.push(
-      `${repository}: Cargo.toml writes ${raw} libre-ai git source(s) but ${parsed} were read from its dependency tables — a declaration form this gate does not walk`,
+      `${repository}: ${file} ${path.join(".")} names a libre-ai location in a form this gate does not judge as a source`,
     );
-  }
-  return { pins, failures, unparseable: false };
+  });
+  return { pins, failures, unparseable: false, references, exempted };
 }
 
 export interface CargoSourceAudit {
@@ -381,7 +559,7 @@ export function auditCargoSources(
     for (const match of (projectCard ?? "").matchAll(pattern)) {
       if (match[1] !== pin.rev) {
         drift.push(
-          `${repository}: project card pins libre-ai/${pin.repository}#${match[1]} but Cargo.toml ${pin.table}.${pin.name} compiles rev ${pin.rev}`,
+          `${repository}: project card pins libre-ai/${pin.repository}#${match[1]} but ${pin.manifest} ${pin.table}.${pin.name} compiles rev ${pin.rev}`,
         );
       }
     }
@@ -412,11 +590,11 @@ export function auditCargoSources(
     checked += 1;
     if (typeof composed !== "string") {
       drift.push(
-        `${repository}: Cargo.toml ${pin.table}.${pin.name} pins libre-ai/${pin.repository}, which generation ${generation} does not compose`,
+        `${repository}: ${pin.manifest} ${pin.table}.${pin.name} pins libre-ai/${pin.repository}, which generation ${generation} does not compose`,
       );
     } else if (composed !== pin.rev) {
       drift.push(
-        `${repository}: Cargo.toml ${pin.table}.${pin.name} pins libre-ai/${pin.repository} rev ${pin.rev} but generation ${generation} composes ${composed}`,
+        `${repository}: ${pin.manifest} ${pin.table}.${pin.name} pins libre-ai/${pin.repository} rev ${pin.rev} but generation ${generation} composes ${composed}`,
       );
     }
   }
@@ -710,6 +888,100 @@ async function fetchComposedManifests(
   return result;
 }
 
+export interface CargoMemberRequest {
+  readonly repository: string;
+  /** Literal member directories from the root `[workspace] members`. */
+  readonly members: readonly string[];
+}
+
+/** Member manifest text by member path; null is "no such blob on the served branch". */
+export type CargoMemberManifests = Map<
+  string,
+  Map<string, string | null> | { readonly error: string }
+>;
+
+/**
+ * One aliased block per repository, one Blob read per member, all at `HEAD`:
+ * the served branch, the same tree the root Cargo.toml was read from.
+ */
+export function buildCargoMembersQuery(requests: readonly CargoMemberRequest[]): string {
+  const blocks = requests.map((request, index) => {
+    const [owner, name] = request.repository.split("/");
+    if (owner === undefined || name === undefined) {
+      throw new Error(`malformed repository entry, expected "owner/name": ${request.repository}`);
+    }
+    return [
+      `  r${index}: repository(owner: ${JSON.stringify(owner)}, name: ${JSON.stringify(name)}) {`,
+      ...request.members.map(
+        (member, position) =>
+          `    m${position}: object(expression: ${JSON.stringify(`HEAD:${member}/Cargo.toml`)}) { ... on Blob { text } }`,
+      ),
+      "  }",
+    ].join("\n");
+  });
+  return `query {\n${blocks.join("\n")}\n}`;
+}
+
+export function parseCargoMembersResponse(
+  requests: readonly CargoMemberRequest[],
+  data: Readonly<Record<string, unknown>> | undefined,
+): CargoMemberManifests {
+  const result: CargoMemberManifests = new Map();
+  requests.forEach((request, index) => {
+    const node = data?.[`r${index}`];
+    if (node === null || node === undefined) {
+      result.set(request.repository, {
+        error: `${request.repository}: ${GRAPHQL_UNRESOLVED_REPO}`,
+      });
+      return;
+    }
+    const typed = tableOf(node);
+    result.set(
+      request.repository,
+      new Map(
+        request.members.map((member, position) => {
+          const text = tableOf(typed[`m${position}`]).text;
+          return [member, typeof text === "string" ? text : null];
+        }),
+      ),
+    );
+  });
+  return result;
+}
+
+async function fetchCargoMemberManifests(
+  requests: readonly CargoMemberRequest[],
+): Promise<CargoMemberManifests> {
+  if (requests.length === 0) return new Map();
+  const query = buildCargoMembersQuery(requests);
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    const { stdout } = await ghGraphQLRaw(query);
+    try {
+      const parsed: unknown = JSON.parse(stdout);
+      if (hasUsableGraphQLData(parsed)) return parseCargoMembersResponse(requests, parsed.data);
+    } catch {
+      // Not valid JSON — fall through to retry/backoff.
+    }
+    const wait = RETRY_DELAYS_MS[attempt];
+    if (wait !== undefined) await delay(wait);
+  }
+  const result: CargoMemberManifests = new Map();
+  for (const request of requests) {
+    const manifests = new Map<string, string | null>();
+    let error: string | null = null;
+    for (const member of request.members) {
+      const file = await ghApi(`repos/${request.repository}/contents/${member}/Cargo.toml`, true);
+      if (file.error !== null) {
+        error = `${request.repository}: cannot read ${member}/Cargo.toml — ${file.error}`;
+        break;
+      }
+      manifests.set(member, file.text);
+    }
+    result.set(request.repository, error === null ? manifests : { error });
+  }
+  return result;
+}
+
 export function selectFleetPinTargets(
   repositories: readonly Pick<InventoryEntry, "repository" | "visibility" | "lifecycle" | "card">[],
 ): FleetPinTarget[] {
@@ -759,12 +1031,32 @@ if (import.meta.main) {
   let inspected = 0;
   let cargoRead = 0;
   let cargoPins = 0;
+  let cargoReferences = 0;
+  let cargoExempted = 0;
   const cargoAudits: {
     readonly repository: string;
     readonly scan: CargoSourceScan;
     readonly generation: string | null;
     readonly card: string | null;
   }[] = [];
+  const memberRequests: (CargoMemberRequest & {
+    readonly generation: string | null;
+    readonly card: string | null;
+  })[] = [];
+  const recordCargoScan = (
+    repository: string,
+    scan: CargoSourceScan,
+    generation: string | null,
+    card: string | null,
+  ) => {
+    cargoRead += 1;
+    cargoPins += scan.pins.length;
+    cargoReferences += scan.references;
+    cargoExempted += scan.exempted;
+    if (scan.pins.length > 0 || scan.failures.length > 0) {
+      cargoAudits.push({ repository, scan, generation, card });
+    }
+  };
   for (const target of targets) {
     const sources = fetched.get(target.repository) ?? {
       error: `${target.repository}: no fetch outcome recorded for this repository`,
@@ -780,14 +1072,28 @@ if (import.meta.main) {
     // The Cargo surface is read before the governance-pin early exit: the
     // authority consumes no generation yet carries a libre-ai Cargo source.
     if (sources.cargo !== null) {
-      cargoRead += 1;
-      const scan = collectCargoSourcePins(target.repository, sources.cargo);
-      cargoPins += scan.pins.length;
-      if (scan.pins.length > 0 || scan.failures.length > 0) {
-        cargoAudits.push({
+      const generation = consumedGeneration(target.repository, sources, generationShas);
+      recordCargoScan(
+        target.repository,
+        collectCargoSourcePins(target.repository, sources.cargo),
+        generation,
+        sources.projectCard,
+      );
+      // A member declares its own sources; reading only the root manifest
+      // left them outside this gate while it stayed green.
+      const members = workspaceMembers(sources.cargo);
+      for (const member of members.unlisted) {
+        failures.push({
           repository: target.repository,
-          scan,
-          generation: consumedGeneration(target.repository, sources, generationShas),
+          kind: "unable-to-verify",
+          detail: `${target.repository}: workspace member ${member} is not a literal path — its Cargo.toml cannot be enumerated, its sources are unverified`,
+        });
+      }
+      if (members.literal.length > 0) {
+        memberRequests.push({
+          repository: target.repository,
+          members: members.literal,
+          generation,
           card: sources.projectCard,
         });
       }
@@ -816,6 +1122,38 @@ if (import.meta.main) {
     inspected += sightings.length;
     for (const detail of auditRepository(target.repository, sources, generationShas)) {
       failures.push({ repository: target.repository, kind: "drift", detail });
+    }
+  }
+
+  const memberManifests = await fetchCargoMemberManifests(memberRequests);
+  for (const request of memberRequests) {
+    const outcome = memberManifests.get(request.repository) ?? {
+      error: `${request.repository}: no member fetch outcome recorded`,
+    };
+    if ("error" in outcome) {
+      failures.push({
+        repository: request.repository,
+        kind: "unable-to-verify",
+        detail: outcome.error,
+      });
+      continue;
+    }
+    for (const member of request.members) {
+      const text = outcome.get(member) ?? null;
+      if (text === null) {
+        failures.push({
+          repository: request.repository,
+          kind: "unable-to-verify",
+          detail: `${request.repository}: workspace member ${member} has no Cargo.toml on the served branch — its sources were not read`,
+        });
+        continue;
+      }
+      recordCargoScan(
+        request.repository,
+        collectCargoSourcePins(request.repository, text, `${member}/Cargo.toml`),
+        request.generation,
+        request.card,
+      );
     }
   }
 
@@ -903,8 +1241,10 @@ if (import.meta.main) {
   report.volume(
     `${inspected} pin(s) read across ${covered} of ${targets.length} target(s), ` +
       `${unreadable.length} unreadable, against ${generationShas.length} declared generation(s); ` +
-      `${cargoPins} cargo source pin(s) read across ${cargoRead} Cargo.toml(s), ` +
-      `${cargoChecked} checked against composed refs`,
+      `${cargoPins} cargo source pin(s) read across ${cargoRead} Cargo.toml(s) ` +
+      `(${memberRequests.reduce((count, request) => count + request.members.length, 0)} workspace member manifest(s)), ` +
+      `${cargoChecked} checked against composed refs; ${cargoReferences} libre-ai reference(s) parsed, ` +
+      `${cargoExempted} exempted as package metadata`,
   );
   concludeGate("Fleet pins", report);
 }
