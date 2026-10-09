@@ -41,20 +41,42 @@ import {
 
 const COLD_READER_SCHEMA_VERSION = "libre-ai.cold-reader.v1";
 
-interface PublicSurface {
+export interface PublicSurface {
   readonly id: string;
   readonly url: string;
 }
 
+/**
+ * Anonymous raw URL of `path` on the branch `repository` SERVES, never on a
+ * branch written down here. The `HEAD` path segment is resolved by
+ * raw.githubusercontent.com to the repository's default branch — measured on
+ * 2026-10-09 against `libre-ai/project-governance`, which serves
+ * `migrate/recover-code`: `/HEAD/README.md` returned the same bytes as
+ * `/migrate/recover-code/README.md`, while the documentary `main` returned a
+ * different file. A cold reader fed a written branch reads whatever that branch
+ * happens to hold, not the public surface a visitor actually lands on. Raw
+ * fetches need no token and spend no REST quota, which keeps the reader
+ * anonymous by construction.
+ */
+export function publicRawUrl(repository: string, path: string): string {
+  return `https://raw.githubusercontent.com/${repository}/HEAD/${path}`;
+}
+
 /** The only inputs the cold reader may see: anonymous, public, raw. */
-const PUBLIC_SURFACES: readonly PublicSurface[] = [
+export const PUBLIC_SURFACES: readonly PublicSurface[] = [
   {
     id: "org-profile",
-    url: "https://raw.githubusercontent.com/libre-ai/.github/main/profile/README.md",
+    url: publicRawUrl("libre-ai/.github", "profile/README.md"),
   },
   {
+    // Open owner decision (2026-10-09): this surface still points at the hub
+    // archived read-only on 2026-07-30 (ecosystem/repositories.v1.yaml,
+    // `lifecycle: archived`). Its replacement is not a mechanical re-point:
+    // the questionnaire grid cites this README as the source of 6 of its 13
+    // expected elements, and 2 elements grade the answer on naming the hub
+    // itself, so the target and the grid move together.
     id: "monorepo-readme",
-    url: "https://raw.githubusercontent.com/libre-ai/libre-ai/main/README.md",
+    url: publicRawUrl("libre-ai/libre-ai", "README.md"),
   },
 ];
 
