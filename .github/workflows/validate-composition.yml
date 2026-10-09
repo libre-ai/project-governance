@@ -74,12 +74,17 @@ jobs:
             --target "$INPUT_TARGET" --revision "$INPUT_TARGET_REF" \
             --root "$GITHUB_WORKSPACE/composition" --phase prepare
 
-      - name: Install verified Bun and Node toolchains
+      # cargo-deny is declared in the same composed governance as Bun and Node
+      # (toolchains/cargo-deny.json, Y47): the installer exports its path as
+      # LIBRE_AI_CARGO_DENY, and tools/quality/check-dependency-policy.ts uses
+      # that binary and refuses to download another one.
+      - name: Install verified Bun, Node and cargo-deny toolchains
         shell: bash
         run: |
           bash tooling/.github/composition/install-toolchains.sh \
             "$GITHUB_WORKSPACE/composition/project-governance/toolchains/bun.json" \
-            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json"
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json" \
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/cargo-deny.json"
 
       # docs/security/ADVISORY-WAIVER-POLICY.md: every waived advisory is dated,
       # referenced and bounded, verified by a required gate. Run on the target's

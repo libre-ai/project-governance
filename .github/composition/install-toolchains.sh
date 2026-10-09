@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: EUPL-1.2
 set -euo pipefail
-if [[ $# -ne 2 ]]; then
-  echo 'Usage: install-toolchains.sh ABSOLUTE_BUN_POLICY ABSOLUTE_NOTEBOOK_POLICY' >&2
+if [[ $# -ne 3 ]]; then
+  echo 'Usage: install-toolchains.sh ABSOLUTE_BUN_POLICY ABSOLUTE_NOTEBOOK_POLICY ABSOLUTE_CARGO_DENY_POLICY' >&2
   exit 2
 fi
 python3 - "$@" <<'PYTHON'
@@ -55,12 +55,37 @@ def validate_policies(bun, notebook):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete toolchain policy') from error
 
+CARGO_DENY_VERSION = '0.19.5'
+CARGO_DENY_TRIPLE = 'x86_64-unknown-linux-musl'
+
+def validate_cargo_deny(policy):
+    # The dependency-policy gate (tools/quality/check-dependency-policy.ts)
+    # refuses to download when the composition declares this binary, so the
+    # composition must install exactly what toolchains/cargo-deny.json pins.
+    try:
+        if policy['tool'] != 'cargo-deny' or policy['version'] != CARGO_DENY_VERSION:
+            raise ValueError('Unexpected cargo-deny version')
+        d = policy['platforms']['linux-x64']
+        stem = 'cargo-deny-' + CARGO_DENY_VERSION + '-' + CARGO_DENY_TRIPLE
+        if d['triple'] != CARGO_DENY_TRIPLE:
+            raise ValueError('Unexpected cargo-deny target triple')
+        if d['archiveUrl'] != 'https://github.com/EmbarkStudios/cargo-deny/releases/download/' + CARGO_DENY_VERSION + '/' + stem + '.tar.gz':
+            raise ValueError('Unexpected cargo-deny archive URL')
+        if d['executableRelativePath'] != stem + '/cargo-deny':
+            raise ValueError('Unexpected cargo-deny executable path')
+        for digest in [d['archiveSha256'], d['executableSha256']]:
+            if not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest):
+                raise ValueError('Invalid policy digest')
+        return d
+    except (KeyError, TypeError) as error:
+        raise ValueError('Incomplete cargo-deny policy') from error
+
 def safe_member(name):
     path = PurePosixPath(name)
     if path.is_absolute() or '..' in path.parts or '\\' in name:
         raise ValueError('Unsafe archive member')
 
-def extract_binary(archive, member, destination, zipped):
+def extract_binary(archive, member, destination, zipped, tar_mode='r:xz'):
     # Extract only the selected regular binary; no archive links are followed.
     if zipped:
         with zipfile.ZipFile(archive) as container:
@@ -77,7 +102,7 @@ def extract_binary(archive, member, destination, zipped):
             content = container.read(matches[0])
     else:
         content = None
-        with tarfile.open(archive, 'r:xz') as container:
+        with tarfile.open(archive, tar_mode) as container:
             for count, entry in enumerate(container):
                 if count >= 100000:
                     raise ValueError('Archive inventory too large')
@@ -100,6 +125,7 @@ def policy(path):
 
 def main():
     bu, bh, node = validate_policies(policy(sys.argv[1]), policy(sys.argv[2]))
+    deny = validate_cargo_deny(policy(sys.argv[3]))
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise ValueError('This installer supports Linux x64 only')
     parent = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
@@ -107,25 +133,29 @@ def main():
     if '\n' in str(parent) or '\r' in str(parent) or not parent.is_dir() or any(not p.is_absolute() or p.is_symlink() or not p.is_file() for p in outputs):
         raise ValueError('Invalid runner output paths')
     root = Path(tempfile.mkdtemp(prefix='libre-ai-toolchains-', dir=parent))
-    for url, digest, filename, member, zipped, binary in [
-        (bu, bh, 'bun.zip', 'bun-linux-x64/bun', True, 'bun'),
-        (node['archiveUrl'], node['archiveSha256'], 'node.tar.xz', 'node-v26.5.0-linux-x64/bin/node', False, 'node'),
+    for url, digest, filename, member, zipped, tar_mode, binary in [
+        (bu, bh, 'bun.zip', 'bun-linux-x64/bun', True, None, 'bun'),
+        (node['archiveUrl'], node['archiveSha256'], 'node.tar.xz', 'node-v26.5.0-linux-x64/bin/node', False, 'r:xz', 'node'),
+        (deny['archiveUrl'], deny['archiveSha256'], 'cargo-deny.tar.gz', deny['executableRelativePath'], False, 'r:gz', 'cargo-deny'),
     ]:
         archive = root / filename
         subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '15', '--max-time', '120', '--max-filesize', str(LIMIT), '--output', str(archive), url], check=True, timeout=125)
         verify_digest(archive, digest)
-        extract_binary(archive, member, root / binary, zipped)
+        extract_binary(archive, member, root / binary, zipped, tar_mode)
     verify_digest(root / 'node', node['executableSha256'])
-    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0')]:
+    verify_digest(root / 'cargo-deny', deny['executableSha256'])
+    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0'), ('cargo-deny', '--version', 'cargo-deny ' + CARGO_DENY_VERSION)]:
         version = subprocess.check_output([str(root / binary), flag], timeout=10, env={'PATH': '/usr/bin:/bin'}).decode().strip()
         if version != expected:
             raise ValueError('Extracted toolchain version mismatch')
-    # Activate only after both archives, the Node binary and both versions pass.
+    # Activate only after every archive, the Node and cargo-deny binaries and
+    # every version pass.
     with outputs[0].open('a') as stream:
         stream.write(str(root) + '\n')
     with outputs[1].open('a') as stream:
         stream.write('NOTEBOOK_QUALIFICATION_NODE=' + str(root / 'node') + '\n')
-    print('Bun and Node verified for Linux x64; subsequent steps receive the exact paths.')
+        stream.write('LIBRE_AI_CARGO_DENY=' + str(root / 'cargo-deny') + '\n')
+    print('Bun, Node and cargo-deny ' + CARGO_DENY_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')
 
 if __name__ == '__main__':
     main()
