@@ -2,16 +2,19 @@ import { describe, expect, test } from "bun:test";
 import {
   auditCargoSources,
   auditRepository,
+  buildCargoMembersQuery,
   buildComposedManifestsQuery,
   buildFleetPinsQuery,
   collectCargoSourcePins,
   collectSightings,
   consumedGeneration,
+  parseCargoMembersResponse,
   parseComposedManifests,
   parseFleetPinsBatchResponse,
   parseFleetPinsRepoNode,
   type RepositorySources,
   selectFleetPinTargets,
+  workspaceMembers,
 } from "./check-fleet-pins";
 
 test("selectFleetPinTargets excludes private repositories before remote fetch", () => {
@@ -484,16 +487,20 @@ describe("collectCargoSourcePins", () => {
   test("the served path form carries no libre-ai source; the git form carries exactly one", async () => {
     const served = await fixture("execution-sandbox.path.Cargo.toml");
     expect(served).toContain(SIBLING_PATH);
+    // `package.repository` names the repository itself: counted, exempted.
     expect(collectCargoSourcePins("libre-ai/execution-sandbox", served)).toEqual({
       pins: [],
       failures: [],
       unparseable: false,
+      references: 1,
+      exempted: 1,
     });
     expect(
       collectCargoSourcePins("libre-ai/execution-sandbox", await sandbox(gitForm(COMPOSED))),
     ).toEqual({
       pins: [
         {
+          manifest: "Cargo.toml",
           table: "dependencies",
           name: "libre-ai-contract-types",
           repository: "schemas-and-contracts",
@@ -502,6 +509,8 @@ describe("collectCargoSourcePins", () => {
       ],
       failures: [],
       unparseable: false,
+      references: 2,
+      exempted: 1,
     });
   });
 
@@ -512,6 +521,7 @@ describe("collectCargoSourcePins", () => {
     );
     expect(scan.pins).toEqual([
       {
+        manifest: "Cargo.toml",
         table: "patch.crates-io",
         name: "biscuit-auth",
         repository: "capability-authorization",
@@ -537,7 +547,7 @@ describe("collectCargoSourcePins", () => {
     }
   });
 
-  test("target and workspace tables are walked; a form the walk misses fails on the raw count", async () => {
+  test("target and workspace tables are walked; a form the walk misses fails on the parsed count", async () => {
     const url = "https://github.com/libre-ai/schemas-and-contracts";
     const walked = `[target.'cfg(unix)'.dev-dependencies]\nx = { git = "${url}", rev = "${COMPOSED}" }\n[workspace.dependencies]\ny = { git = "${url}", rev = "${COMPOSED}" }\n`;
     expect(collectCargoSourcePins("libre-ai/demo", walked).pins.map((pin) => pin.table)).toEqual([
@@ -548,8 +558,125 @@ describe("collectCargoSourcePins", () => {
     const scan = collectCargoSourcePins("libre-ai/demo", unwalked);
     expect(scan.pins).toEqual([]);
     expect(scan.failures).toEqual([
-      "libre-ai/demo: Cargo.toml writes 1 libre-ai git source(s) but 0 were read from its dependency tables — a declaration form this gate does not walk",
+      "libre-ai/demo: Cargo.toml unknown-table.x.git names a libre-ai location in a form this gate does not judge as a source",
     ]);
+    expect(scan.references).toBe(1);
+  });
+
+  // Review of #43, bench e_direct: a `path =` override of a libre-ai source
+  // carried no `git` and was skipped, so the gate stayed green.
+  test("a path override keyed by a libre-ai url fails; a git one is a pin to verify", () => {
+    const url = "https://github.com/libre-ai/schemas-and-contracts";
+    const pathPatch = `[patch."${url}"]\nlibre-ai-contract-types = { path = "../schemas-and-contracts/crates/sdk-rs" }\n`;
+    const scan = collectCargoSourcePins("libre-ai/demo", pathPatch);
+    expect(scan.pins).toEqual([]);
+    expect(scan.failures).toEqual([
+      `libre-ai/demo: Cargo.toml patch.${url}.libre-ai-contract-types — overrides a libre-ai source without a git source, pin an https://github.com/libre-ai/<repository> rev`,
+    ]);
+    const gitPatch = `[patch."${url}"]\nlibre-ai-contract-types = { git = "${url}", rev = "${CARD_PIN}" }\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", gitPatch).pins).toEqual([
+      {
+        manifest: "Cargo.toml",
+        table: `patch.${url}`,
+        name: "libre-ai-contract-types",
+        repository: "schemas-and-contracts",
+        rev: CARD_PIN,
+      },
+    ]);
+  });
+
+  // Bench forms that read GREEN at a wrong rev before this walk.
+  test("replace keys, TOML escapes and percent-encoded orgs are all judged", () => {
+    const url = "https://github.com/libre-ai/schemas-and-contracts";
+    const replaceAtWrongRev = `[replace]\n"${url}#libre-ai-contract-types@0.1.0" = { git = "${url}", rev = "${CARD_PIN}" }\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", replaceAtWrongRev).pins).toEqual([
+      {
+        manifest: "Cargo.toml",
+        table: "replace",
+        name: `${url}#libre-ai-contract-types@0.1.0`,
+        repository: "schemas-and-contracts",
+        rev: CARD_PIN,
+      },
+    ]);
+    const replaceByPath = `[replace]\n"${url}#libre-ai-contract-types@0.1.0" = { path = "x" }\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", replaceByPath).failures).toHaveLength(1);
+    const escaped = `[dependencies]\nx = { git = "https://github.com/libre\\u002Dai/schemas-and-contracts", rev = "${CARD_PIN}" }\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", escaped).pins.map((pin) => pin.rev)).toEqual([
+      CARD_PIN,
+    ]);
+    for (const encoded of [
+      "https://github.com/libre%2Dai/schemas-and-contracts",
+      "https://github.com/libre%252dai/schemas-and-contracts",
+      "https://GitHub.com/Libre-AI/schemas-and-contracts",
+      "git@github.com:libre-ai/schemas-and-contracts",
+      "https://github.com:443//libre-ai/schemas-and-contracts",
+    ]) {
+      const scan = collectCargoSourcePins(
+        "libre-ai/demo",
+        `[dependencies]\nx = { git = "${encoded}", rev = "${CARD_PIN}" }\n`,
+      );
+      expect(scan.pins).toEqual([]);
+      expect(scan.failures).toEqual([
+        `libre-ai/demo: Cargo.toml dependencies.x — ${encoded} is not an https://github.com/libre-ai/<repository> source`,
+      ]);
+    }
+    const keyOnly = `[unknown."https://github.com/libre-ai/schemas-and-contracts"]\nenabled = true\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", keyOnly).failures).toEqual([
+      "libre-ai/demo: Cargo.toml unknown.https://github.com/libre-ai/schemas-and-contracts names a libre-ai location in a form this gate does not judge as a source",
+    ]);
+    const stringDependency = `[dependencies]\nx = "https://github.com/libre-ai/schemas-and-contracts"\n`;
+    expect(collectCargoSourcePins("libre-ai/demo", stringDependency).failures).toEqual([
+      "libre-ai/demo: Cargo.toml dependencies.x names a libre-ai location in a form this gate does not judge as a source",
+    ]);
+  });
+
+  test("references sum to judged + exempted + failed; unrelated overrides stay out", () => {
+    const text = `[package]\nname = "x"\nhomepage = "https://github.com/libre-ai/x"\n[package.metadata.docs]\nsite = "https://github.com/libre-ai/x"\n[patch.crates-io]\nserde = { path = "vendor/serde" }\n[replace]\n"serde:1.0.0" = { path = "vendor/serde" }\n`;
+    const scan = collectCargoSourcePins("libre-ai/demo", text, "crates/x/Cargo.toml");
+    expect(scan.references).toBe(2);
+    expect(scan.exempted).toBe(1);
+    expect(scan.failures).toEqual([
+      "libre-ai/demo: crates/x/Cargo.toml package.metadata.docs.site names a libre-ai location in a form this gate does not judge as a source",
+    ]);
+  });
+});
+
+describe("workspaceMembers", () => {
+  test("literal members are listed; globs and escaping paths are named as unlisted", () => {
+    expect(workspaceMembers(`[workspace]\nmembers = ["crates/a", "crates/b/"]\n`)).toEqual({
+      literal: ["crates/a", "crates/b"],
+      unlisted: [],
+    });
+    expect(
+      workspaceMembers(
+        `[workspace]\nmembers = ["crates/*", "../outside", "/abs", ".", "crates/a"]\n`,
+      ),
+    ).toEqual({ literal: ["crates/a"], unlisted: ["crates/*", "../outside", "/abs", "."] });
+    expect(workspaceMembers(`[package]\nname = "x"\n`)).toEqual({ literal: [], unlisted: [] });
+  });
+
+  test("member manifests are read at HEAD, and an absent one is null, not empty", () => {
+    const requests = [{ repository: "libre-ai/demo", members: ["crates/a", "crates/b"] }];
+    const query = buildCargoMembersQuery(requests);
+    expect(query).toContain('"HEAD:crates/a/Cargo.toml"');
+    expect(query).toContain('"HEAD:crates/b/Cargo.toml"');
+    expect(query).not.toContain("main:");
+    expect(
+      parseCargoMembersResponse(requests, { r0: { m0: { text: "[package]" }, m1: null } }),
+    ).toEqual(
+      new Map([
+        [
+          "libre-ai/demo",
+          new Map([
+            ["crates/a", "[package]"],
+            ["crates/b", null],
+          ]),
+        ],
+      ]),
+    );
+    expect(parseCargoMembersResponse(requests, { r0: null }).get("libre-ai/demo")).toHaveProperty(
+      "error",
+    );
   });
 
   test("an unparseable manifest is a failure, never zero pins", () => {

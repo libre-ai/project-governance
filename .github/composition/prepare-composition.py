@@ -57,8 +57,12 @@ for _target in (
 # manifest on its own; the composition then substitutes the verified sibling
 # checkout for that git source (cargo source replacement), so CI still compiles
 # the exact tree it checked out. This table is static on purpose: deriving it
-# from the target's own Cargo.toml would let the code under validation choose
-# which source the composition trusts.
+# from the target's own Cargo.toml would let the target's manifest choose which
+# source the runner substitutes and measures. That bounds the substitution the
+# runner writes and the `cargo metadata` measure it takes, not the cargo calls
+# the target's own check steps make afterwards: `bun run check` is target code
+# and can pass `cargo --config`, `CARGO_*` overrides or another manifest. That
+# residual limit is stated in run-composition.py's configure_cargo_sources.
 CARGO_SIBLING_SOURCES = {
     target: ({"package": "libre-ai-contract-types", "repository": "schemas-and-contracts", "path": "crates/sdk-rs"},)
     for target in ("artifact-verification", "execution-continuity-evaluator", "execution-sandbox")
