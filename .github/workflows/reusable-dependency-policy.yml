@@ -1,6 +1,6 @@
 name: reusable-dependency-policy
 # Fleet gate template (design §5.3): consumed as
-#   uses: libre-ai/governance/.github/workflows/reusable-dependency-policy.yml@<sha>
+#   uses: libre-ai/project-governance/.github/workflows/reusable-dependency-policy.yml@<sha>
 #
 # Executes the calling repository's own deny.toml. Across the constellation
 # that file was versioned and read by nothing: the licence allowlist,
@@ -84,7 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -f deny.toml ]; then
-            echo "::error::This repository has no deny.toml: there is no dependency policy to enforce. Add one (the base policy lives in libre-ai/governance) before wiring this gate."
+            echo "::error::This repository has no deny.toml: there is no dependency policy to enforce. Add one (the base policy lives in libre-ai/project-governance) before wiring this gate."
             exit 1
           fi
           cargo-deny --version

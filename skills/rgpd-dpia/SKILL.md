@@ -16,7 +16,7 @@ Un changement produit introduit ou étend l'une des quatre conditions de dépist
 
 ## Ce que fournit rgpd-kit
 
-- Gabarit AIPD : `createDpiaScaffold` / type `DPIAAssessment`, dépôt `libre-ai/rgpd-kit`, fichier `src/aida-template.ts` ; contrepartie lisible : `docs/aida-template.md`.
+- Gabarit AIPD : `createDpiaScaffold` / type `DPIAAssessment`, dépôt `libre-ai/organization-data-lifecycle`, fichier `packages/rgpd-kit/src/aida-template.ts` ; contrepartie lisible : `packages/rgpd-kit/docs/aida-template.md`.
 - Le gabarit produit une évaluation **vide, non approuvée** : les quatre questions de dépistage, une liste de risques à documenter (`severity: low|medium|high` + mitigation), et un champ `approvedBy: { role: owner|dpo|legal, date, name }` jamais pré-rempli.
 
 ## Ce que ce skill ne fait jamais
