@@ -1,4 +1,18 @@
-import { findFloorBypasses, floorBypassNote } from "./bun-script-floor";
+import {
+  FIXED_MANIFEST_PATTERNS,
+  pathToRoot,
+  reconcileManifests,
+  scanManifestPatterns,
+  trackedNestedManifests,
+  workspaceManifestPatterns,
+} from "./bun-manifest-discovery";
+import {
+  FLOOR_HOOK,
+  findFloorBypasses,
+  findNestedHookViolations,
+  findRootFloorViolations,
+  floorBypassNote,
+} from "./bun-script-floor";
 import { isBunVersionAtLeast } from "./bun-version";
 import { concludeGate, GateReport } from "./gate-report";
 
@@ -7,6 +21,7 @@ interface PackageManifest {
   packageManager?: string;
   engines?: { bun?: string };
   scripts?: Record<string, string>;
+  workspaces?: unknown;
 }
 
 interface BunToolchainPolicy {
@@ -43,8 +58,8 @@ const runtimeForms = TOOLING.map((base) => `bun ${base}/check-bun-minimum.ts`);
 const manifestForms = TOOLING.map(
   (base) => `bun run check:bun:runtime && bun ${base}/check-bun-manifests.ts`,
 );
-// An apps/*/ or packages/*/ manifest sits one directory below the root, so
-// the same two tooling bases resolve from there through "../..": a
+// A nested manifest resolves the same two tooling bases through the path
+// back to the root ("../.." for apps/*/ and packages/*/): a
 // repository that still carries its own top-level tools/quality/ (the hub
 // during dismantling, or a repository that never split it out) keeps the
 // pre-dispatch form; a repository whose only tools/quality/ is the pinned
@@ -52,7 +67,6 @@ const manifestForms = TOOLING.map(
 // activation) uses the node_modules form. Accepting both is additive
 // tolerance, not a weakened check: a manifest still fails if it names
 // neither.
-const NESTED_TOOLING_BASES = TOOLING.map((base) => `../../${base}`);
 
 if (!isBunVersionAtLeast(policy.version, policy.minimumVersion)) {
   failures.push("toolchains/bun.json: selected version is below the minimum");
@@ -71,30 +85,17 @@ if (!manifestForms.includes(root.scripts?.["check:bun"] ?? "")) {
 }
 // check:toolchain and build are optional since the governance split
 // (ADR-0020): single-package repositories without a Rust toolchain or a
-// build step simply do not declare them; when declared, they are bound.
-for (const script of ["check:toolchain", "build", "check"]) {
-  const command = root.scripts?.[script];
-  if (script === "check" && command === undefined) {
-    failures.push("package.json: check is required");
-    continue;
-  }
-  if (command !== undefined && !command.startsWith("bun run check:bun && ")) {
-    failures.push(`package.json: ${script} must enforce the Bun floor first`);
-  }
+// build step simply do not declare them; when declared, they are bound —
+// `findRootFloorViolations` below holds them to `bun run check:bun && `
+// chained only by `&&`.
+if (root.scripts?.check === undefined) {
+  failures.push("package.json: check is required");
 }
-if (root.scripts?.pretest !== "bun run check:bun") {
+if (root.scripts?.pretest !== FLOOR_HOOK) {
   failures.push("package.json: pretest must enforce the Bun floor");
 }
-for (const [name, command] of Object.entries(root.scripts ?? {})) {
-  if (
-    name.startsWith("pre") ||
-    ["check:bun:runtime", "check:bun", "check:toolchain", "build", "check", "test"].includes(name)
-  ) {
-    continue;
-  }
-  if (!command.startsWith("bun run check:bun:runtime && ")) {
-    failures.push(`package.json: ${name} must enforce the Bun floor first`);
-  }
+for (const violation of findRootFloorViolations(root.scripts ?? {})) {
+  failures.push(`package.json: ${violation.note}`);
 }
 // Declaring `pretest` is not the same as firing it: bun fires a `pre<script>`
 // hook only for `bun run <script>`. Everything above asserts the hook exists
@@ -106,20 +107,34 @@ for (const script of findFloorBypasses(root.scripts ?? {}, ROOT_FLOOR_SCRIPT)) {
 }
 
 const NESTED_FLOOR_SCRIPT = "check:bun";
-const manifestPaths = new Set<string>();
-for (const pattern of [
-  "apps/*/package.json",
-  "packages/*/package.json",
-  "distribution/templates/*/package.json",
-]) {
-  const glob = new Bun.Glob(pattern);
-  for await (const path of glob.scan({ cwd: ".", onlyFiles: true })) manifestPaths.add(path);
+const workspaces = workspaceManifestPatterns(root.workspaces);
+for (const failure of workspaces.failures) failures.push(`package.json: ${failure}`);
+const manifestPatterns = [...new Set([...FIXED_MANIFEST_PATTERNS, ...workspaces.patterns])];
+const workspaceMatched = await scanManifestPatterns(".", manifestPatterns);
+let tracked: string[] = [];
+try {
+  tracked = trackedNestedManifests(".");
+} catch (error) {
+  // A tree the gate cannot list is a failure, never an empty tree.
+  failures.push(`git ls-files: ${error instanceof Error ? error.message : String(error)}`);
 }
+const inventory = reconcileManifests(tracked, workspaceMatched);
 
-for (const path of [...manifestPaths].sort()) {
-  const manifest = (await Bun.file(path).json()) as PackageManifest;
+for (const path of inventory.read) {
+  let manifest: PackageManifest;
+  try {
+    manifest = (await Bun.file(path).json()) as PackageManifest;
+  } catch (error) {
+    failures.push(`${path}: unreadable (${error instanceof Error ? error.message : error})`);
+    continue;
+  }
+  const scripts = manifest.scripts ?? {};
   const template = path.startsWith("distribution/templates/");
-  const nestedCheckForms = NESTED_TOOLING_BASES.map((base) => `bun ${base}/check-bun-minimum.ts`);
+  // The tooling bases resolve from the manifest's own directory, at whatever
+  // depth a workspace pattern placed it (`apps/x` is `../..`, a
+  // `crates/x/y` member `../../..`). Both forms stay accepted, as before.
+  const up = pathToRoot(path);
+  const nestedCheckForms = TOOLING.map((base) => `bun ${up}/${base}/check-bun-minimum.ts`);
   const expectedCheckForms = template ? ["bun scripts/check-bun-version.ts"] : nestedCheckForms;
 
   if (manifest.engines?.bun !== expectedEngine) {
@@ -128,7 +143,11 @@ for (const path of [...manifestPaths].sort()) {
   if (template && manifest.packageManager !== selectedPackageManager) {
     failures.push(`${path}: packageManager must be ${selectedPackageManager}`);
   }
-  if (!expectedCheckForms.includes(manifest.scripts?.["check:bun"] ?? "")) {
+  // A manifest with no scripts cannot run anything through `bun run`, so it
+  // has no floor to lay: it is held to the engine pin only. Any script brings
+  // the whole floor contract back.
+  if (Object.keys(scripts).length === 0 && !template) continue;
+  if (!expectedCheckForms.includes(scripts["check:bun"] ?? "")) {
     failures.push(`${path}: check:bun must be one of ${expectedCheckForms.join(" or ")}`);
   }
   if (template) {
@@ -139,11 +158,8 @@ for (const path of [...manifestPaths].sort()) {
       failures.push(`${path}: standalone Bun guard must match ${expectedEngine}`);
     }
   }
-  for (const script of Object.keys(manifest.scripts ?? {})) {
-    if (script === "check:bun" || script.startsWith("pre")) continue;
-    if (manifest.scripts?.[`pre${script}`] !== "bun run check:bun") {
-      failures.push(`${path}: pre${script} must enforce the Bun floor`);
-    }
+  for (const violation of findNestedHookViolations(scripts)) {
+    failures.push(`${path}: ${violation.note}`);
   }
   // The nested requirement above is existence only — a manifest satisfies it
   // while no path ever fires the hook, which is the state this workspace
@@ -151,7 +167,7 @@ for (const path of [...manifestPaths].sort()) {
   // floor the gate is supposed to lay was therefore never verified for it.
   // A nested manifest's runtime floor is its own `check:bun`, bound above to
   // the runtime minimum check (or the template's standalone guard).
-  for (const script of findFloorBypasses(manifest.scripts ?? {}, NESTED_FLOOR_SCRIPT)) {
+  for (const script of findFloorBypasses(scripts, NESTED_FLOOR_SCRIPT)) {
     failures.push(`${path}: ${floorBypassNote(script, NESTED_FLOOR_SCRIPT)}`);
   }
 }
@@ -170,11 +186,15 @@ if (failures.length === 0) {
   report.check(
     "package.json",
     true,
-    `root + ${manifestPaths.size} package/template manifests require ${expectedEngine}`,
+    `root + ${inventory.read.length} nested manifest(s) require ${expectedEngine}`,
   );
 }
 report.volume(
-  `1 root manifest and ${manifestPaths.size} package/template manifest(s) read, ` +
+  `1 root manifest and ${inventory.read.length} nested manifest(s) read ` +
+    `(${inventory.tracked} tracked by git, ${inventory.workspaceMatched} matched by ` +
+    `${manifestPatterns.length} workspace pattern(s), ${inventory.untracked} untracked; ` +
+    `${inventory.skippedNodeModules.length} skipped under node_modules, ` +
+    `${inventory.universe} named by either source), ` +
     `${Object.keys(root.scripts ?? {}).length} root script(s) inspected for the Bun floor, ` +
     `against engines ${expectedEngine} and ${selectedPackageManager}`,
 );
