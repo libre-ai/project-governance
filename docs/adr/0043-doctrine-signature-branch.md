@@ -1,7 +1,7 @@
 # ADR-0043 — Branches inscriptibles de l'autorité : doctrine en attente de signature et branches de session
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. L'extension des branches de session à la flotte est arbitrée le même jour (« Oui, forge + .github »). La branche servie du profil `.github` est arbitrée le même jour (« Modèle branche servie »). Owner-arbitration: 2026-10-08
+- **Arbitrage :** décisions propriétaires du 2026-10-08 : « branche option A », puis l'exclusion des branches de session `work/**`, et enfin le maintien de la branche de doctrine (« option A ») une fois `work/**` ouvert. Les trois modifications de protection ont été exécutées par le propriétaire lui-même. L'extension des branches de session à la flotte est arbitrée le même jour (« Oui, forge + .github »). La branche servie du profil `.github` est arbitrée le même jour (« Modèle branche servie »). Owner-arbitration: 2026-10-08 ; section « Doctrine depuis une branche de session » ajoutée sur arbitrage du 2026-10-09 (« go all » sur la recommandation d'admettre `work/**` pour la doctrine). Owner-arbitration: 2026-10-09
 - **Applique :** I-17 (surface à touche humaine fermée : registre, ADR et mutations des garde-fous restent sous signature) ; la forme d'ADR-0041 §6 (toute modification de contrôle de protection est nommée, avec son périmètre exact)
 - **N'amende pas :** ADR-0041 §6. Son titre « une seule modification de contrôle de protection » décrit le périmètre de l'opération de consolidation du 2026-10-07 — un bypass temporaire sur le profil `libre-ai/.github`, restauré à l'identique — et non une règle permanente qui interdirait toute modification ultérieure. Les trois modifications consignées ici couvrent une autre fenêtre et un autre dépôt
 - **Autorise :** l'usage de `doctrine/owner-signature` comme branche de tête des pull requests de doctrine qui attendent la signature du propriétaire ; l'usage d'une branche `work/<session>` par session de travail, supprimée après le merge, dans `project-governance` et dans les 18 dépôts de l'extension
@@ -43,6 +43,71 @@ L'extension à la flotte ouvrait `work/**` sur `libre-ai/.github` sans rendre sa
 2. **Ajout** de `refs/heads/main` aux exclusions de `refoundation-no-bypass-branch` sur ce dépôt (`updated_at` 16:54:21.584), charge dérivée du vivant sous assertion de non-retrait ; exclusions résultantes `refs/heads/main`, `refs/heads/work/**`.
 
 Comme pour la branche de doctrine, l'ordre est structurel : tant que `main` n'était pas exclue, `refoundation` interdisait toute écriture, donc `main` n'a jamais été sans garde. Règles effectives lues sur `main` après coup : `deletion`, `non_fast_forward`, `pull_request`, toutes trois du ruleset `24731510`.
+
+### Doctrine depuis une branche de session — amendement du 2026-10-09
+
+Owner-arbitration: 2026-10-09 — « go all » sur la recommandation d'admettre les
+branches de session pour les pull requests de doctrine et de cesser d'imposer
+`doctrine/owner-signature`.
+
+**Constat.** La pratique a divergé de la décision du 2026-10-08 :
+
+- `doctrine/owner-signature` n'est plus une ancêtre de la base. Les merges squash
+  de `migrate/recover-code` ne rapportent pas ses commits : `git rev-list
+  --left-right --count origin/doctrine/owner-signature...origin/migrate/recover-code`
+  rend `23 19` le 2026-10-09, et `git merge-base --is-ancestor` échoue. Son
+  réalignement passe par un merge signé de la base dans une branche longue
+  partagée ; cette écriture a été refusée le 2026-10-09 par le classifieur de
+  la session agentique comme écriture sur une ressource partagée.
+- Trois pull requests de doctrine sont parties d'une branche `work/` et ont été
+  fusionnées : #37 (`work/unwired-gates-no-transmission`), #76
+  (`work/adr-injection-isolation-by-construction-2`, ADR-0045) et #81
+  (`work/adr-tool-invocation-observation`, ADR-0046).
+- La branche longue imposait la sérialisation des pull requests de doctrine
+  (« deux pull requests de doctrine simultanées restent impossibles ») ; le
+  2026-10-09, plusieurs changements de doctrine arbitrés en chat ont avancé en
+  parallèle.
+
+**Ce que la branche apportait, et où c'est tenu.**
+
+| Propriété | Portée par `doctrine/owner-signature` | Tenue sans elle |
+| --- | --- | --- |
+| Signature | aucune : la branche ne signe rien, la fusion signe (AGENTS.md : « a doctrine merge is a signature ») | marqueur `Owner-arbitration: <date>` exigé par `tools/quality/check-review-evidence.ts` sur toute pull request touchant `docs/adr/**`, `INVARIANTS.md`, `DECISION-REGISTER.md` ou `ecosystem/FORGOTTEN.yaml`, quelle que soit sa branche de tête ; fusion squash sur checks requis verts après arbitrage du propriétaire en chat |
+| Isolation | une branche dédiée, distincte du travail d'outillage | une branche `work/<session>` par session, jamais partagée ; le gate ci-dessus s'applique à la pull request, pas à la branche |
+| Trace | historique non réécrivable avant fusion | la pull request (corps, ligne d'arbitrage, fil de revue, événements de push) et le commit squash sur la branche servie, elle-même gardée par `forge-reviewed-recovery-admission` (pull request, `composition / validate`, ni suppression ni non-fast-forward) |
+| Non-fast-forward avant signature | règle `non_fast_forward` du ruleset `24725518` | **non tenue côté serveur** sur `work/**` ; voir la limite ci-dessous |
+
+**Décision.**
+
+1. Une pull request de doctrine part d'une branche **`work/<session>`**, créée
+   depuis la branche servie, comme tout autre travail. La signature est tenue
+   par la ligne `Owner-arbitration: <date>` suivie de la décision arbitrée, que
+   `check-review-evidence` exige, et par la fusion squash sur arbitrage du
+   propriétaire. Rien n'oblige plus à passer par `doctrine/owner-signature`.
+2. `doctrine/owner-signature` est **déclarée obsolète pour l'usage** : aucune
+   nouvelle pull request ne la prend comme tête. Elle n'est **ni supprimée ni
+   modifiée** par cet amendement ; son ruleset d'intégrité `24725518` et son
+   exclusion de `refoundation-no-bypass-branch` restent en place. Leur retrait
+   éventuel est un acte du propriétaire, consigné par une décision distincte.
+   Option écartée : la conserver comme voie facultative. Une voie facultative
+   qu'on ne peut emprunter qu'après un merge signé dans une branche partagée,
+   et qui sérialise la doctrine, laisse deux chemins à une même pull request
+   sans que rien ne départage les deux ; la propriété qu'elle seule tenait se
+   mesure ci-dessous et ne justifie pas ce coût.
+3. Aucune protection n'est modifiée. Aucun gate ni workflow ne référence
+   `doctrine/owner-signature` (`grep -rn "owner-signature"` hors `.git` ne la
+   trouve que dans cet ADR et dans le registre) ; `check-review-evidence` ne lit
+   pas la branche de tête. Aucun outil n'a donc à changer.
+
+**Limite assumée.** Sur `work/**`, aucun ruleset n'interdit le force push :
+les commits relus pourraient être remplacés avant fusion. Dans la pratique
+arbitrée, le propriétaire tranche en chat sur la décision et sa formulation, et
+la fusion est faite par la session sur checks requis verts ; le timeline de la
+pull request conserve tout force push. Le garde local de push des sessions
+agentiques refuse le force push, mais il ne vaut pas protection serveur. Si une
+garantie serveur redevient nécessaire, elle se rétablit par un ruleset
+`non_fast_forward` sur un motif de branche de doctrine sous `work/`, par décision
+du propriétaire, et non en rouvrant une branche longue partagée.
 
 ## Conséquences et limites
 
