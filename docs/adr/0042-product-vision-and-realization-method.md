@@ -1,7 +1,7 @@
 # ADR-0042 — Vision produit et méthode de réalisation
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
-- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08 ; §9 et §10 ajoutés sur arbitrage du 2026-10-09. Owner-arbitration: 2026-10-09 ; §11 ajouté sur arbitrage du 2026-10-09 (décision Y38). Owner-arbitration: 2026-10-09
+- **Arbitrage :** décisions propriétaires du 2026-10-07, prises par questions structurées (ADR-0022/I-24) au cours d'une étude privée en sept tours, puis consignées dans cette proposition. Owner-arbitration: 2026-10-07 ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08 ; §9 et §10 ajoutés sur arbitrage du 2026-10-09. Owner-arbitration: 2026-10-09 ; §11 ajouté sur arbitrage du 2026-10-09 (décision Y38). Owner-arbitration: 2026-10-09 ; §11 complété sur arbitrage du 2026-10-09 (décision Y45). Owner-arbitration: 2026-10-09
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), dont le point 2 (« consolider les familles de dépôts existantes ») reçoit ici sa règle de découpage
 - **Cite sans la répéter :** ADR-0041 pour la topologie de l'autorité, l'inventaire et l'admission des destinations par bascule de branche par défaut
 - **Amende :** ADR-0041, préambule « N'autorise pas » (aucun transfert d'autorité au-delà des transferts tracés), pour le seul domaine Connaissance (§7)
@@ -125,7 +125,8 @@ dépendances, sous la politique suivante :
 
 Ce qu'est « adopter une brique GPL » est précisé par le §10.
 
-Les licences permissives ISC, Zlib et Unicode-3.0 sont admises au même titre (§11).
+Les licences permissives ISC, Zlib et Unicode-3.0, ainsi que
+`Apache-2.0 WITH LLVM-exception`, sont admises au même titre (§11).
 
 ### 5. Modèle de données et dérogation de la fabrique
 
@@ -312,6 +313,21 @@ Dépendances rencontrées, licences relevées sur crates.io le 2026-10-09 :
   compilation ;
 - `foldhash` (`Zlib`), entraîné par `ratatui` dans l'interface terminal de
   Work Supervision.
+
+**Complément du 2026-10-09 — `Apache-2.0 WITH LLVM-exception` (décision Y45).**
+Owner-arbitration: 2026-10-09.
+
+L'expression `Apache-2.0 WITH LLVM-exception` est **admise au même titre
+qu'Apache-2.0** : l'exception LLVM n'ajoute que des permissions à la licence
+Apache-2.0 et n'en retire aucune. Elle entre dans la liste `allow` de la base
+`deny.toml` de la flotte, identique dans chaque dépôt Rust ; l'exception limitée
+à une seule crate que `database-policy-inspector` portait jusqu'ici pour elle
+est supprimée.
+
+Dépendance rencontrée, licence relevée dans son `Cargo.toml` le 2026-10-09 :
+`ar_archive_writer` 0.5.2 (`Apache-2.0 WITH LLVM-exception`), dépendance de
+compilation de `psm`, entraînée par `stacker` ← `recursive` ← `sqlparser` dans
+`database-policy-inspector`.
 
 ## Conséquences et limites
 
