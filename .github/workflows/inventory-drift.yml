@@ -97,6 +97,30 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-toolchain-source.ts
+      # Threat triage 2026-10-09 (menaces 6 and 7), owner arbitration
+      # 2026-10-10. Three fleet gates, each printing the volume it read and
+      # failing on a repository or file it could not read:
+      # - every tracked bunfig.toml carries minimumReleaseAge >= 259200 and
+      #   every install root (tracked bun.lock) has one;
+      # - every `uses:` of every workflow and composite action is pinned to a
+      #   40-character commit id (the ACTION_PIN rule, fleet-wide);
+      # - no raw-SQL construction outside ecosystem/sql-construction-allowlist.v1.yaml.
+      # They read other repositories (REST tree + GraphQL `HEAD:` for the first
+      # two, a shallow `git clone` for the third), hence here and not in
+      # `bun run check`.
+      - name: Every bunfig.toml and install root carries the release-age guard
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-release-age.ts
+      - name: Every workflow and action of the fleet pins its actions by commit
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-action-pins.ts
+      - name: No raw-SQL construction outside the reviewed allowlist
+        if: always()
+        run: bun ecosystem/check-sql-construction.ts
       # Owner decision 2026-09-07 ("restore Dependabot everywhere through a
       # governance template"): every non-archived repository carries the
       # byte-exact variant of distribution/templates/dependabot/ selected by
