@@ -121,6 +121,17 @@ jobs:
       - name: No raw-SQL construction outside the reviewed allowlist
         if: always()
         run: bun ecosystem/check-sql-construction.ts
+      # I-37 (ADR-0049, owner arbitration 2026-10-10): every web surface of the
+      # fleet serves the strict web-platform header policy (or a Caddyfile with
+      # the same base), names each CSP relaxation and raw HTML sink in
+      # ecosystem/web-headers-allowlist.v1.yaml with its exact count, and every
+      # HTTP server outside a surface is declared. Reads the fleet at `HEAD`
+      # through fleet-tree.ts; an unreadable repository or file fails.
+      - name: Every web surface serves the strict header policy, no raw HTML sink
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-web-headers.ts
       # Owner decision 2026-09-07 ("restore Dependabot everywhere through a
       # governance template"): every non-archived repository carries the
       # byte-exact variant of distribution/templates/dependabot/ selected by
