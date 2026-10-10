@@ -187,3 +187,21 @@ generations:
       instead. With this declaration 7c2238d6 is two generations behind, the
       grace limit: every consumer still on it must move before another
       generation is declared, and none may sit on anything older.
+  - sha: 5ef12472d043f3ed1799ca09cff89c27ff024d79
+    added_on: 2026-10-10
+    note: >-
+      generation Q. The composition manifest composes schemas-and-contracts at
+      a82d7b54 (#84), the head of its served branch when Q was first declared,
+      which contains 197d8299 (tool-invocation-observation-v1, ADR-0046), and
+      project-governance at d94081cc (#88); every other composed ref is the one
+      of 1c8b37c8. It replaces 769e452d, declared in #85 and retired here
+      before any repository carried it: 769e452d composed project-governance
+      at da0c3b6f, which lacks the toolchains/cargo-deny.json its own
+      validate-composition.yml installs from (since #65), so every consumer
+      failed at the toolchain step (execution-continuity-evaluator run
+      38019824748). execution-continuity-evaluator moves here with its
+      libre-ai-contract-types cargo rev, which the composition refuses under
+      any generation composing another revision. Declared by owner arbitration
+      of 2026-10-10 after measuring every consumer on 1c8b37c8 and none on
+      46061644 or 7c2238d6: with this declaration 46061644 is two generations
+      behind, the grace limit, and 7c2238d6 is beyond it with no consumer.

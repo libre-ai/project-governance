@@ -91,7 +91,10 @@ The "Invariant" column cites entries of the invariants register
 ([`INVARIANTS.md`](../decisions/INVARIANTS.md)) that carry the threat. Where no
 register entry carries it, the cell says so ("no register invariant") and names
 the document that covers it, or "not covered": a gap stays visible rather than
-being filled by an unrelated citation. `tools/quality/check-threat-model-citations.ts`
+being filled by an unrelated citation. Where an ADR decided that a threat carries
+no invariant, the cell names that decision instead: "accepted risk" for a risk
+the owner accepts as is, "guardrail" for a threat held by a named mechanism
+rather than by doctrine (ADR-0048, 2026-10-10). `tools/quality/check-threat-model-citations.ts`
 fails on any cited `I-xx` absent from the register; whether a cited entry is the
 right one remains a review matter (realigned 2026-10-09).
 
@@ -99,8 +102,8 @@ right one remains a review matter (realigned 2026-10-09).
 
 | Threat                                           | STRIDE/Privacy          | Control                                                   | Residual Risk                                       | Invariant |
 | ------------------------------------------------ | ----------------------- | --------------------------------------------------------- | --------------------------------------------------- | --------- |
-| Injected script modifies Boussole state          | Tampering               | local CSP, service-worker, IndexedDB integrity check      | timing attack on local sync                         | no register invariant — not covered |
-| Export JSON modified after generation            | Tampering               | K3 envelope (HMAC over snapshot)                          | user can trivially forge; mitigation is UX friction | no register invariant — not covered (K3 binds recalled payloads, not exports) |
+| Injected script modifies Boussole state          | Tampering               | local CSP, service-worker, IndexedDB integrity check; `web-platform` security headers (CSP `script-src 'self'`, `object-src 'none'`, `base-uri 'none'`), Notebook fails closed without that base, e2e assertion of the served CSP; no raw HTML sink | timing attack on local sync                         | I-37 (headers and fail-closed base held today; Notebook lint reactivation and a fleet header gate under construction — ADR-0049) |
+| Export JSON modified after generation            | Tampering               | canonical export digest verified at import, fail-closed; AEAD or signature outside the producing trust context, never a bare digest (Notebook backup: AES-256-GCM) | holder can forge their own export — accepted risk (R9, ADR-0049) | I-10 (widened by ADR-0049; `curated-item-export` and `practice-progress-export` carry no export digest yet — measured gap) |
 | Notebook blocks synced to remote without consent | Detectability (privacy) | feature flag (export-to-session); no automatic cloud sync | user must explicitly export                         | I-21      |
 
 ### Server + RLS apps
@@ -108,7 +111,7 @@ right one remains a review matter (realigned 2026-10-09).
 | Threat                                           | STRIDE/Privacy  | Control                                                                                 | Residual Risk                                                | Invariant |
 | ------------------------------------------------ | --------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------- |
 | Browser session cookie stolen / fixed            | Spoofing        | session rotation on auth, SameSite=Strict, HttpOnly; revocation invalidates immediately | compromise of device memory (XSS still live)                 | I-09      |
-| SQL injection via mission command                | Tampering       | parameterized queries, RLS row filter (tenant check at DB level)                        | compromise of application process (still live after fixes)   | I-09 (RLS containment only; query parameterization carries no register invariant) |
+| SQL injection via mission command                | Tampering       | parameterized queries, RLS row filter (tenant check at DB level)                        | compromise of application process (still live after fixes)   | I-36 (query parameterization; the raw `exec(sql)` port called only with constant or allow-listed text; fleet gate under construction — ADR-0049), I-09 (RLS containment) |
 | Cross-tenant membership leak (e.g., invite list) | Info disclosure | RLS policy `current_tenant() = tenant_id`; RBAC checks before query                     | misconfigured RLS rule or policy bypass                      | I-09      |
 | LLM provider adapter receives full mission state | Info disclosure | K1 Biscuit attenuated to session + mission_id + `draft`; operation limit                | adapter vendor misuse (separate contractual gate)            | I-09      |
 | Revocation bypass (cached Biscuit)               | Elevation       | revocation check before policy eval; max 30s cache; unavailable → deny                  | cache poisoning or async lag (application-level mitigations) | I-09      |
@@ -119,22 +122,22 @@ right one remains a review matter (realigned 2026-10-09).
 | --------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------- |
 | Agent token reused across missions                        | Elevation                   | K1 Biscuit includes mission_id; authorizer check; per-mission issuance                                   | token leaked to lateral mission (physical compromise or accessor bug)               | I-18      |
 | Malicious tool output (e.g. fabricated source code)       | Tampering + Info disclosure | K2 classify as `operational` (not authority); K3 envelope all recall; decision-log requires human review | agent or human approves fabricated result (distinct gate: human-touch surface I-17) | I-18      |
-| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-18, I-17 |
+| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-18, I-17, I-35 (an agent quorum never stands for a human review without two distinct model families) |
 
 ### Collab relay
 
 | Threat                                                             | STRIDE/Privacy  | Control                                                                                     | Residual Risk                                                | Invariant |
 | ------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
-| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge  | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
-| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro)                  | relay owns transport; client must authenticate sender        | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
+| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | I-34 (no content sealed under an exported or derived group key; red vectors before any MLS code — ADR-0048) |
+| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge — accepted risk, an interface matter (R6, ADR-0048) | I-34 (stale or future epoch refused before applying; the merge conflict itself is the accepted R6) |
+| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro); recipient verifies the sender's MLS signature (`FramedContentAuthData`, RFC 9420 §6.1) before applying, fail-closed | relay owns transport (drop, delay, reorder), cannot forge a member's message | I-34 (native MLS framing, sender signature verified; red vectors before any MLS code — ADR-0048) |
 
 ### Published npm bricks
 
 | Threat                                                     | STRIDE/Privacy | Control                                                                      | Residual Risk                                          | Invariant |
 | ---------------------------------------------------------- | -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------ | --------- |
-| `@libre-ai/envelope` HMAC downgrade (old version consumed) | Spoofing       | contract version pinned; breaking change → new contract + dual-verify window | consumer forgets to pin (package.json lock discipline) | no register invariant — `envelope.v1` contract lock (`LOOP-SECURITY-KERNEL.md`, K3) |
-| Transitive dep (`jose`, `biscuit-auth`, `openssl`) has CVE | Tampering      | bun.lock lock, `bun audit`, per-release SBOM                                 | zero-day (operational, not architectural)              | I-26      |
+| `@libre-ai/envelope` HMAC downgrade (old version consumed) | Spoofing       | schema version bound in the MAC, a single version accepted (`schemas-and-contracts` `packages/envelope/src/index.ts:180`); package unpublished; code and catalog pinned by SHA; no dual-verify window exists | consumer forgets to pin (package.json lock discipline); `integrity.alg` not checked | guardrail, no invariant by decision (ADR-0049): replay-of-another-version test, `alg` check and composition monotonicity (`is-ancestor`) under construction |
+| Transitive dep (`jose`, `biscuit-auth`, `openssl`) has CVE | Tampering      | bun.lock lock, `bun audit`, per-release SBOM                                 | zero-day — accepted risk (R8, ADR-0049)                | I-26      |
 
 ### Review orchestrator
 
@@ -203,9 +206,9 @@ right one remains a review matter (realigned 2026-10-09).
 
 2. **Delay between detection and revocation** (max 1h until Biscuit expires): can be reduced by orchestrator triggering immediate Biscuit refresh + revocation check, not yet specified.
 
-3. **Quorum bypass** (two-agent colluding): separate open question; the agent-identity controls of I-18 assume single-agent compromise. Two-agent quorum is not currently enforced, and no register invariant covers it.
+3. **Quorum bypass** (two-agent colluding): the agent-identity controls of I-18 assume single-agent compromise. I-35 (ADR-0049) carries the collusion case: an agent quorum stands for a human review only with at least two reviewers of distinct model families, `model-family` declared by every quorum policy. The evaluator (`evaluate_agent_review_quorum`, 26 vectors, `schemas-and-contracts`) checks it when required; the locked contract leaves it optional, so the consumer carries it, and no consumer exists yet.
 
-**Invariant:** I-18 (agent identity — fleet, mission, capabilities — and per-agent revocation are the sole defenses; they depend on timely revocation and tight capability spec).
+**Invariant:** I-18 (agent identity — fleet, mission, capabilities — and per-agent revocation are the sole defenses against a single compromised agent; they depend on timely revocation and tight capability spec); I-35 (model-family diversity of any agent quorum — ADR-0049).
 
 ---
 
@@ -241,7 +244,7 @@ right one remains a review matter (realigned 2026-10-09).
 
 3. **GitHub Actions compromise** (CI/CD): if actions runner is compromised, bun.lock + source can be altered. Mitigation: signed commits (DCO), branch protection, limited action permissions (pending E10/E11 improvements).
 
-**Invariant:** I-26 (dependency advisories: periodic fleet control plus differential per-PR gate) covers the known-advisory half only. No register invariant covers zero-day, typosquatting or CI compromise: supply-chain risk is managed operationally; no zero-trust guarantee.
+**Invariant:** I-26 (dependency advisories: periodic fleet control plus differential per-PR gate) covers the known-advisory half. Beyond it, ADR-0049 decided guardrails rather than an invariant: frozen lockfile (the composition installs with `--ignore-scripts`, `.github/composition/prepare-composition.py`), actions pinned by SHA in this repository, `cargo-deny` sources, and `minimumReleaseAge` (`bunfig.toml`). A fleet gate for `minimumReleaseAge` and for action pinning on every repository is under construction; no gate reads `minimumReleaseAge` today. The zero-day is an accepted risk (R8); typosquatting and CI compromise stay with these guardrails and review. No zero-trust guarantee.
 
 ---
 
@@ -253,10 +256,11 @@ right one remains a review matter (realigned 2026-10-09).
 | R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-09       |
 | R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-09, I-18 |
 | R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate); isolation by construction specified by ADR-0045, enforcement pending — rating unchanged until a runtime passes the I-32 red vectors | design review      | I-18, I-32 |
-| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
-| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
-| R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | no register invariant — not covered |
-| R8  | Zero-day in biscuit-auth or OpenMLS              | very low    | critical | vendor security monitoring, timely patch SLA       | dependency manager | I-26 (advisory half only; zero-day not covered) |
+| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate); red vectors of I-34 written before any MLS code; the signed design's R4/R5 corrected by ADR-0048 | K4 crypto reviewer | I-34       |
+| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint — **accepted risk** (ADR-0048): an interface matter, not a cryptographic one | sessions owner     | accepted risk (ADR-0048, D70) — no invariant by decision |
+| R7  | Two-agent collusion                              | low         | high     | an agent quorum stands for a human review only with two distinct model families (ADR-0049); the first quorum consumer proves it by a red vector | orchestrator lock  | I-35       |
+| R8  | Zero-day in a dependency (biscuit-auth, OpenMLS or any transitive) | very low    | critical | vendor security monitoring, timely patch SLA — **accepted risk** (ADR-0049) | dependency manager | I-26 (advisory half); zero-day: accepted risk (ADR-0049, D71) — no invariant by decision |
+| R9  | Holder forges their own export                   | medium      | low      | **accepted risk** (ADR-0049): the holder owns the key or the content; outside the trust context an export is authenticated by AEAD or signature | data owner         | I-10 (widened by ADR-0049) |
 
 ---
 
