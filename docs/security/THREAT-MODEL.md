@@ -91,7 +91,10 @@ The "Invariant" column cites entries of the invariants register
 ([`INVARIANTS.md`](../decisions/INVARIANTS.md)) that carry the threat. Where no
 register entry carries it, the cell says so ("no register invariant") and names
 the document that covers it, or "not covered": a gap stays visible rather than
-being filled by an unrelated citation. `tools/quality/check-threat-model-citations.ts`
+being filled by an unrelated citation. Where an ADR decided that a threat carries
+no invariant, the cell names that decision instead: "accepted risk" for a risk
+the owner accepts as is, "guardrail" for a threat held by a named mechanism
+rather than by doctrine (ADR-0048, 2026-10-10). `tools/quality/check-threat-model-citations.ts`
 fails on any cited `I-xx` absent from the register; whether a cited entry is the
 right one remains a review matter (realigned 2026-10-09).
 
@@ -125,9 +128,9 @@ right one remains a review matter (realigned 2026-10-09).
 
 | Threat                                                             | STRIDE/Privacy  | Control                                                                                     | Residual Risk                                                | Invariant |
 | ------------------------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------- |
-| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
-| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge  | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
-| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro)                  | relay owns transport; client must authenticate sender        | no register invariant — `docs/parity/design/DESIGN-collab-v2-signable.md` (design, non-normative) |
+| Relay derives epoch key from public metadata                       | Info disclosure | MLS RFC 9420: k_epoch = f(private_keys + group_tree); relay sees ciphertext + epoch_id only | relay + network compromise still observable (timing, volume) | I-34 (no content sealed under an exported or derived group key; red vectors before any MLS code — ADR-0048) |
+| Member offline, returns with stale epoch; merges conflicting edits | Tampering       | K1 Biscuit includes current group_epoch_id; reconnect validates; Loro merge deterministic   | two-user offline conflict unresolvable without manual merge — accepted risk, an interface matter (R6, ADR-0048) | I-34 (stale or future epoch refused before applying; the merge conflict itself is the accepted R6) |
+| Relay appends fake message to append-only log                      | Tampering       | client-side append (relay receives encrypted delta; client writes to Loro); recipient verifies the sender's MLS signature (`FramedContentAuthData`, RFC 9420 §6.1) before applying, fail-closed | relay owns transport (drop, delay, reorder), cannot forge a member's message | I-34 (native MLS framing, sender signature verified; red vectors before any MLS code — ADR-0048) |
 
 ### Published npm bricks
 
@@ -253,8 +256,8 @@ right one remains a review matter (realigned 2026-10-09).
 | R2  | PostgreSQL or Redis compromise                   | low         | critical | RLS policy audit, tenant-boundary test suite       | infra owner        | I-09       |
 | R3  | Revocation cache lag (miss during window)        | medium      | medium   | reduce cache TTL to 5s, per-mission token refresh  | orchestrator lock  | I-09, I-18 |
 | R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate); isolation by construction specified by ADR-0045, enforcement pending — rating unchanged until a runtime passes the I-32 red vectors | design review      | I-18, I-32 |
-| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate)      | K4 crypto reviewer | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
-| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint    | sessions owner     | no register invariant — `DESIGN-collab-v2-signable.md` (design, non-normative) |
+| R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate); red vectors of I-34 written before any MLS code; the signed design's R4/R5 corrected by ADR-0048 | K4 crypto reviewer | I-34       |
+| R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint — **accepted risk** (ADR-0048): an interface matter, not a cryptographic one | sessions owner     | accepted risk (ADR-0048, D70) — no invariant by decision |
 | R7  | Two-agent collusion                              | low         | high     | quorum enforcement spec (future ADR)               | orchestrator lock  | no register invariant — not covered |
 | R8  | Zero-day in biscuit-auth or OpenMLS              | very low    | critical | vendor security monitoring, timely patch SLA       | dependency manager | I-26 (advisory half only; zero-day not covered) |
 
