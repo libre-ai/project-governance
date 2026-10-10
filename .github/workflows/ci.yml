@@ -228,3 +228,11 @@ jobs:
         env:
           PREVIOUS_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: python3 -B .github/composition/check-ref-monotonicity.py --previous-ref "$PREVIOUS_REF"
+      # Generation 769e452d composed project-governance at da0c3b6f while
+      # validate-composition.yml read composition/project-governance/toolchains/cargo-deny.json,
+      # absent from that ref; this repository's own composition runs at the PR
+      # head and could not see it. Every composition/<repo>/<path> read by
+      # validate-composition.yml or prepare-composition.py must exist in the
+      # ref manifest.json composes for <repo> (`git ls-tree`, no API quota).
+      - name: Every composed path exists in its composed ref
+        run: python3 -B .github/composition/check-composed-paths.py
