@@ -1,0 +1,111 @@
+schema_version: libre-ai.web-headers-allowlist.v1
+# Reviewed web-header relaxations, raw HTML sinks and HTTP servers outside web
+# surfaces, read by ecosystem/check-web-headers.ts (I-37, ADR-0049).
+#
+# `policy_source` is the header table every web-platform surface inherits; the
+# gate reads it at HEAD and fails if it loses the strict I-37 base.
+#
+# `allowances`: one entry per (repository, path, rule, token). `count` is the
+# exact number of occurrences the reviewer looked at: an occurrence added next
+# to a reviewed one, or a reviewed one removed, moves the count and fails the
+# gate until the entry is reviewed again. An entry with no occurrence left fails
+# as stale. `because` says what bounds the relaxation, not what the code does.
+#
+# `servers_outside_surfaces`: every non-test source that starts an HTTP server
+# outside a web surface, with why it serves no application HTML. A new server
+# fails until it is either a web surface or declared here.
+#
+# First measurement, 2026-10-10: 24 inventory entries (20 read, 4 exempt),
+# 926 tracked files examined, 9 web surfaces, zero raw HTML sink in any of them.
+policy_source:
+  repository: libre-ai/application-development-toolkit
+  path: packages/web-platform/src/response.ts
+allowances:
+  - repository: libre-ai/personal-knowledge-workspace
+    path: apps/notebook/src/server/handler.ts
+    rule: csp-relaxation
+    token: "'wasm-unsafe-eval'"
+    count: 1
+    because: >-
+      the Notebook compiles its sealed-backup core (notebook-core.core.wasm)
+      in the browser, which CSP refuses without 'wasm-unsafe-eval'. The token
+      is added to script-src only, only when NOTEBOOK_BACKUP_FEATURE_ENABLED
+      is set, by replacing the exact "script-src 'self'" of the web-platform
+      policy; it permits WebAssembly compilation, not eval or inline script.
+  - repository: libre-ai/personal-knowledge-workspace
+    path: apps/notebook/src/server/handler.ts
+    rule: csp-header-literal
+    token: Content-Security-Policy
+    count: 2
+    because: >-
+      the read and the write of the one relaxation above (allowWasmCompilation):
+      the handler reads the web-platform policy and throws
+      notebook.csp_boundary_invalid when "script-src 'self'" is absent, so the
+      application fails closed if the expected base is missing.
+  - repository: libre-ai/project-website
+    path: tools/clever/personal.ts
+    rule: csp-header-literal
+    token: Content-Security-Policy
+    count: 1
+    because: >-
+      post-deploy smoke check (matchesSmokeContract): it reads the served HTML
+      and refuses a page that carries no Content-Security-Policy; it sets no
+      header. The served policy is the Caddyfile one, which this gate checks.
+servers_outside_surfaces:
+  - repository: libre-ai/collaborative-data-sync
+    path: packages/relay/src/relay-server.ts
+    because: >-
+      ciphertext-only WebSocket relay forwarding sealed CRDT frames; it serves
+      no HTML document.
+  - repository: libre-ai/personal-knowledge-workspace
+    path: apps/p02-api/src/main.ts
+    because: >-
+      P02 JSON API bound to 127.0.0.1 by default; its sources carry no
+      text/html response.
+  - repository: libre-ai/personal-knowledge-workspace
+    path: tools/qualification/notebook-core-v2/serve.ts
+    because: >-
+      qualification harness started by the notebook-core-v2 Playwright
+      configurations to serve the built core and its golden vectors; never
+      deployed.
+  - repository: libre-ai/project-governance
+    path: tools/quality/check-no-transmission.ts
+    because: >-
+      a gate, not a server: its documentation names the Bun serve call as one
+      of the transmission signals it detects.
+  - repository: libre-ai/signalement
+    path: apps/extension-shared/editor.browser-check.ts
+    because: >-
+      browser-check harness bound to 127.0.0.1 on an ephemeral port, serving
+      the extension editor to a test browser; never deployed.
+  - repository: libre-ai/signalement
+    path: apps/extension-shared/video.browser-check.ts
+    because: >-
+      browser-check harness bound to 127.0.0.1 on an ephemeral port, serving a
+      video fixture to a test browser; never deployed.
+  - repository: libre-ai/signalement
+    path: packages/draft-storage/run-browser-check.ts
+    because: >-
+      browser-check harness bound to 127.0.0.1 on an ephemeral port for the
+      draft-storage browser test; never deployed.
+  - repository: libre-ai/signalement
+    path: tools/browser-check/chrome.ts
+    because: >-
+      browser-check fixture server bound to 127.0.0.1 on an ephemeral port;
+      never deployed.
+  - repository: libre-ai/signalement
+    path: tools/browser-check/firefox-video.ts
+    because: >-
+      browser-check fixture server bound to 127.0.0.1 on an ephemeral port;
+      never deployed.
+  - repository: libre-ai/signalement
+    path: tools/browser-check/firefox.ts
+    because: >-
+      browser-check fixture and port-reservation servers bound to 127.0.0.1;
+      never deployed.
+  - repository: libre-ai/signalement
+    path: tools/probes/serve.ts
+    because: >-
+      synthetic capture-app fixture on 127.0.0.1:43187 for the extension
+      probes; its own relaxed CSP (style-src 'unsafe-inline') applies to that
+      local fixture only, never to a served application.
