@@ -187,3 +187,15 @@ generations:
       instead. With this declaration 7c2238d6 is two generations behind, the
       grace limit: every consumer still on it must move before another
       generation is declared, and none may sit on anything older.
+  - sha: 769e452d19e5fa9fb4af2f33d7a061c9a5b3fb47
+    added_on: 2026-10-10
+    note: >-
+      the composition manifest composes schemas-and-contracts at a82d7b54 (#84),
+      the head of its served branch at declaration, which contains 197d8299
+      (tool-invocation-observation-v1, ADR-0046); every other composed ref is
+      the one of 1c8b37c8. execution-continuity-evaluator moves here with its
+      libre-ai-contract-types cargo rev, which the composition refuses under
+      any generation composing another revision. Declared by owner arbitration
+      of 2026-10-10 after measuring every consumer on 1c8b37c8 and none on
+      46061644 or 7c2238d6: with this declaration 46061644 is two generations
+      behind, the grace limit, and 7c2238d6 is beyond it with no consumer.
