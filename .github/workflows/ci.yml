@@ -216,3 +216,15 @@ jobs:
       # needs a diff against the PR base the same way check-audit-delta.ts
       # already does above, and bun-quality already installs the toolchain.
       - run: bun tools/quality/check-review-evidence.ts
+      # Threat triage 2026-10-09 (menace 4, rollback), owner arbitration
+      # 2026-10-10: every ref that changes in .github/composition/manifest.json
+      # must descend from the ref it replaces (`git merge-base --is-ancestor`),
+      # unless ref-monotonicity-exemptions.json admits that target with a
+      # reason. The previous declaration is the manifest at the pull request's
+      # base, or at the tip a push replaced; this job checks out with
+      # fetch-depth 0, so both are in the clone. An event that hands no base
+      # (dispatch, branch creation) says so and compares nothing.
+      - name: Composition refs only move forward
+        env:
+          PREVIOUS_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: python3 -B .github/composition/check-ref-monotonicity.py --previous-ref "$PREVIOUS_REF"
