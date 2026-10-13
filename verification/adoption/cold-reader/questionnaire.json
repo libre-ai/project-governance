@@ -62,7 +62,7 @@
           "id": "evidence-link",
           "description": "The organization profile links a public evidence page (\"See the evidence\").",
           "source": "https://raw.githubusercontent.com/libre-ai/.github/HEAD/profile/README.md",
-          "patterns": ["see the evidence", "libre-ai\\.fr", "#preuves", "evidence page"]
+          "patterns": ["see the evidence", "distribution/evidence", "evidence page"]
         },
         {
           "id": "evidence-part-of-product",
