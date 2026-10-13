@@ -438,12 +438,12 @@ describe("formatRoutingSummary", () => {
 });
 
 describe("real corpus", () => {
-  test("every positive trigger under skills/ passes: 18 pass, 0 fail, 0 ungraded", async () => {
+  test("every positive trigger under skills/ passes: 24 pass, 0 fail, 0 ungraded", async () => {
     const sources = await loadSkillSources(`${import.meta.dir}/../../skills`);
     const results = gradeRoutingCases(sources.map(parseSkillSource), DEFAULT_RANK1_FLOOR);
     expect(expectCountersSumToTotal(results)).toEqual({
-      total: 18,
-      pass: 18,
+      total: 24,
+      pass: 24,
       fail: 0,
       ungraded: 0,
     });
