@@ -105,8 +105,9 @@ La vérification manuelle de collision ne se fait plus seulement à l'admission.
 Elle se rejoue à chaque **installation ou mise à jour** d'un plugin machine qui
 charge des skills, et à chaque admission. Elle reste un constat humain, jamais
 un gate figé sur un inventaire (la raison de D2.3 tient toujours). Son
-journal, daté, va sous `docs/reviews/skills-collisions/` (preuve non
-normative, comme tout `docs/reviews/`), une entrée par installation ou mise à
+journal, daté, va dans un sous-répertoire `skills-collisions` du répertoire
+de preuves `docs/reviews` (preuve non normative, comme tout ce répertoire ; le
+sous-répertoire n'existe pas encore), une entrée par installation ou mise à
 jour, avec la source de chaque score cité.
 
 Le constat est complet quand chaque skill model-invoked ajoutée par le plugin a
