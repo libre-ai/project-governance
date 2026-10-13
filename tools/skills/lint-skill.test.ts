@@ -51,13 +51,43 @@ describe("parseFrontmatter", () => {
     expect("error" in parsed).toBe(true);
   });
 
-  test("a description containing a colon still parses on the first colon", () => {
+  // A harness that loads the skill reads this block as YAML, where an
+  // unquoted ": " inside a plain scalar is a syntax error: the skill would
+  // lint green here and fail to load there. The frontmatter must be valid
+  // YAML, not merely splittable on its first colon.
+  test("rejects an unquoted description containing ': ' (invalid YAML)", () => {
     const parsed = parseFrontmatter(
       "---\nname: foo\ndescription: Use when: this happens.\n---\nBody\n",
+    );
+    expect("error" in parsed).toBe(true);
+    if (!("error" in parsed)) return;
+    expect(parsed.error).toContain("not valid YAML");
+  });
+
+  test("a quoted description containing ': ' parses to its unquoted value", () => {
+    const parsed = parseFrontmatter(
+      '---\nname: foo\ndescription: "Use when: this happens."\n---\nBody\n',
     );
     expect("error" in parsed).toBe(false);
     if ("error" in parsed) return;
     expect(parsed.frontmatter.description).toBe("Use when: this happens.");
+  });
+
+  test("rejects a non-scalar value (flow list)", () => {
+    const parsed = parseFrontmatter("---\nname: foo\ndescription: [a, b]\n---\nBody\n");
+    expect("error" in parsed).toBe(true);
+  });
+
+  test("rejects a duplicated key (YAML parsers keep the last one silently)", () => {
+    const parsed = parseFrontmatter("---\nname: foo\nname: bar\n---\nBody\n");
+    expect("error" in parsed).toBe(true);
+  });
+
+  test("a boolean scalar is read back as its YAML text", () => {
+    const parsed = parseFrontmatter("---\nname: foo\ndisable-model-invocation: true\n---\nBody\n");
+    expect("error" in parsed).toBe(false);
+    if ("error" in parsed) return;
+    expect(parsed.frontmatter["disable-model-invocation"]).toBe("true");
   });
 
   test("rejects a folded (multi-line) scalar instead of silently minting a bogus key", () => {

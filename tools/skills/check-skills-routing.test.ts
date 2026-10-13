@@ -44,6 +44,37 @@ describe("stem", () => {
   test("is idempotent-ish across close variants (routing signal, not a linguistic claim)", () => {
     expect(stem("authorization")).toBe(stem("authorizations"));
   });
+
+  // The invariant the suffix list's own comment states: a plural strips to
+  // the same root as its singular. Stripping "-es" as one suffix broke it for
+  // every singular ending in a silent "e" (features -> "featur", feature ->
+  // "feature"); the sibilant plurals that "-es" was there for must hold too.
+  test.each([
+    ["features", "feature"],
+    ["changes", "change"],
+    ["files", "file"],
+    ["rules", "rule"],
+    ["issues", "issue"],
+    ["classes", "class"],
+    ["fixes", "fix"],
+    ["matches", "match"],
+    ["processes", "process"],
+    ["policies", "policy"],
+    ["settings", "setting"],
+    ["authorizations", "authorization"],
+  ])("a plural stems to its singular's root: %s / %s", (plural, singular) => {
+    expect(stem(plural)).toBe(stem(singular));
+  });
+
+  test("a singular ending in -ss, -us or -is is not taken for a plural", () => {
+    expect(stem("status")).toBe("status");
+    expect(stem("access")).toBe("access");
+    expect(stem("analysis")).toBe("analysis");
+  });
+
+  test("the documented false stem on 'apply' is unchanged", () => {
+    expect(stem("apply")).toBe("app");
+  });
 });
 
 describe("tokenize", () => {
