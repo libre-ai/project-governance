@@ -43,7 +43,8 @@
 2. **La promotion n'a pas de critère.** D6 dit « usage réel confirmé » sans
    dire ce qui se confirme. `eval.json` porte un seul cas comportemental, que
    D2.2 laisse à la revue sans le noter (`skills/review-fanout/eval.json`) ;
-   aucune des six skills n'a quitté `candidate`.
+   aucune skill admise n'a quitté `candidate` (`grep -h '^status'
+   skills/*/SKILL.md`).
 3. **L'admission est mécanique.** Les trois conditions de D2 vérifient la
    forme d'une skill, jamais le besoin : rien n'exige qu'une skill, ou une
    modification de skill, réponde à une panne constatée. L'amont applique une
@@ -173,7 +174,7 @@ favorise A).
   d'écriture issue du même drill ; il ne répète pas ces règles d'admission.
 - Restent à faire hors de cette pull request : la vérification de forme de
   `working_if` par T1 ; le gate du manifeste si D7-A est retenue ; le premier
-  `working_if` des six skills admises, qui passe lui-même la barre D1.
+  `working_if` des skills admises, qui passe lui-même la barre D1.
 
 ## Ce qui n'est pas décidé ici
 
