@@ -1,0 +1,16 @@
+{
+  "skill": "pr-body",
+  "positive": [
+    "Write the pull request description for this branch in the fleet template format.",
+    "Draft the PR body with the Door reversibility declaration and the blast radius.",
+    "Rewrite this pull request description: it needs before/after evidence and a Door line."
+  ],
+  "negative": [
+    "Review this pull request for security issues before I merge it.",
+    "Check that this repository's quality gates are green before I call the task done."
+  ],
+  "behavioral": {
+    "scenario": "A branch touches docs/adr/0050-example.md in libre-ai/project-governance and no owner arbitration has been given in the session.",
+    "expected": "The skill reads GATED_PATH_PATTERNS from check-review-evidence.ts on the base branch, finds the ADR path guarded, does not invent an Owner-arbitration date, and stops to ask the owner instead of opening the pull request."
+  }
+}

@@ -15,7 +15,7 @@
     },
     "ai-work-supervision": {
       "repository": "libre-ai/ai-work-supervision",
-      "ref": "a15568d66c285501229710bb18b8c5aa24700dfb",
+      "ref": "d4e6e843afeca8c9af6e3b1b1c5e7e1da70aaab9",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",
@@ -27,7 +27,7 @@
     },
     "application-development-toolkit": {
       "repository": "libre-ai/application-development-toolkit",
-      "ref": "9e817e7394bfc1b747b06c5000a11dec9d314614",
+      "ref": "4b92bc252ac2ffd966a4af74c671af25d472b91d",
       "dependencies": ["project-governance", "schemas-and-contracts", "ai-work-supervision"],
       "check": [["bun", "run", "check"]]
     },
@@ -43,7 +43,7 @@
     },
     "ai-model-policy": {
       "repository": "libre-ai/ai-model-policy",
-      "ref": "ba35dba3f2736b243439c3ab3ad41fea6236eb3d",
+      "ref": "fd39d326ab61cc8de106d87b53e084c9ad823b8c",
       "dependencies": [
         "project-governance",
         "schemas-and-contracts",

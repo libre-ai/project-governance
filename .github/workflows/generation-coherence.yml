@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: EUPL-1.2
+name: Generation coherence
+
+# A generation is a governance commit whose composition manifest composes one
+# ref per repository. Nothing ran those refs against each other before the
+# declaration: Q (5ef12472) composed project-governance at d94081cc, whose
+# check-bun-manifests refuses the `prepublishOnly` that application-development-
+# toolkit 9e817e73 carries, and the declaration merged green. This workflow
+# installs every composed target at its composed ref and replays the manifest
+# gate of the composed governance on it
+# (.github/composition/check-generation-coherence.py).
+#
+# It runs when something a declaration is made of changes: the manifest, the
+# register of generations, the guard itself. A pull request that adds a
+# generation to ecosystem/fleet-pins.v1.yaml replays the manifest THAT commit
+# composes, before the declaration merges.
+on:
+  push:
+    # No branch filter: the served branch is whatever the repository serves,
+    # and the paths already say what a run is for.
+    paths:
+      - .github/composition/manifest.json
+      - .github/composition/check-generation-coherence.py
+      - .github/composition/prepare-composition.py
+      - ecosystem/fleet-pins.v1.yaml
+      - .github/workflows/generation-coherence.yml
+  pull_request:
+    paths:
+      - .github/composition/manifest.json
+      - .github/composition/check-generation-coherence.py
+      - .github/composition/prepare-composition.py
+      - ecosystem/fleet-pins.v1.yaml
+      - .github/workflows/generation-coherence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generation-coherence-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coherence:
+    name: Composed targets pass the manifest gates of their composed governance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: The manifest of this commit
+        run: python3 -B .github/composition/check-generation-coherence.py --root "$RUNNER_TEMP/coherence-head"
+      # The generations added to the register since the previous declaration
+      # (the pull request base, or the tip a push replaced), from the YAML of
+      # both registers and held against their `- sha:` line counts: a parse that
+      # disagrees with the text fails the step instead of listing fewer. It runs
+      # even when the step above is red: one red must not hide the other.
+      - name: The manifest of every generation this change declares
+        if: ${{ !cancelled() }}
+        env:
+          PREVIOUS: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [ -z "$PREVIOUS" ] || [ "$PREVIOUS" = "0000000000000000000000000000000000000000" ]; then
+            echo "no previous commit to compare the register with: no declaration replayed"
+            exit 0
+          fi
+          # An assignment, so that a failure stops the step (bash -e) instead of
+          # reading as "no generation added".
+          added="$(bun tools/fleet/added-generations.ts "$PREVIOUS")"
+          declared=0
+          for sha in $added; do
+            declared=$((declared + 1))
+            echo "::group::declaration $sha"
+            python3 -B .github/composition/check-generation-coherence.py --declaration "$sha" --root "$RUNNER_TEMP/coherence-$sha"
+            echo "::endgroup::"
+          done
+          echo "$declared generation(s) declared by this change, each replayed"

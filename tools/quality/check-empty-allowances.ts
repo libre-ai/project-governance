@@ -52,6 +52,16 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     because:
       "same absence as check-skills.ts, plus a second legitimate empty state: pairwise description overlap needs at least 2 routable skills to compare, so a collection admitting its first skill correctly asserts nothing on that half of T2",
   },
+  {
+    file: "tools/skills/check-skills-cascade.ts",
+    because:
+      "same absence as check-skills.ts, plus one more: the non-cascade rule binds only user-invoked skills, so a collection holding none asserts nothing — the truth, said with the count of skills it read",
+  },
+  {
+    file: "tools/quality/check-pr-door.ts",
+    because:
+      "the declaration lives in a pull request description, which exists only on a pull_request run; a push, a dispatch or a local run has no description to read. On a pull_request run an absent or unreadable event payload fails instead of reading as empty",
+  },
 ];
 
 const SCANNED_DIRECTORIES = ["tools", "ecosystem"];

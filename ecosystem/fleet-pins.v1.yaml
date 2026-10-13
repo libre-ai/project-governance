@@ -205,3 +205,24 @@ generations:
       of 2026-10-10 after measuring every consumer on 1c8b37c8 and none on
       46061644 or 7c2238d6: with this declaration 46061644 is two generations
       behind, the grace limit, and 7c2238d6 is beyond it with no consumer.
+  - sha: 0db2e10e3ea785c31c101914483ed501ec4cbb7a
+    added_on: 2026-10-13
+    note: >-
+      generation R. The composition manifest composes
+      application-development-toolkit at 4b92bc25, ai-work-supervision at
+      d4e6e843 and ai-model-policy at fd39d326 (#100), the served heads of
+      the three at declaration; every other composed ref is the one of
+      5ef12472. Q composed three refs that fail the manifest gates of their
+      own composed governance; the generation coherence guard (#97) now
+      replays those gates on every composed target, and on R it reports 16
+      declared, 15 verified, 0 failed, 1 not applicable. Declared by owner arbitration of 2026-10-13 (generation R
+      taken by the convergence session, D21) after the 2026-10-10 arbitration
+      of the R batch. Grace, measured on the surfaces of every non-archived
+      repository: Q is one generation behind, 1c8b37c8 (P) two, the grace
+      limit, and 46061644 and 7c2238d6 are beyond it with no consumer on
+      either. Every consumer still on 1c8b37c8 must move before another
+      generation is declared: ai-work-supervision, ai-model-policy,
+      personal-knowledge-workspace, travel-itinerary-planner,
+      organization-data-lifecycle, learning-session-facilitation and
+      project-website (composition targets), and product-research (not a
+      composition target).

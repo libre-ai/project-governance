@@ -231,6 +231,13 @@ fois. `deploy-clever` (`user-invoked`) le respecte : son pré-vol appelle
 des commandes (`git status`, `bun run check`, `clever status`,
 `gh run list`), jamais une autre skill `user-invoked`.
 
+La règle est vérifiée par `bun run check:skills-cascade` (T3,
+`tools/skills/check-skills-cascade.ts`), maillon de `bun run check` : il
+refuse qu'une skill `user-invoked` de `skills/` nomme une autre skill
+`user-invoked` sous la forme ``Skill tool with "x"``, `/x` ou « invoke the
+x skill ». Son corpus est ce dépôt : une skill installée seulement sur une
+machine lui échappe, et il le dit dans le volume qu'il imprime.
+
 ### Invoquer une autre skill : la formule opérante
 
 Quand une étape a besoin d'une autre skill, elle le dit dans la forme que le
