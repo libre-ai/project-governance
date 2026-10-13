@@ -14,8 +14,13 @@ describe("organization brand introduction", () => {
     expect(markdown).toContain(projection.copy.fr.tension);
     expect(markdown).toContain(projection.copy.fr.promise);
     expect(markdown).toContain(projection.copy.fr.explanation);
-    expect(markdown).toContain("https://libre-ai.fr/#produits");
-    expect(markdown).toContain("https://libre-ai.fr/#preuves");
+    expect(markdown).not.toContain("libre-ai.fr/#");
+    expect(markdown).toContain(
+      `[${projection.copy.fr.primaryCta}](https://github.com/libre-ai/.github/blob/HEAD/profile/README.fr.md#les-produits-envisag%C3%A9s)`,
+    );
+    expect(markdown).toContain(
+      `[${projection.copy.fr.secondaryCta}](https://github.com/libre-ai/project-governance/tree/HEAD/distribution/evidence)`,
+    );
     expect(markdown.split(BRAND_INTRO_BEGIN)).toHaveLength(2);
     expect(markdown.split(BRAND_INTRO_END)).toHaveLength(2);
   });
@@ -26,8 +31,21 @@ describe("organization brand introduction", () => {
     expect(markdown).toContain(projection.copy.en.tension);
     expect(markdown).toContain(projection.copy.en.promise);
     expect(markdown).toContain(projection.copy.en.explanation);
-    expect(markdown).toContain("Take the keys.");
-    expect(markdown).toContain("See the evidence.");
+    expect(markdown).not.toContain("libre-ai.fr/#");
+    expect(markdown).toContain(
+      "[Take the keys.](https://github.com/libre-ai/.github/blob/HEAD/profile/README.md#planned-products)",
+    );
+    expect(markdown).toContain(
+      "[See the evidence.](https://github.com/libre-ai/project-governance/tree/HEAD/distribution/evidence)",
+    );
+  });
+
+  test("never names a branch in a call-to-action target", () => {
+    for (const language of ["fr", "en"] as const) {
+      const markdown = renderOrgBrandIntro(projection, language);
+      expect(markdown).not.toContain("/blob/main/");
+      expect(markdown).not.toContain("/tree/main/");
+    }
   });
 
   test("is byte deterministic", () => {
