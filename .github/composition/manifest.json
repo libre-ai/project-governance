@@ -3,13 +3,13 @@
   "repositories": {
     "project-governance": {
       "repository": "libre-ai/project-governance",
-      "ref": "da0c3b6ff7f8814daab2cdf881406d8c4d49ff0f",
+      "ref": "d94081ccc5892c262ba1a0c534b8575a18c48341",
       "dependencies": [],
       "check": [["bun", "run", "check"]]
     },
     "schemas-and-contracts": {
       "repository": "libre-ai/schemas-and-contracts",
-      "ref": "4f3d53c3ecd96e7064057afd1587de41b66f13c1",
+      "ref": "a82d7b54cfda00bfcbbdff34a3c34f24a2468a6e",
       "dependencies": ["project-governance"],
       "check": [["bun", "run", "check"]]
     },

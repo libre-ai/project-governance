@@ -1,0 +1,110 @@
+schema_version: libre-ai.sql-construction-allowlist.v1
+# Reviewed raw-SQL construction sites, read by ecosystem/check-sql-construction.ts.
+#
+# One entry per (repository, path, rule). `count` is the exact number of sites
+# the reviewer looked at: a site added next to a reviewed one, or a reviewed one
+# removed, moves the count and fails the gate until the entry is reviewed again.
+# An entry with no site left fails as stale. `because` is the reason the site is
+# safe — what bounds the non-constant part — not a description of the code.
+#
+# First measurement, 2026-10-10: 20 public active repositories, 1 148 tracked
+# TS/JS/Rust sources, 23 sites in the 12 entries below; zero `sql-concatenation`.
+# `LEASE_HELD` in personal-knowledge-workspace (crates/p02-store/src/queue.rs) is
+# not listed: it is a SCREAMING_CASE `const &str`, which the rule reads as a
+# constant, so it is not a finding.
+allowances:
+  - repository: libre-ai/organization-data-lifecycle
+    path: packages/data/src/adapters/expired-selection-query.ts
+    rule: sql-template-interpolation
+    count: 1
+    because: >-
+      the table name is the only non-parameterizable fragment; it is checked
+      against /^[a-z][a-z0-9_]{0,62}$/ (UnsafeTableNameError otherwise) before
+      any SQL is sent, then double-quoted; every value is bound as $1/$2.
+  - repository: libre-ai/ai-work-supervision
+    path: crates/work-supervision-store/src/lib.rs
+    rule: rust-format-sql
+    count: 2
+    because: >-
+      the first site dumps the store's own schema: table names come from
+      sqlite_schema and key columns from pragma_table_info of the local
+      database, never from a caller, and are double-quoted; the second is the
+      private query_runs, whose two callers in lib.rs pass string-literal WHERE
+      clauses and bind the mission as ?1.
+  - repository: libre-ai/ai-work-supervision
+    path: crates/work-supervision-store/src/records.rs
+    rule: rust-format-sql
+    count: 2
+    because: >-
+      private requests_where and check_runs_where; every caller in records.rs
+      passes a string-literal filter ("id = ?1", "state = ?1", "?1 = ?1",
+      "mission_id = ?1") and the value is bound as ?1.
+  - repository: libre-ai/database-policy-inspector
+    path: src/main.rs
+    rule: rust-format-sql
+    count: 4
+    because: >-
+      #[test] fixtures that assemble schema text for the inspector to parse
+      statically; the inspector opens no database connection, so the text is
+      analysed, never executed.
+  - repository: libre-ai/personal-knowledge-workspace
+    path: apps/p02-api/test/pg.ts
+    rule: unsafe-call
+    count: 5
+    because: >-
+      test bootstrap of a throwaway Postgres: CREATE ROLE / CREATE DATABASE /
+      GRANT cannot take bind parameters, and the identifiers are the module
+      constants MIGRATOR, DATABASE and API_LOGIN; the remaining call applies the
+      repository's committed migration files.
+  - repository: libre-ai/ai-work-supervision
+    path: crates/work-supervision-store/postgres-check/postgres-migrations.test.ts
+    rule: exec-non-constant
+    count: 2
+    because: >-
+      test against an in-memory PGlite: one call applies the repository's
+      committed migration files, the other inserts a fixture whose only
+      interpolation is the literal "0".repeat(64).
+  - repository: libre-ai/ai-work-supervision
+    path: crates/work-supervision-store/postgres-check/postgres-migrations.test.ts
+    rule: sql-template-interpolation
+    count: 1
+    because: >-
+      same fixture insert as above; the interpolated value is the literal
+      "0".repeat(64), in a test against an in-memory PGlite.
+  - repository: libre-ai/ai-work-supervision
+    path: apps/missions/src/persistence/mission-store.integration.test.ts
+    rule: sql-template-interpolation
+    count: 1
+    because: >-
+      negative test asserting that a raw insert is refused; the only
+      interpolation is the literal "a".repeat(64) and both values are bound as
+      $1/$2.
+  - repository: libre-ai/application-development-toolkit
+    path: packages/testing/src/test-database.ts
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      the shared test helper applies the .sql migration files of a directory
+      its test caller names, inside an in-memory PGlite; it is a test utility
+      and never reaches a production database.
+  - repository: libre-ai/learning-session-facilitation
+    path: apps/sessions/src/rgpd/migration.integration.test.ts
+    rule: exec-non-constant
+    count: 2
+    because: >-
+      migration test applying the repository's committed SESSIONS_MIGRATIONS
+      files, in order, to a staged test database.
+  - repository: libre-ai/ai-work-supervision
+    path: adapters/pi/ws-bridge.ts
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      not SQL: pi.exec(program, argv, options) is the Pi extension API that
+      spawns a process with an argument vector.
+  - repository: libre-ai/pi-evidence
+    path: src/runner.ts
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      not SQL: options.exec(command, args, options) is the injected process
+      runner of the evidence harness, called with an argument vector.

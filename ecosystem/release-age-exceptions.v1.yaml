@@ -1,0 +1,10 @@
+schema_version: libre-ai.release-age-exceptions.v1
+# Packages a repository may install younger than three days
+# (`minimumReleaseAgeExcludes` in a bunfig.toml). Read by
+# ecosystem/check-release-age.ts. Each entry names the repository, the exact
+# bunfig.toml path, the package and why the guard is waived for it. An entry
+# that no longer matches an exclude in that file fails the gate as stale.
+#
+# Empty on 2026-10-10: no tracked bunfig.toml of the active fleet excludes a
+# package. A supply-chain waiver is an owner decision, recorded here first.
+exceptions: []

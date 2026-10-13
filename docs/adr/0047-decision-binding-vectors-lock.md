@@ -2,7 +2,7 @@
 
 - **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
 - **Date :** 2026-10-09
-- **Arbitrage :** le propriétaire a demandé en chat de préparer le verrouillage et de le signer lui-même par la fusion (« Préparer, je merge moi-même »). Owner-arbitration: 2026-10-09 — préparation demandée ; la fusion de cette pull request et celle de `libre-ai/schemas-and-contracts` #22 sont la signature
+- **Arbitrage :** le propriétaire a demandé en chat de préparer le verrouillage et de le signer lui-même par la fusion (« Préparer, je merge moi-même »). Owner-arbitration: 2026-10-09 — préparation demandée ; la fusion de cette pull request et celle de `libre-ai/schemas-and-contracts` #22 sont la signature. Owner-arbitration: 2026-10-13 — « l'orchestrateur réaligne et merge sur vert » : la fusion est exécutée par l'orchestrateur sur checks requis verts, `schemas-and-contracts` #22 d'abord ; l'ordre des deux fusions et la nature de la signature restent ceux du 2026-10-09
 - **Portée :** le jeu de vecteurs sémantiques `decision-binding-vectors.v1` de `libre-ai/schemas-and-contracts`.
 - **Précise :** ADR-0036 / D42 (verrou de la famille authorized-execution) : sans en modifier le texte ni aucun de ses artefacts, ajoute un jeu verrouillé à côté de ceux qu'elle a verrouillés.
 - **Applique :** I-17 (surface à touche humaine fermée : un Specification Lock est une signature) ; I-18 (données `operational` jamais autorité : une demande ne peut pas déclarer sa propre politique).

@@ -4,7 +4,8 @@
 **Auteur** : Claude Code (Design-Fix Agent)  
 **Révision** : v1 → v2 (Crypto model MLS RFC 9420)  
 **Signature** : En attente  
-**Classif.** : ADR-0011 (dur-stop D4)
+**Classif.** : ADR-0011 (dur-stop D4)  
+**Amendement** : [ADR-0048](../../adr/0048-mls-sender-authentication-design-correction.md) (2026-10-10) amende la signature propriétaire du 2026-07-23 : R5 et R4 du §11 sont corrigés, ainsi que le §3 « Accord de clé groupe », étapes 2 et 3, et le contrat critique du §6 « Layer-2 ». Les contenus échangés entre membres sont des messages applicatifs MLS natifs, signés par l'expéditeur et vérifiés avant application. Aucun contenu n'est scellé sous une clé exportée ou dérivée hors du framing (invariant I-34). Le texte signé reste lisible en place, marqué amendé.
 
 ---
 
@@ -72,6 +73,8 @@ Remplacer la dérivation publique par un accord de clé où `k_group` dépend de
    - Chaque participant génère une **KeyPackage MLS** (clé privée + signature publique).
    - Facilitateur crée une **MLSGroup** : Init message + Add proposals pour chaque participant.
    - Commit = proof cryptographique que tous les participants acceptent l'état → **epoch_secret**.
+
+> **Amendé par ADR-0048 (2026-10-10) — étapes 2 et 3 ci-dessous.** Un `k_epoch` partagé par tous les membres n'authentifie que l'appartenance au groupe, jamais l'expéditeur (RFC 9420 §16.5). Les deltas Loro sont envoyés comme messages applicatifs MLS en PrivateMessage, protégés par les clés du secret tree et signés par l'expéditeur dans `FramedContentAuthData` (§6.1, §6.3.1). Aucune clé HKDF applicative ne scelle de contenu, et `participant_id` n'est jamais transporté hors framing. Texte d'origine conservé pour trace :
 
 2. **Dérivation de clé d'époque** :
    - `k_epoch = HKDF-SHA256(epoch_secret, "collab-v2-epoch-key", epoch_id)` [2].
@@ -216,6 +219,8 @@ export trait LoroMlsSyncBrick {
 - AEAD : ChaCha20-Poly1305 (default) ou AES-256-GCM (cipher suite).
 
 **Contrat critique** :
+
+> **Amendé par ADR-0048 (2026-10-10).** Les deux premières puces ci-dessous sont remplacées par : `loro_doc.encode_snapshot_since()` et chaque delta sont envoyés comme messages applicatifs MLS natifs (PrivateMessage), et le destinataire vérifie la signature de `FramedContentAuthData` avant d'appliquer, avec refus fermé. Ni `epoch_secret` ni un secret exporté n'alimente un `aead_seal` applicatif. Texte d'origine conservé pour trace :
 
 - `mls_group.epoch_secret()` → feed HKDF, jamais exposer raw.
 - `loro_doc.encode_snapshot_since()` → plainttext; chiffrer uniquement via `aead_seal(snapshot, epoch_key)`.
@@ -397,9 +402,15 @@ K4 crypto (résolution ancrée RFC 9420 + red-team adversarial). Verdict : outco
 
 **R3 — Forward Secrecy vs Post-Compromise Security.** **FS (automatique)** : après chaque Commit, l'`epoch_secret` ancien est supprimé ; un secret compromis _avant_ le Commit ne dérive pas les clés futures (les nouvelles ne se dérivent pas des anciennes). **PCS (explicite)** : proposition KeyUpdate → Commit → nouvelle clé de feuille + nouvel `epoch_secret`. FS = comportement MLS par défaut ; PCS = rotation active (politique de déclenchement KeyUpdate à documenter : révocation utilisateur, périodique). _RFC 9420 §6, §10._
 
-**R4 — Dérivation de clé (HKDF).** Utiliser l'API **Exporter() de MLS (§7)** avec séparation de domaine via `exporter_secret` : `k_collab = Exporter("collab-epoch-data", context, 32)`, PAS une dérivation directe de `epoch_secret`. Tout le matériel de clé passe par le key schedule MLS analysé. _RFC 9420 §7, §8._
+> **R4 et R5 ci-dessous sont amendés par ADR-0048 (2026-10-10).** Le texte signé le 2026-07-23 est conservé pour trace. R4′ et R5′, qui le suivent, font foi.
 
-**R5 — Authentification d'expéditeur (correction Critique du red-team).** Les deltas Loro sont envoyés en **MLS PrivateMessage**, qui lie l'expéditeur **via le MAC AEAD calculé sur `authenticated_data` (incluant l'index de feuille de l'expéditeur)**, et **NON via un champ signature** — PrivateMessage n'a PAS de champ signature en RFC 9420 (la signature n'existe que dans PublicMessage, §5.1.1). Un `k_epoch` partagé ne permet donc PAS de forger un delta attribué à autrui : le MAC AEAD est calculé sous une clé dérivée liée à l'expéditeur, et le destinataire vérifie l'`authenticated_data` avant d'accepter. _RFC 9420 §9.3-9.4._
+**R4 — Dérivation de clé (HKDF).** _[Amendé par ADR-0048 : retiré.]_ Utiliser l'API **Exporter() de MLS (§7)** avec séparation de domaine via `exporter_secret` : `k_collab = Exporter("collab-epoch-data", context, 32)`, PAS une dérivation directe de `epoch_secret`. Tout le matériel de clé passe par le key schedule MLS analysé. _RFC 9420 §7, §8._
+
+**R5 — Authentification d'expéditeur (correction Critique du red-team).** _[Amendé par ADR-0048 : énoncé faux sur les faits.]_ Les deltas Loro sont envoyés en **MLS PrivateMessage**, qui lie l'expéditeur **via le MAC AEAD calculé sur `authenticated_data` (incluant l'index de feuille de l'expéditeur)**, et **NON via un champ signature** — PrivateMessage n'a PAS de champ signature en RFC 9420 (la signature n'existe que dans PublicMessage, §5.1.1). Un `k_epoch` partagé ne permet donc PAS de forger un delta attribué à autrui : le MAC AEAD est calculé sous une clé dérivée liée à l'expéditeur, et le destinataire vérifie l'`authenticated_data` avant d'accepter. _RFC 9420 §9.3-9.4._
+
+**R4′ — Secrets exportés (ADR-0048, 2026-10-10).** Aucun contenu échangé entre membres n'est scellé par une clé dérivée d'`MLS-Exporter`, d'un `epoch_secret` ou d'un HKDF applicatif. Une telle clé est identique chez tous les membres de l'époque et n'authentifie que l'appartenance au groupe : tout membre pourrait forger un delta attribué à un autre. Les deltas et instantanés Loro sont des messages applicatifs MLS natifs. Un secret exporté ne sert qu'à un usage hors du contenu échangé, sous une étiquette unique. _RFC 9420 §8.5, §16.5._
+
+**R5′ — Authentification d'expéditeur (ADR-0048, 2026-10-10).** Un PrivateMessage porte la signature de son expéditeur : `PrivateMessageContent` contient `FramedContentAuthData auth`, dont le champ `signature` est calculé par `SignWithLabel(., "FramedContentTBS", …)` sous la clé de signature de la feuille de l'expéditeur. Le destinataire vérifie cette signature avant d'appliquer le contenu, avec refus fermé. L'AEAD sous les clés du secret tree n'authentifie que l'appartenance au groupe : ces clés sont dérivables par tout membre de l'époque. Seule la signature lie le message à un membre particulier. Invariant I-34. _RFC 9420 §6, §6.1, §6.3.1, §16.5._
 
 **Risques résiduels** (aucun au niveau crypto) : (a) **implémentation** — correction du binding OpenMLS WASM (v0.8.1 maintenu ; audit recommandé à l'intégration) ; (b) **métadonnées** — un relais compromis observe présence / époque / tailles (mitigation future : padding constant-rate).
 
