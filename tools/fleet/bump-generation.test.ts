@@ -5,6 +5,7 @@ import {
   buildAuthorityQuery,
   buildSourcesQuery,
   coherenceEnvironment,
+  coherenceSpawner,
   commitMessage,
   isCandidatePath,
   parseBumpData,
@@ -13,6 +14,7 @@ import {
   ROOT_SURFACES,
   renderPlanTable,
   replayCoherence,
+  runApply,
   selectTargets,
 } from "./bump-generation";
 import type { RepositoryPlan } from "./bump-plan";
@@ -253,5 +255,60 @@ describe("generation coherence before apply", () => {
       FLEET_BUMP_TOKEN: "secret",
     });
     expect(environment).toEqual({ PATH: "/usr/bin", HOME: "/home/runner" });
+  });
+
+  test("the process that is actually spawned receives the scrubbed environment, not the caller's", () => {
+    const seen: Record<string, string>[] = [];
+    const spawn = coherenceSpawner(
+      { PATH: "/usr/bin", HOME: "/h", GH_TOKEN: "secret", BUMP_TOKEN: "secret" },
+      (_argv, options) => {
+        seen.push({ ...options.env });
+        return { exitCode: 0, stdout: new TextEncoder().encode("out"), stderr: new Uint8Array() };
+      },
+    );
+    expect(spawn(["python3", "guard.py"])).toEqual({ code: 0, output: "out\n" });
+    expect(seen).toEqual([{ PATH: "/usr/bin", HOME: "/h" }]);
+  });
+});
+
+describe("apply decision", () => {
+  const opened: string[] = [];
+  const open = async (plan: string) => {
+    opened.push(plan);
+    return { repository: plan, ok: true, detail: "opened" };
+  };
+
+  test("a red guard opens no consumer pull request and fails", async () => {
+    opened.length = 0;
+    const lines: string[] = [];
+    const failed = await runApply({
+      target: P,
+      coherence: { ok: false, detail: "application-development-toolkit@9e817e73" },
+      plans: ["libre-ai/a", "libre-ai/b"],
+      say: (line) => lines.push(line),
+      open,
+    });
+    expect(failed).toBe(true);
+    expect(opened).toEqual([]);
+    expect(lines.join("\n")).toContain("apply refused");
+    expect(lines.join("\n")).toContain("application-development-toolkit@9e817e73");
+  });
+
+  test("a green guard opens every pull request, and a failed one fails the run", async () => {
+    opened.length = 0;
+    const lines: string[] = [];
+    const failed = await runApply({
+      target: P,
+      coherence: { ok: true, detail: "verified" },
+      plans: ["libre-ai/a", "libre-ai/b"],
+      say: (line) => lines.push(line),
+      open: async (plan) => {
+        opened.push(plan);
+        return { repository: plan, ok: plan !== "libre-ai/b", detail: "x" };
+      },
+    });
+    expect(opened).toEqual(["libre-ai/a", "libre-ai/b"]);
+    expect(failed).toBe(true);
+    expect(lines).toContain("- apply libre-ai/b: FAILED — x");
   });
 });

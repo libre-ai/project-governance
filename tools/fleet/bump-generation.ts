@@ -486,17 +486,67 @@ export function coherenceEnvironment(
   return kept;
 }
 
-function spawnCoherence(argv: readonly string[]): { code: number; output: string } {
-  const result = Bun.spawnSync([...argv], {
-    stdout: "pipe",
-    stderr: "pipe",
-    env: coherenceEnvironment(process.env),
-  });
-  const decoder = new TextDecoder();
-  return {
-    code: result.exitCode,
-    output: `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`,
+export interface SpawnResult {
+  readonly exitCode: number;
+  readonly stdout: Uint8Array;
+  readonly stderr: Uint8Array;
+}
+export type SpawnSync = (
+  argv: string[],
+  options: { readonly env: Record<string, string> },
+) => SpawnResult;
+
+const bunSpawnSync: SpawnSync = (argv, options) =>
+  Bun.spawnSync(argv, { stdout: "pipe", stderr: "pipe", env: options.env });
+
+/** The spawn function `replayCoherence` takes; the environment is scrubbed here, at the only call. */
+export function coherenceSpawner(
+  source: Readonly<Record<string, string | undefined>>,
+  spawnSync: SpawnSync = bunSpawnSync,
+): (argv: readonly string[]) => { code: number; output: string } {
+  return (argv) => {
+    const result = spawnSync([...argv], { env: coherenceEnvironment(source) });
+    const decoder = new TextDecoder();
+    return {
+      code: result.exitCode,
+      output: `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`,
+    };
   };
+}
+
+export interface ApplyOutcomeLike {
+  readonly repository: string;
+  readonly ok: boolean;
+  readonly detail: string;
+}
+
+/**
+ * Decides between refusing and opening the consumer pull requests: nothing is
+ * opened unless the composition of the target generation passed the guard.
+ * Returns whether anything failed.
+ */
+export async function runApply<Plan>(input: {
+  readonly target: string;
+  readonly coherence: CoherenceVerdict;
+  readonly plans: readonly Plan[];
+  readonly say: (line: string) => void;
+  readonly open: (plan: Plan) => Promise<ApplyOutcomeLike>;
+}): Promise<boolean> {
+  const { target, coherence, plans, say, open } = input;
+  if (!coherence.ok) {
+    say(
+      `apply refused: the composition of ${short(target)} fails the manifest gates of its own governance: ${coherence.detail}`,
+    );
+    return true;
+  }
+  say(`coherence verified before apply: ${coherence.detail}`);
+  let failed = false;
+  for (const plan of plans) {
+    const outcome = await open(plan);
+    say(`- apply ${outcome.repository}: ${outcome.ok ? "" : "FAILED — "}${outcome.detail}`);
+    if (!outcome.ok) failed = true;
+  }
+  return failed;
 }
 
 type ApplyOutcome =
@@ -770,23 +820,25 @@ if (import.meta.main) {
       failed = true;
     } else {
       // Declared is not coherent: the register only says the sha exists.
-      const coherence = replayCoherence(composition.get(target) ?? null, spawnCoherence);
-      if (!coherence.ok) {
-        say(
-          `apply refused: the composition of ${short(target)} fails the manifest gates of its own governance: ${coherence.detail}`,
-        );
-        failed = true;
-      } else {
-        say(`coherence verified before apply: ${coherence.detail}`);
-        for (const plan of plans.filter((p) => p.status === "bump")) {
-          const entry = selection.targets.find(
-            (t) => t.repository === plan.repository,
-          ) as BumpTarget;
-          const outcome = await applyRepository(plan, entry, context, data, token);
-          say(`- apply ${outcome.repository}: ${outcome.ok ? "" : "FAILED — "}${outcome.detail}`);
-          if (!outcome.ok) failed = true;
-        }
-      }
+      const coherence = replayCoherence(
+        composition.get(target) ?? null,
+        coherenceSpawner(process.env),
+      );
+      const applyFailed = await runApply({
+        target,
+        coherence,
+        plans: plans.filter((p) => p.status === "bump"),
+        say,
+        open: (plan) =>
+          applyRepository(
+            plan,
+            selection.targets.find((t) => t.repository === plan.repository) as BumpTarget,
+            context,
+            data,
+            token,
+          ),
+      });
+      if (applyFailed) failed = true;
     }
   }
 

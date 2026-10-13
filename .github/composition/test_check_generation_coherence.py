@@ -1,9 +1,13 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("generation_coherence", HERE / "check-generation-coherence.py")
@@ -38,9 +42,10 @@ def world(**overrides):
 class FakeRunner:
     """Stands in for git and bun: fetch writes the world's files, the gate fails on a VIOLATION marker."""
 
-    def __init__(self, files, refuse_fetch=(), fail_install=()):
+    def __init__(self, files, refuse_fetch=(), fail_install=(), wrong_ref=()):
         self.files, self.refuse_fetch, self.fail_install = files, set(refuse_fetch), set(fail_install)
-        self.calls, self.refs = [], {}
+        self.wrong_ref = set(wrong_ref)
+        self.calls, self.refs, self.config_files = [], {}, []
 
     def __call__(self, argv, cwd, timeout):
         cwd = Path(cwd)
@@ -58,12 +63,20 @@ class FakeRunner:
                 target.write_text(text)
             return 0, ""
         if argv[:2] == ["git", "rev-parse"]:
-            return 0, self.refs[cwd] + "\n"
+            # A server that answers FETCH_HEAD with another commit than the one asked for.
+            return 0, ("e" * 40 if cwd.name in self.wrong_ref else self.refs[cwd]) + "\n"
         if argv[:2] == ["git", "ls-files"]:
             return 0, "".join(path + "\0" for path in sorted(self.files[cwd.name]))
-        if argv[:2] == ["bun", "install"]:
+        if argv[0] == "bun":
+            # Every bun call must name a config file that is empty and outside the target.
+            config = [arg for arg in argv if arg.startswith("--config=")]
+            assert len(config) == 1, f"bun call without --config: {argv}"
+            path = Path(config[0][len("--config="):])
+            assert path.is_file() and path.read_text() == "" and cwd not in path.parents, argv
+            self.config_files.append(path)
+        if argv[0] == "bun" and "install" in argv:
             return (1, "error: lockfile had changes\n") if cwd.name in self.fail_install else (0, "")
-        if argv[0] == "bun" and argv[1].endswith(GATE):
+        if argv[0] == "bun" and argv[-1].endswith(GATE):
             if "VIOLATION" in (cwd / "package.json").read_text():
                 return 1, "Bun manifests: package.json: prepublishOnly must enforce the Bun floor first\nBun manifests failed: 1 of 1 assertion(s) did not hold.\n"
             return 0, "Bun manifests verified\n"
@@ -101,10 +114,38 @@ class CheckTests(unittest.TestCase):
 
     def test_the_gate_replayed_is_the_one_of_the_composed_governance(self):
         _, _, _, runner = run_check(world())
-        gates = [argv for argv, _ in runner.calls if argv[0] == "bun" and argv[1].endswith(GATE)]
+        gates = [argv for argv, _ in runner.calls if argv[0] == "bun" and argv[-1].endswith(GATE)]
         self.assertTrue(gates)
         for argv in gates:
-            self.assertIn("/project-governance/" + GATE, argv[1])
+            self.assertIn("/project-governance/" + GATE, argv[-1])
+
+    def test_install_and_gate_both_run_under_an_empty_bun_config_outside_the_target(self):
+        # A `preload` in the target's bunfig.toml executes the target's code in
+        # the gate's process. The runner asserts the --config on every bun call;
+        # this counts that the install and the gate were both seen.
+        _, _, _, runner = run_check(world())
+        bun_calls = [argv for argv, _ in runner.calls if argv[0] == "bun"]
+        self.assertEqual(sum("install" in argv for argv in bun_calls), 2)
+        self.assertEqual(sum(argv[-1].endswith(GATE) for argv in bun_calls), 2)
+        self.assertEqual(len(runner.config_files), len(bun_calls))
+
+    def test_a_checkout_that_is_not_the_composed_ref_fails_the_target(self):
+        counts, failures, _, _ = run_check(world(), wrong_ref={"app"})
+        self.assertEqual(counts["failed"], 1)
+        self.assertIn("checked out eeeeeeeeeeee instead of " + APP_REF[:12], failures[0])
+        self.assertEqual(counts["declared"], counts["verified"] + counts["failed"] + counts["not_applicable"])
+
+    def test_manifests_split_into_roots_covered_and_not_examined_and_the_unexamined_are_named(self):
+        app = {"package.json": NO_GATE, "packages/ui/package.json": GATE_RUNS_MANIFEST_GATE,
+               "packages/ui/sub/package.json": NO_GATE, "tools/x/package.json": NO_GATE}
+        counts, failures, _, _ = run_check(world(app=app))
+        self.assertEqual(failures, [])
+        # project-governance: 1 root. app: 1 root, 1 covered, 2 not examined.
+        self.assertEqual((counts["tracked"], counts["rooted"], counts["covered"], counts["unexamined"]), (5, 2, 1, 2))
+        self.assertEqual(sorted(counts["unexamined_names"]), ["app:package.json", "app:tools/x/package.json"])
+        text = module.volume(counts, [], manifest("project-governance", "app", "rust"))
+        self.assertIn("5 tracked package.json = 2 gate root(s) + 1 covered by a root + 2 not examined (", text)
+        self.assertIn("app:tools/x/package.json", text)
 
     def test_gate_roots_are_derived_from_the_tracked_tree_not_from_the_root_manifest(self):
         # A workspace root with no check:bun of its own: its packages are the roots.
@@ -207,6 +248,60 @@ class DeclarationTests(unittest.TestCase):
             module.manifest_at("f" * 40, prepare, repository=HERE)
         with self.assertRaises(ValueError):
             module.manifest_at("main", prepare)
+
+
+class RunnerEnvironmentTests(unittest.TestCase):
+    def test_the_processes_the_guard_starts_never_see_the_callers_secrets(self):
+        with mock.patch.dict(os.environ, {"GH_TOKEN": "secret", "FLEET_BUMP_TOKEN": "secret", "BUMP_TOKEN": "secret"}):
+            runner = module.make_runner(time.monotonic() + 60)
+        code, output = runner([sys.executable, "-c", "import os; print(sorted(os.environ))"], HERE, 30)
+        self.assertEqual(code, 0)
+        for name in ("GH_TOKEN", "FLEET_BUMP_TOKEN", "BUMP_TOKEN"):
+            self.assertNotIn(name, output)
+        self.assertIn("GIT_TERMINAL_PROMPT", output)
+
+
+class GateDriftTests(unittest.TestCase):
+    """`--declaration X` replays the COMPOSED gate: it must be the gate X ships."""
+
+    def setUp(self):
+        self.scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(self.scratch.cleanup)
+        self.repository = Path(self.scratch.name) / "declared"
+        self.governance = Path(self.scratch.name) / "composed"
+        for base in (self.repository, self.governance):
+            for relative in module.GATE_CLOSURE:
+                (base / relative).parent.mkdir(parents=True, exist_ok=True)
+                (base / relative).write_text("// " + relative)
+        self.git("init", "--quiet", "-b", "trunk")
+        self.git("add", ".")
+        self.git("commit", "--quiet", "-m", "declared")
+        self.commit = self.git("rev-parse", "HEAD")
+
+    def git(self, *args):
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
+            cwd=self.repository, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+
+    def test_identical_gate_files_do_not_drift(self):
+        self.assertEqual(module.declared_gate_drift(self.commit, self.governance, self.repository), [])
+
+    def test_a_gate_file_that_differs_is_named(self):
+        (self.governance / "tools/quality/bun-script-floor.ts").write_text("// an older rule")
+        drift = module.declared_gate_drift(self.commit, self.governance, self.repository)
+        self.assertEqual(len(drift), 1)
+        self.assertIn("bun-script-floor.ts: differs", drift[0])
+
+    def test_a_gate_file_absent_from_the_composed_governance_is_named(self):
+        (self.governance / "tools/quality/gate-report.ts").unlink()
+        drift = module.declared_gate_drift(self.commit, self.governance, self.repository)
+        self.assertEqual(len(drift), 1)
+        self.assertIn("gate-report.ts: absent from the composed governance", drift[0])
+
+    def test_an_unknown_declared_commit_is_drift_never_a_pass(self):
+        drift = module.declared_gate_drift("f" * 40, self.governance, self.repository)
+        self.assertEqual(len(drift), len(module.GATE_CLOSURE))
 
 
 if __name__ == "__main__":

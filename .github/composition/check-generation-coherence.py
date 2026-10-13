@@ -32,6 +32,14 @@
 # composition runs no Bun install at all (prepare-composition.py skips it) and
 # which tracks no package.json: it is counted and named.
 #
+# Trust boundary: the targets are other repositories' code. Bun reads the
+# `bunfig.toml` of its working directory, and a `preload` there runs the target's
+# own file in the gate's process (probed: it wrote an environment variable to a
+# file). Every bun call therefore gets `--config=<empty file outside any
+# target>`, and the processes run with an allow-listed environment, never the
+# caller's. Neither is a sandbox: the install still reads the target's
+# lockfile and `.npmrc`, and the gate reads the target's tree.
+#
 # stdlib only, like the other composition tools. Needs `bun` and `git` on PATH.
 import argparse
 import importlib.util
@@ -45,8 +53,15 @@ import time
 HERE = Path(__file__).parent
 GATE_NAME = "check-bun-manifests.ts"
 MANIFEST_GATES = ("tools/quality/" + GATE_NAME,)
+# The gate and every file it imports: a declaration replays the composed copy,
+# so these must be byte-identical to the declared commit's.
+GATE_CLOSURE = tuple("tools/quality/" + name for name in (
+    GATE_NAME, "bun-manifest-discovery.ts", "bun-script-floor.ts", "bun-version.ts", "gate-report.ts"))
 GOVERNANCE = "project-governance"
-INSTALL = ("bun", "install", "--frozen-lockfile", "--ignore-scripts")
+INSTALL = ("install", "--frozen-lockfile", "--ignore-scripts")
+EMPTY_CONFIG = ".empty-bunfig.toml"
+# What git, bun and python need to run; nothing the caller holds (tokens).
+KEPT_ENVIRONMENT = ("PATH", "HOME", "TMPDIR", "LANG", "LC_ALL")
 DEADLINE_SECONDS = 3000
 DETAIL_LINES = 6
 DETAIL_WIDTH = 300
@@ -89,7 +104,7 @@ def manifest_at(commit, prepare, repository=HERE.parent.parent):
 
 def make_runner(deadline):
     """`runner(argv, cwd, timeout)` → (exit code or None, combined output). Never raises."""
-    env = dict(os.environ)
+    env = {name: os.environ[name] for name in KEPT_ENVIRONMENT if name in os.environ}
     # A `refs/replace/*` entry would let git answer a committed id with other content.
     env.update(GIT_TERMINAL_PROMPT="0", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL="/dev/null",
                GIT_NO_REPLACE_OBJECTS="1")
@@ -133,11 +148,11 @@ def gate_roots(runner, checkout):
     code, output = runner(["git", "ls-files", "-z"], checkout, 60)
     if code != 0:
         raise Unreadable(f"git ls-files: {output.strip()[-200:]}")
-    roots, manifests = [], 0
+    roots, manifests = [], []
     for name in sorted(filter(None, output.split("\0"))):
         if Path(name).name != "package.json":
             continue
-        manifests += 1
+        manifests.append(name)
         path = checkout / name
         if path.is_symlink():
             raise Unreadable(f"{name}: a tracked package.json that is a symlink")
@@ -157,46 +172,73 @@ def summarise(output):
     return " | ".join(line[:DETAIL_WIDTH] for line in lines[:DETAIL_LINES]) or "no output"
 
 
+def coverage(manifests, roots):
+    """Split tracked package.json paths into (gate roots, covered by a root, not examined).
+
+    A gate run from a root reads every tracked manifest at or below its directory;
+    a manifest above or beside every root is read by no replay.
+    """
+    root_manifests = {("package.json" if relative == "." else relative + "/package.json") for relative in roots}
+    rooted, covered, unexamined = [], [], []
+    for path in manifests:
+        if path in root_manifests:
+            rooted.append(path)
+        elif any(relative == "." or path.startswith(relative + "/") for relative in roots):
+            covered.append(path)
+        else:
+            unexamined.append(path)
+    return rooted, covered, unexamined
+
+
 def verify_target(name, row, root, governance, runner, installs):
-    """('verified'|'failed'|'not-applicable', replayed, passed, failures) for one target."""
+    """(status, replayed, passed, failures, stats) for one target; status is
+    'verified', 'failed' or 'not-applicable'; stats is the manifest coverage or None."""
     label = f"{row['repository']}@{row['ref']}"
     checkout = root / name
+    empty = root / EMPTY_CONFIG
     try:
         roots, manifests = gate_roots(runner, checkout)
     except Unreadable as error:
-        return "failed", 0, 0, [f"{label}: {error}"]
+        return "failed", 0, 0, [f"{label}: {error}"], None
+    stats = coverage(manifests, roots)
     if not installs:
-        if manifests == 0:
-            return "not-applicable", 0, 0, []
-        return "failed", 0, 0, [f"{label}: tracks {manifests} package.json but the composition runs no Bun install for it"]
+        if not manifests:
+            return "not-applicable", 0, 0, [], stats
+        return "failed", 0, 0, [
+            f"{label}: tracks {len(manifests)} package.json but the composition runs no Bun install for it"
+        ], stats
     if not roots:
         return "failed", 0, 0, [
             f"{label}: no tracked package.json runs {GATE_NAME} from check:bun — "
             "the manifest gate has no root to replay"
-        ]
-    code, output = runner(list(INSTALL), checkout, 600)
+        ], stats
+    install = ["bun", f"--config={empty}", *INSTALL]
+    code, output = runner(install, checkout, 600)
     if code != 0:
-        return "failed", 0, 0, [f"{label}: `{' '.join(INSTALL)}` failed: {summarise(output)}"]
+        return "failed", 0, 0, [f"{label}: `bun {' '.join(INSTALL)}` failed: {summarise(output)}"], stats
     failures, passed = [], 0
     for gate in MANIFEST_GATES:
         script = governance / gate
         for relative in roots:
-            code, output = runner(["bun", str(script)], checkout / relative, 300)
+            code, output = runner(["bun", f"--config={empty}", str(script)], checkout / relative, 300)
             if code == 0:
                 passed += 1
             else:
                 failures.append(f"{label}: {relative}: {summarise(output)}")
     replayed = len(roots) * len(MANIFEST_GATES)
-    return ("failed" if failures else "verified"), replayed, passed, failures
+    return ("failed" if failures else "verified"), replayed, passed, failures, stats
 
 
 def check(manifest, root, runner, installs_for, url_for=lambda repository: "https://github.com/" + repository):
     """Counters and failures; the manifest is validated by the caller."""
     rows = manifest["repositories"]
     counts = {"declared": len(rows), "verified": 0, "failed": 0, "not_applicable": 0,
-              "roots": 0, "passed": 0}
+              "roots": 0, "passed": 0, "tracked": 0, "rooted": 0, "covered": 0, "unexamined": 0,
+              "unexamined_names": []}
     failures, exempt = [], []
     root.mkdir(parents=True, exist_ok=True)
+    # Outside every target: bun reads this instead of the target's bunfig.toml.
+    (root / EMPTY_CONFIG).write_text("")
     fetched = set()
     for name, row in rows.items():
         try:
@@ -218,10 +260,18 @@ def check(manifest, root, runner, installs_for, url_for=lambda repository: "http
                 f"carries no {', '.join(gate_missing)} to replay"
             )
             continue
-        status, replayed, passed, found = verify_target(name, row, root, governance, runner, installs_for(name))
+        status, replayed, passed, found, stats = verify_target(
+            name, row, root, governance, runner, installs_for(name))
         counts["roots"] += replayed
         counts["passed"] += passed
         failures.extend(found)
+        if stats is not None:
+            rooted, covered, unexamined = stats
+            counts["tracked"] += len(rooted) + len(covered) + len(unexamined)
+            counts["rooted"] += len(rooted)
+            counts["covered"] += len(covered)
+            counts["unexamined"] += len(unexamined)
+            counts["unexamined_names"].extend(f"{name}:{path}" for path in unexamined)
         if status == "verified":
             counts["verified"] += 1
         elif status == "failed":
@@ -240,10 +290,36 @@ def volume(counts, exempt, manifest):
     )
     if exempt:
         parts += f" ({', '.join(exempt)}: no Bun install in the composition and no tracked package.json)"
+    manifests = (
+        f"{counts['tracked']} tracked package.json = {counts['rooted']} gate root(s) + "
+        f"{counts['covered']} covered by a root + {counts['unexamined']} not examined"
+    )
+    if counts["unexamined_names"]:
+        manifests += f" ({', '.join(counts['unexamined_names'])})"
     return (
-        f"{parts}; {counts['roots']} gate root(s) replayed, {counts['passed']} passed; "
+        f"{parts}; {counts['roots']} gate root(s) replayed, {counts['passed']} passed; {manifests}; "
         f"gate from {governance['repository']}@{governance['ref']}"
     )
+
+
+def declared_gate_drift(commit, governance, repository=HERE.parent.parent):
+    """Files of the gate that differ between the declared commit and the composed governance.
+
+    A declaration replays the COMPOSED gate. If the declared commit carries
+    another one, the replay proves less than the declaration ships.
+    """
+    drift = []
+    for relative in GATE_CLOSURE:
+        declared = subprocess.run(["git", "-C", str(repository), "show", f"{commit}:{relative}"],
+                                  capture_output=True, timeout=60)
+        composed = governance / relative
+        if declared.returncode != 0:
+            drift.append(f"{relative}: unreadable at the declared commit {commit[:12]}")
+        elif composed.is_symlink() or not composed.is_file():
+            drift.append(f"{relative}: absent from the composed governance")
+        elif composed.read_bytes() != declared.stdout:
+            drift.append(f"{relative}: differs between the declared commit {commit[:12]} and the composed governance")
+    return drift
 
 
 def main():
@@ -276,6 +352,10 @@ def main():
         failures.append(f"counters do not sum: {counts['declared']} declared, {summed} accounted for")
     if counts["verified"] > 0 and counts["roots"] == 0:
         failures.append("targets verified without replaying a single gate root")
+    if counts["tracked"] != counts["rooted"] + counts["covered"] + counts["unexamined"]:
+        failures.append("package.json counters do not sum")
+    if args.declaration:
+        failures.extend(declared_gate_drift(args.declaration, root / GOVERNANCE))
     for failure in failures:
         print(f"Generation coherence: {failure}", file=sys.stderr)
     if failures:

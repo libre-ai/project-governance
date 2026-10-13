@@ -16,7 +16,8 @@ name: Generation coherence
 # composes, before the declaration merges.
 on:
   push:
-    branches: [main, migrate/recover-code]
+    # No branch filter: the served branch is whatever the repository serves,
+    # and the paths already say what a run is for.
     paths:
       - .github/composition/manifest.json
       - .github/composition/check-generation-coherence.py
@@ -62,10 +63,13 @@ jobs:
         run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       - name: The manifest of this commit
         run: python3 -B .github/composition/check-generation-coherence.py --root "$RUNNER_TEMP/coherence-head"
-      # `sha:` lines added to the register since the previous declaration (the
-      # pull request base, or the tip a push replaced). An event that hands no
-      # base says so and replays nothing more: the step above still ran.
+      # The generations added to the register since the previous declaration
+      # (the pull request base, or the tip a push replaced), from the YAML of
+      # both registers and held against their `- sha:` line counts: a parse that
+      # disagrees with the text fails the step instead of listing fewer. It runs
+      # even when the step above is red: one red must not hide the other.
       - name: The manifest of every generation this change declares
+        if: ${{ !cancelled() }}
         env:
           PREVIOUS: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: |
@@ -73,10 +77,9 @@ jobs:
             echo "no previous commit to compare the register with: no declaration replayed"
             exit 0
           fi
-          # Two statements: a failed `git diff` must stop the step, not read as
-          # "no generation added".
-          register_diff="$(git diff "$PREVIOUS" HEAD -- ecosystem/fleet-pins.v1.yaml)"
-          added="$(printf '%s\n' "$register_diff" | sed -n 's/^+  - sha: \([0-9a-f]\{40\}\)$/\1/p')"
+          # An assignment, so that a failure stops the step (bash -e) instead of
+          # reading as "no generation added".
+          added="$(bun tools/fleet/added-generations.ts "$PREVIOUS")"
           declared=0
           for sha in $added; do
             declared=$((declared + 1))

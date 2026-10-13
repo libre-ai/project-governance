@@ -77,18 +77,40 @@ install that fails, a target with no gate root and a governance without the gate
 are failures, never skips. The one exempt kind is a target whose composition runs
 no Bun install and which tracks no `package.json` (today
 `database-policy-inspector`), counted and named. It builds nothing: the toolkit's
-UI build is a product gate, not a manifest gate.
+UI build is a product gate, not a manifest gate. It also prints how the tracked
+`package.json` files split (gate roots + covered by a root + not examined, the
+latter named), and with `--declaration` it fails when the gate files of the
+declared commit differ from those of the composed governance it replays.
+
+What it executes, and what it does not contain: the targets are other
+repositories' code. Every `bun` call runs under `--config=<empty file outside the
+target>`, because Bun reads the `bunfig.toml` of its working directory and a
+`preload` there runs the target's own file in the gate's process (probed: it wrote
+an environment variable to a file; under `--config` it no longer does). The
+processes run with an allow-listed environment (`PATH`, `HOME`, `TMPDIR`,
+`LANG`, `LC_ALL` and git's own settings), and `--ignore-scripts` keeps
+lifecycle scripts out of the install. That is a reduction, not a sandbox: the
+install still reads the target's lockfile and `.npmrc`, and a scrubbed
+environment protects only what the process was not handed. A secret must
+therefore never be present where the guard runs.
 
 Where it runs:
 
 - `.github/workflows/generation-coherence.yml`, when the manifest, the register
   of generations or the guard changes: on the manifest of the commit, and, for
-  every `sha:` the change adds to `ecosystem/fleet-pins.v1.yaml`, on the manifest
-  that sha composes — before the declaration merges (step 2 of the procedure).
-- `--apply` of this tool, before the first consumer pull request is opened (step
-  3): the composition of the target generation must pass, else nothing is
-  opened. The guard runs with a scrubbed environment so that the write token never
-  reaches the `bun install` of another repository.
+  every `sha:` the change adds to `ecosystem/fleet-pins.v1.yaml`
+  (`tools/fleet/added-generations.ts`, from the YAML of both registers), on the
+  manifest that sha composes — before the declaration merges (step 2 of the
+  procedure). It holds no secret.
+- `.github/workflows/fleet-bump.yml`, job `coherence`: the target generation is
+  replayed in a job that holds neither `FLEET_BUMP_TOKEN` nor a persisted
+  checkout credential, and the `plan` job (the one that applies) `needs` it. A red
+  composition therefore opens nothing and plans nothing.
+- `--apply` of this tool replays the same guard again before the first consumer
+  pull request is opened (step 3), with the environment scrubbed of the write
+  token: a second barrier for a local `--apply`, not a replacement for the job
+  above, since the process that holds the token is the wrong place to run another
+  repository's install.
 
 ## Owner steps to enable apply
 
