@@ -28,11 +28,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  plan:
-    name: Plan the bump of every consumer
+  # The generation about to be offered to the fleet must compose refs that pass
+  # the manifest gate of their own governance. This job installs and runs
+  # code of other repositories, so it holds NO secret: no FLEET_BUMP_TOKEN, no
+  # persisted checkout credential. The plan job below needs it, so a red
+  # composition opens nothing — and, being skipped, plans nothing either: a plan
+  # to an incoherent generation would read as a bump the fleet can take.
+  coherence:
+    name: The target generation composes refs that pass their governance
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Replay the manifest of the target generation
+        env:
+          TARGET: ${{ inputs.to }}
+        run: |
+          # Assignments, so that a failure stops the step.
+          latest="$(bun tools/fleet/added-generations.ts --latest)"
+          target="${TARGET:-$latest}"
+          python3 -B .github/composition/check-generation-coherence.py --declaration "$target" --root "$RUNNER_TEMP/coherence"
+
+  plan:
+    name: Plan the bump of every consumer
+    needs: coherence
+    runs-on: ubuntu-latest
+    steps:
+      # No persisted credential: the apply step authenticates git through its own
+      # helper, and a checkout token left in .git/config reaches every process
+      # that runs here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install archived Bun toolchain
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
