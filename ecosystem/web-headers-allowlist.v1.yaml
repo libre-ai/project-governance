@@ -109,3 +109,9 @@ servers_outside_surfaces:
       synthetic capture-app fixture on 127.0.0.1:43187 for the extension
       probes; its own relaxed CSP (style-src 'unsafe-inline') applies to that
       local fixture only, never to a served application.
+  - repository: libre-ai/pi-harness-challenger
+    path: experiments/gondolin/spike.mjs
+    because: >-
+      raw TCP canary listener (node:net createServer) that counts connections
+      from a sandboxed VM to prove egress is blocked; it speaks no HTTP and
+      serves no HTML document. Transitional experiment, never deployed.

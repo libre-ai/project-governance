@@ -165,6 +165,14 @@
       "card": "project.v1.yaml"
     },
     {
+      "repository": "libre-ai/pi-harness-challenger",
+      "name": "pi-harness-challenger",
+      "layer": "transverse",
+      "role": "standalone-tool",
+      "visibility": "public",
+      "lifecycle": "active"
+    },
+    {
       "repository": "libre-ai/product-research",
       "name": "product-research",
       "layer": "transverse",

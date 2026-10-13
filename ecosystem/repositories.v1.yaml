@@ -218,6 +218,19 @@ repositories:
     lifecycle: active
     owns:
       - declared-check evidence dossiers and signed attestations
+  - repository: libre-ai/pi-harness-challenger
+    # TRANSITOIRE (decision proprietaire D6, 2026-10-13) : depot declare pour que
+    # le gate de presence cesse de le voir « observable mais absent » ; son
+    # extraction vers la flotte puis sa suppression sont une decision a part.
+    # `lifecycle` reste `active` : l'enum est ferme (active | archived, ADR-0023)
+    # et un troisieme etat est interdit par construction. Sa branche servie est
+    # `fix/updater-npm-paths`, non `main` (git ls-remote --symref).
+    role: standalone-tool
+    layer: transverse
+    visibility: public
+    lifecycle: active
+    owns:
+      - transactional Pi coding-agent updater and its supply-chain license audit (transitional, pending extraction)
   - repository: libre-ai/.github
     role: org-profile
     layer: transverse
