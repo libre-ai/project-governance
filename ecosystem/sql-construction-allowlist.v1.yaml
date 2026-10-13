@@ -108,3 +108,10 @@ allowances:
     because: >-
       not SQL: options.exec(command, args, options) is the injected process
       runner of the evidence harness, called with an argument vector.
+  - repository: libre-ai/pi-harness-challenger
+    path: experiments/gondolin/sandbox.mjs
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      not SQL: vm.exec(command, { signal }) runs a command inside a Gondolin
+      sandbox VM of a transitional experiment; no database is involved.
