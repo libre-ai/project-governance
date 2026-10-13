@@ -9,7 +9,11 @@
 - **Étend :** ADR-0008 (nom et marque), ADR-0009 (portefeuille et preuve),
   ADR-0020 (autorités multi-repository).
 - **Invariant candidat :** I-29.
-- **Décision :** D39.
+- **Décision :** D39 ; amendée par D73 (signe figuratif candidat, 2026-10-13).
+- **Arbitrage de l'amendement :** décision du propriétaire en session le
+  2026-10-13 : le signe figuratif de Libre AI est l'oiseau de l'avatar de
+  l'organisation GitHub, et non plus le Portique d'atelier. Owner-arbitration:
+  2026-10-13
 - **Numérotation :** renuméroté de 0032 à 0033 lors de l'intégration du
   2026-09-09, après ratification de l'ADR-0032 LangGraph sur `main`.
 
@@ -87,6 +91,10 @@ iris ardoise, états réservés à leur fonction. Le signe figuratif candidat es
 le **Portique d'atelier** (`Workshop Gantry` en anglais), construit en trois
 pièces orthogonales sur une grille de 24 unités, monochrome et lisible à 16 px.
 
+> Amendé le 2026-10-13 : le Portique d'atelier n'est plus candidat ; le signe
+> figuratif candidat est l'oiseau (voir « Amendement du 2026-10-13 » ci-dessous).
+> La phrase ci-dessus est conservée comme trace de la décision du 2026-09-09.
+
 ### D5 — Les autorités restent unidirectionnelles
 
 - `governance/brand/` possède la sémantique, la copie, la matrice de preuve et
@@ -107,6 +115,45 @@ est un screening visuel borné, pas un avis juridique ni un enregistrement.
 Le site reste statique, sans JavaScript client, tracking, asset distant ou
 requête runtime externe. Un merge doctrinal, la publication des assets, les
 merges aval et le déploiement sont quatre actions externes séparées.
+
+## Amendement du 2026-10-13 — Signe figuratif : l'oiseau
+
+Owner-arbitration: 2026-10-13 — le signe figuratif de Libre AI est l'oiseau déjà
+employé comme avatar de l'organisation GitHub `libre-ai`, et non plus le
+Portique d'atelier.
+
+**Ce qui change.** D4 désigne un autre signe candidat. Le concept (fabrique
+ouverte), le geste (assemblage ouvert), la palette Envol constructif et les
+exclusions de D4 restent inchangés ; D1, D2, D3, D5 et D6 aussi.
+
+**Source tracée.** PNG 460 × 460 servi à
+`https://avatars.githubusercontent.com/u/300232041?v=4&s=460`, SHA-256
+`39805af151d503732e77873283ebcd74f95bd7d5cfdf0ad6278765719a024732`, relevé le
+2026-10-13 (`Last-Modified: Fri, 10 Jul 2026 00:27:36 GMT`). L'URL sert l'avatar
+courant : l'empreinte, non l'URL, identifie l'asset décidé.
+
+**Sort du Portique d'atelier : retiré, pas rétrogradé.** Cet ADR ne connaît
+qu'un signe candidat (D4) et lui attache les deux contrôles de D6 ; D3 interdit
+tout logo de produit. Aucune place n'existe donc pour un signe de second rang,
+et conserver le Portique comme repli laisserait deux candidats sans critère pour
+les départager. Il ne reste que comme trace historique dans D4 et D39.
+
+**Ce qui reste ouvert, et n'est pas acquis par cet amendement.**
+
+1. La licence dédiée `LicenseRef-Libre-AI-Brand-1.0` de l'asset n'est pas
+   acceptée (D6).
+2. Le contrôle de similarité visuelle daté n'est pas archivé (D6).
+3. Aucune source vectorielle n'existe. D5 confie la géométrie SVG à `ui` ; le
+   PNG relevé est un rendu matriciel et n'en tient pas lieu.
+4. La conformité de l'oiseau à D4 n'est pas évaluée : le Portique était
+   spécifié monochrome et lisible à 16 px, aucune de ces propriétés n'est
+   établie pour un oiseau bicolore, et les exclusions de D4 n'ont pas été
+   confrontées à ses courbes ni à sa traîne de carrés.
+5. L'avatar d'organisation affiche l'oiseau depuis avant les deux contrôles de
+   D6. Cet affichage est un écart avec D6 et avec `TRADEMARKS.md`
+   (« Brand assets »), qui exige qu'un profil public échoue fermé tant qu'un
+   contrôle reste en attente ; cet amendement le consigne, il ne le régularise
+   pas.
 
 ## Conséquences
 
