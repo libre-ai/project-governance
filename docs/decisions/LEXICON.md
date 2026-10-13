@@ -61,6 +61,7 @@ compte 19 entrées.
 | `artifact-verification`          | `satellite`                   | couche 3   | Verify an artifact before integration / Vérifier un artefact avant de l'intégrer |
 | `database-policy-inspector`      | `standalone-tool`             | transverse | Database Policy Inspector                                                   |
 | `pi-evidence`                    | `standalone-tool`             | transverse | absent de `portfolio.v1.json`                                               |
+| `pi-harness-challenger`          | `standalone-tool`             | transverse | absent de `portfolio.v1.json` (transitoire, décision propriétaire D6 du 2026-10-13) |
 | `.github`                        | `org-profile`                 | transverse | Libre AI                                                                    |
 | `product-research`               | `administrative-private`      | transverse | absent de `portfolio.v1.json` (dépôt privé hors portfolio, §13)             |
 | `libre-ai`                       | `hub` (`lifecycle: archived`) | moyeu      | absent de `portfolio.v1.json` (archive en lecture seule)                    |
