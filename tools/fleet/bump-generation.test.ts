@@ -4,6 +4,7 @@ import { join } from "node:path";
 import {
   buildAuthorityQuery,
   buildSourcesQuery,
+  coherenceEnvironment,
   commitMessage,
   isCandidatePath,
   parseBumpData,
@@ -11,6 +12,7 @@ import {
   parseSourcesResponse,
   ROOT_SURFACES,
   renderPlanTable,
+  replayCoherence,
   selectTargets,
 } from "./bump-generation";
 import type { RepositoryPlan } from "./bump-plan";
@@ -198,5 +200,58 @@ describe("apply helpers", () => {
       "| --- | --- | ---: | ---: | ---: | ---: | --- |",
       "| libre-ai/x | 7c2238d6 | 1 | 1 | 1 | 0 | bump |",
     ]);
+  });
+});
+
+describe("generation coherence before apply", () => {
+  const manifest = '{"schemaVersion":"libre-ai.ci-composition.v1"}';
+
+  test("the guard is replayed on the manifest of the target generation, in a scratch root", () => {
+    const seen: string[][] = [];
+    const written: string[] = [];
+    const verdict = replayCoherence(manifest, (argv) => {
+      seen.push([...argv]);
+      written.push(readFileSync(argv[argv.indexOf("--manifest") + 1] as string, "utf8"));
+      return { code: 0, output: "Generation coherence verified — 16 target(s) declared" };
+    });
+    expect(verdict).toEqual({
+      ok: true,
+      detail: "Generation coherence verified — 16 target(s) declared",
+    });
+    expect(written).toEqual([manifest]);
+    expect(seen[0]?.slice(0, 2)).toEqual(["python3", "-B"]);
+    expect(seen[0]?.[2]).toEndWith(".github/composition/check-generation-coherence.py");
+    expect(seen[0]?.[seen[0].indexOf("--root") + 1]).toEndWith("/root");
+  });
+
+  test("a red guard refuses, with its last lines as the reason", () => {
+    const verdict = replayCoherence(manifest, () => ({
+      code: 1,
+      output:
+        "Generation coherence: libre-ai/application-development-toolkit@9e817e73: packages/ui: prepublishOnly\nGeneration coherence failed — 16 target(s) declared",
+    }));
+    expect(verdict.ok).toBe(false);
+    expect(verdict.detail).toContain("application-development-toolkit@9e817e73");
+  });
+
+  test("a manifest that could not be read refuses and never starts the guard", () => {
+    let started = false;
+    const verdict = replayCoherence(null, () => {
+      started = true;
+      return { code: 0, output: "" };
+    });
+    expect(verdict.ok).toBe(false);
+    expect(started).toBe(false);
+  });
+
+  test("the guard never receives the write token the bump holds", () => {
+    const environment = coherenceEnvironment({
+      PATH: "/usr/bin",
+      HOME: "/home/runner",
+      GH_TOKEN: "secret",
+      BUMP_TOKEN: "secret",
+      FLEET_BUMP_TOKEN: "secret",
+    });
+    expect(environment).toEqual({ PATH: "/usr/bin", HOME: "/home/runner" });
   });
 });

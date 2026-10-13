@@ -50,6 +50,46 @@ branch that changes the register or the tool. Without the secret it runs the dry
 run on public repositories, names private ones as excluded, writes the plan to
 the job summary and says `apply disabled: no FLEET_BUMP_TOKEN`.
 
+## Generation coherence, before a declaration and before `--apply`
+
+A generation is a governance commit whose composition manifest composes one ref
+per repository, and nothing used to run those refs against each other.
+`.github/composition/check-generation-coherence.py` does: it fetches every
+composed repository at its composed ref into one new root, lists the gate roots
+of each target (every tracked `package.json` whose `check:bun` runs
+`check-bun-manifests.ts`), runs `bun install --frozen-lockfile --ignore-scripts`
+and then the `check-bun-manifests.ts` of the **composed** governance from each
+root. Generation Q composed a toolkit whose `packages/ui` carries a
+`prepublishOnly` the composed governance refuses; the declaration merged green
+because the composition check of this repository composes itself at the pull
+request head, and `check-composed-paths.py` only asks whether a path exists.
+
+```sh
+python3 -B .github/composition/check-generation-coherence.py --root "$(mktemp -d)/root"
+python3 -B .github/composition/check-generation-coherence.py --declaration <sha> --root "$(mktemp -d)/root"
+```
+
+`--declaration <sha>` replays the manifest that governance commit composes, which
+is what declaring that sha as a generation declares. It prints its counters
+(targets declared = verified + failed + not applicable, gate roots replayed and
+passed) and exits non-zero on any failure; a ref that cannot be fetched, an
+install that fails, a target with no gate root and a governance without the gate
+are failures, never skips. The one exempt kind is a target whose composition runs
+no Bun install and which tracks no `package.json` (today
+`database-policy-inspector`), counted and named. It builds nothing: the toolkit's
+UI build is a product gate, not a manifest gate.
+
+Where it runs:
+
+- `.github/workflows/generation-coherence.yml`, when the manifest, the register
+  of generations or the guard changes: on the manifest of the commit, and, for
+  every `sha:` the change adds to `ecosystem/fleet-pins.v1.yaml`, on the manifest
+  that sha composes — before the declaration merges (step 2 of the procedure).
+- `--apply` of this tool, before the first consumer pull request is opened (step
+  3): the composition of the target generation must pass, else nothing is
+  opened. The guard runs with a scrubbed environment so that the write token never
+  reaches the `bun install` of another repository.
+
 ## Owner steps to enable apply
 
 Creating the credential is an owner act; no agent creates it.

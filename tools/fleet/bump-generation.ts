@@ -27,9 +27,10 @@
  * surface; 1 when any is refused or unreadable, or when nothing was observed.
  */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { buildIndex, type InventoryEntry } from "../../ecosystem/build-index";
 import {
@@ -423,6 +424,81 @@ export function commitMessage(plan: RepositoryPlan): { title: string; body: stri
   };
 }
 
+// --- generation coherence -----------------------------------------------------
+
+const COHERENCE_GUARD = ".github/composition/check-generation-coherence.py";
+const COHERENCE_DETAIL_LINES = 8;
+
+/**
+ * The guard that installs every target the target generation composes and runs
+ * the manifest gates of the governance it composes on them. Generation Q was
+ * declared, and 8 consumers were then asked to move to it, while its composed
+ * toolkit at 9e817e73 failed the very rule its composed governance carries:
+ * `--apply` is the last point before a consumer is asked to pay for that.
+ */
+export function coherenceArgv(manifestPath: string, root: string): string[] {
+  const guard = fileURLToPath(new URL(`../../${COHERENCE_GUARD}`, import.meta.url));
+  return ["python3", "-B", guard, "--manifest", manifestPath, "--root", root];
+}
+
+export interface CoherenceVerdict {
+  readonly ok: boolean;
+  readonly detail: string;
+}
+
+/** A manifest that cannot be read is a refusal, never a pass. */
+export function replayCoherence(
+  manifest: string | null,
+  spawn: (argv: readonly string[]) => { readonly code: number; readonly output: string },
+): CoherenceVerdict {
+  if (manifest === null) {
+    return {
+      ok: false,
+      detail: "the composition manifest of the target generation was not readable",
+    };
+  }
+  // The guard refuses a root behind a symlink (macOS tmpdir is one).
+  const scratch = realpathSync(mkdtempSync(join(tmpdir(), "coherence-")));
+  try {
+    const manifestPath = join(scratch, "manifest.json");
+    writeFileSync(manifestPath, manifest);
+    const result = spawn(coherenceArgv(manifestPath, join(scratch, "root")));
+    const lines = result.output.trim().split("\n");
+    return { ok: result.code === 0, detail: lines.slice(-COHERENCE_DETAIL_LINES).join(" | ") };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The guard installs the dependencies of other repositories: it must not see
+ * the write token this process holds (`GH_TOKEN`, `BUMP_TOKEN`). Only what
+ * git, bun and python need to run is handed over.
+ */
+export function coherenceEnvironment(
+  source: Readonly<Record<string, string | undefined>>,
+): Record<string, string> {
+  const kept: Record<string, string> = {};
+  for (const name of ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]) {
+    const value = source[name];
+    if (value !== undefined) kept[name] = value;
+  }
+  return kept;
+}
+
+function spawnCoherence(argv: readonly string[]): { code: number; output: string } {
+  const result = Bun.spawnSync([...argv], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: coherenceEnvironment(process.env),
+  });
+  const decoder = new TextDecoder();
+  return {
+    code: result.exitCode,
+    output: `${decoder.decode(result.stdout)}\n${decoder.decode(result.stderr)}`,
+  };
+}
+
 type ApplyOutcome =
   | { readonly repository: string; readonly ok: true; readonly detail: string }
   | { readonly repository: string; readonly ok: false; readonly detail: string };
@@ -693,11 +769,23 @@ if (import.meta.main) {
       say(`apply refused: ${short(target)} is not a declared generation`);
       failed = true;
     } else {
-      for (const plan of plans.filter((p) => p.status === "bump")) {
-        const entry = selection.targets.find((t) => t.repository === plan.repository) as BumpTarget;
-        const outcome = await applyRepository(plan, entry, context, data, token);
-        say(`- apply ${outcome.repository}: ${outcome.ok ? "" : "FAILED — "}${outcome.detail}`);
-        if (!outcome.ok) failed = true;
+      // Declared is not coherent: the register only says the sha exists.
+      const coherence = replayCoherence(composition.get(target) ?? null, spawnCoherence);
+      if (!coherence.ok) {
+        say(
+          `apply refused: the composition of ${short(target)} fails the manifest gates of its own governance: ${coherence.detail}`,
+        );
+        failed = true;
+      } else {
+        say(`coherence verified before apply: ${coherence.detail}`);
+        for (const plan of plans.filter((p) => p.status === "bump")) {
+          const entry = selection.targets.find(
+            (t) => t.repository === plan.repository,
+          ) as BumpTarget;
+          const outcome = await applyRepository(plan, entry, context, data, token);
+          say(`- apply ${outcome.repository}: ${outcome.ok ? "" : "FAILED — "}${outcome.detail}`);
+          if (!outcome.ok) failed = true;
+        }
       }
     }
   }
