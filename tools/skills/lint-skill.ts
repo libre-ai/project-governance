@@ -17,11 +17,19 @@ export interface FrontmatterError {
 }
 
 /**
- * Minimal frontmatter parser: `---` fence, `key: value` scalar lines, `---`
- * fence, body. No list/nested-object support — every field this repository's
- * skills declare (name, description, license, status,
- * disable-model-invocation) is a single-line scalar, so a full YAML parser
- * would be a dependency bought for nothing this file needs.
+ * Frontmatter parser: `---` fence, flat `key: value` scalar lines, `---`
+ * fence, body. Two passes over the block, both required:
+ *
+ * 1. A line pass enforces the flat shape this collection admits — every key
+ *    at column 0, one line per field, no key repeated. YAML itself allows
+ *    folded values (a different shape) and its parser keeps the last of two
+ *    duplicated keys silently, so neither can be left to the YAML pass.
+ * 2. A YAML pass (`Bun.YAML`, built into the runtime — no dependency) must
+ *    accept the block, and its values are the ones returned. Every harness
+ *    that loads a skill reads this block as YAML: splitting on the first
+ *    colon accepted `description: Use when: X`, which is a YAML syntax error,
+ *    so a skill linted green here and failed to load there. Only scalar
+ *    values are admitted; booleans and numbers are returned as their text.
  */
 export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterError {
   const lines = source.split("\n");
@@ -38,8 +46,9 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
   if (closingIndex === -1) {
     return { error: "frontmatter opened with `---` but never closed with a second `---`" };
   }
-  const frontmatter: Record<string, string> = {};
-  for (const line of lines.slice(1, closingIndex)) {
+  const blockLines = lines.slice(1, closingIndex);
+  const keys: string[] = [];
+  for (const line of blockLines) {
     if (line.trim() === "") continue;
     // A real top-level key always starts at column 0 in this flat-scalar
     // format (see the parser's doc comment). A line that starts with
@@ -59,8 +68,46 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
       return { error: `malformed frontmatter line (no ":"): "${line}"` };
     }
     const key = line.slice(0, separatorIndex).trim();
-    const value = line.slice(separatorIndex + 1).trim();
-    frontmatter[key] = value;
+    if (keys.includes(key)) {
+      return { error: `duplicated frontmatter key "${key}"` };
+    }
+    keys.push(key);
+  }
+
+  let parsedYaml: unknown;
+  try {
+    parsedYaml = Bun.YAML.parse(blockLines.join("\n"));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      error: `frontmatter is not valid YAML (${message}) — quote a value that contains ": " or starts with a YAML indicator`,
+    };
+  }
+  const yamlRecord =
+    typeof parsedYaml === "object" && parsedYaml !== null && !Array.isArray(parsedYaml)
+      ? (parsedYaml as Record<string, unknown>)
+      : parsedYaml === null && keys.length === 0
+        ? {}
+        : null;
+  if (yamlRecord === null) {
+    return { error: "frontmatter must be a YAML mapping of flat key: value fields" };
+  }
+  const frontmatter: Record<string, string> = {};
+  for (const key of keys) {
+    const value = yamlRecord[key];
+    if (value === null || value === undefined) {
+      frontmatter[key] = "";
+    } else if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      frontmatter[key] = String(value).trim();
+    } else {
+      return {
+        error: `frontmatter field "${key}" must be a scalar, found a ${Array.isArray(value) ? "list" : "mapping"}`,
+      };
+    }
   }
   const body = lines.slice(closingIndex + 1).join("\n");
   return { frontmatter, body };
