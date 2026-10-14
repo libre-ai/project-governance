@@ -1,0 +1,25 @@
+{
+  "name": "libre-ai",
+  "description": "Skills collection governed by libre-ai/project-governance (ADR-0025, ADR-0050).",
+  "owner": {
+    "name": "Libre AI contributors"
+  },
+  "plugins": [
+    {
+      "name": "libre-ai-skills",
+      "source": "./",
+      "description": "The admitted skills of libre-ai/project-governance, generated from skills/ — exactly the collection, nothing else of the repository.",
+      "strict": false,
+      "skills": [
+        "./skills/biscuit-auth",
+        "./skills/context-conformity",
+        "./skills/deploy-clever",
+        "./skills/pr-body",
+        "./skills/review-fanout",
+        "./skills/rgpd-dpia",
+        "./skills/verify-runtime",
+        "./skills/wizard"
+      ]
+    }
+  ]
+}

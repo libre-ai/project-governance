@@ -106,10 +106,35 @@ d'état réservées à leur sens. Jade et iris ne forment jamais un dégradé. H
 cerveaux, étincelles, orbites, chatbots, réseaux décoratifs, chemins sinueux et
 contours topographiques sont exclus.
 
-Le signe candidat est le **Portique d'atelier**, construit en trois pièces sur
-une grille de 24 unités. Il reste monochrome et lisible à 16 px. Aucun asset
-figuratif n'est publié avant acceptation de sa licence dédiée et archivage du
-contrôle de similarité visuelle exigé par la politique de marque.
+Le signe candidat est l'**oiseau** déjà employé comme avatar de l'organisation
+GitHub `libre-ai` : un oiseau blanc en envol, à l'aile intérieure jade, précédé
+d'une traîne de carrés. Il remplace le Portique d'atelier, qui n'est plus
+candidat (ADR-0033, amendement du 2026-10-13).
+
+Source tracée de l'asset : le PNG 460 × 460 servi à
+`https://avatars.githubusercontent.com/u/300232041?v=4&s=460`, d'empreinte
+SHA-256 `39805af151d503732e77873283ebcd74f95bd7d5cfdf0ad6278765719a024732`,
+relevée le 2026-10-13 (`Last-Modified: Fri, 10 Jul 2026 00:27:36 GMT`). Cette
+URL sert l'avatar courant : si l'empreinte recalculée diffère, l'asset a changé
+et cette trace ne le couvre plus.
+
+Restent ouverts, et aucun n'est acquis :
+
+- la licence dédiée `LicenseRef-Libre-AI-Brand-1.0` de l'asset n'est pas
+  acceptée ;
+- le contrôle de similarité visuelle daté n'est pas archivé ;
+- aucune source vectorielle n'existe : le PNG est un rendu matriciel, et
+  `@libre-ai/ui` ne porte aucune géométrie SVG de l'oiseau ;
+- sa conformité à la grammaire ci-dessus n'est pas évaluée : le Portique était
+  spécifié monochrome et lisible à 16 px, et aucune de ces deux propriétés n'est
+  établie pour l'oiseau, qui est bicolore ; l'exclusion des chemins sinueux et
+  des étincelles n'a pas été confrontée à ses courbes ni à sa traîne de carrés.
+
+Aucun asset figuratif n'est publié avant acceptation de sa licence dédiée et
+archivage du contrôle de similarité visuelle exigé par la politique de marque.
+L'avatar d'organisation affiche l'oiseau depuis avant ces deux contrôles : cet
+affichage est un écart avec la politique de marque (`TRADEMARKS.md`, « Brand
+assets »), pas une publication qui les remplacerait.
 
 ## Preuve et projections
 
