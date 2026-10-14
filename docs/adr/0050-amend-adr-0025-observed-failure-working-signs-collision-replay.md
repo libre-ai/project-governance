@@ -1,14 +1,14 @@
 # ADR-0050 — Amendement d'ADR-0025 : une skill entre ou change sur un échec observé, se promeut sur des signes observables, et sa collision se rejoue à chaque plugin
 
-- **Statut :** proposed — soumis à la signature du propriétaire ; la fusion de
-  cette pull request constituerait l'arbitrage. Rien de ce qui suit n'est en
-  vigueur avant elle.
-- **Arbitrage :** aucun sur le contenu à la date de rédaction. Les arbitrages
-  propriétaires du 2026-10-13 issus du même drill portent sur d'autres objets
-  (désinstallation du plugin machine `mattpocock-skills`, Work Supervision
-  comme tracker, forme des pull requests, garde de push en demande de
-  confirmation) ; aucun ne tranche ce texte. D7 et D8 sont des options
-  ouvertes que la signature doit trancher, ou laisser explicitement ouvertes.
+- **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; D1 à
+  D8 et l'amendement d'I-25 sont en vigueur à la fusion.
+- **Arbitrage :** le propriétaire a validé le texte proposé le 2026-10-13 et
+  tranché les deux options qu'il laissait ouvertes : D7 option A, conforme à la
+  recommandation de la rédaction, et D8 option C. Les arbitrages du 2026-10-13
+  issus du même drill portaient sur d'autres objets (désinstallation du plugin
+  machine `mattpocock-skills`, Work Supervision comme tracker, forme des pull
+  requests, garde de push en demande de confirmation). Owner-arbitration:
+  2026-10-14 — texte validé, D7-A et D8-C arbitrés en chat
 - **Date de rédaction :** 2026-10-13
 - **Portée :** admission, modification et promotion d'une skill de
   `governance/skills/` ; vérification de collision avec les plugins machine.
@@ -139,7 +139,10 @@ Le seuil T2 (≥ 75 % refusé, ≥ 50 % averti), le plancher de rang 1, la
 dépréciation par suppression, `.out-of-scope/` et le budget de corps restent
 ceux d'ADR-0025.
 
-## Options soumises à arbitrage, non décidées ici
+## Options arbitrées le 2026-10-14
+
+Proposées ouvertes le 2026-10-13, tranchées par le propriétaire le 2026-10-14 :
+**D7 = A**, **D8 = C**. Les tableaux restent tels qu'ils ont été soumis.
 
 ### D7 — Canal de distribution de la collection
 
@@ -153,6 +156,9 @@ Recommandation de la rédaction : A, parce que c'est la seule qui rende D1
 mesurable. L'installation reste un acte de harness, hors de ce dépôt, quelle
 que soit l'option.
 
+**Décision : A.** Le manifeste et son gate d'égalité restent à construire
+(voir Conséquences) ; jusque-là, D1 d'ADR-0025 n'est pas encore mesuré.
+
 ### D8 — Journal de comportement par skill
 
 | Option | Contenu | Conséquence |
@@ -164,6 +170,10 @@ que soit l'option.
 Aucune recommandation : le choix dépend de D7 (une distribution par fichier
 favorise A).
 
+**Décision : C.** L'échec observé de D1 se cite dans le corps de la pull
+request et vit dans l'historique git. Limite assumée : une copie installée par
+le canal de D7 ne porte pas cette trace.
+
 ## Conséquences
 
 - I-25 est amendé (D1 à D5) ; son texte historique du 2026-08-18 est conservé
@@ -173,12 +183,13 @@ favorise A).
 - `docs/method/SKILLS-ANATOMY.md` porte, dans la même pull request, la doctrine
   d'écriture issue du même drill ; il ne répète pas ces règles d'admission.
 - Restent à faire hors de cette pull request : la vérification de forme de
-  `working_if` par T1 ; le gate du manifeste si D7-A est retenue ; le premier
+  `working_if` par T1 ; le manifeste de plugin et son gate d'égalité (D7-A) ; le premier
   `working_if` des skills admises, qui passe lui-même la barre D1.
 
 ## Ce qui n'est pas décidé ici
 
-- D7 et D8.
+- La forme du manifeste de D7-A (format, emplacement, bloc d'installation par
+  harnais) : elle se décide avec la pull request qui le construit.
 - La promotion d'une skill : aucune ne quitte `candidate` par cet ADR.
 - Un garde machine qui signalerait une installation ou une mise à jour de
   plugin (décision de harness, hors de ce dépôt) ; D4 dit quand le constat se

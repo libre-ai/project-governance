@@ -1,11 +1,9 @@
 # ADR-0051 — Amendement d'ADR-0022 : un lot de questions est indépendant, un fait se cherche, une séance d'interview finit sur une frontière vide
 
-- **Statut :** proposed — soumis à la signature du propriétaire ; la fusion de
-  cette pull request constituerait l'arbitrage. Rien de ce qui suit n'est en
-  vigueur avant elle.
-- **Arbitrage :** aucun sur le contenu à la date de rédaction. Les arbitrages
-  propriétaires du 2026-10-13 issus du même drill portent sur d'autres objets
-  et ne tranchent pas ce texte.
+- **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; D4,
+  D5, D6 et l'amendement d'I-24 sont en vigueur à la fusion.
+- **Arbitrage :** le propriétaire a validé le texte proposé le 2026-10-13.
+  Owner-arbitration: 2026-10-14 — texte validé en chat
 - **Date de rédaction :** 2026-10-13
 - **Portée :** forme des sollicitations adressées au propriétaire (ADR-0022),
   en cours de travail et pendant une séance d'interview dédiée.
