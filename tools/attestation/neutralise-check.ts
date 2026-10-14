@@ -3,22 +3,29 @@
  *
  * A test added with a check is not evidence until it is shown to fail when the check is
  * neutralised, and a count of neutralised checks says nothing without the number of checks
- * there are. This script therefore does two things.
+ * there are. For each of the four instruments (the TypeScript scanner, the shell manifest, the
+ * Python derivation and the jq frozen verdict) this script does two things.
  *
- * 1. It counts REFUSAL SITES in git-attestation.ts with its own pattern, independently of the
- *    markers: a line that emits a finding (`add("`) or throws (`throw new GitFailure(`,
- *    `throw new Error(`). Each site must have a `// neutralise:<id>` marker within eight
- *    lines above it (one marker covers one site), or a `// neutralise:none <reason>` exemption. It prints sites, marked,
- *    exempt and uncovered, and fails when a site is uncovered or an id is used twice.
- * 2. For every marker it copies the tool and its tests into a throwaway directory, forces that
- *    one condition to false (a no-op substitution, never a deleted line, which would unbalance
- *    the structure and turn everything red for the wrong reason), runs the tests named
+ * 1. It counts REFUSAL SITES with a pattern of its own, independently of the markers:
+ *      TypeScript  a line that emits a finding (`add("`) or throws (`throw new GitFailure(`,
+ *                  `throw new Refusal(`);
+ *      shell       a `return 1`, or a readback decision (`printf 'null'`, `printf 'false'`, `="null"`);
+ *      Python      a `refuse(` call or a `raise ValueError(`;
+ *      jq          an `else empty end` (one blocker or residual risk) or an `and (` clause of
+ *                  the ruleset predicate.
+ *    Each site must have a `neutralise:<id>` marker within the eight lines above it (one marker
+ *    covers one site) or a `neutralise:none <reason>` exemption. It prints sites, marked, exempt
+ *    and uncovered per file, and fails when a site is uncovered or an id is used twice in a file.
+ * 2. For every marker it copies the tool and its tests into a throwaway directory, forces that one
+ *    check to its permissive value (a no-op substitution, never a deleted line, which would
+ *    unbalance the structure and turn everything red for the wrong reason), runs the tests named
  *    `red:<id> `, and requires one to fail BY ASSERTION. A test that only crashes proves the
- *    mutant breaks the program, not that the test checks anything: it is reported as
- *    "crash only" and counted as not caught.
+ *    mutant breaks the program, not that the test checks anything: it is reported as "crash
+ *    only" and counted as a problem. The shell checks are mutated by exact text substitution
+ *    (`fileMutations`), and the marker ids of that file must equal the substitution ids.
  *
- * The shell, Python and jq files carry no marker: each of their checks is mutated by exact text
- * substitution (`fileMutations`), and a substitution must match exactly once.
+ * The same `red:` test may serve a TypeScript marker and a shell marker of the same id (the
+ * shallow and ASCII refusals are asserted on both implementations); that overlap is listed.
  *
  * The copy is the only thing mutated; the files under review are never touched.
  *
@@ -31,13 +38,38 @@ import { join, resolve } from "node:path";
 
 const here = import.meta.dir;
 const repositoryRoot = resolve(here, "..", "..");
-const sourceName = "git-attestation.ts";
 
-const siteLine = /(?<![.\w])add\(\s*[`"]|\bthrow new (?:GitFailure|Error)\(/;
-const markerLine = /\/\/ neutralise:([a-z0-9-]+)(?=\s|$)/;
+export type Language = "ts" | "sh" | "py" | "jq";
+
+interface Instrument {
+  readonly file: string;
+  readonly language: Language;
+}
+
+const instruments: readonly Instrument[] = [
+  { file: "git-attestation.ts", language: "ts" },
+  { file: "manifest.sh", language: "sh" },
+  { file: "provider-policy.sh", language: "sh" },
+  { file: "canonicalize.py", language: "py" },
+  { file: "provider-policy.frozen-check.jq", language: "jq" },
+];
+
+const sitePatterns: Record<Language, RegExp> = {
+  ts: /(?<![.\w])add\(\s*[`"]|\bthrow new (?:GitFailure|Refusal)\(/,
+  sh: /\breturn 1\b|printf '(?:null|false)'|="null"/,
+  py: /^\s*(?:raise ValueError\(|refuse\()/,
+  jq: /\belse empty end\b|^\s*and \(/,
+};
+const commentStarts: Record<Language, readonly string[]> = {
+  ts: ["//", "*", "/*"],
+  sh: ["#"],
+  py: ["#"],
+  jq: ["#"],
+};
+const markerLine = /(?:\/\/|#) neutralise:([a-z0-9-]+)(?=\s|$)/;
+const exemptionLine = /(?:\/\/|#) neutralise:none\s+\S/;
 /** A multi-line condition can put its refusal several lines under the marker. */
 const lookback = 8;
-const exemptionLine = /\/\/ neutralise:none\s+\S/;
 
 export interface SiteCensus {
   readonly sites: number;
@@ -49,7 +81,7 @@ export interface SiteCensus {
 }
 
 /** Count refusal sites and how each is covered. Pure: takes the source text. */
-export function census(source: string): SiteCensus {
+export function census(source: string, language: Language = "ts"): SiteCensus {
   const lines = source.split("\n");
   const ids: string[] = [];
   for (const line of lines) {
@@ -66,8 +98,8 @@ export function census(source: string): SiteCensus {
     const line = lines[index] as string;
     if (markerLine.test(line)) open = { line: index, text: line };
     const trimmed = line.trim();
-    if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) continue;
-    if (!siteLine.test(line)) continue;
+    if (commentStarts[language].some((start) => trimmed.startsWith(start))) continue;
+    if (!sitePatterns[language].test(line)) continue;
     sites += 1;
     const covering = open !== undefined && index - open.line <= lookback ? open.text : undefined;
     // A marker covers ONE site: a second site under the same marker is uncovered.
@@ -83,16 +115,41 @@ export function markers(source: string): string[] {
   return census(source).ids.slice();
 }
 
+function findLine(
+  source: string,
+  id: string,
+  comment: string,
+): { start: number; end: number } | null {
+  const marker = source.indexOf(`${comment} neutralise:${id}\n`);
+  if (marker < 0) return null;
+  const start = source.indexOf("\n", marker) + 1;
+  return { start, end: source.indexOf("\n", start) };
+}
+
+/** Index of the parenthesis closing the one opened at `open`, or -1. */
+function closingParenthesis(source: string, open: number): number {
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "(") depth += 1;
+    else if (character === ")") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
 /**
- * Neutralise the check on the line below the marker: force its `if` condition to false, or, when
- * that line is a bare `add(...)` call, route the call to a function that discards it. Only the
- * very next line is considered: a search that ran on would silently mutate an unrelated check.
+ * Neutralise the TypeScript check on the line below the marker: force its `if` condition to
+ * false, or, when that line is a bare `add(...)` call (or `if (cond) {` followed by one), route
+ * the call to a function that discards it. Only the very next line is considered: a search that
+ * ran on would silently mutate an unrelated check.
  */
 export function neutralise(source: string, id: string): string | null {
-  const marker = source.indexOf(`// neutralise:${id}\n`);
-  if (marker < 0) return null;
-  const lineStart = source.indexOf("\n", marker) + 1;
-  const lineEnd = source.indexOf("\n", lineStart);
+  const located = findLine(source, id, "//");
+  if (located === null) return null;
+  const { start: lineStart, end: lineEnd } = located;
   const line = source.slice(lineStart, lineEnd);
   if (/^\s*add\(/.test(line)) {
     const call = lineStart + line.indexOf("add(");
@@ -110,24 +167,46 @@ export function neutralise(source: string, id: string): string | null {
       return `${source.slice(0, call)}discard(${source.slice(call + "add(".length)}\nfunction discard(..._ignored: unknown[]): void {}\n`;
     }
   }
-  const start = lineStart + ifOffset + line.slice(ifOffset).indexOf("if (");
-  const open = start + "if (".length - 1;
-  let depth = 0;
-  let close = -1;
-  for (let index = open; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === "(") depth += 1;
-    else if (character === ")") {
-      depth -= 1;
-      if (depth === 0) {
-        close = index;
-        break;
-      }
-    }
-  }
+  const open = lineStart + ifOffset + line.slice(ifOffset).indexOf("if (") + "if (".length - 1;
+  const close = closingParenthesis(source, open);
   if (close < 0) return null;
   const condition = source.slice(open + 1, close);
   return `${source.slice(0, open + 1)}false && (${condition})${source.slice(close)}`;
+}
+
+/** Python: the `if`/`elif` condition below the marker becomes `False`. */
+export function neutralisePython(source: string, id: string): string | null {
+  const located = findLine(source, id, "#");
+  if (located === null) return null;
+  const line = source.slice(located.start, located.end);
+  const match = /^(\s*(?:if|elif) )(.*)(:\s*)$/.exec(line);
+  if (match === null) return null;
+  return `${source.slice(0, located.start)}${match[1]}False${match[3]}${source.slice(located.end)}`;
+}
+
+/**
+ * jq: the condition of the `(if ... then` below the marker becomes `false`, or the `and (...)`
+ * clause below it becomes `and (true)`.
+ */
+export function neutraliseJq(source: string, id: string): string | null {
+  const located = findLine(source, id, "#");
+  if (located === null) return null;
+  const line = source.slice(located.start, located.end);
+  const indent = line.length - line.trimStart().length;
+  const trimmed = line.trimStart();
+  if (trimmed.startsWith("(if ")) {
+    const from = located.start + indent + "(if ".length;
+    const then = /\sthen\s/.exec(source.slice(from));
+    if (then === null) return null;
+    return `${source.slice(0, from)}false${source.slice(from + then.index)}`;
+  }
+  if (trimmed.startsWith("and (")) {
+    const open = located.start + indent + "and ".length;
+    const close = closingParenthesis(source, open);
+    if (close < 0) return null;
+    return `${source.slice(0, open)}(true)${source.slice(close + 1)}`;
+  }
+  return null;
 }
 
 export interface Verdict {
@@ -167,13 +246,13 @@ interface FileMutation {
   readonly edits: readonly Edit[];
 }
 
-const frozenCheck = "provider-policy.frozen-check.jq";
+const scanner = "git-attestation.ts";
 
-function frozen(id: string, find: string, replace: string): FileMutation {
-  return { id, file: frozenCheck, edits: [{ find, replace }] };
-}
-
-/** Checks outside git-attestation.ts's markers. Every `find` must occur exactly once. */
+/**
+ * Checks that are not an `if` below a marker: the shell checks (exact substitutions, the marker
+ * ids of manifest.sh must equal the ids here) and TypeScript logic that has no refusal site.
+ * Every `find` must occur exactly once.
+ */
 const fileMutations: readonly FileMutation[] = [
   {
     id: "manifest-shallow",
@@ -186,12 +265,40 @@ const fileMutations: readonly FileMutation[] = [
     ],
   },
   {
+    id: "manifest-read",
+    file: "manifest.sh",
+    edits: [
+      { find: 'manifest_read "$dir" "$tmp" ||', replace: 'manifest_read "$dir" "$tmp"; true ||' },
+    ],
+  },
+  {
+    id: "manifest-ls-tree",
+    file: "manifest.sh",
+    edits: [
+      {
+        find: 'git -C "$1" ls-tree -z "$3" > "$2/ls" || return 1',
+        replace: 'git -C "$1" ls-tree -z "$3" > "$2/ls" || true',
+      },
+    ],
+  },
+  {
+    id: "manifest-tree",
+    file: "manifest.sh",
+    edits: [
+      {
+        find: 'manifest_tree "$1" "$2" "$t" || return 1',
+        replace: 'manifest_tree "$1" "$2" "$t" || true',
+      },
+    ],
+  },
+  {
     id: "manifest-ascii",
     file: "manifest.sh",
     edits: [{ find: String.raw`tr -d '\000-\177'`, replace: String.raw`tr -d '\000-\377'` }],
   },
   {
-    // The original defect: a plain `.*` silently drops a name holding a newline.
+    // The original defect: a plain `.*` silently drops a name holding a newline. With the
+    // match alone mutated, the count guard must make the shell fail closed.
     id: "manifest-newline",
     file: "manifest.sh",
     edits: [{ find: String.raw`(?<name>[\\s\\S]*)\\z`, replace: String.raw`(?<name>.*)$` }],
@@ -203,53 +310,84 @@ const fileMutations: readonly FileMutation[] = [
     file: "manifest.sh",
     edits: [
       { find: String.raw`(?<name>[\\s\\S]*)\\z`, replace: String.raw`(?<name>.*)$` },
-      { find: `[ "$(printf '%s' "$trees" | jq 'length')" = "$expected" ] \\`, replace: "true \\" },
+      {
+        find: `[ "$(printf '%s' "$trees" | jq 'length')" = "$expected" ] \\`,
+        replace: "true \\",
+      },
     ],
   },
   {
-    id: "python-verify",
-    file: "canonicalize.py",
-    edits: [{ find: "if rebuilt != raw:", replace: "if False:" }],
+    id: "readback-probe",
+    file: "provider-policy.sh",
+    edits: [{ find: "printf 'null'\n}", replace: "printf '{}'\n}" }],
   },
   {
-    id: "python-derive",
-    file: "canonicalize.py",
-    edits: [{ find: 'if rebuilt != open(argv[3], "rb").read():', replace: "if False:" }],
+    id: "readback-404",
+    file: "provider-policy.sh",
+    edits: [{ find: `*"HTTP 404"*) printf 'false' ;;`, replace: `*"HTTP 404"*) printf 'null' ;;` }],
+  },
+  {
+    id: "readback-other",
+    file: "provider-policy.sh",
+    edits: [{ find: "*) printf 'null' ;;", replace: "*) printf 'false' ;;" }],
+  },
+  {
+    id: "readback-rulesets",
+    file: "provider-policy.sh",
+    edits: [{ find: 'rulesets="null"', replace: 'rulesets="[]"' }],
+  },
+  {
+    id: "readback-protection",
+    file: "provider-policy.sh",
+    edits: [{ find: 'protection="null"', replace: 'protection="{}"' }],
   },
   {
     id: "window-tail",
-    file: sourceName,
+    file: scanner,
     edits: [{ find: "start += windowSize - windowOverlap", replace: "start += windowSize * 1000" }],
   },
   {
     id: "window-overlap",
-    file: sourceName,
+    file: scanner,
     edits: [
       { find: "export const windowOverlap = 512;", replace: "export const windowOverlap = 0;" },
     ],
   },
-  frozen(
-    "frozen-ruleset-exclude",
-    '((.conditions.ref_name.exclude | type) == "array" and (.conditions.ref_name.exclude | length) == 0)',
-    "true",
-  ),
-  frozen(
-    "frozen-ruleset-bypass",
-    '((.bypass_actors | type) == "array" and (.bypass_actors | length) == 0)',
-    "true",
-  ),
-  frozen("frozen-ruleset-can-bypass", '(.current_user_can_bypass == "never")', "true"),
-  frozen("frozen-wiki", "(.settings.has_wiki != false)", "false"),
-  frozen("frozen-pages", "(.settings.has_pages != false)", "false"),
-  frozen("frozen-discussions", "(.settings.has_discussions != false)", "false"),
-  frozen("frozen-vulnerability-alerts", "(.security.vulnerability_alerts != false)", "false"),
-  frozen("frozen-security-fixes", "(.security.automated_security_fixes != false)", "false"),
-  frozen(
-    "frozen-collaborator",
-    "(((.access.collaborators // []) | map(.login)) != [$expected_collaborator])",
-    "false",
-  ),
-  frozen("frozen-unreadable", "select(.[1] == null)", "select(false)"),
+  {
+    id: "cli-flag-echo",
+    file: scanner,
+    edits: [{ find: 'arg.split("=")[0]', replace: "arg" }],
+  },
+  {
+    id: "git-no-replace",
+    file: scanner,
+    edits: [{ find: 'GIT_NO_REPLACE_OBJECTS: "1",', replace: "" }],
+  },
+  {
+    id: "headers-orphan",
+    file: scanner,
+    edits: [
+      {
+        find: "if (last === undefined) return null;",
+        replace: "if (last === undefined) continue;",
+      },
+    ],
+  },
+  {
+    id: "person-anchor",
+    file: scanner,
+    edits: [
+      {
+        find: "/^(.*) <([^<>]*)> \\d+ [+-]\\d{4}$/",
+        replace: "/^(.*) <([^<>]*)> \\d+ [+-]\\d{4}/",
+      },
+    ],
+  },
+  {
+    id: "fsck-strict",
+    file: scanner,
+    edits: [{ find: '"--strict",', replace: "" }],
+  },
 ];
 
 function runTests(directory: string, filter?: string): { code: number; output: string } {
@@ -259,31 +397,59 @@ function runTests(directory: string, filter?: string): { code: number; output: s
   return { code: result.exitCode, output: `${result.stdout}${result.stderr}` };
 }
 
-function report(name: string, verdict: Verdict, code: number): boolean {
-  console.log(
-    `${name}: neutralised -> exit ${code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es): ${verdict.label}`,
-  );
-  return verdict.label === "RED";
+function mutantOf(instrument: Instrument, source: string, id: string): string | null {
+  if (instrument.language === "ts") return neutralise(source, id);
+  if (instrument.language === "py") return neutralisePython(source, id);
+  if (instrument.language === "jq") return neutraliseJq(source, id);
+  return null;
 }
 
 function main(requested: readonly string[]): number {
-  const source = readFileSync(join(here, sourceName), "utf8");
-  const found = census(source);
-  console.log(
-    `refusal sites: ${found.sites}; marked with an id: ${found.marked} (${new Set(found.ids).size} distinct ids); exempt with a stated reason: ${found.exempt}; uncovered: ${found.uncovered.length}`,
-  );
-  let failures = 0;
-  if (found.uncovered.length > 0) {
-    console.log(`uncovered refusal sites at lines ${found.uncovered.join(", ")}`);
-    failures += found.uncovered.length;
+  let problems = 0;
+  const targets: Array<{
+    instrument: Instrument;
+    source: string;
+    found: SiteCensus;
+    ids: string[];
+  }> = [];
+  console.log("Denominators (refusal sites found by the harness's own pattern):");
+  for (const instrument of instruments) {
+    const source = readFileSync(join(here, instrument.file), "utf8");
+    const found = census(source, instrument.language);
+    const ids = [...new Set(found.ids)];
+    console.log(
+      `  ${instrument.file}: ${found.sites} sites = ${found.marked} marked + ${found.exempt} exempt + ${found.uncovered.length} uncovered; ${ids.length} marker ids`,
+    );
+    if (found.uncovered.length > 0) {
+      console.log(`    uncovered at lines ${found.uncovered.join(", ")}`);
+      problems += found.uncovered.length;
+    }
+    if (found.duplicates.length > 0) {
+      console.log(`    duplicate marker ids: ${found.duplicates.join(", ")}`);
+      problems += found.duplicates.length;
+    }
+    if (instrument.language === "sh") {
+      const mutated = new Set(
+        fileMutations.filter((m) => m.file === instrument.file).map((m) => m.id),
+      );
+      for (const id of ids)
+        if (!mutated.has(id)) {
+          console.log(`    marker ${id} has no substitution`);
+          problems += 1;
+        }
+    }
+    targets.push({ instrument, source, found, ids });
   }
-  if (found.duplicates.length > 0) {
-    console.log(`duplicate marker ids: ${found.duplicates.join(", ")}`);
-    failures += found.duplicates.length;
-  }
-  const ids = requested.length > 0 ? [...requested] : [...new Set(found.ids)];
   const work = mkdtempSync(join(tmpdir(), "neutralise-"));
-  let neutralised = 0;
+  let markerRuns = 0;
+  let substitutionRuns = 0;
+  const tally = new Map<string, { mutated: number; red: number }>();
+  const count = (file: string, red: boolean): void => {
+    const entry = tally.get(file) ?? { mutated: 0, red: 0 };
+    entry.mutated += 1;
+    if (red) entry.red += 1;
+    tally.set(file, entry);
+  };
   try {
     const target = join(work, "tools", "attestation");
     cpSync(here, target, {
@@ -295,48 +461,68 @@ function main(requested: readonly string[]): number {
     const baseline = runTests(work);
     console.log(`baseline: exit ${baseline.code}`);
     if (baseline.code !== 0) return 1;
-    for (const id of ids) {
-      const mutant = neutralise(source, id);
-      if (mutant === null) {
-        console.log(`${id}: no condition found after the marker`);
-        failures += 1;
-        continue;
-      }
-      writeFileSync(join(target, sourceName), mutant);
+    const run = (
+      label: string,
+      file: string,
+      original: string,
+      mutant: string,
+      id: string,
+    ): void => {
+      writeFileSync(join(target, file), mutant);
       const result = runTests(work, `red:${id} `);
-      neutralised += 1;
-      if (!report(id, judge(result.output, id, result.code), result.code)) failures += 1;
-    }
-    writeFileSync(join(target, sourceName), source);
-    if (requested.length === 0) {
-      for (const mutation of fileMutations) {
-        const original = readFileSync(join(here, mutation.file), "utf8");
-        let mutated = original;
-        let matched = true;
-        for (const edit of mutation.edits) {
-          if (mutated.split(edit.find).length !== 2) matched = false;
-          else mutated = mutated.replace(edit.find, () => edit.replace);
-        }
-        if (!matched) {
-          console.log(`${mutation.file} ${mutation.id}: substitution does not match exactly once`);
-          failures += 1;
+      writeFileSync(join(target, file), original);
+      const verdict = judge(result.output, id, result.code);
+      const red = verdict.label === "RED";
+      count(file, red);
+      if (!red) problems += 1;
+      console.log(
+        `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es): ${verdict.label}`,
+      );
+    };
+    for (const { instrument, source, ids } of targets) {
+      if (instrument.language === "sh") continue;
+      for (const id of ids) {
+        if (requested.length > 0 && !requested.includes(id)) continue;
+        const mutant = mutantOf(instrument, source, id);
+        if (mutant === null) {
+          console.log(`${instrument.file} ${id}: no check found below the marker`);
+          problems += 1;
           continue;
         }
-        writeFileSync(join(target, mutation.file), mutated);
-        const result = runTests(work, `red:${mutation.id} `);
-        neutralised += 1;
-        const verdict = judge(result.output, mutation.id, result.code);
-        if (!report(`${mutation.file} ${mutation.id}`, verdict, result.code)) failures += 1;
-        writeFileSync(join(target, mutation.file), original);
+        markerRuns += 1;
+        run(`${instrument.file} ${id}`, instrument.file, source, mutant, id);
       }
+    }
+    for (const mutation of fileMutations) {
+      if (requested.length > 0 && !requested.includes(mutation.id)) continue;
+      const original = readFileSync(join(here, mutation.file), "utf8");
+      let mutated = original;
+      let matched = true;
+      for (const edit of mutation.edits) {
+        if (mutated.split(edit.find).length !== 2) matched = false;
+        else mutated = mutated.replace(edit.find, () => edit.replace);
+      }
+      if (!matched) {
+        console.log(`${mutation.file} ${mutation.id}: substitution does not match exactly once`);
+        problems += 1;
+        continue;
+      }
+      substitutionRuns += 1;
+      run(`${mutation.file} ${mutation.id}`, mutation.file, original, mutated, mutation.id);
     }
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+  console.log("Neutralised per file (mutated / red by assertion):");
+  let total = 0;
+  for (const [file, entry] of tally) {
+    total += entry.mutated;
+    console.log(`  ${file}: ${entry.mutated} / ${entry.red}`);
+  }
   console.log(
-    `${neutralised} check(s) neutralised (${found.marked} marked sites, ${fileMutations.length} file substitutions, ${found.exempt} exempt), ${failures} problem(s)`,
+    `${total} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${problems} problem(s)`,
   );
-  return failures === 0 ? 0 : 1;
+  return problems === 0 ? 0 : 1;
 }
 
 if (import.meta.main) process.exitCode = main(process.argv.slice(2));

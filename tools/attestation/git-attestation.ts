@@ -21,8 +21,8 @@
  * itself be the leak.
  *
  * Mutation proof. A REFUSAL SITE is a line that emits a finding (`add("`) or
- * throws (`throw new GitFailure(` / `throw new Error(`). Each site carries a
- * `// neutralise:<id>` marker within the four lines above it, or a
+ * throws (`throw new GitFailure(` / `throw new Refusal(`). Each site carries a
+ * `// neutralise:<id>` marker within the eight lines above it (one marker covers one site), or a
  * `// neutralise:none <reason>` exemption that states why no test can reach it.
  * `neutralise-check.ts` finds the sites with its own pattern, independently of
  * the markers, prints sites / marked / exempt, and fails when the three do not
@@ -38,7 +38,7 @@
  *        [--deny-b64 <base64 literal>]...
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 import {
@@ -88,7 +88,18 @@ export interface ScanReport {
 
 type Add = (surface: string, kind: string, oid: string) => void;
 
-class GitFailure extends Error {}
+class GitFailure extends Error {
+  constructor(
+    message: string,
+    /** The finding kind a scan reports for this failure. */
+    readonly kind: string = "git-failure",
+  ) {
+    super(message);
+  }
+}
+
+/** A refusal to run or to describe: its message is fixed text and is the only thing main() prints. */
+class Refusal extends Error {}
 
 // ---------------------------------------------------------------------------
 // git access: bounded environment, no ambient configuration, no replace refs.
@@ -104,17 +115,30 @@ const gitEnvironment: Record<string, string> = {
   LC_ALL: "C",
 };
 
+let gitOutputLimit = 1 << 30;
+
+/** Test seam: the largest output of one git command that is read, in bytes (default 1 GiB). */
+export function setGitOutputLimit(bytes: number): void {
+  gitOutputLimit = bytes;
+}
+
 function git(dir: string, args: readonly string[], input?: Uint8Array): Buffer {
   const result = Bun.spawnSync(["git", "-C", dir, ...args], {
     env: gitEnvironment,
     stdin: input ?? "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    maxBuffer: 1 << 30,
+    maxBuffer: gitOutputLimit,
   });
   // The exit code is the verdict; stderr may quote object content, so it is dropped.
   // neutralise:git-exit
   if (result.exitCode !== 0) throw new GitFailure(`git ${args[0] ?? ""} exited ${result.exitCode}`);
+  // Bun 1.4.0 returns exit code 0 with a TRUNCATED stdout when the output exceeds maxBuffer
+  // (measured: 200000 bytes asked, 66536 returned, exitedDueToMaxBuffer true). A partial listing
+  // would read as a complete one.
+  // neutralise:git-output-limit
+  if (result.exitedDueToMaxBuffer)
+    throw new GitFailure("git output exceeds the read limit", "git-output-limit");
   return Buffer.from(result.stdout);
 }
 
@@ -146,7 +170,7 @@ export function refuseUnhandled(entries: readonly InventoryEntry[], add: Add): I
 export function assertHandledTypes(entries: readonly InventoryEntry[]): void {
   for (const entry of entries) {
     // neutralise:manifest-type
-    if (!handledTypes.has(entry.type)) throw new Error("object type not handled");
+    if (!handledTypes.has(entry.type)) throw new Refusal("object type not handled");
   }
 }
 
@@ -161,7 +185,7 @@ function inventory(dir: string): InventoryEntry[] {
     if (line === "") continue;
     const [oid, type, size] = line.split(" ");
     if (oid === undefined || type === undefined || size === undefined)
-      // neutralise:none git output contract: cat-file prints three fields per line or fails
+      // neutralise:none short or truncated git output is refused earlier by git-output-limit; kept for a git that exits 0 with a short answer, contract: cat-file prints three fields per line or fails
       throw new GitFailure("inventory line not understood");
     entries.push({ oid, type, size: Number(size) });
   }
@@ -173,7 +197,15 @@ interface RawObject {
   readonly body: Buffer;
 }
 
-/** One `cat-file --batch` round trip. `null` marks an object git reports missing. */
+/**
+ * One `cat-file --batch` round trip. `null` marks an object git reports missing.
+ *
+ * Accepted limit (not a fix): every handled object is read into one buffer, bounded by the git
+ * output limit (1 GiB). `maximumBlobBytes` is applied after that read, so it bounds the scan of a
+ * blob, not the memory used to fetch it. A repository whose objects exceed the limit fails closed
+ * (`git-output-limit` becomes a `git-failure` finding) instead of being read partly. The
+ * candidate holds 366,295 blob bytes in 205 objects.
+ */
 function readObjects(dir: string, oids: readonly string[]): Map<string, RawObject | null> {
   const out = git(dir, ["cat-file", "--batch"], Buffer.from(`${oids.join("\n")}\n`));
   const objects = new Map<string, RawObject | null>();
@@ -181,7 +213,7 @@ function readObjects(dir: string, oids: readonly string[]): Map<string, RawObjec
   for (const oid of oids) {
     const newline = out.indexOf(0x0a, position);
     if (newline < 0)
-      // neutralise:none git output contract: --batch answers once per requested object
+      // neutralise:none short or truncated git output is refused earlier by git-output-limit; kept for a git that exits 0 with a short answer, contract: --batch answers once per requested object
       throw new GitFailure("batch output truncated");
     const header = out.subarray(position, newline).toString("latin1").split(" ");
     if (header[1] === "missing") {
@@ -191,12 +223,12 @@ function readObjects(dir: string, oids: readonly string[]): Map<string, RawObjec
     }
     const [, type, size] = header;
     if (type === undefined || size === undefined)
-      // neutralise:none git output contract: --batch header is "<oid> <type> <size>"
+      // neutralise:none short or truncated git output is refused earlier by git-output-limit; kept for a git that exits 0 with a short answer, contract: --batch header is "<oid> <type> <size>"
       throw new GitFailure("batch header not understood");
     const start = newline + 1;
     const end = start + Number(size);
     if (end > out.length)
-      // neutralise:none git output contract: --batch body is as long as its header says
+      // neutralise:none short or truncated git output is refused earlier by git-output-limit; kept for a git that exits 0 with a short answer, contract: --batch body is as long as its header says
       throw new GitFailure("batch output truncated");
     objects.set(oid, { type, body: out.subarray(start, end) });
     position = end + 1;
@@ -234,7 +266,7 @@ function listRefs(dir: string): Ref[] {
     .map((line) => {
       const [name, objectId] = line.split("\t");
       if (name === undefined || objectId === undefined)
-        // neutralise:none git output contract: for-each-ref prints "<ref> TAB <oid>"
+        // neutralise:none short or truncated git output is refused earlier by git-output-limit; kept for a git that exits 0 with a short answer, contract: for-each-ref prints "<ref> TAB <oid>"
         throw new GitFailure("ref line not understood");
       return { name, objectId };
     })
@@ -252,13 +284,13 @@ export function canonicalJson(value: Json): string {
     for (let index = 0; index < value.length; index += 1)
       // neutralise:manifest-ascii
       if (value.charCodeAt(index) > 0x7f)
-        throw new Error("non-ASCII string: outside the admitted JCS subset");
+        throw new Refusal("non-ASCII string: outside the admitted JCS subset");
     return JSON.stringify(value);
   }
   if (typeof value === "number") {
     // neutralise:manifest-number
     if (!Number.isSafeInteger(value) || value < 0)
-      throw new Error("number outside the admitted JCS subset");
+      throw new Refusal("number outside the admitted JCS subset");
     return String(value);
   }
   if (Array.isArray(value)) return `[${value.map((child) => canonicalJson(child)).join(",")}]`;
@@ -301,7 +333,7 @@ function entryType(mode: string): string {
 export function buildManifest(dir: string, repository: string): string {
   // neutralise:manifest-shallow
   if (git(dir, ["rev-parse", "--is-shallow-repository"]).toString().trim() !== "false")
-    throw new Error("shallow repository");
+    throw new Refusal("shallow repository");
   const objectFormat = git(dir, ["rev-parse", "--show-object-format"]).toString().trim();
   const entries = inventory(dir);
   assertHandledTypes(entries);
@@ -310,12 +342,19 @@ export function buildManifest(dir: string, repository: string): string {
     dir,
     trees.map((entry) => entry.oid),
   );
-  const treeEntries: Json[] = [];
+  type TreeRecord = {
+    mode: string;
+    name: string;
+    objectId: string;
+    treeObjectId: string;
+    type: string;
+  };
+  const treeEntries: TreeRecord[] = [];
   for (const tree of trees) {
     const raw = bodies.get(tree.oid);
     if (raw === null || raw === undefined)
       // neutralise:none the tree was just listed by --batch-all-objects; same contract as unreadable
-      throw new Error("tree unreadable");
+      throw new Refusal("tree unreadable");
     for (const entry of parseTree(raw.body)) {
       const mode = entry.mode.padStart(6, "0");
       treeEntries.push({
@@ -328,15 +367,13 @@ export function buildManifest(dir: string, repository: string): string {
     }
   }
   treeEntries.sort((a, b) => {
-    const left = a as { treeObjectId: string; name: string };
-    const right = b as { treeObjectId: string; name: string };
-    return left.treeObjectId === right.treeObjectId
-      ? left.name < right.name
+    return a.treeObjectId === b.treeObjectId
+      ? a.name < b.name
         ? -1
-        : left.name > right.name
+        : a.name > b.name
           ? 1
           : 0
-      : left.treeObjectId < right.treeObjectId
+      : a.treeObjectId < b.treeObjectId
         ? -1
         : 1;
   });
@@ -562,7 +599,7 @@ export function scanRepository(dir: string, options: ScanOptions): ScanReport {
     if (!(error instanceof GitFailure)) throw error;
     // An unreadable repository is a refusal, never a pass over what could be read.
     // neutralise:git-failure
-    add("read", "git-failure", "");
+    add("read", error.kind, "");
   }
   return { findings, counters };
 }
@@ -671,19 +708,24 @@ function scanBlob(
     add("blob", "resource-limit", entry.oid);
     return;
   }
-  const classes = new Set(contentClasses(object.body.toString("latin1"), options));
+  const classes = classesOfBytes(object.body, options);
+  // neutralise:blob-content
+  if (classes.length > 0) add("blob", classes.join("+"), entry.oid);
+}
+
+/** Content classes of raw bytes: latin1, UTF-16LE when a NUL byte is present, and strict UTF-8. */
+export function classesOfBytes(body: Buffer, options: ScanOptions): string[] {
+  const classes = new Set(contentClasses(body.toString("latin1"), options));
   // A NUL byte betrays UTF-16 text, which a byte-wise ASCII scan cannot see into.
   // neutralise:blob-utf16
-  if (object.body.includes(0x00))
-    for (const klass of contentClasses(object.body.toString("utf16le"), options))
-      classes.add(klass);
+  if (body.includes(0x00))
+    for (const klass of contentClasses(body.toString("utf16le"), options)) classes.add(klass);
   // The UTF-8 reading folds compatibility forms (fullwidth letters, ligatures) that a latin1
   // reading of the same bytes leaves as unrecognisable multi-byte noise.
-  const utf8 = decodeUtf8(object.body);
+  const utf8 = decodeUtf8(body);
   // neutralise:blob-utf8
   if (utf8 !== null) for (const klass of contentClasses(utf8, options)) classes.add(klass);
-  // neutralise:blob-content
-  if (classes.size > 0) add("blob", [...classes].sort().join("+"), entry.oid);
+  return [...classes].sort();
 }
 
 function scanTree(
@@ -865,17 +907,52 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Read a file the operator named. The error carries the kind of file, never its path. */
+function readOperatorFile(path: string, what: string): Buffer {
+  let bytes: Buffer | undefined;
+  try {
+    bytes = readFileSync(path);
+  } catch {
+    bytes = undefined;
+  }
+  // neutralise:cli-file
+  if (bytes === undefined) throw new Refusal(`${what} cannot be read`);
+  return bytes;
+}
+
+/** A directory the operator named must exist; the error does not echo the path. */
+function requireDirectory(path: string): void {
+  let found = false;
+  try {
+    found = statSync(path).isDirectory();
+  } catch {
+    found = false;
+  }
+  // neutralise:cli-dir
+  if (!found) throw new Refusal("repository directory not found");
+}
+
 export function readAttestedRefs(manifestPath: string): Ref[] {
-  const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+  const parsed: unknown = JSON.parse(
+    readOperatorFile(manifestPath, "attestation file").toString("utf8"),
+  );
   const refs = isRecord(parsed) ? parsed.refs : undefined;
   // neutralise:attestation-refs
-  if (!Array.isArray(refs)) throw new Error("attestation carries no refs array");
-  return refs.map((ref: unknown) => {
+  if (!Array.isArray(refs)) throw new Refusal("attestation carries no refs array");
+  const list = refs.map((ref: unknown) => {
     // neutralise:attestation-ref
     if (!isRecord(ref) || typeof ref.name !== "string" || typeof ref.objectId !== "string")
-      throw new Error("attestation ref malformed");
+      throw new Refusal("attestation ref malformed");
     return { name: ref.name, objectId: ref.objectId };
   });
+  // A Map keeps the last of two entries with one name: a conflicting pair would pass unseen.
+  const names = new Set<string>();
+  for (const ref of list) {
+    // neutralise:attestation-duplicate
+    if (names.has(ref.name)) throw new Refusal("attestation lists a ref name twice");
+    names.add(ref.name);
+  }
+  return list;
 }
 
 export function parseIdentities(text: string): Identity[] {
@@ -887,28 +964,28 @@ export function parseIdentities(text: string): Identity[] {
     readable = false;
   }
   // neutralise:identities-json
-  if (!readable) throw new Error("identities file is not JSON");
+  if (!readable) throw new Refusal("identities file is not JSON");
   // neutralise:identities-array
   if (!Array.isArray(parsed) || parsed.length === 0)
-    throw new Error("identities file must be a non-empty array");
+    throw new Refusal("identities file must be a non-empty array");
   const identities: Identity[] = parsed.map((entry: unknown) => {
     // neutralise:identities-object
-    if (!isRecord(entry)) throw new Error("identity entry is not an object");
+    if (!isRecord(entry)) throw new Refusal("identity entry is not an object");
     // neutralise:identities-keys
     if (Object.keys(entry).sort().join(",") !== "address,name,scope")
-      throw new Error("identity entry must have exactly name, address and scope");
+      throw new Refusal("identity entry must have exactly name, address and scope");
     const { name, address, scope } = entry;
     // neutralise:identities-strings
     if (typeof name !== "string" || name === "" || typeof address !== "string" || address === "")
-      throw new Error("identity name and address must be non-empty strings");
+      throw new Refusal("identity name and address must be non-empty strings");
     // neutralise:identities-scope
     if (scope !== "anywhere" && scope !== "forge-added-only")
-      throw new Error('identity scope must be "anywhere" or "forge-added-only"');
+      throw new Refusal('identity scope must be "anywhere" or "forge-added-only"');
     return { name, address, scope };
   });
   // neutralise:identities-owner
   if (!identities.some((identity) => identity.scope === "anywhere"))
-    throw new Error("identities carry no owner entry with scope anywhere");
+    throw new Refusal("identities carry no owner entry with scope anywhere");
   return identities;
 }
 
@@ -919,10 +996,10 @@ export function decodeDenyLiteral(encoded: string): string {
     !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded) ||
     Buffer.from(encoded, "base64").toString("base64") !== encoded
   )
-    throw new Error("--deny-b64 value is not canonical base64");
+    throw new Refusal("--deny-b64 value is not canonical base64");
   const decoded = decodeUtf8(Buffer.from(encoded, "base64"));
   // neutralise:cli-b64-utf8
-  if (decoded === null) throw new Error("--deny-b64 value is not UTF-8");
+  if (decoded === null) throw new Refusal("--deny-b64 value is not UTF-8");
   // A canonical non-empty base64 string cannot decode to nothing: the empty literal is already
   // refused by the form check above, which is why there is no separate branch for it.
   return decoded;
@@ -951,13 +1028,13 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
       continue;
     }
     // neutralise:cli-flag-unknown
-    if (!knownFlags.has(arg)) throw new Error(`unknown flag ${arg}`);
+    if (!knownFlags.has(arg)) throw new Refusal(`unknown flag ${arg.split("=")[0]}`);
     const value = args[index + 1];
     // neutralise:cli-flag-value
-    if (value === undefined || value.startsWith("--")) throw new Error(`${arg} needs a value`);
+    if (value === undefined || value.startsWith("--")) throw new Refusal(`${arg} needs a value`);
     const seen = flags.get(arg) ?? [];
     // neutralise:cli-flag-duplicate
-    if (seen.length > 0 && !repeatableFlags.has(arg)) throw new Error(`${arg} given twice`);
+    if (seen.length > 0 && !repeatableFlags.has(arg)) throw new Refusal(`${arg} given twice`);
     flags.set(arg, [...seen, value]);
     index += 1;
   }
@@ -970,44 +1047,51 @@ function run(args: readonly string[]): number {
   if (command === "manifest") {
     // neutralise:cli-positional
     if (dir === undefined || repository === undefined || positional.length !== 3 || flags.size > 0)
-      throw new Error("usage: manifest <dir> <owner/repo>");
+      throw new Refusal("usage: manifest <dir> <owner/repo>");
+    requireDirectory(dir);
     process.stdout.write(buildManifest(dir, repository));
     return 0;
   }
   if (command === "text") {
     // neutralise:cli-text-usage
     if (dir === undefined || !flags.has("--identities"))
-      throw new Error("usage: text <file>... --identities <file> [--deny-b64 b]");
+      throw new Refusal("usage: text <file>... --identities <file> [--deny-b64 b]");
+    // neutralise:cli-text-flags
+    if (flags.has("--attestation") || flags.has("--trusted-ref"))
+      throw new Refusal("text does not take --attestation or --trusted-ref");
     const options: ScanOptions = {
-      identities: parseIdentities(readFileSync(flags.get("--identities")?.[0] ?? "", "utf8")),
+      identities: parseIdentities(
+        readOperatorFile(flags.get("--identities")?.[0] ?? "", "identities file").toString("utf8"),
+      ),
       denyLiterals: (flags.get("--deny-b64") ?? []).map(decodeDenyLiteral),
     };
     // Text that is not a git object (Actions logs): same content classes, file by file. The
     // output names a file and a class, never the matched bytes.
     const results = positional.slice(1).map((path) => {
-      const bytes = readFileSync(path);
-      const classes = new Set(contentClasses(bytes.toString("latin1"), options));
-      for (const klass of contentClasses(bytes.toString("utf8"), options)) classes.add(klass);
-      return {
-        file: path.split("/").at(-1) ?? path,
-        bytes: bytes.length,
-        classes: [...classes].sort(),
-      };
+      const bytes = readOperatorFile(path, "input file");
+      let classes: string[];
+      // neutralise:text-limit
+      if (bytes.length > defaultMaximumBlobBytes) classes = ["resource-limit"];
+      else classes = classesOfBytes(bytes, options);
+      return { file: path.split("/").at(-1) ?? path, bytes: bytes.length, classes };
     });
     console.log(JSON.stringify({ files: results.length, results }, null, 2));
     return results.some((result) => result.classes.length > 0) ? 1 : 0;
   }
   // neutralise:cli-command
-  if (command !== "scan") throw new Error("unknown command");
+  if (command !== "scan") throw new Refusal("unknown command");
   {
     // neutralise:cli-scan-usage
     if (dir === undefined || positional.length !== 2 || !flags.has("--identities"))
-      throw new Error(
+      throw new Refusal(
         "usage: scan <dir> --identities <file> [--attestation f] [--trusted-ref r] [--deny-b64 b]",
       );
+    requireDirectory(dir);
     const attestationPath = flags.get("--attestation")?.[0];
     const report = scanRepository(dir, {
-      identities: parseIdentities(readFileSync(flags.get("--identities")?.[0] ?? "", "utf8")),
+      identities: parseIdentities(
+        readOperatorFile(flags.get("--identities")?.[0] ?? "", "identities file").toString("utf8"),
+      ),
       trustedRef: flags.get("--trusted-ref")?.[0],
       attestedRefs: attestationPath === undefined ? undefined : readAttestedRefs(attestationPath),
       denyLiterals: (flags.get("--deny-b64") ?? []).map(decodeDenyLiteral),
@@ -1023,7 +1107,7 @@ function main(args: readonly string[]): number {
   } catch (error) {
     // Exit 2 is "refused to run": distinct from 1 ("ran, found something"). Messages carry
     // flag names and fixed text, never an argument value.
-    console.error(error instanceof Error ? error.message : "refused");
+    console.error(error instanceof Refusal ? error.message : "refused: unexpected failure");
     return 2;
   }
 }

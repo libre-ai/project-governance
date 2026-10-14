@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
@@ -21,6 +21,7 @@ import {
   type ScanOptions,
   type ScanReport,
   scanRepository,
+  setGitOutputLimit,
   stripAllowedAddresses,
   windowOverlap,
   windowSize,
@@ -1053,6 +1054,7 @@ describe("operator input", () => {
     expect(missing.err).toContain("--attestation needs a value");
     const swallowed = cli("scan", repository, "--trusted-ref", "--identities", identitiesPath);
     expect(swallowed.code).toBe(2);
+    expect(swallowed.err).toContain("--trusted-ref needs a value");
   });
 
   test("red:cli-flag-unknown an unknown flag exits 2", () => {
@@ -1240,5 +1242,329 @@ describe("shell and Python derivations on hard inputs", () => {
     writeFileSync(bogus, '{"b":1,"a":2}');
     for (const flags of [["-I"], ["-I", "-O"]])
       expect(pythonOf(flags, "verify", bogus).code).not.toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Second review round (a9d6d7fd): Python guards, shell git reads, git limits, operator input.
+// ---------------------------------------------------------------------------
+
+function plantBogusObject(dir: string): void {
+  const body = Buffer.concat([Buffer.from("bogus 2\0"), Buffer.from("hi")]);
+  const sha = createHash("sha1").update(body).digest("hex");
+  mkdirSync(join(dir, ".git", "objects", sha.slice(0, 2)), { recursive: true });
+  writeFileSync(join(dir, ".git", "objects", sha.slice(0, 2), sha.slice(2)), deflateSync(body));
+}
+
+/** A repository whose subtree object is truncated on disk: git lists it, then cannot read it. */
+function corruptSubtreeRepo(): string {
+  const dir = cleanRepo();
+  commit(dir, { "sub/inner.txt": "inner\n", "top.txt": "top\n" }, "Add a subtree");
+  const oid = git(dir, ["rev-parse", "HEAD:sub"]);
+  const path = join(dir, ".git", "objects", oid.slice(0, 2), oid.slice(2));
+  chmodSync(path, 0o644);
+  writeFileSync(path, readFileSync(path).subarray(0, 16));
+  return dir;
+}
+
+function pythonWithError(flags: string[], ...args: string[]): { code: number; err: string } {
+  const result = Bun.spawnSync(
+    ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
+    {
+      env: baseEnvironment,
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  return { code: result.exitCode, err: result.stderr.toString() };
+}
+
+describe("python guards", () => {
+  const verifyFile = (name: string, body: string | Buffer): string => {
+    const path = join(freshDir("python"), name);
+    writeFileSync(path, body);
+    return path;
+  };
+
+  test("red:python-ascii a manifest holding a non-ASCII string is refused, also under -O", () => {
+    const path = verifyFile("wide.json", Buffer.from('{"a":"é"}', "utf8"));
+    for (const flags of [["-I"], ["-I", "-O"]]) {
+      const result = pythonWithError(flags, "verify", path);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain("non-ASCII string");
+    }
+  });
+
+  test("red:python-integer a manifest holding an unsafe integer or a float is refused, also under -O", () => {
+    for (const body of ['{"a":99999999999999999999}', '{"a":1.5}', '{"a":-1}', '{"a":true}']) {
+      const path = verifyFile("number.json", body);
+      for (const flags of [["-I"], ["-I", "-O"]]) {
+        const result = pythonWithError(flags, "verify", path);
+        expect(result.code).toBe(1);
+        expect(result.err).toContain("primitive outside the admitted subset");
+      }
+    }
+  });
+
+  test("red:python-verify a file that is not JSON, or not canonical, is refused with a reason", () => {
+    expect(pythonWithError(["-I"], "verify", verifyFile("bad.json", "{")).err).toContain(
+      "not JSON",
+    );
+    const terminal = verifyFile("terminal.json", '{"a":1}\n');
+    expect(pythonWithError(["-I"], "verify", terminal).err).toContain("canonical serialisation");
+    const duplicate = verifyFile("duplicate.json", '{"a":1,"a":2}');
+    expect(pythonWithError(["-I"], "verify", duplicate).code).toBe(1);
+    expect(pythonWithError(["-I"], "verify", verifyFile("ok.json", '{"a":1}')).code).toBe(0);
+  });
+
+  test("red:python-git a directory git cannot read is refused with a reason", () => {
+    const result = pythonWithError(["-I"], "derive", freshDir("not-a-repository"), "fixture/repo");
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("git read failed");
+  });
+
+  test("red:python-shallow a shallow clone is refused with a reason", () => {
+    const source = cleanRepo("source");
+    const target = join(freshDir("shallow"), "clone");
+    git(source, ["clone", "-q", "--depth", "1", `file://${source}`, target]);
+    expect(pythonWithError(["-I"], "derive", target, "fixture/repo").err).toContain(
+      "shallow repository",
+    );
+  });
+
+  test("red:python-path a non-ASCII path is refused with a reason", () => {
+    const dir = cleanRepo();
+    commit(dir, { "café.txt": "x\n" }, "Add an accented name");
+    expect(pythonWithError(["-I"], "derive", dir, "fixture/repo").err).toContain("non-ASCII path");
+  });
+});
+
+describe("shell manifest reads", () => {
+  test("red:manifest-read a repository git cannot list is refused by the shell and the others", () => {
+    const dir = cleanRepo();
+    plantBogusObject(dir);
+    const shell = shellOf(dir);
+    expect(shell.code).not.toBe(0);
+    expect(shell.err).toContain("git read failed");
+    expect(() => buildManifest(dir, "fixture/repo")).toThrow();
+    expect(pythonWithError(["-I"], "derive", dir, "fixture/repo").code).toBe(1);
+  });
+
+  for (const id of ["manifest-tree", "manifest-ls-tree"])
+    test(`red:${id} a subtree git lists but cannot read is refused, never dropped`, () => {
+      const dir = corruptSubtreeRepo();
+      const shell = shellOf(dir);
+      expect(shell.code).not.toBe(0);
+      expect(shell.err).toContain("git read failed");
+      expect(() => buildManifest(dir, "fixture/repo")).toThrow();
+      expect(pythonWithError(["-I"], "derive", dir, "fixture/repo").code).toBe(1);
+    });
+});
+
+describe("git reads", () => {
+  test("red:git-output-limit a git output beyond the read limit is refused under its own kind", () => {
+    const dir = cleanRepo();
+    setGitOutputLimit(64);
+    try {
+      const report = scanRepository(dir, options);
+      expect(report.findings).toContainEqual({
+        surface: "read",
+        kind: "git-output-limit",
+        oid: "",
+      });
+      expect(() => buildManifest(dir, "fixture/repo")).toThrow("read limit");
+    } finally {
+      setGitOutputLimit(1 << 30);
+    }
+    expect(scanRepository(dir, options).findings).toEqual([]);
+  });
+
+  test("red:git-no-replace a replace ref never changes the bytes that are read for an object", () => {
+    const dir = cleanRepo();
+    commit(dir, { "leak.txt": `${canary.credential}\n` }, "Add a leak");
+    const dirty = git(dir, ["rev-parse", "HEAD:leak.txt"]);
+    const clean = git(dir, ["hash-object", "-w", "--stdin"], {}, "harmless\n");
+    git(dir, ["replace", "-f", dirty, clean]);
+    const report = scan(dir);
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({ surface: "blob", oid: dirty }),
+    );
+  });
+
+  test("red:fsck-strict an object that only fsck --strict rejects is refused", () => {
+    const dir = cleanRepo();
+    const blob = git(dir, ["hash-object", "-w", "--stdin"], {}, "x");
+    pointMainAt(
+      dir,
+      writeObject(dir, "tree", rawTree([{ mode: "0100644", name: "padded", oid: blob }])),
+    );
+    const plain = Bun.spawnSync(["git", "-C", dir, "fsck", "--no-dangling"], {
+      env: baseEnvironment,
+    });
+    const strict = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict", "--no-dangling"], {
+      env: baseEnvironment,
+    });
+    expect(plain.exitCode).toBe(0);
+    expect(strict.exitCode).not.toBe(0);
+    expect(scan(dir).findings).toContainEqual({
+      surface: "object-store",
+      kind: "fsck-failed",
+      oid: "",
+    });
+  });
+
+  test("red:headers-orphan a continuation line with no header before it is refused", () => {
+    const dir = cleanRepo();
+    const tree = git(dir, ["rev-parse", "HEAD^{tree}"]);
+    const person = `${owner.name} <${owner.address}> 1767225600 +0000`;
+    const oid = writeObject(
+      dir,
+      "commit",
+      Buffer.from(` orphan\ntree ${tree}\nauthor ${person}\ncommitter ${person}\n\nmessage\n`),
+    );
+    // git refuses to point a ref at a commit it cannot parse: the object stays unreferenced.
+    expect(scan(dir).findings).toContainEqual({
+      surface: "commit",
+      kind: "headers-malformed",
+      oid,
+    });
+  });
+
+  test("red:person-anchor an author line with trailing text after the zone is refused", () => {
+    const dir = cleanRepo();
+    const tree = git(dir, ["rev-parse", "HEAD^{tree}"]);
+    const person = `${owner.name} <${owner.address}> 1767225600 +0000`;
+    const oid = writeObject(
+      dir,
+      "commit",
+      Buffer.from(`tree ${tree}\nauthor ${person} trailing\ncommitter ${person}\n\nmessage\n`),
+    );
+    git(dir, ["update-ref", "refs/heads/main", oid]);
+    expect(scan(dir).findings).toContainEqual({
+      surface: "author-name",
+      kind: "header-malformed",
+      oid,
+    });
+  });
+});
+
+describe("operator input, second round", () => {
+  const cliPath = join(import.meta.dir, "git-attestation.ts");
+  const repository = cleanRepo("cli2");
+  const idsPath = join(freshDir("identities2"), "identities.json");
+  writeFileSync(idsPath, JSON.stringify(identities));
+
+  function cli(...args: string[]): { code: number; out: string; err: string } {
+    const result = Bun.spawnSync(["bun", cliPath, ...args], {
+      env: baseEnvironment,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
+  }
+
+  test("red:cli-flag-echo an unknown flag with an attached value never echoes the value", () => {
+    const result = cli("scan", repository, "--identities", idsPath, "--deny-b64=c2VjcmV0");
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("unknown flag --deny-b64");
+    expect(result.err.includes("c2VjcmV0")).toBe(false);
+  });
+
+  test("red:cli-flag-value a value that starts with -- is not taken as a value", () => {
+    const result = cli(
+      "scan",
+      repository,
+      "--identities",
+      idsPath,
+      "--attestation",
+      "--trusted-ref",
+      "x",
+    );
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("--attestation needs a value");
+  });
+
+  test("red:cli-dir a repository directory that does not exist exits 2 without echoing the path", () => {
+    const missing = join(root, "no-such-directory-marker");
+    for (const args of [
+      ["scan", missing, "--identities", idsPath],
+      ["manifest", missing, "fixture/repo"],
+    ]) {
+      const result = cli(...args);
+      expect(result.code).toBe(2);
+      expect(result.err).toContain("repository directory not found");
+      expect(result.err.includes("no-such-directory-marker")).toBe(false);
+    }
+    expect(cli("scan", join(root, "cli2-1", "README.md"), "--identities", idsPath).code).toBe(2);
+  });
+
+  test("red:cli-file an unreadable identities, attestation or input file exits 2 without echoing the path", () => {
+    const missing = join(root, "no-such-file-marker");
+    const cases: Array<[string[], string]> = [
+      [["scan", repository, "--identities", missing], "identities file cannot be read"],
+      [
+        ["scan", repository, "--identities", idsPath, "--attestation", missing],
+        "attestation file cannot be read",
+      ],
+      [["text", missing, "--identities", idsPath], "input file cannot be read"],
+    ];
+    for (const [args, message] of cases) {
+      const result = cli(...args);
+      expect(result.code).toBe(2);
+      expect(result.err).toContain(message);
+      expect(result.err.includes("no-such-file-marker")).toBe(false);
+    }
+  });
+
+  test("red:cli-text-flags text refuses the scan-only options it would otherwise ignore", () => {
+    const file = join(freshDir("text2"), "a.log");
+    writeFileSync(file, "ok\n");
+    expect(cli("text", file, "--identities", idsPath, "--attestation", file).code).toBe(2);
+    expect(
+      cli("text", file, "--identities", idsPath, "--trusted-ref", "refs/heads/main").code,
+    ).toBe(2);
+    expect(cli("text", file, "--identities", idsPath).code).toBe(0);
+  });
+
+  test("red:text-limit a text file above the size limit is refused, not partly read", () => {
+    const file = join(freshDir("text3"), "big.log");
+    writeFileSync(file, Buffer.alloc(64 * 1024 * 1024 + 1, 0x78));
+    const result = cli("text", file, "--identities", idsPath);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out).results[0].classes).toEqual(["resource-limit"]);
+  });
+
+  test("red:blob-utf8 the text command folds compatibility forms like the blob scan", () => {
+    const wide = [...canary.credential]
+      .map((character) => String.fromCodePoint((character.codePointAt(0) ?? 0) + 0xfee0))
+      .join("");
+    const file = join(freshDir("text4"), "wide.log");
+    writeFileSync(file, `${wide}\n`);
+    const result = cli("text", file, "--identities", idsPath);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out).results[0].classes).toContain("credential");
+  });
+
+  test("red:blob-utf16 the text command decodes UTF-16 like the blob scan", () => {
+    const file = join(freshDir("text5"), "wide.log");
+    writeFileSync(file, Buffer.from(`﻿${canary.credential}`, "utf16le"));
+    const result = cli("text", file, "--identities", idsPath);
+    expect(result.code).toBe(1);
+  });
+
+  test("red:attestation-duplicate an attestation that lists one ref name twice is refused", () => {
+    const base = freshDir("attestation2");
+    const body = JSON.stringify({
+      refs: [
+        { name: "refs/heads/trunk", objectId: "a".repeat(40) },
+        { name: "refs/heads/trunk", objectId: "b".repeat(40) },
+      ],
+    });
+    writeFileSync(join(base, "dup.json"), body);
+    expect(() => readAttestedRefs(join(base, "dup.json"))).toThrow("twice");
+    expect(
+      cli("scan", repository, "--identities", idsPath, "--attestation", join(base, "dup.json"))
+        .code,
+    ).toBe(2);
   });
 });

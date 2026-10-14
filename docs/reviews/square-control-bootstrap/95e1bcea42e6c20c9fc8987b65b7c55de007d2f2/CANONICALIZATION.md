@@ -50,7 +50,7 @@ requires the result to equal the file byte for byte, with no terminal newline.
 `derive`) shows each refused, and `bun tools/attestation/neutralise-check.ts` shows that removing the
 byte-equality assertion turns that test red.
 
-## Two defects the review found, and their proofs
+## Defects the reviews found, and their proofs
 
 - A path holding a newline was dropped silently by the shell implementation (`jq`'s `.*` does
   not match a newline, so `capture` produced nothing). The match now spans newlines, and the
@@ -60,6 +60,14 @@ byte-equality assertion turns that test red.
 - The Python derivation used `assert`, which `python -O` strips: a verifier that exits 0 on
   anything. It now refuses with an explicit exit (`red:python-derive`, `red:python-verify`, each
   run with and without `-O`).
+
+A third defect, found by the second review round: POSIX sh has no portable `pipefail`, so a `git
+ls-tree` that failed inside a pipeline lost its exit status; the entries of an unreadable subtree
+vanished and the record count read the same failing command. Every git read of `manifest.sh` now goes
+to a file and its status is tested (`red:manifest-read`, `red:manifest-tree`, `red:manifest-ls-tree`),
+and the TypeScript and Python implementations refuse the same repository. The retained bytes are
+unaffected: the candidate has no newline path and no unreadable tree, and the three implementations
+re-derived the same 87,173 bytes after both fixes.
 
 ## Why a third implementation
 

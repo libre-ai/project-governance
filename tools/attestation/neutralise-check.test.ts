@@ -3,7 +3,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { census, judge, markers, neutralise } from "./neutralise-check";
+import {
+  census,
+  judge,
+  markers,
+  neutralise,
+  neutraliseJq,
+  neutralisePython,
+} from "./neutralise-check";
 
 describe("neutralise", () => {
   test("forces the whole condition to false, `||` included, and leaves the rest alone", () => {
@@ -78,7 +85,7 @@ describe("census", () => {
 
   test("a refusal site without a marker within eight lines, or sharing one, is uncovered", () => {
     const filler = ["a();", "b();", "c();", "d();", "e();", "f();", "g();", "h();"];
-    const source = ["// neutralise:a", ...filler, 'throw new Error("late");', ""].join("\n");
+    const source = ["// neutralise:a", ...filler, 'throw new Refusal("late");', ""].join("\n");
     expect(census(source).uncovered).toEqual([10]);
     const shared = ["// neutralise:a", 'add("s", "k", o);', 'add("s", "k2", o);', ""].join("\n");
     expect(census(shared).uncovered).toEqual([3]);
@@ -153,5 +160,66 @@ describe("judge", () => {
       crashFailure,
     ].join("\n");
     expect(judge(output, "a", 1).label).toBe("RED (crash only)");
+  });
+});
+
+describe("the other instruments", () => {
+  test("every instrument of the tool has no uncovered site and no duplicate id", () => {
+    for (const [file, language] of [
+      ["manifest.sh", "sh"],
+      ["provider-policy.sh", "sh"],
+      ["canonicalize.py", "py"],
+      ["provider-policy.frozen-check.jq", "jq"],
+    ] as const) {
+      const result = census(readFileSync(join(import.meta.dir, file), "utf8"), language);
+      expect([file, result.uncovered, result.duplicates]).toEqual([file, [], []]);
+      expect(result.sites).toBe(result.marked + result.exempt);
+      expect(result.sites).toBeGreaterThan(0);
+    }
+  });
+
+  test("the shell pattern counts return 1 and readback decisions; the jq pattern counts blockers and clauses", () => {
+    expect(census("x || return 1\n", "sh").sites).toBe(1);
+    expect(census("printf 'null'\n", "sh").sites).toBe(1);
+    expect(census("# return 1 in a comment\n", "sh").sites).toBe(0);
+    expect(census('(if a then "m" else empty end),\n', "jq").sites).toBe(1);
+    expect(census("  and (.x == 1)\n", "jq").sites).toBe(1);
+    expect(census("    refuse('x')\n", "py").sites).toBe(1);
+    expect(census("def refuse(message):\n", "py").sites).toBe(0);
+    expect(census("    raise ValueError('x')\n", "py").sites).toBe(1);
+  });
+
+  test("neutralisePython turns the condition below the marker into False", () => {
+    const source = [
+      "# neutralise:p",
+      "if not value.isascii():",
+      '    raise ValueError("x")',
+      "",
+    ].join("\n");
+    expect(neutralisePython(source, "p")).toBe(
+      ["# neutralise:p", "if False:", '    raise ValueError("x")', ""].join("\n"),
+    );
+    const chain = ["# neutralise:q", "elif type(v) is not int:", "    pass", ""].join("\n");
+    expect(neutralisePython(chain, "q")).toContain("elif False:");
+    expect(neutralisePython("# neutralise:r\nx = 1\n", "r")).toBeNull();
+  });
+
+  test("neutraliseJq makes a blocker condition false, also over several lines, and a clause true", () => {
+    const blocker = [
+      "# neutralise:b",
+      "(if (.a // 1) != 0 and .b",
+      '  then "m" else empty end),',
+      "",
+    ].join("\n");
+    expect(neutraliseJq(blocker, "b")).toBe(
+      ["# neutralise:b", '(if false then "m" else empty end),', ""].join("\n"),
+    );
+    const clause = ["# neutralise:c", "  and (.x == 1", "       and .y)", "  and (.z)", ""].join(
+      "\n",
+    );
+    expect(neutraliseJq(clause, "c")).toBe(
+      ["# neutralise:c", "  and (true)", "  and (.z)", ""].join("\n"),
+    );
+    expect(neutraliseJq("# neutralise:d\nplain\n", "d")).toBeNull();
   });
 });

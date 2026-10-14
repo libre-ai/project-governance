@@ -8,18 +8,22 @@
 # computed, never typed. A control that cannot be read is recorded as null and listed as a
 # blocker: an unreadable control is not a passing control, and is never coerced to an empty list.
 #
-# Usage: sh tools/attestation/provider-policy.sh [owner/repo] [owner-login] > provider-policy.json
+# Usage: sh tools/attestation/provider-policy.sh <owner/repo> <owner-login> > provider-policy.json
+# Both arguments are required: the repository and the one login allowed to hold access are facts
+# of the transition, not defaults of the tool (resolve-never-hardcode).
 # Needs: gh (authenticated, repository admin read access) and jq.
 set -eu
 
-REPO="${1:-libre-ai/square-control}"
-EXPECTED_COLLABORATOR="${2:-constantin-jais}"
+REPO="${1:?usage: provider-policy.sh <owner/repo> <owner-login>}"
+EXPECTED_COLLABORATOR="${2:?usage: provider-policy.sh <owner/repo> <owner-login>}"
 OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 HERE="$(dirname "$0")"
 
 # JSON of an endpoint, or null when the provider refuses it (403, 404, 409, network).
 probe() {
-  out="$(gh api "repos/$REPO$1" 2>/dev/null)" && printf '%s' "$out" || printf 'null'
+  out="$(gh api "repos/$REPO$1" 2>/dev/null)" && printf '%s' "$out" ||
+    # neutralise:readback-probe
+    printf 'null'
 }
 
 # For endpoints whose status carries the answer: true on 2xx, false on HTTP 404, null on any
@@ -28,7 +32,12 @@ present() {
   if err="$(gh api "repos/$REPO$1" --silent 2>&1 >/dev/null)"; then
     printf 'true'
   else
-    case "$err" in *"HTTP 404"*) printf 'false' ;; *) printf 'null' ;; esac
+    case "$err" in
+      # neutralise:readback-404
+      *"HTTP 404"*) printf 'false' ;;
+      # neutralise:readback-other
+      *) printf 'null' ;;
+    esac
   fi
 }
 
@@ -43,13 +52,20 @@ settings="$(probe "" | jq -c 'if . == null then null else {
 # stays null; a readable empty list is [].
 ruleset_list="$(probe "/rulesets?includes_parents=true")"
 if [ "$ruleset_list" = "null" ]; then
+  # neutralise:readback-rulesets
   rulesets="null"
 else
   rulesets="$(
     for id in $(printf '%s' "$ruleset_list" | jq -r '.[]?.id'); do probe "/rulesets/$id"; echo; done | jq -s -c '.'
   )"
 fi
-protection="$(probe "/branches/$(probe "" | jq -r '.default_branch // "main"')/protection")"
+# The default branch is read from the repository itself; if it cannot be read there is no branch
+# to ask about, the protection stays null and the unreadable settings are a blocker anyway.
+default_branch="$(printf '%s' "$settings" | jq -r '.default_branch // empty')"
+if [ -n "$default_branch" ]; then protection="$(probe "/branches/$default_branch/protection")"; else
+  # neutralise:readback-protection
+  protection="null"
+fi
 actions_permissions="$(probe "/actions/permissions")"
 actions_workflow="$(probe "/actions/permissions/workflow")"
 selected_actions="$(probe "/actions/permissions/selected-actions")"

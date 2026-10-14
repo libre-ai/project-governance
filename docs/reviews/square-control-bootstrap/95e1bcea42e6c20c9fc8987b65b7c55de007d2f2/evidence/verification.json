@@ -8,7 +8,7 @@
       "id": "ls-remote",
       "result": "cmp with the retained file exit 0; 5 lines",
       "tool": "git 2.56.0",
-      "utc": "2026-10-14T08:51:06Z"
+      "utc": "2026-10-14T09:33:00Z"
     },
     {
       "claim": "git advertisement and provider API list the same refs and OIDs",
@@ -17,7 +17,7 @@
       "id": "refs-git-api",
       "result": "identical, 4 refs; cmp with evidence/refs.git.txt exit 0",
       "tool": "gh 2.102.0",
-      "utc": "2026-10-14T08:51:07Z"
+      "utc": "2026-10-14T09:33:01Z"
     },
     {
       "claim": "fresh non-shallow mirror of every advertised ref passes fsck --strict",
@@ -26,7 +26,7 @@
       "id": "mirror-fsck",
       "result": "shallow=false; plain git fetch with the globally configured credential helper",
       "tool": "git 2.56.0",
-      "utc": "2026-10-14T08:51:07Z"
+      "utc": "2026-10-14T09:33:01Z"
     },
     {
       "claim": "shell manifest() reproduces the attested bytes",
@@ -35,7 +35,7 @@
       "id": "manifest-shell",
       "result": "byte-equal",
       "tool": "sh + jq jq-1.8.2",
-      "utc": "2026-10-14T08:51:08Z"
+      "utc": "2026-10-14T09:33:02Z"
     },
     {
       "claim": "TypeScript buildManifest reproduces the attested bytes",
@@ -44,7 +44,7 @@
       "id": "manifest-typescript",
       "result": "byte-equal",
       "tool": "bun 1.4.0",
-      "utc": "2026-10-14T08:51:08Z"
+      "utc": "2026-10-14T09:33:02Z"
     },
     {
       "claim": "standalone Python derivation reproduces the attested bytes",
@@ -53,7 +53,7 @@
       "id": "manifest-python",
       "result": "derived 87173 bytes, sha256 765fd6e932f826843c9fa2def6b965742287136abe0a8ce884fc5ff52459dca9",
       "tool": "python 3.14.8",
-      "utc": "2026-10-14T08:51:08Z"
+      "utc": "2026-10-14T09:33:02Z"
     },
     {
       "claim": "the frozen pre-push manifest is canonical",
@@ -62,7 +62,7 @@
       "id": "manifest-pre-push",
       "result": "verified 81044 bytes, sha256 f512f639fa8ec20d5ff57b4350e3f9f1e40fff5329805b9798c6328264233b20",
       "tool": "python 3.14.8",
-      "utc": "2026-10-14T08:51:08Z"
+      "utc": "2026-10-14T09:33:03Z"
     },
     {
       "claim": "every object scanned on every D3 surface under the allowlist of record",
@@ -71,7 +71,7 @@
       "id": "scan",
       "result": "{\"findings\":0,\"counters\":{\"objects\":205,\"commits\":17,\"trees\":86,\"treeEntries\":427,\"blobs\":102,\"blobBytes\":366295,\"tags\":0,\"refs\":4,\"signatures\":2,\"unreachableObjects\":0}}",
       "tool": "bun 1.4.0",
-      "utc": "2026-10-14T08:51:09Z"
+      "utc": "2026-10-14T09:33:03Z"
     },
     {
       "claim": "Actions run logs, which become public at the switch, scanned with the same content classes",
@@ -80,7 +80,7 @@
       "id": "actions-logs",
       "result": "{\"local-path\":8,\"personal-data\":2} over 8 logs; hits enumerated in evidence/actions-logs.txt",
       "tool": "gh + bun",
-      "utc": "2026-10-14T08:51:27Z"
+      "utc": "2026-10-14T09:33:18Z"
     },
     {
       "claim": "no secret found by an independent scanner, on every ref",
@@ -89,7 +89,7 @@
       "id": "gitleaks",
       "result": "no leaks found; commit-count reconciliation in evidence/gitleaks.txt",
       "tool": "gitleaks 8.30.1",
-      "utc": "2026-10-14T08:51:27Z"
+      "utc": "2026-10-14T09:33:19Z"
     },
     {
       "claim": "the candidate's own gates pass from the mirror",
@@ -105,27 +105,27 @@
       "command": "bun test tools/attestation",
       "exit_code": 0,
       "id": "tool-tests",
-      "result": " 141 pass  0 fail Ran 141 tests across 3 files.  ",
+      "result": " 202 pass  0 fail Ran 202 tests across 3 files.  ",
       "tool": "bun 1.4.0",
-      "utc": "2026-10-14T08:51:37Z"
+      "utc": "2026-10-14T09:33:32Z"
     },
     {
-      "claim": "every refusal site is covered, and every check's test fails when the check is neutralised",
+      "claim": "every refusal site of the four instruments is covered, and every check's test fails by assertion when the check is neutralised",
       "command": "bun tools/attestation/neutralise-check.ts",
       "exit_code": 0,
       "id": "neutralisation",
-      "result": "refusal sites: 65; marked with an id: 59 (73 distinct ids); exempt with a stated reason: 6; uncovered: 0; 91 check(s) neutralised (59 marked sites, 18 file substitutions, 6 exempt), 0 problem(s)",
+      "result": "git-attestation.ts: 70 sites = 64 marked + 6 exempt + 0 uncovered; 79 marker ids;manifest.sh: 9 sites = 6 marked + 3 exempt + 0 uncovered; 6 marker ids;provider-policy.sh: 5 sites = 5 marked + 0 exempt + 0 uncovered; 5 marker ids;canonicalize.py: 10 sites = 7 marked + 3 exempt + 0 uncovered; 7 marker ids;provider-policy.frozen-check.jq: 36 sites = 36 marked + 0 exempt + 0 uncovered; 36 marker ids; 141 check(s) neutralised = 122 marker-driven + 19 substitutions; 0 problem(s)",
       "tool": "bun 1.4.0",
-      "utc": "2026-10-14T08:52:02Z"
+      "utc": "2026-10-14T09:34:19Z"
     },
     {
       "claim": "the remote is frozen: no blocker derived from the readback",
-      "command": "sh tools/attestation/provider-policy.sh libre-ai/square-control > evidence/provider-policy.json",
+      "command": "sh tools/attestation/provider-policy.sh libre-ai/square-control constantin-jais > evidence/provider-policy.json",
       "exit_code": 0,
       "id": "provider-policy",
-      "result": "observed_at 2026-10-14T08:52:02Z; frozen=true; blockers=0; residual risks=4; producer exit 0",
+      "result": "observed_at 2026-10-14T09:34:19Z; frozen=true; blockers=0; residual risks=5; producer exit 0",
       "tool": "gh + jq jq-1.8.2",
-      "utc": "2026-10-14T08:52:15Z"
+      "utc": "2026-10-14T09:34:30Z"
     }
   ]
 }

@@ -86,16 +86,42 @@ Each surface has a positive result on the candidate and a distinct failure on a 
 temporary repository (never the candidate). `bun test tools/attestation -t 'red:<id> '`
 exits 0 when the scan reports the failure. `bun tools/attestation/neutralise-check.ts`
 (wired into `bun run check` as `check:attestation`) states its denominator and then proves the
-tests: it counts the refusal sites of the scanner with its own pattern, independently of the
-markers (a line that emits a finding or throws), and requires each to carry a marker or an
-exemption with a stated reason. `evidence/neutralisation.txt`: **65 refusal sites = 59
-marked + 6 exempt, 0 uncovered**, no duplicate marker id. The 6 exemptions are the branches
-that only guard the output contract of `git` itself (five lines of `cat-file` and
-`for-each-ref` output, and a tree just listed by `--batch-all-objects`); no test can reach them
-with a working `git`, and each says so in the source. Then **91 checks are neutralised in a
-throwaway copy (73 marker ids and 18 text substitutions in the shell, Python, jq and window
-code), 91 fail by assertion, 0 only crash, 0 stay green**. A failure that only crashes is
-reported separately and does not count as caught.
+tests: for each of the four instruments it counts the refusal sites with a pattern of its
+own, independently of the markers, and requires each to carry a marker or an exemption with a
+stated reason. `evidence/neutralisation.txt`, denominators per file:
+
+| File | Refusal sites | Marked | Exempt | Uncovered |
+| --- | --- | --- | --- | --- |
+| `git-attestation.ts` (a finding or a throw) | 70 | 64 | 6 | 0 |
+| `manifest.sh` (`return 1`) | 9 | 6 | 3 | 0 |
+| `provider-policy.sh` (readback decisions: null or false) | 5 | 5 | 0 | 0 |
+| `canonicalize.py` (`refuse(`, `raise ValueError(`) | 10 | 7 | 3 | 0 |
+| `provider-policy.frozen-check.jq` (blockers, residual risks, ruleset clauses) | 36 | 36 | 0 | 0 |
+
+The 15 exemptions say why no test can reach them. Six in the scanner guard the output contract
+of `git` (a short line of `cat-file` or `for-each-ref`, a truncated batch, a tree just listed): a
+truncated read is refused earlier by `git-output-limit` (tested), so these remain for a git that
+exits 0 with a short answer. The others: `mktemp` failing, an object type git itself refuses to list
+(`invalid object type`, measured), `jq` unable to fail on an entry git printed (the record count
+catches a dropped one), and two `except` clauses in Python that only forward the message of a tested
+guard.
+
+Then **141 checks are neutralised in a throwaway copy = 122 marker-driven (79 in the scanner, 7 in
+Python, 36 in jq) + 19 text substitutions (7 in `manifest.sh`, 5 in `provider-policy.sh`, 7 in the
+scanner for logic that has no refusal site: windows, flag echo, replace refs, orphan header, person
+anchor, `fsck --strict`)**. Per file, mutated / red by assertion: scanner 86 / 86, `manifest.sh`
+7 / 7, `provider-policy.sh` 5 / 5, `canonicalize.py` 7 / 7, jq 36 / 36. 141 fail by assertion, 0
+only crash, 0 stay green. A failure that only crashes is reported separately and counted as a
+problem. Two shared ids (`manifest-shallow`, `manifest-ascii`) mutate both the TypeScript and the
+shell implementation, which the same tests assert.
+
+Accepted limits, with numbers. (a) Memory: every handled object is read into one `cat-file --batch`
+buffer bounded at 1 GiB; a larger repository fails closed as `git-output-limit` instead of being
+read partly (the candidate holds 366,295 blob bytes in 205 objects). (b) A `git` killed by a signal
+reports no exit code; it is refused by `!== 0`, but it needs about 50 MB of output to happen
+(measured by the quality review) and is not tested. (c) Not tested, one line each: a git error
+output that quotes object content is dropped by design (stderr is never read); the fixture
+readback in `provider-policy.test.ts` is the 2026-10-14 post-freeze state.
 
 | Surface (ADR-0038 D3) | Candidate | Red counter-proof (test id) |
 | --- | --- | --- |
@@ -119,10 +145,14 @@ reported separately and does not count as caught.
 | Unreadable or missing object, object no ref reaches, git failure | `git fsck --strict` exit 0, 0 unreachable | `red:fsck`, `red:unreachable`, `red:unreadable`, `red:tree-target-missing`, `red:tree-malformed`, `red:git-exit`, `red:git-failure` |
 | Blob reading: UTF-16, UTF-8 compatibility forms, 32 KiB windows and their overlap | 102 blobs, 0 finding | `red:blob-utf16`, `red:blob-utf8`, `red:window-tail`, `red:window-overlap` |
 | `.git`, `.` and `..` path components | 0 | `red:tree-path-dot` |
-| Operator input: flags, base64 literals, identities file, attestation file | the committed inputs are accepted | `red:cli-*` (9), `red:identities-*` (7), `red:attestation-refs`, `red:attestation-ref`; every refusal exits 2, distinct from 1 (finding) |
+| Operator input: flags, base64 literals, identities file, attestation file, files, directories, the `text` command | the committed inputs are accepted | `red:cli-*` (13, among them `cli-flag-echo`, `cli-dir`, `cli-file`, `cli-text-flags`), `red:identities-*` (7), `red:attestation-refs`, `red:attestation-ref`, `red:attestation-duplicate`, `red:text-limit`; every refusal exits 2, distinct from 1 (finding), and no message echoes a value or a path |
+| Git reads: output beyond the read limit, replace refs, `fsck --strict`, orphan header, trailing text after a person | none | `red:git-output-limit`, `red:git-no-replace`, `red:fsck-strict`, `red:headers-orphan`, `red:person-anchor` |
+| Shell manifest on an unreadable repository or subtree (no `pipefail` in POSIX sh) | none | `red:manifest-read`, `red:manifest-tree`, `red:manifest-ls-tree` (the three implementations refuse) |
+| Python guards: non-ASCII, integer range, git read, shallow, non-ASCII path | none | `red:python-ascii`, `red:python-integer`, `red:python-git`, `red:python-shallow`, `red:python-path`, each also under `python -O` where it applies |
+| `provider-policy.sh` against a stub `gh`: 404 is absent, any other failure is unreadable | frozen = true | `red:readback-404`, `red:readback-other`, `red:readback-probe`, `red:readback-rulesets`, `red:readback-protection` |
 | Manifest ASCII subset, serialisation, number subset | ASCII only | `red:manifest-ascii`, `red:manifest-number`, `red:python-verify`, `red:python-derive` (also under `python -O`) |
 | Path holding a newline in the shell manifest (a defect found by review: the entry was dropped silently) | none in the candidate | `red:manifest-newline`, `red:manifest-count` |
-| Frozen verdict: ruleset exclusions, bypass, wiki, Pages, discussions, alerts, security fixes, collaborator identity, unreadable controls | frozen = true | `red:frozen-*` (10), `provider-policy.test.ts` |
+| Frozen verdict: all 25 blockers (each separately: lock, enforce-admins, projects, secrets, webhooks, …), 7 ruleset clauses, 4 residual risks | frozen = true | `red:frozen-*` (36 ids, `provider-policy.test.ts`) |
 
 Content classes covered in blobs, paths, ref names, names and messages: machine-local paths
 (home directories of three operating systems, temporary and volume paths), credentials
@@ -201,10 +231,11 @@ at 08:06:12Z (the ruleset's `created_at`); I changed no setting. Before them the
 readback (05:17:19Z) had `frozen = false` with six blockers: Actions enabled, `main` unprotected,
 no ruleset, Dependabot configured with Actions enabled, PR 1 open, issues enabled.
 
-After them, `evidence/provider-policy.json` (read-only readback, 2026-10-14T08:52:02Z, first
+After them, `evidence/provider-policy.json` (read-only readback, 2026-10-14T09:34:19Z, first
 taken at 08:08:41Z and refreshed with the stricter check below): `frozen_check.frozen = true`, 0
-blocker. The file is produced by `sh tools/attestation/provider-policy.sh libre-ai/square-control >
-evidence/provider-policy.json`, which reads the controls and derives the verdict with
+blocker. The file is produced by `sh tools/attestation/provider-policy.sh libre-ai/square-control
+constantin-jais > evidence/provider-policy.json` (both arguments are required: the repository and
+the one login allowed to hold access are facts of the transition, not defaults), which reads the controls and derives the verdict with
 `provider-policy.frozen-check.jq` (tested in `provider-policy.test.ts`). The check now requires
 that the ruleset excludes nothing, has a present and empty bypass list, and cannot be bypassed by the
 reader; that wiki, Pages, discussions, projects, vulnerability alerts and automated security fixes
@@ -220,7 +251,7 @@ refs plus `HEAD`, same OIDs). Post-freeze re-reads, each timestamped in `evidenc
 identical to the retained files, and a fresh mirror gives the same manifest bytes and sha256
 `765fd6e9…dca9` in the shell, TypeScript and Python implementations.
 
-Residual risks, listed in `frozen_check.residual_risks` and not hidden by `frozen = true`
+Five residual risks, listed in `frozen_check.residual_risks` and not hidden by `frozen = true`
 (they cannot be removed without changing the OID or by the owner alone):
 
 1. Dependabot version updates stay configured in the tree (weekly, Monday 06:00 Europe/Paris,
@@ -228,9 +259,12 @@ Residual risks, listed in `frozen_check.residual_risks` and not hidden by `froze
    ruleset; both are hypotheses not measured until a scheduled run passes. Step 5 refuses on any
    ref difference, so the failure mode is a refused switch and a new attestation.
 2. Pull request 1 is open: `refs/pull/*` is provider-managed, no ruleset restricts it and the
-   owner cannot delete it. Pull requests stay enabled on the repository: a new pull request would
-   create `refs/pull/2/*`, which step 5 would refuse (a new attestation, not a leak).
-3. The owner keeps administrative authority over every setting; it is not represented as
+   owner cannot delete it.
+3. Pull requests stay enabled on the repository: a new pull request would create
+   `refs/pull/2/*`, which step 5 would refuse (a new attestation, not a leak).
+4. No tag ruleset: the only ruleset targets branches, so the owner could create a tag. Step 5
+   refuses it through the ref-set comparison (a new attestation, not a leak).
+5. The owner keeps administrative authority over every setting; it is not represented as
    revocable by these controls.
 
 Consequence under the amended D2: any ref that appears, disappears or moves before step 5 makes
@@ -238,15 +272,22 @@ step 5 refuse and a new attestation is required.
 
 ## Exposure window: properties of the owner script
 
-Three properties the security review asked of `commands.sh` (steps 5 and 6), fixed in the
-owner's script and not part of this pull request's diff:
+Properties the security reviews asked of `commands.sh` (steps 5 and 6), fixed in the owner's script
+and not part of this pull request's diff:
 
 - step 5 checks that `HEAD` is a symref to `refs/heads/main` and that its OID is the attested one,
   not only the refs listed in the manifest;
 - step 6 enumerates every ref anonymously, fetches a `+refs/*:refs/*` mirror and compares its
   manifest byte for byte with the merged one, instead of a plain clone that skips `refs/pull/*`;
-- step 5 re-reads the frozen state (`provider-policy.sh`, `frozen = true`) immediately before the
-  visibility call.
+- step 5 re-reads the frozen state (`provider-policy.sh` run with the repository and the owner
+  login, `frozen = true`, no blocker) and runs that re-read FIRST, so that the reference and
+  manifest comparisons are the LAST checks before the visibility call and the window between
+  them is as short as the script can make it;
+- step 5 reads every governance file it executes at the attestation's merge revision (the commit
+  that last touched the merged manifest, resolved with `commits?path=<manifest>&per_page=1`), not
+  at the served branch of the moment, and downloads `provider-policy.sh` AND
+  `provider-policy.frozen-check.jq` side by side, since the script reads the verdict program
+  next to itself.
 
 ## Tools and versions
 
@@ -269,7 +310,7 @@ bun tools/attestation/git-attestation.ts scan mirror --identities docs/reviews/s
 
 - Candidate main `95e1bcea…` content (blobs, paths, modes, owner-authored history): no finding.
 - Attested set (4 refs, 205 objects): 0 finding under the allowlist of record.
-- Frozen remote: yes (`frozen = true`, 08:52:02Z), with the three residual risks above.
+- Frozen remote: yes (`frozen = true`, 09:34:19Z), with the five residual risks above.
 - Manifest: reproduced by four derivations, digest `765fd6e9…dca9`.
 - Reviews: pending, `REVIEW.md`.
 

@@ -125,7 +125,7 @@ esac
 # Z1. Refresh the readback and require frozen = true. Commit the refreshed file to the
 #     attestation pull request BEFORE it is merged (a merged attestation with frozen=false is
 #     an attestation of an unfrozen remote).
-#       sh tools/attestation/provider-policy.sh libre-ai/square-control \
+#       sh tools/attestation/provider-policy.sh libre-ai/square-control constantin-jais \
 #         > docs/reviews/square-control-bootstrap/<OID>/evidence/provider-policy.json
 #       jq -e '.frozen_check.frozen' docs/reviews/square-control-bootstrap/<OID>/evidence/provider-policy.json
 # Z2. Prove the Dependabot hypotheses instead of assuming them: after F1/F2, wait for (or note the
