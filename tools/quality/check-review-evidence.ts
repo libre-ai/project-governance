@@ -46,6 +46,20 @@ import { concludeGate, GateReport } from "./gate-report";
  * form; the gate judges the diff of the pull request under review, so they
  * are not re-evaluated.
  *
+ * `docs/decisions/LEXICON.md` joined the gated surface on 2026-10-14: the
+ * lexicon fixes the meaning of the words the invariants and ADRs are written
+ * in, so redefining a term changes what a signed rule says without touching
+ * the rule. It was left out when the surface was drawn; #102 amended it under
+ * this gate's blind spot.
+ *
+ * A review-artefact reference counts only if it names a path that exists in
+ * the tree under review (2026-10-14). Before, any string shaped like
+ * `docs/reviews/…` passed — a reference to a dossier that was never written
+ * produced the same green as a real one (observed on #102's first run). The
+ * standing files of the directory (its README and the review protocol) exist
+ * in every tree, so citing them proves nothing about this change and they are
+ * not admissible either.
+ *
  * Runs only on `pull_request` events: the diff against the PR's base and the
  * PR description both exist there. A `push` to `main` only ever happens
  * through a protected-branch merge that already passed this gate at PR time,
@@ -56,6 +70,7 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^docs\/adr\//,
   /^docs\/decisions\/INVARIANTS\.md$/,
   /^docs\/decisions\/DECISION-REGISTER\.md$/,
+  /^docs\/decisions\/LEXICON\.md$/,
   /^ecosystem\/FORGOTTEN\.yaml$/,
 ];
 
@@ -68,6 +83,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "docs/adr",
   "docs/decisions/INVARIANTS.md",
   "docs/decisions/DECISION-REGISTER.md",
+  "docs/decisions/LEXICON.md",
   "ecosystem/FORGOTTEN.yaml",
 ];
 
@@ -85,11 +101,22 @@ export interface EvidenceSignal {
   readonly text: string;
 }
 
+/** Files that live in `docs/reviews/` in every tree: citing them reviews nothing. */
+export const STANDING_REVIEW_PATHS: readonly string[] = [
+  "docs/reviews/README.md",
+  "docs/reviews/AGENT-REVIEW-PROTOCOL.md",
+];
+
+/** Answers whether a repository-relative path exists in the tree under review. */
+export type PathExists = (path: string) => boolean;
+
 /** Pure scan over one text blob, so the two accepted forms are independently testable. */
 export function findEvidenceSignals(source: "pr-body" | "diff", text: string): EvidenceSignal[] {
   const signals: EvidenceSignal[] = [];
   for (const match of text.matchAll(REVIEW_ARTIFACT_PATTERN)) {
-    signals.push({ source, kind: "review-artifact", text: match[0] });
+    // Sentence punctuation is not part of a path: "see docs/reviews/x.md." cites x.md.
+    const path = match[0].replace(/[.,;:]+$/, "").replace(/\/+$/, "");
+    signals.push({ source, kind: "review-artifact", text: path });
   }
   for (const match of text.matchAll(OWNER_ARBITRATION_PATTERN)) {
     signals.push({ source, kind: "owner-arbitration-marker", text: match[0] });
@@ -105,6 +132,7 @@ export function evaluateReviewEvidence(
   changedPaths: readonly string[],
   prBody: string,
   diffText: string,
+  pathExists: PathExists,
 ): GateReport {
   const report = new GateReport();
   const gated = touchesGatedPaths(changedPaths);
@@ -117,15 +145,40 @@ export function evaluateReviewEvidence(
     ...findEvidenceSignals("pr-body", prBody),
     ...findEvidenceSignals("diff", diffText),
   ];
-  const ok = signals.length > 0;
+  const admissible: EvidenceSignal[] = [];
+  const rejected: string[] = [];
+  for (const signal of signals) {
+    if (signal.kind === "owner-arbitration-marker") {
+      admissible.push(signal);
+    } else if (STANDING_REVIEW_PATHS.includes(signal.text)) {
+      rejected.push(
+        `${signal.text} (${signal.source}) is a standing file of docs/reviews/, not a review`,
+      );
+    } else if (!pathExists(signal.text)) {
+      rejected.push(`${signal.text} (${signal.source}) does not exist in the tree under review`);
+    } else {
+      admissible.push(signal);
+    }
+  }
+
+  report.volume(
+    `${signals.length} candidate signal(s): ${admissible.length} admissible, ${rejected.length} rejected`,
+  );
+  const ok = admissible.length > 0;
+  const rejectedNote = rejected.length > 0 ? `; rejected references: ${rejected.join("; ")}` : "";
   report.check(
     gated.join(", "),
     ok,
     ok
-      ? `evidence found: ${signals.map((signal) => `${signal.kind} (${signal.source}): ${signal.text}`).join("; ")}`
-      : "neither the pull request description nor the diff of the gated files references a docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker",
+      ? `evidence found: ${admissible.map((signal) => `${signal.kind} (${signal.source}): ${signal.text}`).join("; ")}${rejectedNote}`
+      : `neither the pull request description nor the diff of the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (${signals.length} candidate signal(s) examined${rejectedNote})`,
   );
   return report;
+}
+
+/** `git cat-file -e HEAD:<path>` answers for a blob or a tree, so a dossier directory counts. */
+function existsAtHead(path: string): boolean {
+  return sh(["git", "cat-file", "-e", `HEAD:${path}`]).exitCode === 0;
 }
 
 function sh(argv: string[]): { exitCode: number; stdout: string; stderr: string } {
@@ -179,6 +232,9 @@ if (import.meta.main) {
       .filter(Boolean);
     const diff = sh(["git", "diff", `origin/${baseRef}...HEAD`, "--", ...GATED_PATHSPECS]);
     const prBody = await readPullRequestBody();
-    concludeGate("Review evidence", evaluateReviewEvidence(changedPaths, prBody, diff.stdout));
+    concludeGate(
+      "Review evidence",
+      evaluateReviewEvidence(changedPaths, prBody, diff.stdout, existsAtHead),
+    );
   }
 }
