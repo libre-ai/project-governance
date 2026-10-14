@@ -4,6 +4,8 @@ import {
   findEvidenceSignals,
   GATED_PATH_PATTERNS,
   GATED_PATHSPECS,
+  type PathExists,
+  STANDING_REVIEW_PATHS,
   touchesGatedPaths,
 } from "./check-review-evidence";
 
@@ -17,14 +19,20 @@ describe("touchesGatedPaths", () => {
     expect(touchesGatedPaths(["docs/adr/0023-x.md", "README.md"])).toEqual(["docs/adr/0023-x.md"]);
   });
 
-  test("matches INVARIANTS.md and DECISION-REGISTER.md exactly, not a sibling", () => {
+  test("matches INVARIANTS.md, DECISION-REGISTER.md and LEXICON.md exactly, not a sibling", () => {
     expect(
       touchesGatedPaths([
         "docs/decisions/INVARIANTS.md",
         "docs/decisions/DECISION-REGISTER.md",
         "docs/decisions/LEXICON.md",
+        "docs/decisions/README.md",
+        "docs/decisions/LEXICON.md.bak",
       ]),
-    ).toEqual(["docs/decisions/INVARIANTS.md", "docs/decisions/DECISION-REGISTER.md"]);
+    ).toEqual([
+      "docs/decisions/INVARIANTS.md",
+      "docs/decisions/DECISION-REGISTER.md",
+      "docs/decisions/LEXICON.md",
+    ]);
   });
 
   test("an unrelated path change is not gated", () => {
@@ -73,6 +81,18 @@ describe("findEvidenceSignals", () => {
     ]);
   });
 
+  test("trailing sentence punctuation and slashes are not part of the cited path", () => {
+    const signals = findEvidenceSignals(
+      "pr-body",
+      "see docs/reviews/a/VERDICT.md. Also docs/reviews/b/, and docs/reviews/c.md;",
+    );
+    expect(signals.map((signal) => signal.text)).toEqual([
+      "docs/reviews/a/VERDICT.md",
+      "docs/reviews/b",
+      "docs/reviews/c.md",
+    ]);
+  });
+
   test("plain prose carries no signal", () => {
     expect(findEvidenceSignals("pr-body", "this PR fixes a typo")).toEqual([]);
   });
@@ -85,9 +105,24 @@ describe("findEvidenceSignals", () => {
   });
 });
 
+/** A tree holding exactly these paths (the files and every directory above them). */
+function treeWith(...paths: string[]): PathExists {
+  const present = new Set<string>();
+  for (const path of paths) {
+    const parts = path.split("/");
+    for (let depth = 1; depth <= parts.length; depth += 1) {
+      present.add(parts.slice(0, depth).join("/"));
+    }
+  }
+  return (path) => present.has(path);
+}
+
+const REAL_VERDICT = "docs/reviews/domain-a/VERDICT.md";
+const TREE = treeWith(REAL_VERDICT, ...STANDING_REVIEW_PATHS);
+
 describe("evaluateReviewEvidence", () => {
   test("a change outside the gated paths asserts nothing, declared", () => {
-    const report = evaluateReviewEvidence(["README.md"], "", "");
+    const report = evaluateReviewEvidence(["README.md"], "", "", TREE);
     expect(report.outcome).toBe("pass");
     expect(report.asserted).toBe(0);
     expect(report.emptyReason).not.toBeNull();
@@ -98,9 +133,66 @@ describe("evaluateReviewEvidence", () => {
       ["docs/adr/0023-x.md"],
       "see docs/reviews/domain-a/VERDICT.md",
       "",
+      TREE,
     );
     expect(report.outcome).toBe("pass");
     expect(report.asserted).toBe(1);
+  });
+
+  // 2026-10-14: #102's first run went green on a reference to a dossier that
+  // was never written. A citation is evidence only if it resolves.
+  test("a reference to a docs/reviews/ path absent from the tree is not evidence", () => {
+    const report = evaluateReviewEvidence(
+      ["docs/adr/0050-x.md"],
+      "see docs/reviews/never-written/VERDICT.md",
+      "",
+      TREE,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      "docs/reviews/never-written/VERDICT.md (pr-body) does not exist in the tree under review",
+    );
+    expect(report.violations[0]).toContain("1 candidate signal(s) examined");
+  });
+
+  test("citing a standing file of docs/reviews/ is not evidence", () => {
+    for (const standing of STANDING_REVIEW_PATHS) {
+      const report = evaluateReviewEvidence(["docs/adr/0050-x.md"], `see ${standing}`, "", TREE);
+      expect(report.outcome).toBe("violations");
+      expect(report.violations[0]).toContain(`${standing} (pr-body) is a standing file`);
+    }
+  });
+
+  test("an existing dossier directory counts as evidence", () => {
+    const report = evaluateReviewEvidence(
+      ["docs/adr/0050-x.md"],
+      "dossier: docs/reviews/domain-a/",
+      "",
+      TREE,
+    );
+    expect(report.outcome).toBe("pass");
+  });
+
+  test("one real reference passes and the dangling one is still named", () => {
+    const report = evaluateReviewEvidence(
+      ["docs/adr/0050-x.md"],
+      `see ${REAL_VERDICT} and docs/reviews/ghost.md`,
+      "",
+      TREE,
+    );
+    expect(report.outcome).toBe("pass");
+    expect(report.checks[0]?.note).toContain("docs/reviews/ghost.md (pr-body) does not exist");
+    expect(report.volumeSummary).toBe("2 candidate signal(s): 1 admissible, 1 rejected");
+  });
+
+  test("a LEXICON.md change with neither signal fails", () => {
+    const report = evaluateReviewEvidence(
+      ["docs/decisions/LEXICON.md"],
+      "redefine a term",
+      "",
+      TREE,
+    );
+    expect(report.outcome).toBe("violations");
   });
 
   test("a gated change with an Owner-arbitration marker in the diff passes", () => {
@@ -108,12 +200,18 @@ describe("evaluateReviewEvidence", () => {
       ["docs/decisions/DECISION-REGISTER.md"],
       "",
       "+Owner-arbitration: 2026-08-18",
+      TREE,
     );
     expect(report.outcome).toBe("pass");
   });
 
   test("a gated change with neither signal fails", () => {
-    const report = evaluateReviewEvidence(["docs/decisions/INVARIANTS.md"], "bump a typo", "");
+    const report = evaluateReviewEvidence(
+      ["docs/decisions/INVARIANTS.md"],
+      "bump a typo",
+      "",
+      TREE,
+    );
     expect(report.outcome).toBe("violations");
     expect(report.violations[0]).toContain("neither the pull request description");
   });
@@ -128,10 +226,11 @@ describe("evaluateReviewEvidence", () => {
       ["ecosystem/FORGOTTEN.yaml"],
       "chore: register an eviction",
       diff,
+      TREE,
     );
     expect(report.outcome).toBe("violations");
     expect(report.violations).toEqual([
-      "ecosystem/FORGOTTEN.yaml: neither the pull request description nor the diff of the gated files references a docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker",
+      "ecosystem/FORGOTTEN.yaml: neither the pull request description nor the diff of the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (0 candidate signal(s) examined)",
     ]);
   });
 
@@ -140,6 +239,7 @@ describe("evaluateReviewEvidence", () => {
       ["ecosystem/FORGOTTEN.yaml"],
       "Owner-arbitration: 2026-10-08",
       "",
+      TREE,
     );
     expect(report.outcome).toBe("pass");
     expect(report.asserted).toBe(1);
@@ -150,6 +250,7 @@ describe("evaluateReviewEvidence", () => {
       ["ecosystem/FORGOTTEN.yaml"],
       "",
       "+    review: docs/reviews/forgetting/eviction-2026-10-08.md",
+      treeWith("docs/reviews/forgetting/eviction-2026-10-08.md"),
     );
     expect(report.outcome).toBe("pass");
   });
@@ -159,6 +260,7 @@ describe("evaluateReviewEvidence", () => {
       ["docs/adr/0023-x.md", "docs/decisions/DECISION-REGISTER.md"],
       "Owner-arbitration: 2026-08-18",
       "",
+      TREE,
     );
     expect(report.checks[0]?.item).toBe("docs/adr/0023-x.md, docs/decisions/DECISION-REGISTER.md");
   });
