@@ -53,7 +53,8 @@ Le gate de l'arbre inspecte exactement l'index destiné au commit. Le gate d'his
   autorisées ; aucune catégorie ouverte « déjà publique » n'est acceptée. Une identité
   ou une adresse de forge (auteur, committer ou trailer d'un commit créé par la forge)
   n'y est admise que pour les commits ajoutés par la forge et non atteignables depuis la
-  branche servie ; la branche servie reste sous les seules identités contributrices.
+  branche servie ; les commits atteignables depuis la branche servie restent jugés sur
+  les seules identités contributrices.
   Voir « Amendement du 2026-10-14 — D3 ».
 
 Chaque lecture ou décodage non pris en charge refuse fermée. Les diagnostics ne recopient jamais l'octet sensible. Des repositories Git temporaires synthétiques démontrent un échec distinct pour blob supprimé, message de commit, auteur, committer, message de tag, tagger, nom de ref, nom/mode de tree entry, type non traité, ref absente de l'attestation et ref attestée dont l'OID a changé. Les canaris et commits synthétiques ne sont jamais introduits dans le candidat.
@@ -143,5 +144,5 @@ Owner-arbitration: 2026-10-14 — owner admits the forge identity and trailer fo
 **Conséquences.**
 
 1. Le scanner applique la portée : une adresse de forge n'est retirée d'un message que si le commit n'est pas atteignable depuis la ref de confiance, et jamais d'un blob (`tools/attestation/git-attestation.ts`, contrepreuve `red:strip-scope`, 2 tests rouges une fois neutralisés). Seules les occurrences délimitées sont retirées (`red:strip-boundary`, cinq sondes de contournement). L'allowlist de l'attestation de Square Control est `evidence/identity-allowlist.json` du dossier cité.
-2. Un merge en squash d'une pull request de la forge écrit sur la branche servie un commit dont l'auteur est la forge. Mesuré le 2026-10-14 sur `libre-ai/signalement` : la PR Dependabot #18 échoue au contrôle d'historique du dépôt, et sa reprise sous l'identité du propriétaire, au diff identique, passe (#21). Les PR Dependabot ouvertes ce jour-là sur les deux dépôts publiés par I-30 (signalement #18, square-control #1) sont reprises sous l'identité du propriétaire, par décision en session ; la seconde attend la levée du gel du dépôt.
-3. Après la bascule, aucun gate de Governance ne vérifie que la branche servie reste sous les identités contributrices. `libre-ai/signalement` l'impose par son propre contrôle d'historique ; `libre-ai/square-control` n'a pas de contrôle équivalent.
+2. Après la bascule, un merge en squash d'une pull request de la forge écrit sur la branche servie un commit dont l'auteur et le trailer sont ceux de la forge (le committer `GitHub <noreply@github.com>` d'un merge par la forge est un committer technique, distinct de l'auteur et du signataire). Mesuré le 2026-10-14 sur `libre-ai/signalement` : la PR Dependabot #18 échoue au contrôle d'historique du dépôt, et sa reprise sous l'identité du propriétaire, au diff identique, passe (#21). Les PR Dependabot ouvertes ce jour-là sur les deux dépôts publiés par I-30 (signalement #18, square-control #1) sont reprises sous l'identité du propriétaire, par décision en session ; la seconde attend la levée du gel du dépôt.
+3. Après la bascule, aucun gate de Governance ne vérifie qu'aucun commit de la branche servie n'a la forge pour auteur ou pour signataire. `libre-ai/signalement` l'impose par son propre contrôle d'historique ; `libre-ai/square-control` n'a pas de contrôle équivalent.
