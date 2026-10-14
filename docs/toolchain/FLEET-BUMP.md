@@ -96,8 +96,9 @@ therefore never be present where the guard runs.
 
 Where it runs:
 
-- `.github/workflows/generation-coherence.yml`, when the manifest, the register
-  of generations or the guard changes: on the manifest of the commit, and, for
+- `.github/workflows/generation-coherence.yml`, on every pull request (so that
+  its check can be required), and on a push that changes the manifest, the
+  register of generations or the guard: on the manifest of the commit, and, for
   every `sha:` the change adds to `ecosystem/fleet-pins.v1.yaml`
   (`tools/fleet/added-generations.ts`, from the YAML of both registers), on the
   manifest that sha composes — before the declaration merges (step 2 of the

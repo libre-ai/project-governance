@@ -10,8 +10,9 @@ name: Generation coherence
 # gate of the composed governance on it
 # (.github/composition/check-generation-coherence.py).
 #
-# It runs when something a declaration is made of changes: the manifest, the
-# register of generations, the guard itself. A pull request that adds a
+# It runs on every pull request, and on a push that changes something a
+# declaration is made of: the manifest, the register of generations, the guard
+# itself. A pull request that adds a
 # generation to ecosystem/fleet-pins.v1.yaml replays the manifest THAT commit
 # composes, before the declaration merges.
 on:
@@ -24,13 +25,11 @@ on:
       - .github/composition/prepare-composition.py
       - ecosystem/fleet-pins.v1.yaml
       - .github/workflows/generation-coherence.yml
+  # No path filter on pull_request: the check is required, and a required check
+  # that a path filter keeps from being reported blocks the pull request
+  # forever. The manifest of the commit is replayed on every pull request; the
+  # register step below stays conditional on a real change of the register.
   pull_request:
-    paths:
-      - .github/composition/manifest.json
-      - .github/composition/check-generation-coherence.py
-      - .github/composition/prepare-composition.py
-      - ecosystem/fleet-pins.v1.yaml
-      - .github/workflows/generation-coherence.yml
   workflow_dispatch:
 
 permissions:
