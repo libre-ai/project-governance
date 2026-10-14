@@ -53,6 +53,74 @@ export interface ProtectionSnapshot {
 export interface CiSnapshot {
   /** Distinct check-run names GitHub reports for the inspected commit. */
   readonly observed: readonly string[];
+  /**
+   * Names GitHub attaches to the commit but that only Dependabot update jobs
+   * produce. Reported, never audited and never required: they do not exist on
+   * a pull request head, so requiring one would block every pull request.
+   */
+  readonly ignored?: readonly string[];
+}
+
+/** Check-run volume for one commit: `examined + dependabot === total`. */
+export interface CheckRunCounts {
+  readonly total: number;
+  readonly examined: number;
+  readonly dependabot: number;
+}
+
+export interface CheckRunRecord {
+  readonly name: string;
+  readonly check_suite?: { readonly id?: number } | null;
+}
+
+export interface WorkflowRunRecord {
+  readonly path?: string;
+  readonly check_suite_id?: number;
+}
+
+/**
+ * Dependabot version/security updates run as workflow runs of event `dynamic`
+ * whose path is `dynamic/dependabot/...` (measured on libre-ai/square-control
+ * @95e1bcea: `dynamic/dependabot/dependabot-updates`). The API exposes the
+ * run's path, which is a stronger signal than the check-run name "Dependabot",
+ * a name a repository's own workflow could also use.
+ */
+function isDependabotUpdateRun(run: WorkflowRunRecord): boolean {
+  return run.path?.startsWith("dynamic/dependabot/") === true;
+}
+
+/**
+ * Splits a commit's check-runs into what CI produces and what Dependabot
+ * update jobs produce, joining check-run -> check suite -> workflow run. A name
+ * stays observed as soon as one non-Dependabot run carries it.
+ */
+export function classifyCheckRuns(
+  checkRuns: readonly CheckRunRecord[],
+  workflowRuns: readonly WorkflowRunRecord[],
+): { readonly ci: CiSnapshot; readonly counts: CheckRunCounts } {
+  const dependabotSuites = new Set(
+    workflowRuns
+      .filter(isDependabotUpdateRun)
+      .map((run) => run.check_suite_id)
+      .filter((id): id is number => typeof id === "number"),
+  );
+  const observed = new Set<string>();
+  const dependabotNames = new Set<string>();
+  let dependabot = 0;
+  for (const run of checkRuns) {
+    const suite = run.check_suite?.id;
+    if (typeof suite === "number" && dependabotSuites.has(suite)) {
+      dependabot += 1;
+      dependabotNames.add(run.name);
+    } else {
+      observed.add(run.name);
+    }
+  }
+  const ignored = [...dependabotNames].filter((name) => !observed.has(name)).sort();
+  return {
+    ci: { observed: [...observed], ignored },
+    counts: { total: checkRuns.length, examined: checkRuns.length - dependabot, dependabot },
+  };
 }
 
 export interface RepositoryAudit {
@@ -165,6 +233,39 @@ export interface FetchedState {
   readonly hasProtection: boolean;
   readonly protection: ProtectionSnapshot;
   readonly ci: CiSnapshot;
+  readonly checkRuns: CheckRunCounts;
+}
+
+/** Reads one listing page and refuses a truncated one: a partial set mislabels runs. */
+function readListing<T>(
+  repository: string,
+  what: string,
+  result: GhApiResult,
+  key: string,
+): T[] | { readonly error: string } {
+  if (result.error !== null)
+    return { error: `${repository}: cannot read ${what} — ${result.error}` };
+  if (result.text === null) return [];
+  const body = JSON.parse(result.text) as Record<string, unknown>;
+  const items = body[key];
+  if (!Array.isArray(items)) {
+    return { error: `${repository}: ${what} payload carries no "${key}" array — unreadable` };
+  }
+  if (typeof body.total_count === "number" && body.total_count > items.length) {
+    return {
+      error: `${repository}: ${what} truncated (${items.length} of ${body.total_count}) — refusing to classify a partial set`,
+    };
+  }
+  return items as T[];
+}
+
+/** One-line volume examined, appended to every verdict so a green shows what it read. */
+export function describeVolume(counts: CheckRunCounts, ignored: readonly string[]): string {
+  return (
+    `${counts.examined} CI check-run(s) examined, ${counts.dependabot} Dependabot update run(s) set aside` +
+    (ignored.length > 0 ? ` (${ignored.map((name) => `"${name}"`).join(", ")})` : "") +
+    ` of ${counts.total}`
+  );
 }
 
 export function fetchRepositoryState(
@@ -228,16 +329,25 @@ export function fetchRepositoryState(
   if (commitInfo.text === null) return { error: `${repository}: ref ${commitRef} not found` };
   const sha = (JSON.parse(commitInfo.text) as { sha: string }).sha;
 
-  const checkRuns = api(`repos/${repository}/commits/${sha}/check-runs?per_page=100`);
-  if (checkRuns.error !== null)
-    return { error: `${repository}: cannot read check-runs — ${checkRuns.error}` };
-  const runs =
-    checkRuns.text === null
-      ? []
-      : (JSON.parse(checkRuns.text) as { check_runs: { name: string }[] }).check_runs;
-  const observed = [...new Set(runs.map((run) => run.name))];
+  const runs = readListing<CheckRunRecord>(
+    repository,
+    "check-runs",
+    api(`repos/${repository}/commits/${sha}/check-runs?per_page=100`),
+    "check_runs",
+  );
+  if ("error" in runs) return runs;
+  // Needed to tell Dependabot update runs from CI: the check-run itself does
+  // not carry the workflow run's path, its check suite is the join key.
+  const workflowRuns = readListing<WorkflowRunRecord>(
+    repository,
+    "workflow runs",
+    api(`repos/${repository}/actions/runs?head_sha=${sha}&per_page=100`),
+    "workflow_runs",
+  );
+  if ("error" in workflowRuns) return workflowRuns;
+  const { ci, counts } = classifyCheckRuns(runs, workflowRuns);
 
-  return { branch, strict, hasProtection, protection: { required }, ci: { observed } };
+  return { branch, strict, hasProtection, protection: { required }, ci, checkRuns: counts };
 }
 
 function applyFix(
@@ -293,22 +403,27 @@ if (import.meta.main) {
     }
   }
 
+  const totals = { total: 0, examined: 0, dependabot: 0 };
   for (const repository of targets) {
     const state = fetchRepositoryState(repository, ref);
     if ("error" in state) {
       report.check(repository, false, state.error);
       continue;
     }
+    totals.total += state.checkRuns.total;
+    totals.examined += state.checkRuns.examined;
+    totals.dependabot += state.checkRuns.dependabot;
     if (!state.hasProtection) {
       report.check(repository, true, "no branch protection configured — outside this gate's scope");
       continue;
     }
     const audit = auditProtection(repository, state.protection, state.ci);
+    const volume = describeVolume(state.checkRuns, state.ci.ignored ?? []);
     if (audit.ok) {
       report.check(
         repository,
         true,
-        `${state.protection.required.length} required check(s) match CI exactly`,
+        `${state.protection.required.length} required check(s) match CI exactly; ${volume}`,
       );
       continue;
     }
@@ -334,9 +449,13 @@ if (import.meta.main) {
         );
       }
     } else {
-      report.check(repository, false, findings.join("; "));
+      report.check(repository, false, `${findings.join("; ")}; ${volume}`);
     }
   }
 
+  report.volume(
+    `${targets.length} repositor(ies), ${totals.examined} CI check-run(s) examined, ` +
+      `${totals.dependabot} Dependabot update run(s) set aside, of ${totals.total}`,
+  );
   concludeGate("Branch protection norm", report);
 }
