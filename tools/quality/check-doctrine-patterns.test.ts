@@ -26,7 +26,9 @@ import { $ } from "bun";
  * before gates anyway (AGENTS.md).
  */
 
-const WORKFLOW_PATH = ".github/workflows/doctrine-governance.yml";
+// The deny-lists moved out of the workflow into the script both the workflow
+// and `bun run check` run (2026-10-14); the motifs are read where they execute.
+const WORKFLOW_PATH = "tools/quality/check-doctrine-governance.sh";
 
 /** The two superseding acts, allowed citers that must not carry a motif alone. */
 const SUPERSEDING_ACTS = [

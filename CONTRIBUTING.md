@@ -28,12 +28,20 @@ performed, not by the contributor.
 
 ```sh
 bun install --frozen-lockfile
-bun run check
+bun run check:full
 ```
 
-`bun run check` runs this repository's full gate suite (doctrine and source
-checks, REUSE/licence checks, dead-code, lint, typecheck, tests) and must
-pass locally first. The exact Bun revision this repository is built and
+`bun run check` runs this repository's gate suite (doctrine governance,
+context hygiene, source checks, JavaScript licence checks, dead-code, lint,
+typecheck, tests) — the same set the `Bun quality` CI job runs, plus the
+scripts of the `Doctrine governance` and `Context hygiene` workflows.
+`bun run check:full` adds `reuse lint` (`check:reuse`, run through `uv` from
+the pinned `tools/licensing/requirements.txt`), which CI runs in the
+`Licensing and contribution governance` job and which needs Python, so it is
+kept out of `check`. Run `check:full` after `git add`: gates driven by
+`git ls-files` do not see an untracked file. What stays CI-only needs the
+pull request or the network: the Door declaration, review evidence, DCO
+sign-offs, composition ref monotonicity and the fleet-wide gates. The exact Bun revision this repository is built and
 tested against is pinned in `toolchains/bun.json` (currently an archived
 pre-release, `1.4.0-canary.1+57f349f63`) — CI provisions it from a governance
 GitHub Release; `bun run check:toolchain` and `check:bun:runtime` fail loudly
