@@ -322,6 +322,26 @@ const fileMutations: readonly FileMutation[] = [
     edits: [{ find: "printf 'null'\n}", replace: "printf '{}'\n}" }],
   },
   {
+    id: "readback-secrets",
+    file: "provider-policy.sh",
+    edits: [
+      {
+        find: `secrets="$(probe "/actions/secrets" | jq -c '.total_count')"`,
+        replace: `secrets="$(probe "/actions/secrets" | jq -c '.total_count // 0')"`,
+      },
+    ],
+  },
+  {
+    id: "readback-queued",
+    file: "provider-policy.sh",
+    edits: [
+      {
+        find: `queued_runs="$(probe "/actions/runs?status=queued" | jq -c '.total_count')"`,
+        replace: `queued_runs="$(probe "/actions/runs?status=queued" | jq -c '.total_count // 0')"`,
+      },
+    ],
+  },
+  {
     id: "readback-404",
     file: "provider-policy.sh",
     edits: [{ find: `*"HTTP 404"*) printf 'false' ;;`, replace: `*"HTTP 404"*) printf 'null' ;;` }],
@@ -356,7 +376,24 @@ const fileMutations: readonly FileMutation[] = [
   {
     id: "cli-flag-echo",
     file: scanner,
-    edits: [{ find: 'arg.split("=")[0]', replace: "arg" }],
+    edits: [{ find: 'new Refusal("unknown flag")', replace: "new Refusal(`unknown flag ${arg}`)" }],
+  },
+  {
+    id: "forge-trusted-ref",
+    file: scanner,
+    edits: [
+      { find: "options.trustedRef !== undefined && !trustedCommits", replace: "!trustedCommits" },
+    ],
+  },
+  {
+    id: "forge-trusted-history",
+    file: scanner,
+    edits: [
+      {
+        find: 'git(dir, ["rev-list", options.trustedRef])',
+        replace: 'git(dir, ["rev-parse", options.trustedRef])',
+      },
+    ],
   },
   {
     id: "git-no-replace",

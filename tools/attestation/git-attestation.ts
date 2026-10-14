@@ -725,6 +725,11 @@ export function classesOfBytes(body: Buffer, options: ScanOptions): string[] {
   const utf8 = decodeUtf8(body);
   // neutralise:blob-utf8
   if (utf8 !== null) for (const klass of contentClasses(utf8, options)) classes.add(klass);
+  // One invalid byte must not switch the compatibility-form reading off for the whole file: fall
+  // back to the lossy UTF-8 reading (invalid bytes become U+FFFD) so the rest is still folded.
+  // neutralise:blob-utf8-lossy
+  if (utf8 === null)
+    for (const klass of contentClasses(body.toString("utf8"), options)) classes.add(klass);
   return [...classes].sort();
 }
 
@@ -1028,7 +1033,7 @@ export function parseArguments(args: readonly string[]): ParsedArguments {
       continue;
     }
     // neutralise:cli-flag-unknown
-    if (!knownFlags.has(arg)) throw new Refusal(`unknown flag ${arg.split("=")[0]}`);
+    if (!knownFlags.has(arg)) throw new Refusal("unknown flag");
     const value = args[index + 1];
     // neutralise:cli-flag-value
     if (value === undefined || value.startsWith("--")) throw new Refusal(`${arg} needs a value`);

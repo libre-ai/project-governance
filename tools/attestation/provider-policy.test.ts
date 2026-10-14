@@ -174,6 +174,9 @@ describe("frozen_check", () => {
       (copy: Mutable) => {
         copy.security.vulnerability_alerts = null;
       },
+      (copy: Mutable) => {
+        copy.actions.runs_queued = null;
+      },
     ]) {
       const result = verdict(change);
       expect(result.frozen).toBe(false);
@@ -240,6 +243,26 @@ describe("frozen_check", () => {
     test(`red:frozen-${id} ${fragment} blocks`, () => {
       expectBlocked(change, fragment);
     });
+
+  test("red:frozen-counts an unreadable count is never read as zero, whichever count it is", () => {
+    const counts: Array<(copy: Mutable) => void> = [
+      (copy) => (copy.actions.secrets = null),
+      (copy) => (copy.actions.variables = null),
+      (copy) => (copy.actions.environments = null),
+      (copy) => (copy.actions.runs_in_progress = null),
+      (copy) => (copy.actions.runs_queued = null),
+      (copy) => (copy.access.pending_invitations = null),
+      (copy) => (copy.access.teams = null),
+      (copy) => (copy.access.webhooks = null),
+      (copy) => (copy.access.deploy_keys = null),
+    ];
+    for (const change of counts) {
+      const result = verdict(change);
+      expect(result.frozen).toBe(false);
+      expect(result.blockers[0]).toContain("could not be read");
+      expect(result.blockers.length).toBeGreaterThan(1);
+    }
+  });
 
   test("each blocker is independent: the others stay quiet", () => {
     expectNotBlocked((copy) => (copy.access.webhooks = 1), "teams present");
@@ -400,6 +423,30 @@ describe("provider-policy.sh against a stub gh", () => {
     expect(out.branch_protection).toBeNull();
     expect(out.settings).toBeNull();
     expect(out.frozen_check.frozen).toBe(false);
+  });
+
+  test("red:readback-secrets an unreadable count endpoint stays null in the readback, whichever count it is", () => {
+    for (const endpoint of [
+      "/actions/secrets",
+      "/actions/variables",
+      "/environments",
+      "/actions/runs?status=in_progress",
+      "/actions/runs?status=queued",
+    ]) {
+      const out = readbackWith((replies) => {
+        replies[endpoint] = { status: 403 };
+      });
+      expect(out.frozen_check.frozen).toBe(false);
+      expect(out.frozen_check.blockers[0]).toContain("could not be read");
+    }
+  });
+
+  test("red:readback-queued the queued-run count is read from the provider and unreadable stays null", () => {
+    const out = readbackWith((replies) => {
+      replies["/actions/runs?status=queued"] = { status: 403 };
+    });
+    expect(out.actions.runs_queued).toBeNull();
+    expect(out.actions.runs_in_progress).toBe(0);
   });
 
   test("both arguments are required: no default repository, no default owner login", () => {

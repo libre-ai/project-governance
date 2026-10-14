@@ -1,5 +1,6 @@
 Actions run logs of libre-ai/square-control, downloaded read-only with 'gh run view <id> --log' (8 of 8 runs;
 no run was deleted). They become public with the repository. No log content is kept in this repository.
+Scanned at the head of the pull request, with the text command that also reads UTF-8 leniently when the strict reading fails.
 
 Content-class scan (bun tools/attestation/git-attestation.ts text <logs> --identities evidence/identity-allowlist.json --deny-b64 ...), exit 1:
   38512743466: 75137 bytes, classes: local-path, personal-data

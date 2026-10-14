@@ -6,6 +6,13 @@
 #   - a control that could not be read is null, never an empty list or a false, and is a blocker;
 #   - an absent field is not a satisfied condition: every ruleset predicate states the type it
 #     expects before it reads the value (`null | length` is 0, which would pass as "empty").
+# Every `//` default below is fail-closed, never a way to read an unreadable control as a satisfied one:
+#   - `// 1` on a count: an unreadable (null) count becomes 1, which is not the 0 the check requires,
+#     so it is a blocker (and it is also listed under "could not be read");
+#   - `// false` on a protection flag, `// []` on include/rules/collaborators: the empty value fails
+#     the predicate that needs a ruleset clause, a rule or exactly one collaborator;
+#   - `// []` on the rulesets of the tag residual only names a residual risk; an unreadable
+#     rulesets list is already a blocker through the "could not be read" list.
 # What cannot be frozen (Dependabot configured in the tree, refs/pull/*, tags, owner authority) is
 # reported under residual_risks and does not turn `frozen` false: it is named, not hidden.
 #
@@ -40,7 +47,7 @@ def frozen_ruleset:
     ["invitations", .access.pending_invitations], ["teams", .access.teams],
     ["webhooks", .access.webhooks], ["deploy keys", .access.deploy_keys],
     ["secrets", .actions.secrets], ["variables", .actions.variables],
-    ["environments", .actions.environments], ["workflow runs", .actions.runs_in_progress],
+    ["environments", .actions.environments], ["workflow runs", .actions.runs_in_progress], ["queued workflow runs", .actions.runs_queued],
     ["vulnerability alerts", .security.vulnerability_alerts],
     ["automated security fixes", .security.automated_security_fixes],
     ["dependabot file", .dependabot.config_file.present], ["open pull requests", .dependabot.open_pull_requests]

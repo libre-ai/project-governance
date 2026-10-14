@@ -95,10 +95,11 @@ stated reason. `evidence/neutralisation.txt`, denominators per file:
 | `git-attestation.ts` (a finding or a throw) | 70 | 64 | 6 | 0 |
 | `manifest.sh` (`return 1`) | 9 | 6 | 3 | 0 |
 | `provider-policy.sh` (readback decisions: null or false) | 5 | 5 | 0 | 0 |
-| `canonicalize.py` (`refuse(`, `raise ValueError(`) | 10 | 7 | 3 | 0 |
+| `canonicalize.py` (`refuse(`, `raise ValueError(`) | 12 | 9 | 3 | 0 |
 | `provider-policy.frozen-check.jq` (blockers, residual risks, ruleset clauses) | 36 | 36 | 0 | 0 |
+| Total | 132 | 120 | 12 | 0 |
 
-The 15 exemptions say why no test can reach them. Six in the scanner guard the output contract
+The 12 exemptions (6 + 3 + 0 + 3 + 0) say why no test can reach them. Six in the scanner guard the output contract
 of `git` (a short line of `cat-file` or `for-each-ref`, a truncated batch, a tree just listed): a
 truncated read is refused earlier by `git-output-limit` (tested), so these remain for a git that
 exits 0 with a short answer. The others: `mktemp` failing, an object type git itself refuses to list
@@ -106,12 +107,12 @@ exits 0 with a short answer. The others: `mktemp` failing, an object type git it
 catches a dropped one), and two `except` clauses in Python that only forward the message of a tested
 guard.
 
-Then **141 checks are neutralised in a throwaway copy = 122 marker-driven (79 in the scanner, 7 in
-Python, 36 in jq) + 19 text substitutions (7 in `manifest.sh`, 5 in `provider-policy.sh`, 7 in the
+Then **148 checks are neutralised in a throwaway copy = 125 marker-driven (80 in the scanner, 9 in
+Python, 36 in jq) + 23 text substitutions (7 in `manifest.sh`, 7 in `provider-policy.sh`, 9 in the
 scanner for logic that has no refusal site: windows, flag echo, replace refs, orphan header, person
-anchor, `fsck --strict`)**. Per file, mutated / red by assertion: scanner 86 / 86, `manifest.sh`
-7 / 7, `provider-policy.sh` 5 / 5, `canonicalize.py` 7 / 7, jq 36 / 36. 141 fail by assertion, 0
-only crash, 0 stay green. A failure that only crashes is reported separately and counted as a
+anchor, `fsck --strict`, trusted-ref scope, trusted-history scope)**. Per file, mutated / red by
+assertion: scanner 89 / 89, `manifest.sh` 7 / 7, `provider-policy.sh` 7 / 7, `canonicalize.py`
+9 / 9, jq 36 / 36. 148 fail by assertion, 0 only crash, 0 stay green. A failure that only crashes is reported separately and counted as a
 problem. Two shared ids (`manifest-shallow`, `manifest-ascii`) mutate both the TypeScript and the
 shell implementation, which the same tests assert.
 
@@ -121,11 +122,19 @@ read partly (the candidate holds 366,295 blob bytes in 205 objects). (b) A `git`
 reports no exit code; it is refused by `!== 0`, but it needs about 50 MB of output to happen
 (measured by the quality review) and is not tested. (c) Not tested, one line each: a git error
 output that quotes object content is dropped by design (stderr is never read); the fixture
-readback in `provider-policy.test.ts` is the 2026-10-14 post-freeze state.
+readback in `provider-policy.test.ts` is the 2026-10-14 post-freeze state. (d) The quality review
+tried 73 partial weakenings of its own (not the permissive form the harness uses); 28 stayed green.
+Four of its suggestions are now closed with tests (an unreadable queued-run count, an unreadable
+secrets count, and the forge scope with no trusted ref and behind the tip of the trusted ref).
+The rest are recorded, not claimed: absent-field arms of single jq predicates whose present-field
+arm is proven, the ordering of tree entries in the shell and Python implementations (no fixture has
+a tree order that differs from byte order; the three implementations are byte-equal on the real
+mirror), the Python `refs/heads`-only cross-check fixture, the case-insensitive `.GIT` component
+(`fsck --strict` also refuses it), and the ambient `HOME` of the git child.
 
 | Surface (ADR-0038 D3) | Candidate | Red counter-proof (test id) |
 | --- | --- | --- |
-| Blob bytes, incl. a blob deleted later and UTF-16 text | 102 blobs, 0 finding | `red:blob-content` (9 cases), `red:content-<class>` (local-path, credential, cookie, personal-data, instance-config, denied-literal), `red:blob-limit` |
+| Blob bytes, incl. a blob deleted later and UTF-16 text | 102 blobs, 0 finding | `red:blob-content` (8 cases), `red:content-<class>` (local-path, credential, cookie, personal-data, instance-config, denied-literal), `red:blob-limit` |
 | Ref names | 4 refs, 0 finding | `red:ref-name` |
 | Tree paths (bytes, UTF-8, component safety, capture and config file names) | 427 entries, 0 finding | `red:tree-path`, `red:tree-path-config`, `red:tree-path-capture`, `red:tree-path-unsafe`, `red:tree-path-bytes` |
 | Tree entry mode and type | modes 040000/100644/100755 only, 0 finding | `red:tree-mode` (symlink, gitlink), `red:tree-type`, `red:tree-target-missing` |
@@ -152,7 +161,7 @@ readback in `provider-policy.test.ts` is the 2026-10-14 post-freeze state.
 | `provider-policy.sh` against a stub `gh`: 404 is absent, any other failure is unreadable | frozen = true | `red:readback-404`, `red:readback-other`, `red:readback-probe`, `red:readback-rulesets`, `red:readback-protection` |
 | Manifest ASCII subset, serialisation, number subset | ASCII only | `red:manifest-ascii`, `red:manifest-number`, `red:python-verify`, `red:python-derive` (also under `python -O`) |
 | Path holding a newline in the shell manifest (a defect found by review: the entry was dropped silently) | none in the candidate | `red:manifest-newline`, `red:manifest-count` |
-| Frozen verdict: all 25 blockers (each separately: lock, enforce-admins, projects, secrets, webhooks, …), 7 ruleset clauses, 4 residual risks | frozen = true | `red:frozen-*` (36 ids, `provider-policy.test.ts`) |
+| Frozen verdict: all 25 blockers (each separately: lock, enforce-admins, projects, secrets, webhooks, …), 7 ruleset clauses, 4 conditional residual risks (the fifth, owner authority, is unconditional and has no test that could remove it) | frozen = true | `red:frozen-*` (36 ids, `provider-policy.test.ts`) |
 
 Content classes covered in blobs, paths, ref names, names and messages: machine-local paths
 (home directories of three operating systems, temporary and volume paths), credentials
@@ -231,7 +240,7 @@ at 08:06:12Z (the ruleset's `created_at`); I changed no setting. Before them the
 readback (05:17:19Z) had `frozen = false` with six blockers: Actions enabled, `main` unprotected,
 no ruleset, Dependabot configured with Actions enabled, PR 1 open, issues enabled.
 
-After them, `evidence/provider-policy.json` (read-only readback, 2026-10-14T09:34:19Z, first
+After them, `evidence/provider-policy.json` (read-only readback, 2026-10-14T10:06:31Z, first
 taken at 08:08:41Z and refreshed with the stricter check below): `frozen_check.frozen = true`, 0
 blocker. The file is produced by `sh tools/attestation/provider-policy.sh libre-ai/square-control
 constantin-jais > evidence/provider-policy.json` (both arguments are required: the repository and
@@ -292,7 +301,7 @@ and not part of this pull request's diff:
 ## Tools and versions
 
 git 2.56.0, jq 1.8.2, gitleaks 8.30.1, reuse 6.2.0, cargo 1.97.0, cargo-deny 0.19.5, bun 1.4.0,
-Python 3.14.8, macOS 26.6.2. Evidence time: 2026-10-14, 05:12 to 08:52 UTC; the final re-reads are in
+Python 3.14.8, macOS 26.6.2. Evidence time: 2026-10-14, 05:12 to 10:07 UTC; the final re-reads are in
 `evidence/verification.json`. The mirror was fetched with plain `git fetch`, the credential helper
 configured globally, no per-command configuration.
 
@@ -310,7 +319,7 @@ bun tools/attestation/git-attestation.ts scan mirror --identities docs/reviews/s
 
 - Candidate main `95e1bcea…` content (blobs, paths, modes, owner-authored history): no finding.
 - Attested set (4 refs, 205 objects): 0 finding under the allowlist of record.
-- Frozen remote: yes (`frozen = true`, 09:34:19Z), with the five residual risks above.
+- Frozen remote: yes (`frozen = true`, 10:06:31Z), with the five residual risks above.
 - Manifest: reproduced by four derivations, digest `765fd6e9…dca9`.
 - Reviews: pending, `REVIEW.md`.
 

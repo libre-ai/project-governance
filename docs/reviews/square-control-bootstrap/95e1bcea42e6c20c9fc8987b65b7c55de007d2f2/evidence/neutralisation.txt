@@ -1,8 +1,8 @@
 Denominators (refusal sites found by the harness's own pattern):
-  git-attestation.ts: 70 sites = 64 marked + 6 exempt + 0 uncovered; 79 marker ids
+  git-attestation.ts: 70 sites = 64 marked + 6 exempt + 0 uncovered; 80 marker ids
   manifest.sh: 9 sites = 6 marked + 3 exempt + 0 uncovered; 6 marker ids
   provider-policy.sh: 5 sites = 5 marked + 0 exempt + 0 uncovered; 5 marker ids
-  canonicalize.py: 10 sites = 7 marked + 3 exempt + 0 uncovered; 7 marker ids
+  canonicalize.py: 12 sites = 9 marked + 3 exempt + 0 uncovered; 9 marker ids
   provider-policy.frozen-check.jq: 36 sites = 36 marked + 0 exempt + 0 uncovered; 36 marker ids
 baseline: exit 0
 git-attestation.ts git-exit: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
@@ -35,6 +35,7 @@ git-attestation.ts blob-limit: neutralised -> exit 1, 1 assertion failure(s), 0 
 git-attestation.ts blob-content: neutralised -> exit 1, 8 assertion failure(s), 0 crash(es): RED
 git-attestation.ts blob-utf16: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
 git-attestation.ts blob-utf8: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+git-attestation.ts blob-utf8-lossy: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts tree-mode: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
 git-attestation.ts tree-target-missing: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts tree-type: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
@@ -89,7 +90,9 @@ canonicalize.py python-integer: neutralised -> exit 1, 1 assertion failure(s), 0
 canonicalize.py python-git: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 canonicalize.py python-shallow: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 canonicalize.py python-path: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+canonicalize.py python-file: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 canonicalize.py python-verify: neutralised -> exit 1, 3 assertion failure(s), 0 crash(es): RED
+canonicalize.py python-file-derive: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 canonicalize.py python-derive: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.frozen-check.jq frozen-ruleset-enforcement: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.frozen-check.jq frozen-ruleset-target: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
@@ -135,6 +138,8 @@ manifest.sh manifest-ascii: neutralised -> exit 1, 1 assertion failure(s), 0 cra
 manifest.sh manifest-newline: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 manifest.sh manifest-count: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.sh readback-probe: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.sh readback-secrets: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.sh readback-queued: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.sh readback-404: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.sh readback-other: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 provider-policy.sh readback-rulesets: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
@@ -142,14 +147,16 @@ provider-policy.sh readback-protection: neutralised -> exit 1, 1 assertion failu
 git-attestation.ts window-tail: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts window-overlap: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts cli-flag-echo: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+git-attestation.ts forge-trusted-ref: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+git-attestation.ts forge-trusted-history: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts git-no-replace: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts headers-orphan: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts person-anchor: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 git-attestation.ts fsck-strict: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
 Neutralised per file (mutated / red by assertion):
-  git-attestation.ts: 86 / 86
-  canonicalize.py: 7 / 7
+  git-attestation.ts: 89 / 89
+  canonicalize.py: 9 / 9
   provider-policy.frozen-check.jq: 36 / 36
   manifest.sh: 7 / 7
-  provider-policy.sh: 5 / 5
-141 check(s) neutralised = 122 marker-driven + 19 substitutions; 0 problem(s)
+  provider-policy.sh: 7 / 7
+148 check(s) neutralised = 125 marker-driven + 23 substitutions; 0 problem(s)

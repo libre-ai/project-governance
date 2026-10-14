@@ -21,6 +21,7 @@ the sites with its own pattern and requires a red test per marker.
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 
@@ -117,6 +118,9 @@ def derive(directory, repository):
 
 def main(argv):
     if len(argv) >= 2 and argv[0] == "verify":
+        # neutralise:python-file
+        if not os.path.isfile(argv[1]):
+            refuse("manifest file cannot be read")
         raw = open(argv[1], "rb").read()
         try:
             manifest = json.loads(raw)
@@ -132,6 +136,9 @@ def main(argv):
     if len(argv) >= 3 and argv[0] == "derive":
         rebuilt, _ = derive(argv[1], argv[2])
         if len(argv) >= 4:
+            # neutralise:python-file-derive
+            if not os.path.isfile(argv[3]):
+                refuse("manifest file cannot be read")
             # neutralise:python-derive
             if rebuilt != open(argv[3], "rb").read():
                 refuse("derived bytes differ from the retained manifest")

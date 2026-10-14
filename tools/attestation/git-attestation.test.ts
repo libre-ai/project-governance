@@ -1466,8 +1466,12 @@ describe("operator input, second round", () => {
   test("red:cli-flag-echo an unknown flag with an attached value never echoes the value", () => {
     const result = cli("scan", repository, "--identities", idsPath, "--deny-b64=c2VjcmV0");
     expect(result.code).toBe(2);
-    expect(result.err).toContain("unknown flag --deny-b64");
+    expect(result.err).toContain("unknown flag");
     expect(result.err.includes("c2VjcmV0")).toBe(false);
+    expect(result.err.includes("deny-b64")).toBe(false);
+    const glued = cli("scan", repository, "--identities", idsPath, "--deny-b64c2VjcmV0");
+    expect(glued.code).toBe(2);
+    expect(glued.err.includes("c2VjcmV0")).toBe(false);
   });
 
   test("red:cli-flag-value a value that starts with -- is not taken as a value", () => {
@@ -1566,5 +1570,99 @@ describe("operator input, second round", () => {
       cli("scan", repository, "--identities", idsPath, "--attestation", join(base, "dup.json"))
         .code,
     ).toBe(2);
+  });
+});
+
+describe("third review round", () => {
+  const cliPath = join(import.meta.dir, "git-attestation.ts");
+  const idsPath = join(freshDir("identities3"), "identities.json");
+  writeFileSync(idsPath, JSON.stringify(identities));
+  const botWho3: Who = {
+    authorName: bot.name,
+    authorAddress: bot.address,
+    committerName: bot.name,
+    committerAddress: bot.address,
+  };
+
+  function cli(...args: string[]): { code: number; out: string; err: string } {
+    const result = Bun.spawnSync(["bun", cliPath, ...args], {
+      env: baseEnvironment,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
+  }
+
+  test("red:forge-trusted-ref without a trusted ref a forge identity is refused, not admitted everywhere", () => {
+    const dir = cleanRepo();
+    commit(dir, { "bot.md": "bot\n" }, "Bot work on main", botWho3);
+    const report = scan(dir, { trustedRef: undefined });
+    expect(surfaces(report)).toEqual([
+      "author-address",
+      "author-name",
+      "committer-address",
+      "committer-name",
+    ]);
+  });
+
+  test("red:forge-trusted-history a forge identity behind the tip of the trusted ref is refused", () => {
+    const dir = cleanRepo();
+    commit(dir, { "bot.md": "bot\n" }, "Bot work on main", botWho3);
+    commit(dir, { "more.md": "more\n" }, "Owner work after the bot");
+    const report = scan(dir);
+    expect(surfaces(report)).toEqual([
+      "author-address",
+      "author-name",
+      "committer-address",
+      "committer-name",
+    ]);
+    expect(report.findings.every((finding) => finding.kind === "not-allowlisted")).toBe(true);
+  });
+
+  const wideEmail = [...canary.email]
+    .map((character) => String.fromCodePoint((character.codePointAt(0) ?? 0) + 0xfee0))
+    .join("");
+
+  test("red:blob-utf8-lossy one invalid byte does not switch the compatibility-form reading off", () => {
+    const body = Buffer.concat([Buffer.from(`${wideEmail}\n`), Buffer.from([0xff])]);
+    expect(contentClasses(body.toString("latin1"), options)).toEqual([]);
+    const dir = cleanRepo();
+    commit(dir, { "wide.txt": body }, "Add a wide address and a stray byte");
+    expect(scan(dir).findings.some((finding) => finding.kind.includes("personal-data"))).toBe(true);
+    const file = join(freshDir("text6"), "wide.log");
+    writeFileSync(file, body);
+    const result = cli("text", file, "--identities", idsPath);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out).results[0].classes).toContain("personal-data");
+  });
+
+  function pythonVerify(flags: string[], ...args: string[]): { code: number; err: string } {
+    const result = Bun.spawnSync(
+      ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
+      {
+        env: baseEnvironment,
+        stdout: "pipe",
+        stderr: "pipe",
+      },
+    );
+    return { code: result.exitCode, err: result.stderr.toString() };
+  }
+
+  test("red:python-file a missing manifest is refused with a reason, no traceback and no path", () => {
+    const missing = join(root, "no-such-manifest-marker.json");
+    const result = pythonVerify(["-I"], "verify", missing);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("manifest file cannot be read");
+    expect(result.err.includes("Traceback")).toBe(false);
+    expect(result.err.includes("no-such-manifest-marker")).toBe(false);
+  });
+
+  test("red:python-file-derive a missing manifest given to derive is refused the same way", () => {
+    const dir = cleanRepo();
+    const missing = join(root, "no-such-derived-marker.json");
+    const result = pythonVerify(["-I"], "derive", dir, "fixture/repo", missing);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("manifest file cannot be read");
+    expect(result.err.includes("Traceback")).toBe(false);
   });
 });
