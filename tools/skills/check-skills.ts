@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     }
 
     const parsed = parseFrontmatter(source);
+    const status = "error" in parsed ? undefined : parsed.frontmatter.status;
     if (!("error" in parsed)) {
       const lines = bodyLineCount(parsed.body);
       if (lines > BODY_LINE_WARNING) {
@@ -76,7 +77,7 @@ async function main(): Promise<void> {
       report.check(evalPath, false, `invalid JSON (${message})`);
       continue;
     }
-    for (const finding of lintEvalFile(raw)) {
+    for (const finding of lintEvalFile(raw, status)) {
       report.check(`${evalPath} — ${finding.rule}`, finding.ok, finding.note);
     }
   }

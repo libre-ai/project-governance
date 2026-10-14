@@ -78,6 +78,15 @@ precedence = "closest"
 SPDX-FileCopyrightText = "2026 Libre AI contributors"
 SPDX-License-Identifier = "Apache-2.0"
 
+# The collection's distribution manifest (ADR-0050 D7-A), generated from
+# skills/ by tools/skills/build-skills-manifest.ts: JSON carries no comment
+# header, and it ships with the skills, so it takes their licence.
+[[annotations]]
+path = [".claude-plugin/marketplace.json"]
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 Libre AI contributors"
+SPDX-License-Identifier = "Apache-2.0"
+
 # The vendored DTCG schema and its upstream notice remain under the licence
 # selected by Design Tokens Community Group contributors for W3C reports.
 [[annotations]]

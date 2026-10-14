@@ -141,6 +141,7 @@ export const BODY_LINE_TARGET = 120;
 export const BODY_LINE_WARNING = 200;
 export const MIN_POSITIVE_TRIGGERS = 3;
 export const MIN_NEGATIVE_TRIGGERS = 2;
+export const MIN_WORKING_SIGNS = 2;
 
 function truncate(value: string, max = 72): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
@@ -261,8 +262,17 @@ export function lintSkillMarkdown(dirName: string, source: string): LintFinding[
  * what a TF-IDF routing gate or a structural lint can mechanize honestly.
  * Mechanizing only what is mechanizable, and saying so, beats a script that
  * pretends to grade behaviour and never really does.
+ *
+ * `working_if` (ADR-0050 D3): the observable signs the owner checks on real
+ * use before promoting a skill. Only its form is checked — a list of at least
+ * MIN_WORKING_SIGNS distinct non-empty strings; whether a sign is observable
+ * rather than an intention stays a review judgment, for the reason above. It
+ * is optional on a `candidate` (adding one is a change of the skill, which
+ * ADR-0050 D1 gates on an observed failure, so the lint cannot demand it of
+ * skills admitted before D3) and required on a `promoted` skill, since the
+ * promotion is pronounced on those signs.
  */
-export function lintEvalFile(raw: unknown): LintFinding[] {
+export function lintEvalFile(raw: unknown, status?: string): LintFinding[] {
   const findings: LintFinding[] = [];
   if (typeof raw !== "object" || raw === null) {
     findings.push({ rule: "eval-shape", ok: false, note: "eval.json must be a JSON object" });
@@ -315,5 +325,44 @@ export function lintEvalFile(raw: unknown): LintFinding[] {
       : '"behavioral" must be an object with non-empty "scenario" and "expected" string fields',
   });
 
+  findings.push(lintWorkingIf(record.working_if, status));
+
   return findings;
+}
+
+function lintWorkingIf(workingIf: unknown, status: string | undefined): LintFinding {
+  const rule = "eval-working-if";
+  if (workingIf === undefined) {
+    return status === "promoted"
+      ? {
+          rule,
+          ok: false,
+          note: `a promoted skill must carry "working_if": at least ${MIN_WORKING_SIGNS} observable signs (ADR-0050 D3)`,
+        }
+      : {
+          rule,
+          ok: true,
+          note: `absent — optional while ${status ?? "not promoted"}, required before promotion (ADR-0050 D3)`,
+        };
+  }
+  const signs = Array.isArray(workingIf) ? workingIf : null;
+  const wellFormed =
+    signs !== null &&
+    signs.length >= MIN_WORKING_SIGNS &&
+    signs.every((sign) => typeof sign === "string" && sign.trim().length > 0);
+  if (!wellFormed) {
+    return {
+      rule,
+      ok: false,
+      note: `"working_if" must be an array of at least ${MIN_WORKING_SIGNS} non-empty strings`,
+    };
+  }
+  const distinct = new Set((signs as string[]).map((sign) => sign.trim()));
+  return distinct.size === signs.length
+    ? { rule, ok: true, note: `${signs.length} working sign(s)` }
+    : {
+        rule,
+        ok: false,
+        note: `"working_if" repeats a sign: ${signs.length - distinct.size} duplicate(s)`,
+      };
 }

@@ -36,6 +36,17 @@ import { concludeGate, GateReport } from "./gate-report";
  * one-way change typed `two-way` passes. The reviewer reads the claim; the
  * gate guarantees there is one to read.
  *
+ * Implicit two-way authors (2026-10-14): a pull request opened by an account
+ * in IMPLICIT_TWO_WAY_AUTHORS and carrying no Door line is judged `two-way`,
+ * and the verdict says so. `Door declaration` became a required check that
+ * day, and Dependabot writes its own descriptions: without this, every
+ * dependency bump would block until a human edited the bot's text. A version
+ * bump is two-way by construction — reverting the squash restores the
+ * previous manifest and lockfile. The author is read from
+ * `pull_request.user.login`; logins ending in `[bot]` belong to GitHub Apps
+ * and cannot be taken by a person. A Door line written by such an author is
+ * still judged as written.
+ *
  * Runs on `pull_request` events (including `edited`, so fixing the
  * description re-runs it). Elsewhere it declares that it judged nothing. On a
  * pull_request run, an event payload that is absent or unreadable is a
@@ -43,6 +54,9 @@ import { concludeGate, GateReport } from "./gate-report";
  */
 
 export const SECOND_INSTRUMENT_MIN_LENGTH = 12;
+
+/** Accounts whose undeclared pull requests are two-way by construction (version bumps). */
+export const IMPLICIT_TWO_WAY_AUTHORS: readonly string[] = ["dependabot[bot]"];
 
 const DOOR_LINE = /^[ \t]*Door:(.*)$/gm;
 const SECOND_INSTRUMENT_LINE = /^[ \t]*Second-instrument:(.*)$/gm;
@@ -90,12 +104,24 @@ function isSubstantive(value: string): boolean {
 }
 
 /** Pure verdict over one pull request description. */
-export function evaluateDoor(body: string, label = "pull request description"): GateReport {
+export function evaluateDoor(
+  body: string,
+  label = "pull request description",
+  author: string | null = null,
+): GateReport {
   const report = new GateReport();
   const declaration = readDoorDeclaration(body);
   const { doorValues, secondInstruments } = declaration;
+  const implicitTwoWay =
+    doorValues.length === 0 && author !== null && IMPLICIT_TWO_WAY_AUTHORS.includes(author);
 
-  if (doorValues.length === 0) {
+  if (implicitTwoWay) {
+    report.check(
+      `${label} — Door`,
+      true,
+      `Door: two-way (implicit: no Door line, author ${author} is in IMPLICIT_TWO_WAY_AUTHORS)`,
+    );
+  } else if (doorValues.length === 0) {
     report.check(
       `${label} — Door`,
       false,
@@ -134,13 +160,19 @@ export function evaluateDoor(body: string, label = "pull request description"): 
 
   report.volume(
     `${declaration.linesExamined} description line(s) examined after removing ${declaration.removedBlocks} comment/code block(s); ` +
-      `${doorValues.length} Door line(s), ${secondInstruments.length} Second-instrument line(s)`,
+      `${doorValues.length} Door line(s), ${secondInstruments.length} Second-instrument line(s)` +
+      (implicitTwoWay ? `; door implied by author ${author}` : ""),
   );
   return report;
 }
 
 export type EventRead =
-  | { readonly ok: true; readonly number: number | null; readonly body: string }
+  | {
+      readonly ok: true;
+      readonly number: number | null;
+      readonly body: string;
+      readonly author: string | null;
+    }
   | { readonly ok: false; readonly reason: string };
 
 /** Pure parse of the GitHub event payload text. */
@@ -159,15 +191,20 @@ export function readPullRequestEvent(payload: string): EventRead {
   if (typeof pullRequest !== "object" || pullRequest === null) {
     return { ok: false, reason: "event payload carries no pull_request object" };
   }
-  const record = pullRequest as { number?: unknown; body?: unknown };
+  const record = pullRequest as { number?: unknown; body?: unknown; user?: unknown };
   const body = record.body;
   if (body !== null && body !== undefined && typeof body !== "string") {
     return { ok: false, reason: "pull_request.body is neither a string nor null" };
   }
+  const login =
+    typeof record.user === "object" && record.user !== null
+      ? (record.user as { login?: unknown }).login
+      : undefined;
   return {
     ok: true,
     number: typeof record.number === "number" ? record.number : null,
     body: body ?? "",
+    author: typeof login === "string" ? login : null,
   };
 }
 
@@ -199,7 +236,7 @@ if (import.meta.main) {
     } else {
       const label =
         read.number === null ? "pull request description" : `PR #${read.number} description`;
-      concludeGate(gate, evaluateDoor(read.body, label));
+      concludeGate(gate, evaluateDoor(read.body, label, read.author));
     }
   }
 }
