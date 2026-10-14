@@ -6,6 +6,8 @@
 - **Applique :** I-17 (actions human-touch), I-21 (zéro donnée personnelle dans Git) et I-12 (GitHub canonique sans dépendance de données irréversible)
 - **Périmètre :** première exposition publique d'un nouveau repository Libre AI
 - **N'autorise pas :** création distante, exposition publique, secret, donnée utilisateur, déploiement ou activation produit
+- **Décision :** D44 ; D2 amendée par D78 (attestation de toutes les refs annoncées, `refs/pull/*` comprises, 2026-10-14)
+- **Arbitrage de l'amendement :** décision du propriétaire en session le 2026-10-14. Owner-arbitration: 2026-10-14
 
 ## Contexte
 
@@ -23,7 +25,9 @@ Le passage `private -> public` est une seconde action human-touch, interdite tan
 
 ### D2 — Attester des refs complètes et des objets canoniques
 
-L'ensemble autorisé est une liste triée de tous les noms complets `refs/...` annoncés ou accessibles, chacun associé à son OID final. Toute ref locale ou distante supplémentaire, quel que soit son namespace — notamment `refs/pull/*`, notes, remotes, replace ou namespaces fournisseur — refuse la transition. `HEAD` est vérifié séparément comme symref vers la branche autorisée ; les lignes de peel `^{}` ne sont pas des refs supplémentaires mais leur OID dérivé est vérifié.
+L'ensemble autorisé est la liste triée de tous les noms complets `refs/...` annoncés ou accessibles, chacun associé à son OID final, **telle que l'attestation la capture** — quel que soit le namespace : `refs/heads/*`, tags, notes, remotes, replace, namespaces fournisseur, et aussi `refs/pull/*` et les branches créées par la forge (par exemple Dependabot). Tout objet accessible depuis toute ref attestée passe par les mêmes scans que la branche principale (D3 : historique, identités, motifs). Toute ref présente à la transition qui n'est pas dans l'attestation fusionnée, ou dont l'OID diffère de l'OID attesté, refuse la transition et exige une nouvelle attestation. `HEAD` est vérifié séparément comme symref vers la branche autorisée ; les lignes de peel `^{}` ne sont pas des refs supplémentaires mais leur OID dérivé est vérifié.
+
+Conséquence assumée : les refs générées par la forge et attestées (`refs/pull/*`, branches Dependabot) deviennent publiques avec le repository, et leurs objets avec elles. Si l'une d'elles bouge avant la bascule (par exemple l'exécution hebdomadaire de Dependabot), la transition refuse et l'attestation est refaite. Voir « Amendement du 2026-10-14 ».
 
 Le manifeste canonique versionné conserve, pas seulement son digest :
 
@@ -33,7 +37,7 @@ Le manifeste canonique versionné conserve, pas seulement son digest :
 - digest SHA-256 des octets UTF-8 de la forme canonique RFC 8785 (JCS) ;
 - versions des outils, commandes, horodatage UTC et verdicts.
 
-L'inventaire accepte uniquement les types Git explicitement traités (`commit`, `tree`, `blob`, `tag`). Objet manquant, clone shallow, erreur de lecture, type inconnu, ref inattendue ou inégalité d'ensemble refuse fermée. Le manifeste et l'attestation sont archivés dans `governance/docs/reviews/`; leur caractère probatoire ne les rend pas normatifs.
+L'inventaire accepte uniquement les types Git explicitement traités (`commit`, `tree`, `blob`, `tag`). Objet manquant, clone shallow, erreur de lecture, type inconnu, ref absente de l'attestation ou d'OID différent, ou inégalité d'ensemble refuse fermée. Le manifeste et l'attestation sont archivés dans `governance/docs/reviews/`; leur caractère probatoire ne les rend pas normatifs.
 
 ### D3 — Scanner chaque surface avant le premier push
 
@@ -48,13 +52,13 @@ Le gate de l'arbre inspecte exactement l'index destiné au commit. Le gate d'his
   d'identité est une allowlist nominative attestée des noms/adresses contributrices
   autorisées ; aucune catégorie ouverte « déjà publique » n'est acceptée.
 
-Chaque lecture ou décodage non pris en charge refuse fermée. Les diagnostics ne recopient jamais l'octet sensible. Des repositories Git temporaires synthétiques démontrent un échec distinct pour blob supprimé, message de commit, auteur, committer, message de tag, tagger, nom de ref, nom/mode de tree entry, type non traité et ref inattendue. Les canaris et commits synthétiques ne sont jamais introduits dans le candidat.
+Chaque lecture ou décodage non pris en charge refuse fermée. Les diagnostics ne recopient jamais l'octet sensible. Des repositories Git temporaires synthétiques démontrent un échec distinct pour blob supprimé, message de commit, auteur, committer, message de tag, tagger, nom de ref, nom/mode de tree entry, type non traité, ref absente de l'attestation et ref attestée dont l'OID a changé. Les canaris et commits synthétiques ne sont jamais introduits dans le candidat.
 
 ### D4 — Éliminer le TOCTOU du premier push
 
 Le push n'utilise jamais un nom de branche locale mutable. Chaque refspec prend l'OID attesté comme source, par exemple `<oid>:refs/heads/main`, avec une lease sur l'état distant attendu — vide lors du premier push. Juste avant l'appel, le manifeste est recalculé et comparé octet par octet à l'attestation ; une mutation invalide la preuve.
 
-Après le push privé, `git ls-remote` et les contrôles fournisseur énumèrent toutes les refs annoncées/accessibles, pas seulement heads/tags, et refusent toute ref inattendue. Un fetch miroir explicite `+refs/*:refs/*` dans un dépôt neuf non shallow, sans identité ni credentials ambiants autres que l'accès de lecture borné, doit récupérer exactement cet ensemble. Il recalcule l'égalité des refs, de tous les objets et du manifeste, puis exécute les gates du repository. Une ref non récupérable, une différence avec l'API fournisseur ou une impossibilité de prouver est un refus, jamais un avertissement.
+Après le push privé, `git ls-remote` et les contrôles fournisseur énumèrent toutes les refs annoncées/accessibles, pas seulement heads/tags, et refusent toute ref absente de l'attestation ou dont l'OID diffère. Un fetch miroir explicite `+refs/*:refs/*` dans un dépôt neuf non shallow, sans identité ni credentials ambiants autres que l'accès de lecture borné, doit récupérer exactement cet ensemble. Il recalcule l'égalité des refs, de tous les objets et du manifeste, puis exécute les gates du repository. Une ref non récupérable, une différence avec l'API fournisseur ou une impossibilité de prouver est un refus, jamais un avertissement.
 
 ### D5 — Signer l'état privé avant l'exposition
 
@@ -108,4 +112,18 @@ Une première exposition publique est autorisable seulement si :
 7. le distant privé gelé est recontrôlé immédiatement avant la bascule ;
 8. la bascule publique est explicitement autorisée et suivie du contrôle anonyme.
 
-Toute mutation, ref supplémentaire, lecture partielle ou verdict indépendant bloquant invalide l'autorisation.
+Toute mutation, ref absente de l'attestation, ref attestée d'OID différent, lecture partielle ou verdict indépendant bloquant invalide l'autorisation.
+
+## Amendement du 2026-10-14 — D2 : attester toutes les refs annoncées, `refs/pull/*` comprises
+
+Owner-arbitration: 2026-10-14 — owner chose "Amender D2" (attest every advertised ref, refs/pull/* included, instead of refusing them) after the square-control Dependabot refs/pull/1 incident.
+
+**Ce qui change.** D2 refusait toute ref `refs/pull/*` ou fournisseur supplémentaire. Il attestait donc un ensemble de refs mais interdisait à la forge d'en ajouter. L'ensemble autorisé reste exact et trié, mais c'est celui que l'attestation capture, quel que soit le namespace. Les objets accessibles depuis chaque ref attestée passent par les scans de D3 comme ceux de la branche principale. Le refus fermé est conservé : une ref absente de l'attestation fusionnée, une ref attestée d'OID différent, un objet manquant, un clone shallow ou un type inconnu refusent la transition. D1 et D5 restent inchangés ; dans D3, D4, le paragraphe d'inventaire de D2 et le gate d'acceptation, seule la formulation « ref inattendue / supplémentaire » devient « ref absente de l'attestation ou d'OID différent ».
+
+**Pourquoi.** Le gabarit de flotte impose à tout repository un `.github/dependabot.yml` octet pour octet (`distribution/templates/dependabot/`). Mesuré le 2026-10-14 sur `libre-ai/square-control`, dépôt de staging privé vide : au premier push de l'OID gelé, Dependabot s'est exécuté immédiatement, malgré `schedule: weekly`, et a ouvert la pull request #1. Elle a créé trois refs : `refs/heads/dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd` et `refs/pull/1/head` (`f192917b55875fc32db5c61bed573770c1fc12ef`), puis `refs/pull/1/merge` (`b583cc527872bb4f20641a67f2c939a65ca7e6da`). Le propriétaire ne peut pas supprimer `refs/pull/*` ; seul le support de la forge le peut. Avec D2 tel qu'écrit, tout repository conforme à la flotte était donc impubliable par le circuit I-30. Le contenu des 12 objets ajoutés a été mesuré inoffensif : 2 commits (identités `dependabot[bot]` noreply et GitHub noreply), 0 occurrence des motifs interdits, seuls `Cargo.lock` et 3 `Cargo.toml` touchés.
+
+**Conséquences.**
+
+1. Les refs générées par la forge (`refs/pull/*`, branches Dependabot) et leurs objets deviennent publics au passage `private -> public`.
+2. Si une de ces refs bouge avant l'étape 5 (par exemple l'exécution hebdomadaire de Dependabot), D5 refuse la bascule et l'attestation est refaite.
+3. Aucun gate du dépôt n'encode « exactement ces refs » : l'inventaire, le recontrôle et le miroir de D4 et D5 sont exécutés par le contrôleur du candidat. Cet amendement ne modifie donc aucun comportement de gate ici.
