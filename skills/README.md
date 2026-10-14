@@ -40,9 +40,23 @@ compared to the canonical file here, byte for byte, before it is trusted:
 diff -r <harness skill directory>/<name> skills/<name> -x eval.json
 ```
 
-## Known limit
+## Frontmatter and the Agent Skills validators
 
-The frontmatter key `status` is ignored by Claude Code but rejected by
-validators that admit only the Agent Skills fields (for example a claude.ai
-upload). A copy meant for such a surface needs `status` removed; the
-canonical file keeps it, since T1 requires it (ADR-0025 D6).
+Since ADR-0053 the frontmatter carries only the Agent Skills fields, and
+`status` lives under `metadata`, in block form (the reference validator
+rejects the inline `{ }` form):
+
+```yaml
+metadata:
+  status: candidate
+```
+
+T1 refuses any other top-level key. Six skills pass the Agent Skills
+reference validator as they stand (`uvx --from skills-ref agentskills
+validate skills/<name>`).
+
+Known limit: `deploy-clever` and `wizard` carry `disable-model-invocation:
+true`, which keeps them user-invoked in Claude Code and which the reference
+validator rejects. A copy of either meant for a surface that enforces the
+Agent Skills fields (for example a claude.ai upload) loses that guarantee
+once the key is removed, so it is not portable as is.

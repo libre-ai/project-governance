@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     }
 
     const parsed = parseFrontmatter(source);
-    const status = "error" in parsed ? undefined : parsed.frontmatter.status;
+    const status = "error" in parsed ? undefined : parsed.metadata.status;
     if (!("error" in parsed)) {
       const lines = bodyLineCount(parsed.body);
       if (lines > BODY_LINE_WARNING) {

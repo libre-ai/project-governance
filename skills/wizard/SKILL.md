@@ -2,8 +2,9 @@
 name: wizard
 description: Write an interactive bash script that a human runs to perform the steps only they can do — setting GitHub Actions secrets and variables, Clever Cloud environment variables, or dashboard actions — with a confirmation before every write and secret values typed on stdin, never seen by the agent. User-invoked only.
 license: Apache-2.0
-status: candidate
 disable-model-invocation: true
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

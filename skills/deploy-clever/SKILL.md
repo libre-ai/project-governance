@@ -2,8 +2,9 @@
 name: deploy-clever
 description: Pre-flight checks before deploying an application to Clever Cloud — clean working tree, green quality gates, Clever Cloud app status, GitHub Actions status on the target commit. User-invoked only; never self-triggered by an agent.
 license: Apache-2.0
-status: candidate
 disable-model-invocation: true
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

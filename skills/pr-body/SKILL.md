@@ -2,7 +2,8 @@
 name: pr-body
 description: Write a pull request description in the fleet template format — summary by its smallest visual, before/after evidence, a Door one-way or two-way reversibility declaration, blast radius, plus Second-instrument and Owner-arbitration lines when they apply. Use when opening a pull request or rewriting its description.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

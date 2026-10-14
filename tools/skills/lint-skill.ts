@@ -8,9 +8,16 @@
 // lib-pure-plus-.test.ts convention (see tools/quality/check-retired-names.ts).
 
 export interface ParsedSkillFile {
+  /** Top-level scalar fields; `metadata` is not among them. */
   readonly frontmatter: Readonly<Record<string, string>>;
+  /** The `metadata` block mapping (Agent Skills spec), empty when absent. */
+  readonly metadata: Readonly<Record<string, string>>;
   readonly body: string;
 }
+
+/** The one key whose value is a block mapping (ADR-0053). */
+export const METADATA_KEY = "metadata";
+const METADATA_ENTRY = /^ {2}[A-Za-z0-9_-]+:(?:\s.*)?$/;
 
 export interface FrontmatterError {
   readonly error: string;
@@ -30,6 +37,14 @@ export interface FrontmatterError {
  *    colon accepted `description: Use when: X`, which is a YAML syntax error,
  *    so a skill linted green here and failed to load there. Only scalar
  *    values are admitted; booleans and numbers are returned as their text.
+ *
+ * One exception to the flat shape (ADR-0053, 2026-10-14): `metadata`, the
+ * Agent Skills field for free keys, is a block mapping — `metadata:` alone on
+ * its line, then one `  key: value` line per entry, indented by two spaces,
+ * scalar values only. The block form is the only one admitted because the
+ * Agent Skills reference validator (`skills-ref`, strict YAML) rejects the
+ * flow form `metadata: { key: value }` as a disallowed flow mapping (measured
+ * 2026-10-14).
  */
 export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterError {
   const lines = source.split("\n");
@@ -48,8 +63,18 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
   }
   const blockLines = lines.slice(1, closingIndex);
   const keys: string[] = [];
+  let inMetadata = false;
   for (const line of blockLines) {
     if (line.trim() === "") continue;
+    if (inMetadata && /^\s/.test(line)) {
+      if (!METADATA_ENTRY.test(line)) {
+        return {
+          error: `a ${METADATA_KEY} entry is one "  key: value" line, indented by exactly two spaces: "${line}"`,
+        };
+      }
+      continue;
+    }
+    inMetadata = false;
     // A real top-level key always starts at column 0 in this flat-scalar
     // format (see the parser's doc comment). A line that starts with
     // whitespace is a YAML folded/continuation line for the previous key —
@@ -72,6 +97,14 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
       return { error: `duplicated frontmatter key "${key}"` };
     }
     keys.push(key);
+    if (key === METADATA_KEY) {
+      if (line.slice(separatorIndex + 1).trim() !== "") {
+        return {
+          error: `${METADATA_KEY} must be a block mapping — "${METADATA_KEY}:" alone on its line, then "  key: value" lines; the Agent Skills reference validator rejects the inline form`,
+        };
+      }
+      inMetadata = true;
+    }
   }
 
   let parsedYaml: unknown;
@@ -93,8 +126,25 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
     return { error: "frontmatter must be a YAML mapping of flat key: value fields" };
   }
   const frontmatter: Record<string, string> = {};
+  const metadata: Record<string, string> = {};
   for (const key of keys) {
     const value = yamlRecord[key];
+    if (key === METADATA_KEY) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) {
+        return { error: `${METADATA_KEY} must be a mapping of key: value entries` };
+      }
+      for (const [entryKey, entryValue] of Object.entries(value as Record<string, unknown>)) {
+        if (
+          typeof entryValue !== "string" &&
+          typeof entryValue !== "number" &&
+          typeof entryValue !== "boolean"
+        ) {
+          return { error: `${METADATA_KEY}.${entryKey} must be a scalar` };
+        }
+        metadata[entryKey] = String(entryValue).trim();
+      }
+      continue;
+    }
     if (value === null || value === undefined) {
       frontmatter[key] = "";
     } else if (
@@ -110,7 +160,7 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
     }
   }
   const body = lines.slice(closingIndex + 1).join("\n");
-  return { frontmatter, body };
+  return { frontmatter, metadata, body };
 }
 
 /** Body line count, blank lines included, leading/trailing blank runs trimmed. */
@@ -127,8 +177,25 @@ export interface LintFinding {
   readonly note: string;
 }
 
-export const REQUIRED_FRONTMATTER_FIELDS = ["name", "description", "license", "status"] as const;
+export const REQUIRED_FRONTMATTER_FIELDS = ["name", "description", "license"] as const;
 export const ALLOWED_STATUS = new Set(["candidate", "promoted"]);
+/**
+ * Top-level keys a SKILL.md may carry (ADR-0053): the Agent Skills fields,
+ * which the reference validator admits and nothing else, plus
+ * `disable-model-invocation`, which Claude Code needs to keep a skill
+ * user-invoked and which the reference validator rejects — the one known
+ * departure, written down in skills/README.md. Anything else, `status`
+ * included, belongs under `metadata`.
+ */
+export const ALLOWED_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
+  "name",
+  "description",
+  "license",
+  "compatibility",
+  "metadata",
+  "allowed-tools",
+  "disable-model-invocation",
+]);
 // Built from a split tag rather than one literal string: `reuse lint` greps
 // source text blindly for the SPDX tag followed by a colon, with no notion
 // that this occurrence is the constant's *definition*, not a real
@@ -185,6 +252,18 @@ export function lintSkillMarkdown(dirName: string, source: string): LintFinding[
     });
   }
 
+  const unknownKeys = Object.keys(parsed.frontmatter).filter(
+    (key) => !ALLOWED_TOP_LEVEL_KEYS.has(key),
+  );
+  findings.push({
+    rule: "frontmatter-keys",
+    ok: unknownKeys.length === 0,
+    note:
+      unknownKeys.length === 0
+        ? "every top-level key is an Agent Skills field or disable-model-invocation"
+        : `top-level key(s) outside the Agent Skills fields: ${unknownKeys.join(", ")} — move them under "metadata:"${unknownKeys.includes("status") ? " (status lives in metadata.status since ADR-0053)" : ""}`,
+  });
+
   const name = parsed.frontmatter.name;
   const nameOk = name === dirName;
   findings.push({
@@ -195,14 +274,14 @@ export function lintSkillMarkdown(dirName: string, source: string): LintFinding[
       : `frontmatter name "${name ?? ""}" does not match directory "${dirName}"`,
   });
 
-  const status = parsed.frontmatter.status;
+  const status = parsed.metadata.status;
   const statusOk = status !== undefined && ALLOWED_STATUS.has(status);
   findings.push({
     rule: "frontmatter-status",
     ok: statusOk,
     note: statusOk
-      ? `status "${status}"`
-      : `status must be one of ${[...ALLOWED_STATUS].join("|")}, found "${status ?? ""}"`,
+      ? `metadata.status "${status}"`
+      : `metadata.status must be one of ${[...ALLOWED_STATUS].join("|")}, found "${status ?? ""}"`,
   });
 
   const license = parsed.frontmatter.license;
