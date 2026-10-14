@@ -64,7 +64,7 @@ licences, dead code, lint, typecheck, tests). Never hide a red test.
 
 ## Agents
 
-- Read actual state before editing.
+- Read actual state before editing. Writing a skill: `docs/method/SKILLS-ANATOMY.md`.
 - Stage files before running tree-walking gates (`git ls-files`-based
   scanners do not see untracked files).
 - Never review mutable or uncommitted output in the authoring pass.
