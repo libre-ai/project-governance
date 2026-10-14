@@ -1,0 +1,15 @@
+{
+  "counters": {
+    "objects": 205,
+    "commits": 17,
+    "trees": 86,
+    "treeEntries": 427,
+    "blobs": 102,
+    "blobBytes": 366295,
+    "tags": 0,
+    "refs": 4,
+    "signatures": 2,
+    "unreachableObjects": 0
+  },
+  "findings": []
+}

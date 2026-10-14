@@ -1,0 +1,227 @@
+{
+  "access": {
+    "collaborators": [
+      {
+        "login": "constantin-jais",
+        "permissions": {
+          "admin": true,
+          "maintain": true,
+          "pull": true,
+          "push": true,
+          "triage": true
+        },
+        "role_name": "admin"
+      }
+    ],
+    "deploy_keys": 0,
+    "pending_invitations": 0,
+    "teams": 0,
+    "webhooks": 0
+  },
+  "actions": {
+    "environments": 0,
+    "permissions": {
+      "enabled": false,
+      "sha_pinning_required": false
+    },
+    "runs_in_progress": 0,
+    "runs_queued": 0,
+    "secrets": 0,
+    "selected": null,
+    "variables": 0,
+    "workflow_token": {
+      "can_approve_pull_request_reviews": false,
+      "default_workflow_permissions": "read"
+    },
+    "workflows": [
+      {
+        "name": "ci",
+        "path": ".github/workflows/ci.yml",
+        "state": "active"
+      },
+      {
+        "name": "Context hygiene",
+        "path": ".github/workflows/context-hygiene.yml",
+        "state": "active"
+      },
+      {
+        "name": "licensing",
+        "path": ".github/workflows/licensing.yml",
+        "state": "active"
+      },
+      {
+        "name": "Dependabot Updates",
+        "path": "dynamic/dependabot/dependabot-updates",
+        "state": "active"
+      }
+    ]
+  },
+  "branch_protection": {
+    "allow_deletions": {
+      "enabled": false
+    },
+    "allow_force_pushes": {
+      "enabled": false
+    },
+    "allow_fork_syncing": {
+      "enabled": false
+    },
+    "block_creations": {
+      "enabled": false
+    },
+    "enforce_admins": {
+      "enabled": true,
+      "url": "https://api.github.com/repos/libre-ai/square-control/branches/main/protection/enforce_admins"
+    },
+    "lock_branch": {
+      "enabled": true
+    },
+    "required_conversation_resolution": {
+      "enabled": false
+    },
+    "required_linear_history": {
+      "enabled": false
+    },
+    "required_signatures": {
+      "enabled": false,
+      "url": "https://api.github.com/repos/libre-ai/square-control/branches/main/protection/required_signatures"
+    },
+    "url": "https://api.github.com/repos/libre-ai/square-control/branches/main/protection"
+  },
+  "branches": [
+    {
+      "name": "dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd",
+      "protected": true
+    },
+    {
+      "name": "main",
+      "protected": true
+    }
+  ],
+  "dependabot": {
+    "config_file": {
+      "present": true,
+      "sha": "73967896f7d1c3b68ff838e9db549f05e9761be7"
+    },
+    "open_pull_requests": [
+      {
+        "head": "dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd",
+        "head_sha": "f192917b55875fc32db5c61bed573770c1fc12ef",
+        "number": 1,
+        "user": "dependabot[bot]"
+      }
+    ]
+  },
+  "frozen_check": {
+    "blockers": [],
+    "frozen": true,
+    "residual_risks": [
+      "Dependabot version updates remain configured in the tree (weekly); removing the file would change the OID. Their inability to run rests on Actions being disabled and the ruleset, which is not measured until a scheduled run passes",
+      "1 open pull request(s): refs/pull/* is a provider-managed namespace that no ruleset restricts and the owner cannot delete",
+      "pull requests are enabled: a new pull request creates refs/pull/N/* that no ruleset restricts; step 5 would refuse and a new attestation would be required",
+      "no tag ruleset: the only ruleset targets branches, so a tag could be created by the owner; step 5 would refuse it through the ref-set comparison",
+      "the owner keeps administrative authority over every setting above"
+    ]
+  },
+  "observed_at": "2026-10-14T10:06:31Z",
+  "provider": "GitHub",
+  "repository": "libre-ai/square-control",
+  "rulesets": [
+    {
+      "_links": {
+        "html": {
+          "href": "https://github.com/libre-ai/square-control/rules/25062758"
+        },
+        "self": {
+          "href": "https://api.github.com/repos/libre-ai/square-control/rulesets/25062758"
+        }
+      },
+      "bypass_actors": [],
+      "conditions": {
+        "ref_name": {
+          "exclude": [],
+          "include": [
+            "~ALL"
+          ]
+        }
+      },
+      "created_at": "2026-10-14T10:06:12.405+02:00",
+      "current_user_can_bypass": "never",
+      "enforcement": "active",
+      "id": 25062758,
+      "name": "frozen-staging-adr-0038",
+      "node_id": "RRS_lACqUmVwb3NpdG9yec5UiqFBzgF-bWY",
+      "rules": [
+        {
+          "type": "creation"
+        },
+        {
+          "type": "update"
+        },
+        {
+          "type": "deletion"
+        },
+        {
+          "type": "non_fast_forward"
+        }
+      ],
+      "source": "libre-ai/square-control",
+      "source_type": "Repository",
+      "target": "branch",
+      "updated_at": "2026-10-14T10:06:12.439+02:00"
+    }
+  ],
+  "security": {
+    "automated_security_fixes": false,
+    "private_vulnerability_reporting": null,
+    "vulnerability_alerts": false
+  },
+  "settings": {
+    "allow_auto_merge": false,
+    "allow_forking": false,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "allow_squash_merge": true,
+    "archived": false,
+    "default_branch": "main",
+    "disabled": false,
+    "has_discussions": false,
+    "has_issues": false,
+    "has_pages": false,
+    "has_projects": false,
+    "has_pull_requests": true,
+    "has_wiki": false,
+    "private": true,
+    "security_and_analysis": {
+      "code_security": {
+        "status": "disabled"
+      },
+      "dependabot_security_updates": {
+        "status": "disabled"
+      },
+      "secret_scanning": {
+        "status": "enabled"
+      },
+      "secret_scanning_ai_detection": {
+        "status": "disabled"
+      },
+      "secret_scanning_delegated_alert_dismissal": {
+        "status": "disabled"
+      },
+      "secret_scanning_delegated_bypass": {
+        "status": "disabled"
+      },
+      "secret_scanning_non_provider_patterns": {
+        "status": "disabled"
+      },
+      "secret_scanning_push_protection": {
+        "status": "enabled"
+      },
+      "secret_scanning_validity_checks": {
+        "status": "disabled"
+      }
+    },
+    "visibility": "private",
+    "web_commit_signoff_required": false
+  }
+}
