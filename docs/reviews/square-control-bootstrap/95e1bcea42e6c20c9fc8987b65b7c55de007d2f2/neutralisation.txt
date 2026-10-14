@@ -1,0 +1,43 @@
+baseline: exit 0
+object-type: neutralised -> exit 1, 1 red test(s): RED
+manifest-ascii: neutralised -> exit 1, 1 red test(s): RED
+manifest-shallow: neutralised -> exit 1, 1 red test(s): RED
+strip-scope: neutralised -> exit 1, 2 red test(s): RED
+content-local-path: neutralised -> exit 1, 1 red test(s): RED
+content-credential: neutralised -> exit 1, 1 red test(s): RED
+content-cookie: neutralised -> exit 1, 1 red test(s): RED
+content-personal-data: neutralised -> exit 1, 2 red test(s): RED
+content-instance-config: neutralised -> exit 1, 1 red test(s): RED
+content-denied-literal: neutralised -> exit 1, 1 red test(s): RED
+shallow: neutralised -> exit 1, 1 red test(s): RED
+ref-name: neutralised -> exit 1, 1 red test(s): RED
+ref-absent: neutralised -> exit 1, 1 red test(s): RED
+ref-oid-changed: neutralised -> exit 1, 1 red test(s): RED
+ref-missing: neutralised -> exit 1, 1 red test(s): RED
+fsck: neutralised -> exit 1, 1 red test(s): RED
+trusted-ref: neutralised -> exit 1, 1 red test(s): RED
+unreachable: neutralised -> exit 1, 1 red test(s): RED
+blob-limit: neutralised -> exit 1, 1 red test(s): RED
+blob-content: neutralised -> exit 1, 9 red test(s): RED
+tree-mode: neutralised -> exit 1, 2 red test(s): RED
+tree-target-missing: neutralised -> exit 1, 1 red test(s): RED
+tree-type: neutralised -> exit 1, 1 red test(s): RED
+tree-path-bytes: neutralised -> exit 1, 1 red test(s): RED
+tree-path-config: neutralised -> exit 1, 1 red test(s): RED
+tree-path-capture: neutralised -> exit 1, 1 red test(s): RED
+tree-path-unsafe: neutralised -> exit 1, 1 red test(s): RED
+tree-path: neutralised -> exit 1, 1 red test(s): RED
+person-address: neutralised -> exit 1, 4 red test(s): RED
+person-name: neutralised -> exit 1, 2 red test(s): RED
+commit-utf8: neutralised -> exit 1, 1 red test(s): RED
+commit-link: neutralised -> exit 1, 1 red test(s): RED
+commit-signature: neutralised -> exit 1, 1 red test(s): RED
+commit-header: neutralised -> exit 1, 1 red test(s): RED
+commit-message: neutralised -> exit 1, 2 red test(s): RED
+tag-name: neutralised -> exit 1, 1 red test(s): RED
+tagger-missing: neutralised -> exit 1, 1 red test(s): RED
+tag-message: neutralised -> exit 1, 1 red test(s): RED
+manifest.sh manifest-shallow: substituted -> exit 1, 1 red test(s): RED
+manifest.sh manifest-ascii: substituted -> exit 1, 1 red test(s): RED
+canonicalize.py python-verify: substituted -> exit 1, 1 red test(s): RED
+41 check(s) neutralised, 0 not caught

@@ -19,11 +19,11 @@ author of the attestation. The coordinator records each one below, naming:
 
 Points the author asks the reviewers to attack, as hypotheses and not as conclusions:
 
-1. Whether `support@github.com` in the Dependabot trailer is acceptable (Open decision 1 in
-   `ATTESTATION.md`), and whether a nominative allowlist entry scoped to forge-added commits is
-   the right form.
-2. Whether the freeze can be reached at all while Dependabot version updates stay configured
-   and `refs/pull/*` cannot be restricted (Open decision 2).
+1. The owner-arbitrated admission of `support@github.com` for forge-added commits (section
+   "Owner decision" in `ATTESTATION.md`), and whether the scanner really refuses it in a commit
+   main reaches and in a blob (`red:strip-scope`).
+2. The residual risks of the frozen state (Dependabot configured, `refs/pull/*` unrestrictable),
+   and whether `frozen_check` separates freezable settings from them correctly.
 3. Whether scanning all 205 objects, including any not reachable from a ref, is the right
    superset of "every accessible object" (here: 0 unreachable).
 4. The gitleaks 14-versus-15 reading (patch-less commits are not counted) is a hypothesis.

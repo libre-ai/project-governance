@@ -31,7 +31,10 @@ settings="$(probe "" | jq -c '{
   web_commit_signoff_required,
   security_and_analysis: (.security_and_analysis // null)
 }')"
-rulesets="$(probe "/rulesets?includes_parents=true")"
+# The list endpoint omits rules and conditions: read each ruleset in full.
+rulesets="$(
+  for id in $(probe "/rulesets?includes_parents=true" | jq -r '.[]?.id'); do probe "/rulesets/$id"; echo; done | jq -s -c '.'
+)"
 protection="$(probe "/branches/$(probe "" | jq -r .default_branch)/protection")"
 actions_permissions="$(probe "/actions/permissions")"
 actions_workflow="$(probe "/actions/permissions/workflow")"
@@ -90,12 +93,15 @@ jq -n -S \
         (if .actions.workflow_token == null then "workflow token permissions unreadable"
          elif .actions.workflow_token.default_workflow_permissions != "read" then "default workflow token is not read-only" else empty end),
         (if .actions.runs_in_progress != 0 or .actions.runs_queued != 0 then "workflow runs in progress or queued" else empty end),
-        (if (.branch_protection == null or (.branch_protection.lock_branch.enabled // false) != true) and ((.rulesets // []) | length) == 0
-         then "default branch is neither locked nor covered by a ruleset" else empty end),
-        (if ((.rulesets // []) | length) == 0 then "no ruleset restricts creation or update of other refs" else empty end),
+        (if (.branch_protection.lock_branch.enabled // false) != true or (.branch_protection.enforce_admins.enabled // false) != true
+         then "default branch is not locked with administrators enforced" else empty end),
+        (if ([.rulesets[]? | select(.enforcement == "active" and .target == "branch"
+              and (.conditions.ref_name.include | index("~ALL")) != null
+              and (.bypass_actors | length) == 0
+              and ((.rules | map(.type)) as $t | ["creation","update","deletion","non_fast_forward"] | all(. as $r | $t | index($r) != null)))] | length) == 0
+         then "no active ruleset without bypass forbids creating, updating, deleting or force-pushing any branch" else empty end),
         (if .dependabot.config_file.present == true and (.actions.permissions.enabled != false)
-         then "Dependabot version updates are configured in the tree and nothing prevents a run" else empty end),
-        (if (.dependabot.open_pull_requests | length) > 0 then "\(.dependabot.open_pull_requests | length) open pull request(s): their refs/pull/* can still move" else empty end),
+         then "Dependabot version updates are configured in the tree and Actions are enabled" else empty end),
         (if (.access.collaborators | length) != 1 then "collaborators other than the owner" else empty end),
         (if [.access.pending_invitations, .access.teams, .access.webhooks, .access.deploy_keys, .actions.secrets, .actions.variables, .actions.environments] | any(. == null)
          then "an access or Actions control could not be read" else empty end),
@@ -104,6 +110,13 @@ jq -n -S \
         (if (.actions.secrets // 0) != 0 or (.actions.variables // 0) != 0 or (.actions.environments // 0) != 0 then "Actions secrets, variables or environments present" else empty end),
         (if .settings.has_issues == true then "issues enabled" else empty end)
       ] as $blockers
-      | {frozen: ($blockers | length == 0), blockers: $blockers}
+      | [
+          (if .dependabot.config_file.present == true
+           then "Dependabot version updates remain configured in the tree (weekly); removing the file would change the OID. Their inability to run rests on Actions being disabled and the ruleset, which is not measured until a scheduled run passes" else empty end),
+          (if (.dependabot.open_pull_requests | length) > 0
+           then "\(.dependabot.open_pull_requests | length) open pull request(s): refs/pull/* is a provider-managed namespace that no ruleset restricts and the owner cannot delete" else empty end),
+          "the owner keeps administrative authority over every setting above"
+        ] as $residual
+      | {frozen: ($blockers | length == 0), blockers: $blockers, residual_risks: $residual}
     )}
 '

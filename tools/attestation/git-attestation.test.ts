@@ -32,12 +32,12 @@ const canary = {
 
 const owner: Identity = {
   name: "Fixture Owner",
-  address: ["1+owner", "users.noreply.example"].join("@"),
+  address: ["1+owner", "users.noreply.fixture-mail.net"].join("@"),
   scope: "anywhere",
 };
 const bot: Identity = {
   name: "Fixture Bot",
-  address: ["2+bot", "users.noreply.example"].join("@"),
+  address: ["2+bot", "users.noreply.fixture-mail.net"].join("@"),
   scope: "forge-added-only",
 };
 const identities = [owner, bot];
@@ -447,6 +447,30 @@ describe("commit identities and message", () => {
     committerName: bot.name,
     committerAddress: bot.address,
   };
+
+  const trailer = `Signed-off-by: ${bot.name} <${bot.address}>`;
+
+  test("a forge trailer address is accepted in the message of a forge-added commit", () => {
+    const dir = cleanRepo();
+    git(dir, ["switch", "-q", "-c", "forge/branch"]);
+    commit(dir, { "bot.md": "bot\n" }, `Bot work\n\n${trailer}`, botWho);
+    git(dir, ["switch", "-q", "main"]);
+    expect(scan(dir).findings).toEqual([]);
+  });
+
+  test("red:strip-scope the forge trailer is refused in a commit main reaches", () => {
+    const dir = cleanRepo();
+    commit(dir, { "m.md": "m\n" }, `Owner work\n\n${trailer}`);
+    expectOnly(scan(dir), ["commit-message"]);
+  });
+
+  test("red:strip-scope the forge trailer address is refused in a blob", () => {
+    const dir = cleanRepo();
+    git(dir, ["switch", "-q", "-c", "forge/branch"]);
+    commit(dir, { "bot.md": `contact ${bot.address}\n` }, "Bot work", botWho);
+    git(dir, ["switch", "-q", "main"]);
+    expectOnly(scan(dir), ["blob"]);
+  });
 
   test("a forge identity is accepted on a commit no trusted ref reaches", () => {
     const dir = cleanRepo();

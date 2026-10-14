@@ -1,8 +1,9 @@
 # Square Control private publication candidate
 
-Status: private staging state measured on 2026-10-14. **Not yet signable**: two decisions
-are open (sections "Open decision 1" and "Open decision 2"), and the remote is not frozen
-(section "Frozen state"). This document does not attest public availability. Merging it
+Status: private staging state measured on 2026-10-14, remote frozen by the owner the same
+day (section "Frozen state"), scan clean under the owner-arbitrated allowlist (section
+"Owner decision"). Reviews are pending (`REVIEW.md`). This document does not attest public
+availability. Merging it
 is the owner signature of the exact private state it names (ADR-0038 D5) and of nothing
 else: any different ref, object, head or manifest invalidates it.
 
@@ -64,15 +65,19 @@ refs; 0 objects are unreachable. Counters: 17 commits, 86 trees, 427 tree entrie
 blobs (366,295 bytes), 4 refs, 2 commit signatures, 0 tags. Diagnostics carry a surface, a
 class and an OID, never the matched bytes.
 
-Result on the candidate under the allowlist of the brief (owner noreply identity; the two
-forge identities for forge-added commits only): `evidence/scan.strict.json`, exit 1,
-**1 finding**, see "Open decision 1". Every other surface returns 0 finding.
+Result on the candidate under the allowlist of record (owner noreply identity anywhere; the
+two forge identities and the forge trailer address for forge-added commits only):
+`evidence/scan.json`, exit 0, 0 finding. Under the first allowlist, without the trailer
+address, the same scan had exactly one finding (the trailer, below). The scope restriction
+is enforced by the scanner: a forge-only address is removed from a message only when the
+commit is not reachable from `refs/heads/main`, and never from a blob
+(`red:strip-scope`, 2 tests, red when neutralised).
 
 Each surface has a positive result on the candidate and a distinct failure on a synthetic
 temporary repository (never the candidate). `bun test tools/attestation -t 'red:<id> '`
 exits 0 when the scan reports the failure; `bun tools/attestation/neutralise-check.ts`
 forces the check to false in a throwaway copy and requires the matching test to fail
-(`evidence/neutralisation.txt`: 40 checks, 40 RED, 0 not caught).
+(`evidence/neutralisation.txt`: 41 checks, 41 RED, 0 not caught).
 
 | Surface (ADR-0038 D3) | Candidate | Red counter-proof (test id) |
 | --- | --- | --- |
@@ -133,64 +138,51 @@ and `GitHub <noreply@github.com>`. Both commits carry a GitHub signature header 
 CI on the Dependabot head: `evidence/ci.dependabot-head.json`. Its diff against `main` touches
 only `Cargo.lock` and `Cargo.toml` files (`git diff --stat`, reproduced from the mirror).
 
-## Open decision 1: one address in a Dependabot trailer
+## Owner decision
 
-The only finding is on `f192917b…`: its message ends with the trailer
-`Signed-off-by: dependabot[bot] <support@github.com>`. `support@github.com` is not in the
-nominative allowlist, so the scan correctly refuses it as an email address in a commit
-message. My assessment, a hypothesis and not a measurement of GitHub's intent, is that it
-is GitHub's public support address, not personal data, and that Dependabot writes it on
-every commit. The allowlist of the brief is nominative; widening it is the owner's act:
+Owner decision 2026-10-14 (chat): forge trailer `dependabot[bot] <support@github.com>` admitted
+for forge-added commits only (commits not reachable from `refs/heads/main`); `main` stays under
+the owner noreply identity alone; same trailer measured on libre-ai/signalement Dependabot
+commit 030add73 (second instrument). Before the decision the scan had one finding, on
+`f192917b…`, whose message ends with that trailer.
 
-- accept it: the merge of this pull request with `evidence/identity-allowlist.with-forge-trailer.json`
-  as the allowlist of record (adds `support@github.com`, forge-added commits only;
-  `evidence/scan.with-forge-trailer.json`: exit 0, 0 finding);
-- refuse it: the forge-added commit cannot be attested while its message carries that address.
-  Removing it means removing the Dependabot commit, which GitHub does not allow for
-  `refs/pull/1/*` (D78), so the candidate could not be published as it stands.
-
-## Open decision 2: remote not frozen
+## Frozen state
 
 ADR-0038 D5 requires a private remote with no contributor, workflow or automatism holding
-write capability between this merge and the switch. `evidence/provider-policy.json`
-(read-only readback, 2026-10-14T05:17:19Z, `frozen_check.frozen = false`) names six blockers:
+write capability between this merge and the switch. The owner ran the five freeze commands of
+`owner-freeze-commands.sh` on 2026-10-14 (about 08:05Z); I changed no setting. Before them the
+readback (05:17:19Z) had `frozen = false` with six blockers: Actions enabled, `main` unprotected,
+no ruleset, Dependabot configured with Actions enabled, PR 1 open, issues enabled.
 
-1. GitHub Actions are enabled with `allowed_actions: all` (the three workflows ran on the push).
-2. `main` has no classic protection and no ruleset covers any branch (the owner is the sole
-   collaborator, admin, and can push).
-3. Dependabot version updates are configured in the tree (`.github/dependabot.yml`, weekly,
-   Monday 06:00 Europe/Paris, next run 2026-10-19T04:00:00Z), and ran immediately on the
-   first push.
-4. Pull request 1 is open: `refs/pull/1/*` is a GitHub-managed namespace that no ruleset
-   can restrict and the owner cannot delete.
-5. Issues are enabled.
-6. Rulesets: none, so creation of other refs is not blocked.
+After them, `evidence/provider-policy.json` (read-only readback, 2026-10-14T08:08:41Z):
+`frozen_check.frozen = true`, 0 blocker. Read back: Actions `enabled = false`; ruleset
+`frozen-staging-adr-0038` active on `~ALL` branches, rules creation, update, deletion and
+non_fast_forward, no bypass actor; `main` classic protection with `lock_branch` and
+`enforce_admins`; issues, wiki and projects off; secret scanning and push protection enabled;
+default workflow token read-only; 0 secrets, variables, environments, webhooks, deploy keys,
+teams, invitations; the owner is the sole collaborator. The advertised refs are unchanged (4
+refs plus `HEAD`, same OIDs; `ls-remote.txt` and `refs.api.txt` re-read identical), and a fresh
+mirror gives the same manifest bytes and sha256 `765fd6e9…dca9`.
 
-Also read back: default workflow token `read`, no workflow-created approvals, 0 secrets, 0
-variables, 0 environments, 0 webhooks, 0 deploy keys, 0 teams, 0 pending invitations, secret
-scanning and push protection `disabled`, vulnerability alerts and automated security fixes
-disabled, private vulnerability reporting not available on a private repository.
+Residual risks, listed in `frozen_check.residual_risks` and not hidden by `frozen = true`
+(they cannot be removed without changing the OID or by the owner alone):
 
-What can and cannot be frozen, and the owner commands, are in the owner freeze script
-delivered with this pull request (`owner-freeze-commands.sh`, commented, not executed by me;
-no setting was changed). In short: Actions can be disabled and a ruleset can forbid creating,
-updating or deleting any branch; Dependabot version updates have no switch other than
-deleting the file, which changes the tree and therefore the OID, so the freeze rests on
-two hypotheses I did not measure (with Actions disabled the Dependabot jobs do not run; a
-branch ruleset without bypass stops the Dependabot app from creating its branch).
-Consequence under the amended D2: any ref that appears, disappears or moves before step 5
-makes step 5 refuse and a new attestation is required. That refusal is the designed outcome.
+1. Dependabot version updates stay configured in the tree (weekly, Monday 06:00 Europe/Paris,
+   next 2026-10-19T04:00:00Z). That they cannot run rests on Actions being disabled and on the
+   ruleset; both are hypotheses not measured until a scheduled run passes. Step 5 refuses on any
+   ref difference, so the failure mode is a refused switch and a new attestation.
+2. Pull request 1 is open: `refs/pull/*` is provider-managed, no ruleset restricts it and the
+   owner cannot delete it.
+3. The owner keeps administrative authority over every setting; it is not represented as
+   revocable by these controls.
 
-The owner freeze happens before merge. The readback is then refreshed with
-`sh tools/attestation/provider-policy.sh libre-ai/square-control` and this pull request must
-carry a file with `frozen_check.frozen = true`; a merge on the present file attests an
-unfrozen remote. The owner keeps administrative authority over every setting; it is not
-represented as revocable by these controls.
+Consequence under the amended D2: any ref that appears, disappears or moves before step 5 makes
+step 5 refuse and a new attestation is required.
 
 ## Tools and versions
 
 git 2.56.0, jq 1.8.2, gitleaks 8.30.1, reuse 6.2.0, cargo 1.97.0, cargo-deny 0.19.5, bun 1.4.0,
-Python 3.14.8, macOS 26.6.2. Evidence time: 2026-10-14, 05:12 to 05:20 UTC.
+Python 3.14.8, macOS 26.6.2. Evidence time: 2026-10-14, 05:12 to 08:10 UTC (freeze readback 08:08:41Z). The mirror was fetched with plain `git fetch` and the credential helper configured globally, no per-command configuration.
 
 Reproduction, from a checkout of this pull request:
 
@@ -205,8 +197,8 @@ bun tools/attestation/git-attestation.ts scan mirror --identities docs/reviews/s
 ## Verdicts
 
 - Candidate main `95e1bcea…` content (blobs, paths, modes, owner-authored history): no finding.
-- Attested set (4 refs, 205 objects): one finding, pending Open decision 1.
-- Frozen remote: **no**, pending Open decision 2.
+- Attested set (4 refs, 205 objects): 0 finding under the allowlist of record.
+- Frozen remote: yes (`frozen = true`, 08:08:41Z), with the three residual risks above.
 - Manifest: reproduced by four derivations, digest `765fd6e9…dca9`.
 - Reviews: pending, `REVIEW.md`.
 

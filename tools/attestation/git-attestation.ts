@@ -347,14 +347,27 @@ function windows(text: string): string[] {
   return out;
 }
 
-function stripAllowedAddresses(text: string, identities: readonly Identity[]): string {
+/**
+ * Remove the allowlisted addresses before the personal-data judgement. A forge-only identity is
+ * removed only from the message of a forge-added commit: the same address in a blob, or in a
+ * commit main reaches, stays visible and is refused.
+ */
+function stripAllowedAddresses(
+  text: string,
+  identities: readonly Identity[],
+  forgeAdded: boolean,
+): string {
   let stripped = text;
-  for (const identity of identities) stripped = stripped.split(identity.address).join("");
+  for (const identity of identities) {
+    // neutralise:strip-scope
+    if (identity.scope === "forge-added-only" && !forgeAdded) continue;
+    stripped = stripped.split(identity.address).join("");
+  }
   return stripped;
 }
 
 /** Content classes present in `text`. Returns class names only, never the bytes. */
-export function contentClasses(text: string, options: ScanOptions): string[] {
+export function contentClasses(text: string, options: ScanOptions, forgeAdded = false): string[] {
   const classes = new Set<string>();
   for (const part of windows(text)) {
     // neutralise:content-local-path
@@ -367,7 +380,7 @@ export function contentClasses(text: string, options: ScanOptions): string[] {
     if (
       personalDataPatterns.some((pattern) => pattern.test(part)) ||
       containsEmailIdentifierExcludingRfc2606Examples(
-        stripAllowedAddresses(part, options.identities),
+        stripAllowedAddresses(part, options.identities, forgeAdded),
       )
     )
       classes.add("personal-data");
@@ -713,7 +726,7 @@ function scanCommit(
   }
   checkPerson("author", author, entry.oid, forgeAdded, options, add);
   checkPerson("committer", committer, entry.oid, forgeAdded, options, add);
-  const classes = contentClasses(parsed.message, options);
+  const classes = contentClasses(parsed.message, options, forgeAdded);
   // neutralise:commit-message
   if (classes.length > 0) add("commit-message", classes.join("+"), entry.oid);
 }
@@ -819,4 +832,5 @@ function main(args: readonly string[]): number {
   return 2;
 }
 
-if (import.meta.main) process.exit(main(process.argv.slice(2)));
+// exitCode, not exit(): exit() can cut a large manifest short when stdout is a pipe.
+if (import.meta.main) process.exitCode = main(process.argv.slice(2));

@@ -13,5 +13,10 @@
     "name": "GitHub",
     "address": "noreply@github.com",
     "scope": "forge-added-only"
+  },
+  {
+    "name": "dependabot[bot]",
+    "address": "support@github.com",
+    "scope": "forge-added-only"
   }
 ]
