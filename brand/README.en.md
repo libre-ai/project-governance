@@ -53,8 +53,35 @@ independent logos, promises, or permanent status-like colours.
 
 The visual concept is the **open factory**, expressed through open assembly:
 visible pieces, joints, inputs, outputs, and controls. `@libre-ai/ui` owns the
-visual implementation. The candidate mark is the **Workshop Gantry** (`Portique
-d'atelier` in French), constructed from three orthogonal pieces on a 24-unit
-grid. It uses the Envol constructif palette and never forms a gradient between
-jade and iris. No figurative asset is published before its dedicated licence
-and visual-similarity review are accepted and archived.
+visual implementation. It uses the Envol constructif palette and never forms a
+gradient between jade and iris.
+
+The candidate mark is the **bird** already used as the avatar of the `libre-ai`
+GitHub organisation: a white bird in flight with a jade inner wing, preceded by
+a trail of squares. It replaces the Workshop Gantry, which is no longer a
+candidate (ADR-0033, amendment of 2026-10-13).
+
+Traced asset source: the 460 × 460 PNG served at
+`https://avatars.githubusercontent.com/u/300232041?v=4&s=460`, SHA-256
+`39805af151d503732e77873283ebcd74f95bd7d5cfdf0ad6278765719a024732`, measured on
+2026-10-13 (`Last-Modified: Fri, 10 Jul 2026 00:27:36 GMT`). That URL serves
+the current avatar: if a recomputed digest differs, the asset has changed and
+this trace no longer covers it.
+
+Still open, none of them settled:
+
+- the asset's dedicated `LicenseRef-Libre-AI-Brand-1.0` licence is not
+  accepted;
+- the dated visual-similarity review is not archived;
+- no vector source exists: the PNG is a raster rendering, and `@libre-ai/ui`
+  carries no SVG geometry for the bird;
+- its conformance to the visual grammar is not assessed: the Gantry was
+  specified as monochrome and legible at 16 px, neither property is established
+  for the two-colour bird, and the exclusion of winding paths and sparks has not
+  been checked against its curves or its trail of squares.
+
+No figurative asset is published before its dedicated licence and
+visual-similarity review are accepted and archived. The organisation avatar has
+displayed the bird since before both controls: that display is a departure from
+the brand policy (`TRADEMARKS.md`, “Brand assets”), not a publication that
+replaces them.
