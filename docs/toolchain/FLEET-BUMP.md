@@ -113,6 +113,20 @@ Where it runs:
   above, since the process that holds the token is the wrong place to run another
   repository's install.
 
+## Apply stays local: no fleet write token in CI
+
+Owner decision 2026-10-14: the `FLEET_BUMP_TOKEN` secret is not created. A token
+that can push to every fleet repository, stored where CI code runs, is a write
+credential the fleet does without; the workflow therefore stays plan-only and
+says `apply disabled: no FLEET_BUMP_TOKEN` on each run, which is the expected
+state, not a missing step. A generation is applied by running
+`bun tools/fleet/bump-generation.ts --apply` locally, under the owner's own `gh`
+authentication for that one command (how generation R reached its 17 consumers),
+or by bumping refused repositories by hand. Nothing else changes: each consumer's
+required checks still decide the merge.
+
+The steps below are kept for a reversal of that decision.
+
 ## Owner steps to enable apply
 
 Creating the credential is an owner act; no agent creates it.
