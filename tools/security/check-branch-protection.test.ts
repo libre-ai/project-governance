@@ -214,6 +214,9 @@ describe("an unreadable repository response is a named failure, not a crash or a
       if (path.includes("/check-runs")) {
         return { text: JSON.stringify({ check_runs: [{ name: "Bun quality" }] }), error: null };
       }
+      if (path.includes("/actions/runs")) {
+        return { text: JSON.stringify({ workflow_runs: [] }), error: null };
+      }
       return { text: JSON.stringify({ sha: "feedface" }), error: null };
     };
 
@@ -227,5 +230,128 @@ describe("an unreadable repository response is a named failure, not a crash or a
       expect(state.protection.required).toEqual(["Bun quality"]);
       expect(state.ci.observed).toEqual(["Bun quality"]);
     }
+  });
+});
+
+// Dependabot version-update jobs attach check-runs named "Dependabot" to the
+// default-branch HEAD. They are workflow runs of event `dynamic` with path
+// `dynamic/dependabot/...` and never exist on a pull request head, so counting
+// them as "what CI produces" makes the audit call them decorative and `--fix`
+// would require a check that no PR can ever report (a phantom on every PR).
+// Measured on libre-ai/square-control@95e1bcea: 2 "Dependabot" runs + 4 CI runs.
+describe("Dependabot update runs are not CI output", () => {
+  const checkRun = (name: string, suite: number) => ({ name, check_suite: { id: suite } });
+  const dependabotRun = (suite: number) => ({
+    event: "dynamic",
+    path: "dynamic/dependabot/dependabot-updates",
+    check_suite_id: suite,
+  });
+  const pushRun = (suite: number, path: string) => ({
+    event: "push",
+    path,
+    check_suite_id: suite,
+  });
+
+  const api: GhApi = (path) => {
+    if (path === "repos/libre-ai/sc") {
+      return { text: JSON.stringify({ default_branch: "trunk" }), error: null };
+    }
+    if (path === "repos/libre-ai/sc/branches/trunk/protection") {
+      return {
+        text: JSON.stringify({
+          required_status_checks: { strict: true, contexts: ["Rust core and bridge"] },
+        }),
+        error: null,
+      };
+    }
+    if (path.includes("/check-runs")) {
+      return {
+        text: JSON.stringify({
+          total_count: 4,
+          check_runs: [
+            checkRun("Dependabot", 1),
+            checkRun("Dependabot", 2),
+            checkRun("Rust core and bridge", 3),
+            checkRun("licensing / Licensing", 4),
+          ],
+        }),
+        error: null,
+      };
+    }
+    if (path.includes("/actions/runs")) {
+      return {
+        text: JSON.stringify({
+          total_count: 4,
+          workflow_runs: [
+            dependabotRun(1),
+            dependabotRun(2),
+            pushRun(3, ".github/workflows/ci.yml"),
+            pushRun(4, ".github/workflows/licensing.yml"),
+          ],
+        }),
+        error: null,
+      };
+    }
+    return { text: JSON.stringify({ sha: "feedface" }), error: null };
+  };
+
+  test("Dependabot is neither decorative nor part of the fix, and is counted apart", () => {
+    const state = fetchRepositoryState("libre-ai/sc", undefined, api);
+    expect(state).not.toHaveProperty("error");
+    if ("error" in state) return;
+
+    const audit = auditProtection("libre-ai/sc", state.protection, state.ci);
+    expect(audit.decorative).toEqual(["licensing / Licensing"]);
+    expect(audit.decorative).not.toContain("Dependabot");
+    expect(computeFix(state.ci)).toEqual(["Rust core and bridge", "licensing / Licensing"]);
+    expect(state.ci.ignored).toEqual(["Dependabot"]);
+    // examined + set aside = total: nothing leaves the count unaccounted.
+    expect(state.checkRuns).toEqual({ total: 4, examined: 2, dependabot: 2 });
+  });
+
+  test("a name also produced by a real CI run stays observed", () => {
+    const shared: GhApi = (path) => {
+      if (path.includes("/check-runs")) {
+        return {
+          text: JSON.stringify({
+            check_runs: [checkRun("Dependabot", 1), checkRun("Dependabot", 2)],
+          }),
+          error: null,
+        };
+      }
+      if (path.includes("/actions/runs")) {
+        return {
+          text: JSON.stringify({
+            workflow_runs: [dependabotRun(1), pushRun(2, ".github/workflows/dependabot.yml")],
+          }),
+          error: null,
+        };
+      }
+      return api(path);
+    };
+    const state = fetchRepositoryState("libre-ai/sc", undefined, shared);
+    if ("error" in state) throw new Error(state.error);
+    expect(state.ci.observed).toEqual(["Dependabot"]);
+    expect(state.ci.ignored).toEqual([]);
+    expect(state.checkRuns).toEqual({ total: 2, examined: 1, dependabot: 1 });
+  });
+
+  test("an unreadable workflow-runs listing fails instead of passing Dependabot through", () => {
+    const broken: GhApi = (path) =>
+      path.includes("/actions/runs") ? { text: null, error: "HTTP 403" } : api(path);
+    const state = fetchRepositoryState("libre-ai/sc", undefined, broken);
+    expect(state).toHaveProperty("error");
+  });
+
+  test("a truncated listing fails instead of classifying a partial set", () => {
+    const truncated: GhApi = (path) =>
+      path.includes("/actions/runs")
+        ? {
+            text: JSON.stringify({ total_count: 150, workflow_runs: [pushRun(3, "ci.yml")] }),
+            error: null,
+          }
+        : api(path);
+    const state = fetchRepositoryState("libre-ai/sc", undefined, truncated);
+    expect(state).toHaveProperty("error");
   });
 });

@@ -203,8 +203,10 @@ n'existe que sur les demandes de fusion créées par Dependabot Updates,
 jamais sur une demande humaine, et son retrait des checks requis a déjà été
 un acte propriétaire distinct le 2026-08-04. Le rendre requis aujourd'hui
 rouvrirait exactement ce bug. Un fix naïf fondé sur la seule règle « requis
-:= observé » aurait été faux ici ; l'outil rapporte l'écart quand il est
-observé, il ne le corrige pas aveuglément.
+:= observé » aurait été faux ici ; l'outil rapportait l'écart au lieu de le
+corriger. Depuis, il reconnaît ces exécutions (run de workflow dont le chemin
+est `dynamic/dependabot/…`), les écarte de « ce que la CI produit » et les
+compte à part : elles ne sont ni décoratives ni candidates à `--fix`.
 
 Audit fleet-wide final (rejoué à la clôture de ce domaine) : 35 des 35
 repositories actifs auditables correspondent exactement.
