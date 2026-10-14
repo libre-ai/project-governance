@@ -14,6 +14,8 @@
   inchangées, de même que l'énumération fermée `candidate` | `promoted` et la
   règle « aucun gate ne promeut ».
 - **Décision :** D76 de `docs/decisions/DECISION-REGISTER.md`.
+- **Applique :** I-25 (collection de skills gouvernée), dont le texte ne
+  change pas : il ne fixe pas l'emplacement du statut.
 
 ## Contexte — un échec observé
 
