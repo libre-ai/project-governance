@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { markers, neutralise } from "./neutralise-check";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { census, judge, markers, neutralise } from "./neutralise-check";
 
 describe("neutralise", () => {
   test("forces the whole condition to false, `||` included, and leaves the rest alone", () => {
@@ -30,6 +33,21 @@ describe("neutralise", () => {
     );
   });
 
+  test("drops the finding, not the condition, when the block refuses and returns", () => {
+    const source = [
+      "// neutralise:f",
+      "if (text === null) {",
+      '  add("s", "k", oid);',
+      "  return;",
+      "}",
+      "",
+    ].join("\n");
+    const mutant = neutralise(source, "f") ?? "";
+    expect(mutant).toContain("if (text === null) {");
+    expect(mutant).toContain('discard("s", "k", oid);');
+    expect(mutant).toContain("  return;");
+  });
+
   test("routes a bare add(...) call to a discarding function", () => {
     const source = ["// neutralise:d", '  add("s", "k", oid);', ""].join("\n");
     const mutant = neutralise(source, "d");
@@ -40,5 +58,100 @@ describe("neutralise", () => {
   test("an unknown marker yields nothing, and markers() lists every id", () => {
     expect(neutralise("// neutralise:a\nif (x) y();\n", "zzz")).toBeNull();
     expect(markers("// neutralise:a\n// neutralise:b-c\n")).toEqual(["a", "b-c"]);
+  });
+});
+
+describe("census", () => {
+  const covered = [
+    "// neutralise:a",
+    'if (x) add("s", "k", oid);',
+    "// neutralise:none the contract guarantees it",
+    'throw new GitFailure("x");',
+    "",
+  ].join("\n");
+
+  test("counts sites with its own pattern and says how each is covered", () => {
+    const result = census(covered);
+    expect(result).toMatchObject({ sites: 2, marked: 1, exempt: 1, uncovered: [], duplicates: [] });
+    expect(result.ids).toEqual(["a"]);
+  });
+
+  test("a refusal site without a marker within eight lines, or sharing one, is uncovered", () => {
+    const filler = ["a();", "b();", "c();", "d();", "e();", "f();", "g();", "h();"];
+    const source = ["// neutralise:a", ...filler, 'throw new Error("late");', ""].join("\n");
+    expect(census(source).uncovered).toEqual([10]);
+    const shared = ["// neutralise:a", 'add("s", "k", o);', 'add("s", "k2", o);', ""].join("\n");
+    expect(census(shared).uncovered).toEqual([3]);
+    expect(census('add("s", "k", o);\n').uncovered).toEqual([1]);
+  });
+
+  test('a set.add(...) call and a comment mentioning add(" are not sites', () => {
+    const source = [
+      'classes.add("x");',
+      '// add("y") in a comment',
+      ' * throw new Error("z")',
+      "",
+    ].join("\n");
+    expect(census(source).sites).toBe(0);
+  });
+
+  test("a marker id used twice is reported as a duplicate", () => {
+    const source = [
+      "// neutralise:a",
+      'if (x) add("s", "k", o);',
+      "// neutralise:a",
+      'if (y) add("s", "k", o);',
+      "",
+    ].join("\n");
+    expect(census(source).duplicates).toEqual(["a"]);
+  });
+
+  test("the real tool has no uncovered site and no duplicate id", () => {
+    const result = census(readFileSync(join(import.meta.dir, "git-attestation.ts"), "utf8"));
+    expect(result.uncovered).toEqual([]);
+    expect(result.duplicates).toEqual([]);
+    expect(result.sites).toBe(result.marked + result.exempt);
+    expect(result.exempt).toBeGreaterThan(0);
+  });
+});
+
+describe("judge", () => {
+  const assertionFailure = [
+    "error: expect(received).toBe(expected)",
+    "Expected: true",
+    "(fail) group > red:a something [1.00ms]",
+    "",
+  ].join("\n");
+  const crashFailure = [
+    "error: Cannot read properties of undefined",
+    "      at scan (x.ts:1:1)",
+    "(fail) group > red:a something [1.00ms]",
+    "",
+  ].join("\n");
+
+  test("a failure with an assertion message is RED", () => {
+    expect(judge(assertionFailure, "a", 1)).toEqual({ label: "RED", assertions: 1, crashes: 0 });
+  });
+
+  test("a failure that only crashed is reported as such, not as caught", () => {
+    expect(judge(crashFailure, "a", 1)).toEqual({
+      label: "RED (crash only)",
+      assertions: 0,
+      crashes: 1,
+    });
+  });
+
+  test("an exit code 0, or failures of other ids, are STILL GREEN", () => {
+    expect(judge("", "a", 0).label).toBe("STILL GREEN");
+    expect(judge(assertionFailure.replace("red:a", "red:b"), "a", 1).label).toBe("STILL GREEN");
+  });
+
+  test("a pass line resets the error context", () => {
+    const output = [
+      "error: expect(received).toBe(expected)",
+      "(pass) other test",
+      crashFailure,
+    ].join("\n");
+    expect(judge(output, "a", 1).label).toBe("RED (crash only)");
   });
 });

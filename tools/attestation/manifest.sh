@@ -21,8 +21,16 @@ manifest() {
   objs="$(printf '%s\n' "$inv" | jq -R -s -c 'split("\n")|map(select(length>0)|split(" ")|{objectId:.[0],size:(.[2]|tonumber),type:.[1]})|sort_by(.objectId)')"
   refs="$(git -C "$dir" for-each-ref --format='%(refname) %(objectname)' | jq -R -s -c 'split("\n")|map(select(length>0)|split(" ")|{name:.[0],objectId:.[1]})|sort_by(.name)')"
   trees="$(printf '%s\n' "$inv" | awk '$2=="tree"{print $1}' | while read -r t; do
-    git -C "$dir" ls-tree -z "$t" | jq -R -s -c --arg t "$t" 'split("\u0000")|map(select(length>0)|capture("^(?<mode>[0-7]+) (?<type>[a-z]+) (?<objectId>[0-9a-f]+)\t(?<name>.*)$")|.treeObjectId=$t)'
+    git -C "$dir" ls-tree -z "$t" | jq -R -s -c --arg t "$t" 'split("\u0000")|map(select(length>0)|capture("^(?<mode>[0-7]+) (?<type>[a-z]+) (?<objectId>[0-9a-f]+)\t(?<name>[\\s\\S]*)\\z")|.treeObjectId=$t)'
   done | jq -s -c '(add // [])|sort_by([.treeObjectId,.name])')"
+  # A name holding a newline does not match a plain `.*`: `capture` then yields nothing and the
+  # entry would vanish without a trace. Count the NUL-terminated records git printed and require
+  # the manifest to hold exactly that many.
+  expected="$(printf '%s\n' "$inv" | awk '$2=="tree"{print $1}' | while read -r t; do
+    git -C "$dir" ls-tree -z "$t" | LC_ALL=C tr -cd '\000' | wc -c
+  done | awk '{n+=$1} END{print n+0}')"
+  [ "$(printf '%s' "$trees" | jq 'length')" = "$expected" ] \
+    || { echo "tree entries dropped: manifest does not hold every ls-tree record" >&2; return 1; }
   out="$(jq -n -S -c --arg fmt "$fmt" --arg repo "$REPO" --argjson o "$objs" --argjson r "$refs" --argjson t "$trees" \
     '{gitObjectFormat:$fmt,objects:$o,refs:$r,repository:$repo,schemaVersion:"libre-ai.git-object-manifest.v2",treeEntries:$t}')"
   # BSD grep has no -P: count the bytes outside 0x00-0x7F with tr instead (a grep failure would fail open).

@@ -6,15 +6,24 @@ import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 import {
+  assertHandledTypes,
   buildManifest,
   canonicalJson,
   contentClasses,
+  decodeDenyLiteral,
+  type Finding,
   type Identity,
+  parseArguments,
+  parseIdentities,
   readAttestedRefs,
+  readableObjects,
+  refuseUnhandled,
   type ScanOptions,
   type ScanReport,
   scanRepository,
-  unhandledObjects,
+  stripAllowedAddresses,
+  windowOverlap,
+  windowSize,
 } from "./git-attestation";
 
 // Every canary is assembled at run time: this file must not itself be a hit for the
@@ -252,7 +261,7 @@ describe("blob bytes", () => {
     expectOnly(scan(dir), ["blob"]);
   });
 
-  test("red:blob-content a UTF-16 blob is decoded before it is judged", () => {
+  test("red:blob-utf16 a UTF-16 blob is decoded before it is judged", () => {
     const dir = cleanRepo();
     commit(dir, { "wide.txt": Buffer.from(`﻿${canary.credential}`, "utf16le") }, "Add wide text");
     expectOnly(scan(dir), ["blob"]);
@@ -431,7 +440,7 @@ describe("commit identities and message", () => {
     });
   }
 
-  test("red:person-name a forge identity paired with the owner name is a mismatch", () => {
+  test("red:person-pair a forge identity paired with the owner name is a mismatch", () => {
     const dir = cleanRepo();
     git(dir, ["switch", "-q", "-c", "side"]);
     commit(dir, { "bot.md": "bot\n" }, "Bot work", { ...ownerWho, authorAddress: bot.address });
@@ -629,7 +638,14 @@ describe("repository state", () => {
       { oid: "a".repeat(40), type: "blob", size: 1 },
       { oid: "b".repeat(40), type: "bogus", size: 2 },
     ];
-    expect(unhandledObjects(entries).map((entry) => entry.type)).toEqual(["bogus"]);
+    const findings: Finding[] = [];
+    const refused = refuseUnhandled(entries, (surface, kind, oid) =>
+      findings.push({ surface, kind, oid }),
+    );
+    expect(refused.map((entry) => entry.type)).toEqual(["bogus"]);
+    expect(findings).toEqual([
+      { surface: "object", kind: "type-not-handled", oid: "b".repeat(40) },
+    ]);
   });
 
   test("a loose object of an unknown type makes git refuse, and the scan with it", () => {
@@ -776,6 +792,12 @@ describe("manifest", () => {
     expect(python("derive", dir, "fixture/other", join(base, "other.json")).code).not.toBe(0);
   });
 
+  test("red:manifest-number a float, a negative or an unsafe integer is refused", () => {
+    for (const bad of [1.5, -1, 9007199254740992, Number.NaN])
+      expect(() => canonicalJson(bad)).toThrow("outside the admitted JCS subset");
+    expect(canonicalJson(9007199254740991)).toBe("9007199254740991");
+  });
+
   test("canonicalJson sorts keys and refuses what JCS cannot carry here", () => {
     expect(canonicalJson({ b: 1, a: ["x", 2], c: 'q"\\\n' })).toBe(
       '{"a":["x",2],"b":1,"c":"q\\"\\\\\\n"}',
@@ -792,5 +814,431 @@ describe("manifest", () => {
     const refs = readAttestedRefs(path);
     expect(refs).toEqual([{ name: "refs/heads/main", objectId: git(dir, ["rev-parse", "HEAD"]) }]);
     expect(scan(dir, { attestedRefs: refs }).findings).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Refusal sites added after the quality review of bd195d65: each has a `red:` test, and
+// neutralise-check.ts counts the sites independently of the markers.
+// ---------------------------------------------------------------------------
+
+function collect(): {
+  findings: Finding[];
+  add: (surface: string, kind: string, oid: string) => void;
+} {
+  const findings: Finding[] = [];
+  return {
+    findings,
+    add: (surface, kind, oid) => {
+      findings.push({ surface, kind, oid });
+    },
+  };
+}
+
+function shellOf(dir: string): { code: number; out: string; err: string } {
+  const result = Bun.spawnSync(["sh", join(import.meta.dir, "manifest.sh"), dir], {
+    env: { ...baseEnvironment, REPO: "fixture/repo" },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
+}
+
+function pythonOf(flags: string[], ...args: string[]): { code: number; out: string } {
+  const result = Bun.spawnSync(
+    ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
+    { env: baseEnvironment, stdout: "pipe", stderr: "pipe" },
+  );
+  return { code: result.exitCode, out: result.stdout.toString() };
+}
+
+function craftedTag(
+  dir: string,
+  extraHeaders: string,
+  message: Uint8Array,
+  target?: string,
+): string {
+  const head = target ?? git(dir, ["rev-parse", "HEAD"]);
+  const text = `object ${head}\ntype commit\ntag v9\n${extraHeaders}tagger ${owner.name} <${owner.address}> 1767225600 +0000\n\n`;
+  const oid = writeObject(dir, "tag", Buffer.concat([Buffer.from(text), message]));
+  git(dir, ["update-ref", "refs/tags/v9", oid]);
+  return oid;
+}
+
+describe("repository access", () => {
+  test("red:git-exit a directory that is not a repository is refused, not read as empty", () => {
+    const report = scanRepository(freshDir("not-a-repository"), options);
+    expectOnly(report, ["read"]);
+    expect(() => buildManifest(freshDir("not-a-repository"), "fixture/repo")).toThrow();
+  });
+
+  test("red:git-failure the refusal names the read failure and no object", () => {
+    const report = scanRepository(freshDir("not-a-repository"), options);
+    expect(report.findings).toEqual([{ surface: "read", kind: "git-failure", oid: "" }]);
+  });
+
+  test("red:unreadable an object git listed but cannot read is refused, not skipped", () => {
+    const entry = { oid: "a".repeat(40), type: "blob", size: 1 };
+    const { findings, add } = collect();
+    const readable = readableObjects([entry], new Map([[entry.oid, null]]), add);
+    expect(readable).toEqual([]);
+    expect(findings).toEqual([{ surface: "object", kind: "unreadable", oid: entry.oid }]);
+  });
+
+  test("red:manifest-type the manifest refuses an object type it cannot describe", () => {
+    expect(() => assertHandledTypes([{ oid: "a".repeat(40), type: "bogus", size: 1 }])).toThrow(
+      "object type not handled",
+    );
+    expect(() =>
+      assertHandledTypes([{ oid: "a".repeat(40), type: "blob", size: 1 }]),
+    ).not.toThrow();
+  });
+
+  test("red:tree-malformed a truncated tree entry is refused by the scan and the manifest", () => {
+    const dir = cleanRepo();
+    const tree = writeObject(
+      dir,
+      "tree",
+      Buffer.concat([Buffer.from("100644 x\0"), Buffer.from("abc")]),
+    );
+    pointMainAt(dir, tree);
+    const report = scan(dir);
+    expect(report.findings).toContainEqual({ surface: "read", kind: "git-failure", oid: "" });
+    expect(() => buildManifest(dir, "fixture/repo")).toThrow("tree entry malformed");
+  });
+});
+
+describe("content windows and address boundaries", () => {
+  test("red:window-tail a secret beyond the first window is found", () => {
+    const text = `${"x".repeat(windowSize * 2 + 100)}\n${canary.credential}\n`;
+    expect(contentClasses(text, options)).toContain("credential");
+  });
+
+  test("red:window-overlap a secret straddling a window boundary is found", () => {
+    expect(windowOverlap).toBeGreaterThanOrEqual(canary.credential.length);
+    const text = `${"x".repeat(windowSize - 8)}${canary.credential}${"x".repeat(windowSize)}`;
+    expect(contentClasses(text, options)).toContain("credential");
+  });
+
+  test("red:blob-utf8 a compatibility-form secret is only visible through the UTF-8 reading", () => {
+    const wide = [...canary.credential]
+      .map((character) => String.fromCodePoint((character.codePointAt(0) ?? 0) + 0xfee0))
+      .join("");
+    const dir = cleanRepo();
+    commit(dir, { "wide.txt": `${wide}\n` }, "Add wide characters");
+    expectOnly(scan(dir), ["blob"]);
+  });
+
+  test("red:strip-boundary an address that continues a longer address is not masked", () => {
+    const forge = (text: string) => contentClasses(text, options, true);
+    expect(forge(`jane.doe.${bot.address}`)).toEqual(["personal-data"]);
+    expect(forge(`jane-${bot.address}`)).toEqual(["personal-data"]);
+    expect(forge(`${bot.address}.elsewhere-mail.net`)).toEqual(["personal-data"]);
+    expect(forge(`${bot.address}x`)).toEqual(["personal-data"]);
+    expect(contentClasses(`jane.doe${owner.address}`, options)).toEqual(["personal-data"]);
+    // Delimited occurrences are still removed.
+    expect(forge(`Signed-off-by: x <${bot.address}>.`)).toEqual([]);
+    expect(forge(`(${bot.address}), ${bot.address}`)).toEqual([]);
+    expect(stripAllowedAddresses(`<${owner.address}>`, identities, false)).toBe("<>");
+  });
+});
+
+describe("tree path and identity header refusals", () => {
+  test("red:tree-path-dot a .git or .. path component is refused", () => {
+    for (const name of [".git", ".."]) {
+      const dir = cleanRepo();
+      const blob = git(dir, ["hash-object", "-w", "--stdin"], {}, "x");
+      pointMainAt(dir, writeObject(dir, "tree", rawTree([{ mode: "100644", name, oid: blob }])));
+      const report = scan(dir);
+      expect(report.findings).toContainEqual(
+        expect.objectContaining({ surface: "tree-path", kind: "unsafe-component" }),
+      );
+    }
+  });
+
+  test("red:person-malformed an author or committer line that is not a person is refused", () => {
+    const dir = cleanRepo();
+    const tree = git(dir, ["rev-parse", "HEAD^{tree}"]);
+    const oid = writeObject(
+      dir,
+      "commit",
+      Buffer.from(`tree ${tree}\nauthor garbage\ncommitter garbage\n\nmessage\n`),
+    );
+    git(dir, ["update-ref", "refs/heads/main", oid]);
+    const report = scan(dir);
+    expect(report.findings).toContainEqual({
+      surface: "author-name",
+      kind: "header-malformed",
+      oid,
+    });
+    expect(report.findings).toContainEqual({
+      surface: "committer-name",
+      kind: "header-malformed",
+      oid,
+    });
+  });
+
+  test("red:commit-headers a commit header line without a name is refused", () => {
+    const dir = cleanRepo();
+    const oid = craftedCommit(dir, "broken\n", Buffer.from("message\n"));
+    expect(scan(dir).findings).toContainEqual({
+      surface: "commit",
+      kind: "headers-malformed",
+      oid,
+    });
+  });
+});
+
+describe("tag object refusals", () => {
+  test("red:tag-header an extra tag header is refused and passes git fsck --strict", () => {
+    const dir = cleanRepo();
+    const oid = craftedTag(dir, "x-extra payload\n", Buffer.from("message\n"));
+    const fsck = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict"], { env: baseEnvironment });
+    expect(fsck.exitCode).toBe(0);
+    expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "header-not-handled", oid });
+  });
+
+  test("red:tag-utf8 a tag message that is not UTF-8 is refused", () => {
+    const dir = cleanRepo();
+    const oid = craftedTag(dir, "", Buffer.from([0x62, 0xff, 0xfe, 0x0a]));
+    expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "not-utf8", oid });
+  });
+
+  test("red:tag-headers a tag header line without a name is refused", () => {
+    const dir = cleanRepo();
+    const oid = craftedTag(dir, "broken\n", Buffer.from("message\n"));
+    expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "headers-malformed", oid });
+  });
+
+  test("red:tag-link a tag pointing at an absent object is refused", () => {
+    const dir = cleanRepo();
+    const oid = craftedTag(
+      dir,
+      "",
+      Buffer.from("message\n"),
+      "0123456789abcdef0123456789abcdef01234567",
+    );
+    expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "link-missing", oid });
+  });
+});
+
+describe("operator input", () => {
+  const cliPath = join(import.meta.dir, "git-attestation.ts");
+  const repository = cleanRepo("cli");
+  const identitiesPath = join(freshDir("identities"), "identities.json");
+  writeFileSync(identitiesPath, JSON.stringify(identities));
+
+  function cli(...args: string[]): { code: number; out: string; err: string } {
+    const result = Bun.spawnSync(["bun", cliPath, ...args], {
+      env: baseEnvironment,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
+  }
+
+  test("control: a clean scan exits 0, a dirty one exits 1, and both print counters", () => {
+    expect(cli("scan", repository, "--identities", identitiesPath).code).toBe(0);
+    const dirty = cleanRepo("dirty");
+    commit(dirty, { "leak.txt": `${canary.credential}\n` }, "Add a leak");
+    const result = cli("scan", dirty, "--identities", identitiesPath);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('"blobs"');
+    expect(result.out).not.toContain(canary.credential);
+  });
+
+  test("red:cli-flag-value a flag without a value, or followed by a flag, exits 2", () => {
+    const missing = cli("scan", repository, "--identities", identitiesPath, "--attestation");
+    expect(missing.code).toBe(2);
+    expect(missing.err).toContain("--attestation needs a value");
+    const swallowed = cli("scan", repository, "--trusted-ref", "--identities", identitiesPath);
+    expect(swallowed.code).toBe(2);
+  });
+
+  test("red:cli-flag-unknown an unknown flag exits 2", () => {
+    expect(cli("scan", repository, "--identities", identitiesPath, "--nope", "x").code).toBe(2);
+  });
+
+  test("red:cli-flag-duplicate a repeated single-value flag exits 2", () => {
+    expect(
+      cli("scan", repository, "--identities", identitiesPath, "--identities", identitiesPath).code,
+    ).toBe(2);
+  });
+
+  test("red:cli-b64-form a deny literal that is not canonical base64 exits 2 and is not echoed", () => {
+    for (const bad of ["not base64!", "YQ", "", "YQ=a"]) {
+      const result = cli("scan", repository, "--identities", identitiesPath, "--deny-b64", bad);
+      expect(result.code).toBe(2);
+      if (bad.length > 3) expect(result.err.includes(bad)).toBe(false);
+    }
+    expect(decodeDenyLiteral(Buffer.from("literal").toString("base64"))).toBe("literal");
+  });
+
+  test("red:cli-b64-utf8 a deny literal that is not UTF-8 exits 2", () => {
+    const encoded = Buffer.from([0xff, 0xfe]).toString("base64");
+    expect(
+      cli("scan", repository, "--identities", identitiesPath, "--deny-b64", encoded).code,
+    ).toBe(2);
+    expect(() => decodeDenyLiteral(encoded)).toThrow("not UTF-8");
+  });
+
+  test("red:cli-positional manifest without a repository name, or with extras, exits 2", () => {
+    expect(cli("manifest", repository).code).toBe(2);
+    expect(cli("manifest", repository, "fixture/repo", "extra").code).toBe(2);
+    expect(cli("manifest", repository, "fixture/repo").code).toBe(0);
+  });
+
+  test("red:cli-scan-usage scan without an identities file, or with extras, exits 2", () => {
+    expect(cli("scan", repository).code).toBe(2);
+    expect(cli("scan", repository, "extra", "--identities", identitiesPath).code).toBe(2);
+  });
+
+  test("red:cli-text-usage text without files or without identities exits 2; hits name a class only", () => {
+    expect(cli("text", "--identities", identitiesPath).code).toBe(2);
+    const base = freshDir("text");
+    writeFileSync(join(base, "clean.log"), "step ok\n");
+    writeFileSync(join(base, "dirty.log"), `token ${canary.credential} at ${canary.localPath}\n`);
+    expect(cli("text", join(base, "clean.log")).code).toBe(2);
+    expect(cli("text", join(base, "clean.log"), "--identities", identitiesPath).code).toBe(0);
+    const dirty = cli(
+      "text",
+      join(base, "clean.log"),
+      join(base, "dirty.log"),
+      "--identities",
+      identitiesPath,
+    );
+    expect(dirty.code).toBe(1);
+    expect(JSON.parse(dirty.out)).toMatchObject({ files: 2 });
+    expect(dirty.out).toContain('"credential"');
+    expect(dirty.out.includes(canary.credential)).toBe(false);
+    expect(dirty.out.includes("fixtureuser")).toBe(false);
+  });
+
+  test("red:cli-command an unknown command exits 2", () => {
+    expect(cli("frobnicate", repository, "--identities", identitiesPath).code).toBe(2);
+    expect(cli("frobnicate", repository).code).toBe(2);
+    expect(cli().code).toBe(2);
+  });
+
+  test("parseArguments keeps repeatable flags and positional order", () => {
+    const parsed = parseArguments(["scan", "dir", "--deny-b64", "YQ==", "--deny-b64", "Yg=="]);
+    expect(parsed.positional).toEqual(["scan", "dir"]);
+    expect(parsed.flags.get("--deny-b64")).toEqual(["YQ==", "Yg=="]);
+  });
+
+  const ownerEntry: Identity = { name: "N", address: "a@b", scope: "anywhere" };
+
+  test("red:identities-json an identities file that is not JSON is refused", () => {
+    expect(() => parseIdentities("{")).toThrow("not JSON");
+  });
+
+  test("red:identities-array an identities file that is not a non-empty array is refused", () => {
+    expect(() => parseIdentities("{}")).toThrow("non-empty array");
+    expect(() => parseIdentities("[]")).toThrow("non-empty array");
+  });
+
+  test("red:identities-object an entry that is not an object is refused", () => {
+    expect(() => parseIdentities("[1]")).toThrow("not an object");
+    expect(() => parseIdentities("[null]")).toThrow("not an object");
+  });
+
+  test("red:identities-keys an entry with a missing or extra field is refused", () => {
+    expect(() => parseIdentities(JSON.stringify([{ name: "N", scope: "anywhere" }]))).toThrow(
+      "exactly",
+    );
+    expect(() => parseIdentities(JSON.stringify([{ ...ownerEntry, extra: 1 }]))).toThrow("exactly");
+  });
+
+  test("red:identities-strings an entry with an empty or non-string name or address is refused", () => {
+    expect(() => parseIdentities(JSON.stringify([{ ...ownerEntry, name: "" }]))).toThrow(
+      "non-empty",
+    );
+    expect(() => parseIdentities(JSON.stringify([{ ...ownerEntry, address: 7 }]))).toThrow(
+      "non-empty",
+    );
+  });
+
+  test("red:identities-scope an unknown scope is refused", () => {
+    expect(() => parseIdentities(JSON.stringify([{ ...ownerEntry, scope: "everywhere" }]))).toThrow(
+      "scope must be",
+    );
+    expect(() => parseIdentities(JSON.stringify([{ ...ownerEntry, scope: "Anywhere" }]))).toThrow(
+      "scope must be",
+    );
+  });
+
+  test("red:identities-owner a file without an owner entry is refused", () => {
+    expect(() =>
+      parseIdentities(JSON.stringify([{ ...ownerEntry, scope: "forge-added-only" }])),
+    ).toThrow("no owner entry");
+    expect(parseIdentities(JSON.stringify([ownerEntry]))).toEqual([ownerEntry]);
+  });
+
+  test("the committed allowlist shape is accepted and a bad file exits 2 end to end", () => {
+    const base = freshDir("identities");
+    writeFileSync(join(base, "bad.json"), JSON.stringify([{ ...ownerEntry, scope: "owner" }]));
+    expect(cli("scan", repository, "--identities", join(base, "bad.json")).code).toBe(2);
+    expect(parseIdentities(JSON.stringify(identities))).toEqual(identities);
+  });
+
+  test("red:attestation-refs a manifest without a refs array is refused", () => {
+    const base = freshDir("attestation");
+    for (const [name, body] of [
+      ["a.json", "{}"],
+      ["b.json", "[]"],
+      ["c.json", '{"refs":"main"}'],
+    ] as const) {
+      writeFileSync(join(base, name), body);
+      expect(() => readAttestedRefs(join(base, name))).toThrow("no refs array");
+    }
+  });
+
+  test("red:attestation-ref a manifest ref without a name or an object id is refused", () => {
+    const base = freshDir("attestation");
+    for (const [name, body] of [
+      ["a.json", '{"refs":[{"name":"refs/heads/main"}]}'],
+      ["b.json", '{"refs":[1]}'],
+      ["c.json", '{"refs":[{"name":1,"objectId":"x"}]}'],
+    ] as const) {
+      writeFileSync(join(base, name), body);
+      expect(() => readAttestedRefs(join(base, name))).toThrow("ref malformed");
+    }
+  });
+});
+
+describe("shell and Python derivations on hard inputs", () => {
+  test("red:manifest-newline a path holding a newline appears in both implementations", () => {
+    const dir = cleanRepo();
+    commit(dir, { "a\nb.txt": "x\n" }, "Add a path with a newline");
+    const typescript = buildManifest(dir, "fixture/repo");
+    const shell = shellOf(dir);
+    expect(shell.code).toBe(0);
+    expect(shell.out).toBe(typescript);
+    const parsed = JSON.parse(typescript) as { treeEntries: Array<{ name: string }> };
+    expect(parsed.treeEntries.some((entry) => entry.name === "a\nb.txt")).toBe(true);
+  });
+
+  test("red:manifest-count the shell never succeeds with bytes that differ from the TypeScript ones", () => {
+    const dir = cleanRepo();
+    commit(dir, { "a\nb.txt": "x\n" }, "Add a path with a newline");
+    const typescript = buildManifest(dir, "fixture/repo");
+    const shell = shellOf(dir);
+    if (shell.code === 0) expect(shell.out).toBe(typescript);
+    else expect(shell.err).toContain("tree entries dropped");
+  });
+
+  test("red:python-derive the derivation refuses a differing manifest, also under -O", () => {
+    const dir = cleanRepo();
+    const bogus = join(freshDir("python"), "bogus.json");
+    writeFileSync(bogus, "{}");
+    for (const flags of [["-I"], ["-I", "-O"]])
+      expect(pythonOf(flags, "derive", dir, "fixture/repo", bogus).code).not.toBe(0);
+  });
+
+  test("red:python-verify a non-canonical manifest is refused, also under -O", () => {
+    const bogus = join(freshDir("python"), "unsorted.json");
+    writeFileSync(bogus, '{"b":1,"a":2}');
+    for (const flags of [["-I"], ["-I", "-O"]])
+      expect(pythonOf(flags, "verify", bogus).code).not.toBe(0);
   });
 });

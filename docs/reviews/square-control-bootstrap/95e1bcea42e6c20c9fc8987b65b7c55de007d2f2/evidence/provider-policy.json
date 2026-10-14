@@ -118,10 +118,11 @@
     "residual_risks": [
       "Dependabot version updates remain configured in the tree (weekly); removing the file would change the OID. Their inability to run rests on Actions being disabled and the ruleset, which is not measured until a scheduled run passes",
       "1 open pull request(s): refs/pull/* is a provider-managed namespace that no ruleset restricts and the owner cannot delete",
+      "pull requests are enabled: a new pull request creates refs/pull/N/* that no ruleset restricts; step 5 would refuse and a new attestation would be required",
       "the owner keeps administrative authority over every setting above"
     ]
   },
-  "observed_at": "2026-10-14T08:08:41Z",
+  "observed_at": "2026-10-14T08:52:02Z",
   "provider": "GitHub",
   "repository": "libre-ai/square-control",
   "rulesets": [

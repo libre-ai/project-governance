@@ -1,1 +1,82 @@
-[{"conclusion":"success","name":"cargo in /. - Update #1626136285","status":"completed"},{"conclusion":"success","name":"github_actions in /. - Update #1626136256","status":"completed"},{"conclusion":"success","name":"ci","status":"completed"},{"conclusion":"success","name":"Context hygiene","status":"completed"},{"conclusion":"success","name":"licensing","status":"completed"}]
+[
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:42:06Z",
+    "event": "push",
+    "head": "95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+    "name": "licensing",
+    "run_id": 38512743466,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512743466"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:42:06Z",
+    "event": "push",
+    "head": "95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+    "name": "Context hygiene",
+    "run_id": 38512743471,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512743471"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:42:06Z",
+    "event": "push",
+    "head": "95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+    "name": "ci",
+    "run_id": 38512743473,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512743473"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:42:11Z",
+    "event": "dynamic",
+    "head": "95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+    "name": "cargo in /. - Update #1626136285",
+    "run_id": 38512751604,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512751604"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:42:11Z",
+    "event": "dynamic",
+    "head": "95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+    "name": "github_actions in /. - Update #1626136256",
+    "run_id": 38512751951,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512751951"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:43:24Z",
+    "event": "pull_request",
+    "head": "f192917b55875fc32db5c61bed573770c1fc12ef",
+    "name": "Context hygiene",
+    "run_id": 38512856896,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512856896"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:43:24Z",
+    "event": "pull_request",
+    "head": "f192917b55875fc32db5c61bed573770c1fc12ef",
+    "name": "ci",
+    "run_id": 38512856958,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512856958"
+  },
+  {
+    "conclusion": "success",
+    "created_at": "2026-10-14T04:43:24Z",
+    "event": "pull_request",
+    "head": "f192917b55875fc32db5c61bed573770c1fc12ef",
+    "name": "licensing",
+    "run_id": 38512857006,
+    "status": "completed",
+    "url": "https://github.com/libre-ai/square-control/actions/runs/38512857006"
+  }
+]

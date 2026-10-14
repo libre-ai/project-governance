@@ -1,42 +1,94 @@
+refusal sites: 65; marked with an id: 59 (73 distinct ids); exempt with a stated reason: 6; uncovered: 0
 baseline: exit 0
-object-type: neutralised -> exit 1, 1 red test(s): RED
-manifest-ascii: neutralised -> exit 1, 1 red test(s): RED
-manifest-shallow: neutralised -> exit 1, 1 red test(s): RED
-content-local-path: neutralised -> exit 1, 1 red test(s): RED
-content-credential: neutralised -> exit 1, 1 red test(s): RED
-content-cookie: neutralised -> exit 1, 1 red test(s): RED
-content-personal-data: neutralised -> exit 1, 2 red test(s): RED
-content-instance-config: neutralised -> exit 1, 1 red test(s): RED
-content-denied-literal: neutralised -> exit 1, 1 red test(s): RED
-shallow: neutralised -> exit 1, 1 red test(s): RED
-ref-name: neutralised -> exit 1, 1 red test(s): RED
-ref-absent: neutralised -> exit 1, 1 red test(s): RED
-ref-oid-changed: neutralised -> exit 1, 1 red test(s): RED
-ref-missing: neutralised -> exit 1, 1 red test(s): RED
-fsck: neutralised -> exit 1, 1 red test(s): RED
-trusted-ref: neutralised -> exit 1, 1 red test(s): RED
-unreachable: neutralised -> exit 1, 1 red test(s): RED
-blob-limit: neutralised -> exit 1, 1 red test(s): RED
-blob-content: neutralised -> exit 1, 9 red test(s): RED
-tree-mode: neutralised -> exit 1, 2 red test(s): RED
-tree-target-missing: neutralised -> exit 1, 1 red test(s): RED
-tree-type: neutralised -> exit 1, 1 red test(s): RED
-tree-path-bytes: neutralised -> exit 1, 1 red test(s): RED
-tree-path-config: neutralised -> exit 1, 1 red test(s): RED
-tree-path-capture: neutralised -> exit 1, 1 red test(s): RED
-tree-path-unsafe: neutralised -> exit 1, 1 red test(s): RED
-tree-path: neutralised -> exit 1, 1 red test(s): RED
-person-address: neutralised -> exit 1, 4 red test(s): RED
-person-name: neutralised -> exit 1, 2 red test(s): RED
-commit-utf8: neutralised -> exit 1, 1 red test(s): RED
-commit-link: neutralised -> exit 1, 1 red test(s): RED
-commit-signature: neutralised -> exit 1, 1 red test(s): RED
-commit-header: neutralised -> exit 1, 1 red test(s): RED
-commit-message: neutralised -> exit 1, 2 red test(s): RED
-tag-name: neutralised -> exit 1, 1 red test(s): RED
-tagger-missing: neutralised -> exit 1, 1 red test(s): RED
-tag-message: neutralised -> exit 1, 1 red test(s): RED
-manifest.sh manifest-shallow: substituted -> exit 1, 1 red test(s): RED
-manifest.sh manifest-ascii: substituted -> exit 1, 1 red test(s): RED
-canonicalize.py python-verify: substituted -> exit 1, 1 red test(s): RED
-40 check(s) neutralised, 0 not caught
+git-exit: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+object-type: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest-type: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+unreadable: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest-ascii: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest-number: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-malformed: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest-shallow: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+strip-boundary: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+strip-scope: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+content-local-path: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+content-credential: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+content-cookie: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+content-personal-data: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+content-instance-config: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+content-denied-literal: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+git-failure: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+shallow: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+ref-name: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+ref-absent: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+ref-oid-changed: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+ref-missing: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+fsck: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+trusted-ref: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+unreachable: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+blob-limit: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+blob-utf16: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+blob-utf8: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+blob-content: neutralised -> exit 1, 8 assertion failure(s), 0 crash(es): RED
+tree-mode: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+tree-target-missing: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-type: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path-bytes: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path-config: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path-capture: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path-unsafe: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path-dot: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tree-path: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+person-malformed: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+person-address: neutralised -> exit 1, 4 assertion failure(s), 0 crash(es): RED
+person-name: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+person-pair: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-utf8: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-headers: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-link: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-signature: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-header: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+commit-message: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+tag-utf8: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tag-headers: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tag-link: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tag-name: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tag-header: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tagger-missing: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+tag-message: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+attestation-refs: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+attestation-ref: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-json: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-array: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-object: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-keys: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-strings: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-scope: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+identities-owner: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-b64-form: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-b64-utf8: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-flag-unknown: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-flag-value: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-flag-duplicate: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-positional: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-text-usage: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-command: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+cli-scan-usage: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest.sh manifest-shallow: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest.sh manifest-ascii: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest.sh manifest-newline: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+manifest.sh manifest-count: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+canonicalize.py python-verify: neutralised -> exit 1, 2 assertion failure(s), 0 crash(es): RED
+canonicalize.py python-derive: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+git-attestation.ts window-tail: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+git-attestation.ts window-overlap: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-ruleset-exclude: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-ruleset-bypass: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-ruleset-can-bypass: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-wiki: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-pages: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-discussions: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-vulnerability-alerts: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-security-fixes: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-collaborator: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+provider-policy.frozen-check.jq frozen-unreadable: neutralised -> exit 1, 1 assertion failure(s), 0 crash(es): RED
+91 check(s) neutralised (59 marked sites, 18 file substitutions, 6 exempt), 0 problem(s)

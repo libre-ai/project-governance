@@ -101,20 +101,31 @@ def derive(directory, repository):
     return canonical(manifest), manifest
 
 
+def refuse(message):
+    # Explicit exit, never `assert`: python -O strips asserts, and a verifier that passes
+    # everything under -O is not a verifier.
+    print("refused:", message, file=sys.stderr)
+    sys.exit(1)
+
+
 def main(argv):
     if len(argv) >= 2 and argv[0] == "verify":
         raw = open(argv[1], "rb").read()
         manifest = json.loads(raw, object_pairs_hook=unique)
         rebuilt = canonical(manifest)
-        assert rebuilt == raw, "retained bytes are not the canonical serialisation"
-        assert not raw.endswith(b"\n"), "terminal newline"
-        assert json.loads(rebuilt, object_pairs_hook=unique) == manifest
+        if rebuilt != raw:
+            refuse("retained bytes are not the canonical serialisation")
+        if raw.endswith(b"\n"):
+            refuse("terminal newline")
+        if json.loads(rebuilt, object_pairs_hook=unique) != manifest:
+            refuse("canonical bytes do not decode to the retained value")
         print("verified", len(raw), "bytes, sha256", hashlib.sha256(raw).hexdigest())
         return 0
     if len(argv) >= 3 and argv[0] == "derive":
         rebuilt, _ = derive(argv[1], argv[2])
         if len(argv) >= 4:
-            assert rebuilt == open(argv[3], "rb").read(), "derived bytes differ from the retained manifest"
+            if rebuilt != open(argv[3], "rb").read():
+                refuse("derived bytes differ from the retained manifest")
         print("derived", len(rebuilt), "bytes, sha256", hashlib.sha256(rebuilt).hexdigest())
         return 0
     print(__doc__, file=sys.stderr)

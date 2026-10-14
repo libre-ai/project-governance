@@ -1,0 +1,25 @@
+Actions run logs of libre-ai/square-control, downloaded read-only with 'gh run view <id> --log' (8 of 8 runs;
+no run was deleted). They become public with the repository. No log content is kept in this repository.
+
+Content-class scan (bun tools/attestation/git-attestation.ts text <logs> --identities evidence/identity-allowlist.json --deny-b64 ...), exit 1:
+  38512743466: 75137 bytes, classes: local-path, personal-data
+  38512743471: 32947 bytes, classes: local-path
+  38512743473: 157175 bytes, classes: local-path
+  38512751604: 146789 bytes, classes: local-path
+  38512751951: 69381 bytes, classes: local-path
+  38512856896: 34651 bytes, classes: local-path
+  38512856958: 159818 bytes, classes: local-path
+  38512857006: 75945 bytes, classes: local-path, personal-data
+
+Second instrument, enumeration of every hit (counts over all logs):
+  home-directory prefixes found:
+       9 /home/dependabot/
+     310 /home/runner/
+  email addresses found:
+       2 noreply@github.com
+       1 support@github.com
+
+Reading: the local-path hits are the home directories of the GitHub-hosted runner account and of
+the Dependabot updater container, not of a person; the three address hits are GitHub's own
+noreply and support addresses, the forge identities already admitted for forge-added commits.
+No credential, cookie, instance-configuration or denied-literal class was found.

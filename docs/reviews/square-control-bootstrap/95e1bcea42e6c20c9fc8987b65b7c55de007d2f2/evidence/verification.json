@@ -1,0 +1,131 @@
+{
+  "generated_for": "libre-ai/square-control 95e1bcea42e6c20c9fc8987b65b7c55de007d2f2",
+  "verdicts": [
+    {
+      "claim": "advertised refs and HEAD symref re-read, equal to evidence/ls-remote.txt",
+      "command": "git ls-remote --symref <remote>",
+      "exit_code": 0,
+      "id": "ls-remote",
+      "result": "cmp with the retained file exit 0; 5 lines",
+      "tool": "git 2.56.0",
+      "utc": "2026-10-14T08:51:06Z"
+    },
+    {
+      "claim": "git advertisement and provider API list the same refs and OIDs",
+      "command": "gh api repos/<repo>/git/matching-refs/ compared with ls-remote",
+      "exit_code": 0,
+      "id": "refs-git-api",
+      "result": "identical, 4 refs; cmp with evidence/refs.git.txt exit 0",
+      "tool": "gh 2.102.0",
+      "utc": "2026-10-14T08:51:07Z"
+    },
+    {
+      "claim": "fresh non-shallow mirror of every advertised ref passes fsck --strict",
+      "command": "git init <mirror> && git fetch <remote> '+refs/*:refs/*'; git fsck --strict --no-dangling",
+      "exit_code": 0,
+      "id": "mirror-fsck",
+      "result": "shallow=false; plain git fetch with the globally configured credential helper",
+      "tool": "git 2.56.0",
+      "utc": "2026-10-14T08:51:07Z"
+    },
+    {
+      "claim": "shell manifest() reproduces the attested bytes",
+      "command": "REPO=libre-ai/square-control sh tools/attestation/manifest.sh <mirror> | cmp - evidence/manifest.jcs.json",
+      "exit_code": 0,
+      "id": "manifest-shell",
+      "result": "byte-equal",
+      "tool": "sh + jq jq-1.8.2",
+      "utc": "2026-10-14T08:51:08Z"
+    },
+    {
+      "claim": "TypeScript buildManifest reproduces the attested bytes",
+      "command": "bun tools/attestation/git-attestation.ts manifest <mirror> libre-ai/square-control | cmp - evidence/manifest.jcs.json",
+      "exit_code": 0,
+      "id": "manifest-typescript",
+      "result": "byte-equal",
+      "tool": "bun 1.4.0",
+      "utc": "2026-10-14T08:51:08Z"
+    },
+    {
+      "claim": "standalone Python derivation reproduces the attested bytes",
+      "command": "python3 -I tools/attestation/canonicalize.py derive <mirror> libre-ai/square-control evidence/manifest.jcs.json",
+      "exit_code": 0,
+      "id": "manifest-python",
+      "result": "derived 87173 bytes, sha256 765fd6e932f826843c9fa2def6b965742287136abe0a8ce884fc5ff52459dca9",
+      "tool": "python 3.14.8",
+      "utc": "2026-10-14T08:51:08Z"
+    },
+    {
+      "claim": "the frozen pre-push manifest is canonical",
+      "command": "python3 -I tools/attestation/canonicalize.py verify evidence/manifest.pre-push.jcs.json",
+      "exit_code": 0,
+      "id": "manifest-pre-push",
+      "result": "verified 81044 bytes, sha256 f512f639fa8ec20d5ff57b4350e3f9f1e40fff5329805b9798c6328264233b20",
+      "tool": "python 3.14.8",
+      "utc": "2026-10-14T08:51:08Z"
+    },
+    {
+      "claim": "every object scanned on every D3 surface under the allowlist of record",
+      "command": "bun tools/attestation/git-attestation.ts scan <mirror> --identities evidence/identity-allowlist.json --attestation evidence/manifest.jcs.json --trusted-ref refs/heads/main --deny-b64 <3 owner literals>",
+      "exit_code": 0,
+      "id": "scan",
+      "result": "{\"findings\":0,\"counters\":{\"objects\":205,\"commits\":17,\"trees\":86,\"treeEntries\":427,\"blobs\":102,\"blobBytes\":366295,\"tags\":0,\"refs\":4,\"signatures\":2,\"unreachableObjects\":0}}",
+      "tool": "bun 1.4.0",
+      "utc": "2026-10-14T08:51:09Z"
+    },
+    {
+      "claim": "Actions run logs, which become public at the switch, scanned with the same content classes",
+      "command": "gh run view <id> --log for each run; bun tools/attestation/git-attestation.ts text <logs> --identities ...",
+      "exit_code": 1,
+      "id": "actions-logs",
+      "result": "{\"local-path\":8,\"personal-data\":2} over 8 logs; hits enumerated in evidence/actions-logs.txt",
+      "tool": "gh + bun",
+      "utc": "2026-10-14T08:51:27Z"
+    },
+    {
+      "claim": "no secret found by an independent scanner, on every ref",
+      "command": "gitleaks git --no-banner --redact --log-opts=--all <mirror>",
+      "exit_code": 0,
+      "id": "gitleaks",
+      "result": "no leaks found; commit-count reconciliation in evidence/gitleaks.txt",
+      "tool": "gitleaks 8.30.1",
+      "utc": "2026-10-14T08:51:27Z"
+    },
+    {
+      "claim": "the candidate's own gates pass from the mirror",
+      "command": "uvx reuse lint && sh scripts/check.sh (in a clone of <mirror>)",
+      "exit_code": 0,
+      "id": "candidate-gates",
+      "result": "reuse-exit=0, check-exit=0; see evidence/candidate-gates.txt",
+      "tool": "reuse 6.2.0, cargo, cargo-deny",
+      "utc": "2026-10-14T08:51:28Z"
+    },
+    {
+      "claim": "the attestation tools pass their tests",
+      "command": "bun test tools/attestation",
+      "exit_code": 0,
+      "id": "tool-tests",
+      "result": " 141 pass  0 fail Ran 141 tests across 3 files.  ",
+      "tool": "bun 1.4.0",
+      "utc": "2026-10-14T08:51:37Z"
+    },
+    {
+      "claim": "every refusal site is covered, and every check's test fails when the check is neutralised",
+      "command": "bun tools/attestation/neutralise-check.ts",
+      "exit_code": 0,
+      "id": "neutralisation",
+      "result": "refusal sites: 65; marked with an id: 59 (73 distinct ids); exempt with a stated reason: 6; uncovered: 0; 91 check(s) neutralised (59 marked sites, 18 file substitutions, 6 exempt), 0 problem(s)",
+      "tool": "bun 1.4.0",
+      "utc": "2026-10-14T08:52:02Z"
+    },
+    {
+      "claim": "the remote is frozen: no blocker derived from the readback",
+      "command": "sh tools/attestation/provider-policy.sh libre-ai/square-control > evidence/provider-policy.json",
+      "exit_code": 0,
+      "id": "provider-policy",
+      "result": "observed_at 2026-10-14T08:52:02Z; frozen=true; blockers=0; residual risks=4; producer exit 0",
+      "tool": "gh + jq jq-1.8.2",
+      "utc": "2026-10-14T08:52:15Z"
+    }
+  ]
+}

@@ -50,6 +50,17 @@ requires the result to equal the file byte for byte, with no terminal newline.
 `derive`) shows each refused, and `bun tools/attestation/neutralise-check.ts` shows that removing the
 byte-equality assertion turns that test red.
 
+## Two defects the review found, and their proofs
+
+- A path holding a newline was dropped silently by the shell implementation (`jq`'s `.*` does
+  not match a newline, so `capture` produced nothing). The match now spans newlines, and the
+  function counts the NUL-terminated records of `git ls-tree -z` and refuses when the manifest
+  holds fewer (`red:manifest-newline`, `red:manifest-count`). The TypeScript and Python
+  implementations already kept the entry; the three agree on a repository with such a path.
+- The Python derivation used `assert`, which `python -O` strips: a verifier that exits 0 on
+  anything. It now refuses with an explicit exit (`red:python-derive`, `red:python-verify`, each
+  run with and without `-O`).
+
 ## Why a third implementation
 
 The shell and the TypeScript implementation both ask `git` for the same listing; a flaw in
