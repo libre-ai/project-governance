@@ -7,7 +7,7 @@ authority: >
   the portfolio is the twenty observed destinations plus the four repositories
   kept outside the migration lot. The historical short-name generation is
   preserved as verified archive bundles and is no longer the public topology.
-updated_on: 2026-10-14
+updated_on: 2026-10-09
 # 2026-10-09 : ai-practice-workbench et information-feed-filter passent a
 # `lifecycle: archived` (ADR-0042 §7 acte 3, decision Y16) ; check-inventory-drift
 # compare desormais lifecycle et etat archive GitHub dans les deux sens.
@@ -117,18 +117,6 @@ repositories:
     lifecycle: active
     owns:
       - incident capture, executable verification and portable projections
-  - repository: libre-ai/square-control
-    # 2026-10-14 : domaine « Poste de travail » (P40), moratoire d'ADR-0042 §3 leve
-    # pour ce domaine par ADR-0052 (D75). Declare avant que le depot existe : le gate
-    # de reconciliation GitHub est rouge jusqu'a sa creation par le proprietaire, et
-    # la premiere publication suit ADR-0038 (I-30) : distant prive d'abord.
-    card: project.v1.yaml
-    role: reserved-product-home
-    layer: couche-1
-    visibility: public
-    lifecycle: active
-    owns:
-      - local macOS window layout tool, Rust core and Swift shell, no network
   - repository: libre-ai/carriere
     # 2026-10-08 : la fiche existait et etait correcte — AGENTS.md conforme,
     # schema-valide, section README octet-identique a un rendu frais — et le gate
