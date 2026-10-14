@@ -1,7 +1,7 @@
 # LEXICON — carte de noms cible et glossaire produit (Phase 0, Lexicon Lock)
 
 - **Statut :** signé — signature propriétaire prononcée le 2026-07-20, journalisée dans [`distribution/evidence/gate-acceptance-log.md`](../../distribution/evidence/gate-acceptance-log.md) (PR #130, merge = signature). Cette carte est en vigueur : elle est l'autorité unique des noms cibles, et tout nom hors carte est un défaut bloquant (garde-fou classe 4).
-- **Date :** 2026-07-20. **Amendé :** 2026-07-28 par ADR-0020 (activation générale), 2026-07-30 (§9, carte des couches complétée), 2026-08-18 (§10, harness créé — domaine F chantier A et §11, neuvième produit), 2026-09-10 (§12, dixième produit candidat), 2026-10-08 (§14, nom du dépôt du domaine Connaissance, ADR-0042 §7 acte 1), 2026-10-09 (§1, carte vivante sur les noms longs des dépôts réels ; la carte antérieure à ADR-0041 passe dans la section « Historique » ; décision propriétaire Y22), même procédure que la signature — production → revue K4 → arrêt dur → merge = signature propriétaire. Le §8 porte le premier amendement ; les corrections ciblées dans le corps sont marquées « (ADR-0020) ».
+- **Date :** 2026-07-20. **Amendé :** 2026-07-28 par ADR-0020 (activation générale), 2026-07-30 (§9, carte des couches complétée), 2026-08-18 (§10, harness créé — domaine F chantier A et §11, neuvième produit), 2026-09-10 (§12, dixième produit candidat), 2026-10-08 (§14, nom du dépôt du domaine Connaissance, ADR-0042 §7 acte 1), 2026-10-09 (§1, carte vivante sur les noms longs des dépôts réels ; la carte antérieure à ADR-0041 passe dans la section « Historique » ; décision propriétaire Y22), 2026-10-13 (§4 : colonne « À éviter » et §4.1 ambiguïtés résolues, en vigueur à la signature de la pull request qui les porte), même procédure que la signature — production → revue K4 → arrêt dur → merge = signature propriétaire. Le §8 porte le premier amendement ; les corrections ciblées dans le corps sont marquées « (ADR-0020) ».
 - **Arbitrage :** accompli — la signature propriétaire de cette carte est l'acte de clôture de la Phase 0 (Lexicon Lock). Procédure suivie : production solo → revue K4 (relecteurs indépendants : cohérence, collisions, doctrine) → arrêt dur → signature propriétaire → renommage et écriture des noms cibles comme acquis.
 - **Portée :** tous les noms cibles de la constellation — repositories, produits, briques, packages npm, crates, familles — et le glossaire produit. Le glossaire de **méthode** (socle, control plane, satellite, vague, gate, WP, traceur…) est déjà fixé et ne relève pas de cette carte.
 - **Règle d'anti-hallucination :** tant que cette carte n'est pas signée, aucun agent n'écrit un nom cible comme acquis dans un artefact ; après signature, tout nom hors carte est un défaut bloquant (garde-fou classe 4).
@@ -94,34 +94,64 @@ dans la section historique, sans valeur normative.
 
 ## 4. Glossaire produit
 
-| Terme              | Définition (une ligne)                                                                                                                                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Libre AI           | La marque ombrelle : constellation de produits souverains, explicables, réversibles, gérée par la méthode.                                                                                                                     |
-| Polaris            | La méthode incarnée (couche 2 productisée) : orchestration gouvernable de flottes d'agents — plans bornés, refus, évidence, gates.                                                                                             |
-| Missions           | L'application humaine de Polaris : la surface où les missions d'agents se voient, s'approuvent, s'auditent.                                                                                                                    |
-| Radar              | Sélection de flux explicable et curation portable.                                                                                                                                                                             |
-| Notebook           | Connaissance personnelle local-first, export de contexte contrôlé.                                                                                                                                                             |
-| AI Practices       | Formation professionnelle à la pratique sourcée de l'IA.                                                                                                                                                                       |
-| Sessions           | Apprentissage collectif ancré aux sources, facilitation.                                                                                                                                                                       |
-| Boussole Politique | Comparaison civique privée contre les votes publics sourcés.                                                                                                                                                                   |
-| Spec Studio        | Décisions produit, spécifications et handoffs bornés.                                                                                                                                                                          |
-| Model Policy       | Sélection de modèles sous politique explicable.                                                                                                                                                                                |
-| envelope           | Enveloppe d'intégrité du contenu non fiable : escape, marquage, signature vérifiable (K3).                                                                                                                                     |
-| provenance         | Traçabilité des contributions et lignées d'agents (`agent-contributor-lineage.v1`).                                                                                                                                            |
-| proof              | Rapports d'évidence signés et attestations de harness — la preuve opposable des gates.                                                                                                                                         |
-| artifacts          | Manifestes et chaîne d'approvisionnement des artefacts produits.                                                                                                                                                               |
-| memory             | Mémoire d'agents gouvernée (rappel enveloppé, classification, effacement prouvable) — livrée avec le lock.                                                                                                                     |
-| orchestrator       | Le cœur d'exécution de Polaris : plans, autorisations, contrôle.                                                                                                                                                               |
-| harness            | Le cadre d'exécution sécurisé des agents de Polaris.                                                                                                                                                                           |
-| ui                 | Primitives d'interface accessibles et vérifiables de l'atelier applicatif.                                                                                                                                                     |
-| auth               | Identité et autorisation (OIDC, session opaque, Biscuit) pour les apps de la constellation.                                                                                                                                    |
-| sdk-ts / sdk-rs    | Projections SDK TypeScript / Rust des contrats du socle.                                                                                                                                                                       |
-| starter            | Gabarit d'application souveraine, dérivé de la première app.                                                                                                                                                                   |
-| mcp-server         | Exposition MCP des capacités de la constellation.                                                                                                                                                                              |
-| corpus             | La pratique documentée, opposable — corpus public.                                                                                                                                                                             |
-| docs               | Documentation générée de la constellation (projection, jamais une autorité).                                                                                                                                                   |
-| skills             | Collection **présente**, versionnée et testée de compétences du harness d'ingénierie (`governance/skills/`, ADR-0025) — à ne pas confondre avec `patterns-skills` ci-dessous.                                                  |
-| patterns-skills    | Candidat **futur** du portfolio couche 2 (`ecosystem/portfolio.v1.yaml`, source Fabric, `exposure: idea`) : bibliothèque de patterns d'agent pour Polaris, pas encore construite — à ne pas confondre avec `skills` ci-dessus. |
+La colonne « À éviter » (ajout proposé le 2026-10-13, en vigueur à la
+signature) nomme les mots qu'un document ou un agent emploie à tort pour le
+terme. Elle ne se remplit que d'emplois fautifs constatés ou d'un objet voisin
+déjà désambiguïsé ici ; « — » dit qu'aucun n'est relevé, pas qu'aucun
+n'existe. Toute entrée nouvelle la remplit.
+
+| Terme | Définition (une ligne) | À éviter |
+| --- | --- | --- |
+| Libre AI | La marque ombrelle : constellation de produits souverains, explicables, réversibles, gérée par la méthode. | — |
+| Polaris | La méthode incarnée (couche 2 productisée) : orchestration gouvernable de flottes d'agents — plans bornés, refus, évidence, gates. | — |
+| Missions | L'application humaine de Polaris : la surface où les missions d'agents se voient, s'approuvent, s'auditent. | — |
+| Radar | Sélection de flux explicable et curation portable. | — |
+| Notebook | Connaissance personnelle local-first, export de contexte contrôlé. | — |
+| AI Practices | Formation professionnelle à la pratique sourcée de l'IA. | — |
+| Sessions | Apprentissage collectif ancré aux sources, facilitation. | — |
+| Boussole Politique | Comparaison civique privée contre les votes publics sourcés. | — |
+| Spec Studio | Décisions produit, spécifications et handoffs bornés. | — |
+| Model Policy | Sélection de modèles sous politique explicable. | — |
+| envelope | Enveloppe d'intégrité du contenu non fiable : escape, marquage, signature vérifiable (K3). | — |
+| provenance | Traçabilité des contributions et lignées d'agents (`agent-contributor-lineage.v1`). | — |
+| proof | Rapports d'évidence signés et attestations de harness — la preuve opposable des gates. | — |
+| artifacts | Manifestes et chaîne d'approvisionnement des artefacts produits. | — |
+| memory | Mémoire d'agents gouvernée (rappel enveloppé, classification, effacement prouvable) — livrée avec le lock. | — |
+| orchestrator | Le cœur d'exécution de Polaris : plans, autorisations, contrôle. | — |
+| harness | Le cadre d'exécution sécurisé des agents de Polaris. | — (ambiguïté relevée ci-dessous, non tranchée) |
+| ui | Primitives d'interface accessibles et vérifiables de l'atelier applicatif. | — |
+| auth | Identité et autorisation (OIDC, session opaque, Biscuit) pour les apps de la constellation. | — |
+| sdk-ts / sdk-rs | Projections SDK TypeScript / Rust des contrats du socle. | — |
+| starter | Gabarit d'application souveraine, dérivé de la première app. | — |
+| mcp-server | Exposition MCP des capacités de la constellation. | — |
+| corpus | La pratique documentée, opposable — corpus public. | — |
+| docs | Documentation générée de la constellation (projection, jamais une autorité). | — |
+| skills | Collection **présente**, versionnée et testée de compétences du harness d'ingénierie (`governance/skills/`, ADR-0025) — à ne pas confondre avec `patterns-skills` ci-dessous. | `patterns-skills` (autre objet, futur) |
+| patterns-skills | Candidat **futur** du portfolio couche 2 (`ecosystem/portfolio.v1.yaml`, source Fabric, `exposure: idea`) : bibliothèque de patterns d'agent pour Polaris, pas encore construite — à ne pas confondre avec `skills` ci-dessus. | `skills` (autre objet, présent) |
+
+### 4.1 Ambiguïtés résolues
+
+Section ajoutée le 2026-10-13 (proposée, en vigueur à la signature). Chaque
+entrée nomme le mot ambigu, ses sens concurrents, la résolution et sa source.
+Une ambiguïté se signale ici avant qu'un document ne choisisse un sens en
+silence.
+
+- **« skills »** désignait à la fois la collection versionnée du harness
+  d'ingénierie et le candidat de portfolio de patterns d'agent. Résolu par
+  ADR-0025 : `skills` est la collection présente, `patterns-skills` le
+  candidat futur ; les deux entrées ci-dessus se renvoient l'une à l'autre.
+- **« mot-tête »** désignait, dans `docs/method/SKILLS-ANATOMY.md`, le premier
+  mot d'une puce ; l'usage d'écriture de skills l'emploie pour un concept
+  pré-entraîné qui ancre un comportement. Résolu par la pull request qui
+  ajoute cette section : « tête de puce » pour le premier mot, « mot-tête »
+  pour le concept pré-entraîné.
+
+Relevée, non tranchée :
+
+- **« harness »** : l'entrée ci-dessus le définit comme le cadre d'exécution
+  des agents de Polaris ; ADR-0025, ADR-0022 et `AGENTS.md` l'emploient pour
+  l'outil agentique d'ingénierie (Claude Code, Pi, Codex). Les deux sens
+  coexistent dans les documents vivants. Trancher est un acte propriétaire.
 
 ## 6. Marques mortes et deny-list
 

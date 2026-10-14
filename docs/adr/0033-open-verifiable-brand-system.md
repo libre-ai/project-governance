@@ -9,7 +9,7 @@
 - **Étend :** ADR-0008 (nom et marque), ADR-0009 (portefeuille et preuve),
   ADR-0020 (autorités multi-repository).
 - **Invariant candidat :** I-29.
-- **Décision :** D39 ; amendée par D73 (signe figuratif candidat, 2026-10-13).
+- **Décision :** D39 ; amendée par D75 (signe figuratif candidat, 2026-10-13).
 - **Arbitrage de l'amendement :** décision du propriétaire en session le
   2026-10-13 : le signe figuratif de Libre AI est l'oiseau de l'avatar de
   l'organisation GitHub, et non plus le Portique d'atelier. Owner-arbitration:

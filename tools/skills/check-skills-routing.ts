@@ -106,28 +106,57 @@ const STOPWORDS = new Set([
   "your",
 ]);
 
-// Longest, most specific suffix first: order controls which one strips, and a
-// plural must strip to the same root as its singular ("izations"/"ization"
-// ahead of the shorter "ations"/"ation", or "authorizations" would lose only
-// "ations" and land on "authoriz" while "authorization" lands on "author").
-// A word must still be >=3 characters after stripping, so short roots ("as",
-// "is") never vanish.
+// Invariant: a plural strips to the same root as its singular. It is held by
+// three passes rather than one suffix list, because a single list cannot hold
+// it: "-es" stripped as one suffix sends "features" to "featur" while
+// "feature" stays "feature", and "-s" alone sends "class" to "clas". So:
+//
+// 1. the plural goes first (`stripPlural`): "-ies" -> "-y", else a final "-s"
+//    unless the word ends in "-ss", "-us" or "-is" (class, status, analysis —
+//    singulars, not plurals);
+// 2. one derivational suffix from SUFFIXES, longest and most specific first
+//    ("ization" ahead of "ation", or "authorization" would land on
+//    "authoriz" instead of "author");
+// 3. a final silent "-e" is dropped (`dropSilentE`), which is what brings
+//    "feature"/"features", "class"/"classes" and "create"/"created" onto the
+//    same root.
+//
+// Every pass keeps at least 3 characters, so short roots ("use", "api") never
+// vanish. Known residual: a Latin "-us" plural ("menus") is kept whole.
 const SUFFIXES: readonly string[] = [
-  "izations",
   "ization",
-  "ications",
   "ication",
-  "ations",
   "ation",
   "ingly",
   "edly",
   "ing",
-  "ies",
   "ed",
   "ly",
-  "es",
-  "s",
 ];
+
+const MIN_ROOT_LENGTH = 3;
+
+function stripPlural(word: string): string {
+  if (word.endsWith("ies") && word.length - 3 >= MIN_ROOT_LENGTH) return `${word.slice(0, -3)}y`;
+  if (word.endsWith("s") && !/(?:ss|us|is)$/.test(word) && word.length - 1 >= MIN_ROOT_LENGTH) {
+    return word.slice(0, -1);
+  }
+  return word;
+}
+
+function stripDerivationalSuffix(word: string): string {
+  if (word.length <= 4) return word;
+  for (const suffix of SUFFIXES) {
+    if (word.endsWith(suffix) && word.length - suffix.length >= MIN_ROOT_LENGTH) {
+      return word.slice(0, word.length - suffix.length);
+    }
+  }
+  return word;
+}
+
+function dropSilentE(word: string): string {
+  return word.endsWith("e") && word.length - 1 >= MIN_ROOT_LENGTH ? word.slice(0, -1) : word;
+}
 
 // Known false stem, left uncorrected on purpose (adversarial review,
 // 2026-08-19): "apply" ends in the letters "ly" by coincidence, not as an
@@ -143,15 +172,7 @@ const SUFFIXES: readonly string[] = [
 // a rule against a failure nothing in the real corpus exercises.
 /** Lightweight suffix-stripping stemmer — see module doc for what it is not. */
 export function stem(token: string): string {
-  const lower = token.toLowerCase();
-  if (lower.length <= 4) return lower;
-  for (const suffix of SUFFIXES) {
-    if (lower.endsWith(suffix) && lower.length - suffix.length >= 3) {
-      if (suffix === "ies") return `${lower.slice(0, -3)}y`;
-      return lower.slice(0, lower.length - suffix.length);
-    }
-  }
-  return lower;
+  return dropSilentE(stripDerivationalSuffix(stripPlural(token.toLowerCase())));
 }
 
 // Tokenization assumes ASCII words (`[a-z0-9]` after lowercasing, plus

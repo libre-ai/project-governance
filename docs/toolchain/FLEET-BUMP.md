@@ -50,6 +50,69 @@ branch that changes the register or the tool. Without the secret it runs the dry
 run on public repositories, names private ones as excluded, writes the plan to
 the job summary and says `apply disabled: no FLEET_BUMP_TOKEN`.
 
+## Generation coherence, before a declaration and before `--apply`
+
+A generation is a governance commit whose composition manifest composes one ref
+per repository, and nothing used to run those refs against each other.
+`.github/composition/check-generation-coherence.py` does: it fetches every
+composed repository at its composed ref into one new root, lists the gate roots
+of each target (every tracked `package.json` whose `check:bun` runs
+`check-bun-manifests.ts`), runs `bun install --frozen-lockfile --ignore-scripts`
+and then the `check-bun-manifests.ts` of the **composed** governance from each
+root. Generation Q composed a toolkit whose `packages/ui` carries a
+`prepublishOnly` the composed governance refuses; the declaration merged green
+because the composition check of this repository composes itself at the pull
+request head, and `check-composed-paths.py` only asks whether a path exists.
+
+```sh
+python3 -B .github/composition/check-generation-coherence.py --root "$(mktemp -d)/root"
+python3 -B .github/composition/check-generation-coherence.py --declaration <sha> --root "$(mktemp -d)/root"
+```
+
+`--declaration <sha>` replays the manifest that governance commit composes, which
+is what declaring that sha as a generation declares. It prints its counters
+(targets declared = verified + failed + not applicable, gate roots replayed and
+passed) and exits non-zero on any failure; a ref that cannot be fetched, an
+install that fails, a target with no gate root and a governance without the gate
+are failures, never skips. The one exempt kind is a target whose composition runs
+no Bun install and which tracks no `package.json` (today
+`database-policy-inspector`), counted and named. It builds nothing: the toolkit's
+UI build is a product gate, not a manifest gate. It also prints how the tracked
+`package.json` files split (gate roots + covered by a root + not examined, the
+latter named), and with `--declaration` it fails when the gate files of the
+declared commit differ from those of the composed governance it replays.
+
+What it executes, and what it does not contain: the targets are other
+repositories' code. Every `bun` call runs under `--config=<empty file outside the
+target>`, because Bun reads the `bunfig.toml` of its working directory and a
+`preload` there runs the target's own file in the gate's process (probed: it wrote
+an environment variable to a file; under `--config` it no longer does). The
+processes run with an allow-listed environment (`PATH`, `HOME`, `TMPDIR`,
+`LANG`, `LC_ALL` and git's own settings), and `--ignore-scripts` keeps
+lifecycle scripts out of the install. That is a reduction, not a sandbox: the
+install still reads the target's lockfile and `.npmrc`, and a scrubbed
+environment protects only what the process was not handed. A secret must
+therefore never be present where the guard runs.
+
+Where it runs:
+
+- `.github/workflows/generation-coherence.yml`, on every pull request (so that
+  its check can be required), and on a push that changes the manifest, the
+  register of generations or the guard: on the manifest of the commit, and, for
+  every `sha:` the change adds to `ecosystem/fleet-pins.v1.yaml`
+  (`tools/fleet/added-generations.ts`, from the YAML of both registers), on the
+  manifest that sha composes — before the declaration merges (step 2 of the
+  procedure). It holds no secret.
+- `.github/workflows/fleet-bump.yml`, job `coherence`: the target generation is
+  replayed in a job that holds neither `FLEET_BUMP_TOKEN` nor a persisted
+  checkout credential, and the `plan` job (the one that applies) `needs` it. A red
+  composition therefore opens nothing and plans nothing.
+- `--apply` of this tool replays the same guard again before the first consumer
+  pull request is opened (step 3), with the environment scrubbed of the write
+  token: a second barrier for a local `--apply`, not a replacement for the job
+  above, since the process that holds the token is the wrong place to run another
+  repository's install.
+
 ## Owner steps to enable apply
 
 Creating the credential is an owner act; no agent creates it.
