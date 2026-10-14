@@ -89,6 +89,28 @@ describe("evaluateDoor", () => {
       "4 description line(s) examined after removing 1 comment/code block(s); 1 Door line(s), 1 Second-instrument line(s)",
     );
   });
+
+  // 2026-10-14: Door declaration became required; Dependabot writes its own
+  // descriptions, and a version bump is two-way by construction.
+  test("an undeclared pull request from an implicit two-way author passes, and says why", () => {
+    const report = evaluateDoor("Bumps x from 1 to 2.", "PR #9 description", "dependabot[bot]");
+    expect(report.outcome).toBe("pass");
+    expect(report.checks[0]?.note).toBe(
+      "Door: two-way (implicit: no Door line, author dependabot[bot] is in IMPLICIT_TWO_WAY_AUTHORS)",
+    );
+    expect(report.volumeSummary).toContain("door implied by author dependabot[bot]");
+  });
+
+  test("an undeclared pull request from any other author still fails", () => {
+    for (const author of [null, "constantin-jais", "dependabot", "renovate[bot]"]) {
+      expect(evaluateDoor("Bumps x.", "d", author).outcome).toBe("violations");
+    }
+  });
+
+  test("a Door line written by an implicit two-way author is judged as written", () => {
+    expect(evaluateDoor("Door: one-way", "d", "dependabot[bot]").outcome).toBe("violations");
+    expect(evaluateDoor("Door: sideways", "d", "dependabot[bot]").outcome).toBe("violations");
+  });
 });
 
 describe("stripNonDeclarations", () => {
@@ -109,12 +131,20 @@ describe("readPullRequestEvent", () => {
       ok: true,
       number: 7,
       body: "Door: two-way",
+      author: null,
     });
+  });
+
+  test("reads the author login", () => {
+    const read = readPullRequestEvent(
+      '{"pull_request":{"number":7,"body":"","user":{"login":"dependabot[bot]"}}}',
+    );
+    expect(read).toEqual({ ok: true, number: 7, body: "", author: "dependabot[bot]" });
   });
 
   test("a null body reads as empty, then fails the door check", () => {
     const read = readPullRequestEvent('{"pull_request":{"number":7,"body":null}}');
-    expect(read).toEqual({ ok: true, number: 7, body: "" });
+    expect(read).toEqual({ ok: true, number: 7, body: "", author: null });
   });
 
   test.each([
@@ -180,5 +210,16 @@ describe("CLI", () => {
     });
     expect(declared.exitCode).toBe(0);
     expect(declared.output).toContain("2 description line(s) examined");
+  });
+
+  test("an undeclared Dependabot pull request passes end to end", () => {
+    const bot = run({
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventFile(
+        '{"pull_request":{"number":4,"body":"Bumps x.","user":{"login":"dependabot[bot]"}}}',
+      ),
+    });
+    expect(bot.exitCode).toBe(0);
+    expect(bot.output).toContain("door implied by author dependabot[bot]");
   });
 });
