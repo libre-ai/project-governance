@@ -2,7 +2,8 @@
 name: review-fanout
 description: Launch a parallel multi-agent review fan-out (security, architecture, quality roles) over an immutable commit before merging candidate work. Use when a candidate branch needs independent role-separated review passes, not a single solo checklist.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

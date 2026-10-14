@@ -2,7 +2,8 @@
 name: biscuit-auth
 description: Apply Biscuit token authorization — authority blocks, attenuation, authorizer policies, multi-tenant isolation, Ed25519 keys. Use when implementing or debugging Biscuit auth in Rust/axum or TypeScript/Hono services. Key rotation and revocation live in references/rotation-revocation.md.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

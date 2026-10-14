@@ -2,7 +2,8 @@
 name: verify-runtime
 description: Verify a change at its real exposed surface — CLI, API, browser, public library, or agent — with inline evidence and an adjacent probe. Use after a non-trivial functional change, as the runtime-proof complement to running tests.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

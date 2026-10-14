@@ -2,7 +2,8 @@
 name: context-conformity
 description: Verify a fleet repository's conformity before concluding work — quality gates green, pinned reusable governance workflows consumed, and the required repo-identity files non-empty. Use before declaring a repo-scoped task done or before opening a pull request in any libre-ai fleet repository.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

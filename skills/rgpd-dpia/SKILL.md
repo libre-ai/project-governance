@@ -2,7 +2,8 @@
 name: rgpd-dpia
 description: Point to the rgpd-kit DPIA (Art. 35 GDPR) scaffold when a product change introduces automated decision-making, large-scale processing, special-category data, or vulnerable subjects. Never fills in or approves a DPIA — approval stays a manual owner act.
 license: Apache-2.0
-status: candidate
+metadata:
+  status: candidate
 ---
 
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->

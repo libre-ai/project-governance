@@ -10,21 +10,26 @@ import {
 
 const SPDX_BLOCK = `<!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->\n<!-- ${SPDX_LICENSE_LINE} -->\n\n`;
 
+/**
+ * A valid skill. `status` is written under `metadata:` (ADR-0052) unless
+ * `statusAt` says otherwise; `null` omits it.
+ */
 function validSkill(
   overrides: Partial<Record<string, string>> = {},
   body = `${SPDX_BLOCK}# Title\n\nSome guidance.\n`,
+  status: string | null = "candidate",
+  statusAt: "metadata" | "top-level" = "metadata",
 ): string {
   const fields: Record<string, string> = {
     name: "example",
     description: "Do the example thing. Use when examples are needed.",
     license: "Apache-2.0",
-    status: "candidate",
     ...overrides,
   };
-  const frontmatter = Object.entries(fields)
-    .map(([key, value]) => `${key}: ${value}`)
-    .join("\n");
-  return `---\n${frontmatter}\n---\n\n${body}`;
+  if (status !== null && statusAt === "top-level") fields.status = status;
+  const lines = Object.entries(fields).map(([key, value]) => `${key}: ${value}`);
+  if (status !== null && statusAt === "metadata") lines.push("metadata:", `  status: ${status}`);
+  return `---\n${lines.join("\n")}\n---\n\n${body}`;
 }
 
 describe("parseFrontmatter", () => {
@@ -33,7 +38,48 @@ describe("parseFrontmatter", () => {
     expect("error" in parsed).toBe(false);
     if ("error" in parsed) return;
     expect(parsed.frontmatter).toEqual({ name: "foo", description: "bar" });
+    expect(parsed.metadata).toEqual({});
     expect(parsed.body).toBe("\n# Title\nBody.\n");
+  });
+
+  // ADR-0052: metadata is the one block mapping, in the only form the Agent
+  // Skills reference validator accepts.
+  test("reads a metadata block mapping apart from the flat fields", () => {
+    const parsed = parseFrontmatter(
+      "---\nname: foo\nmetadata:\n  status: candidate\n  owner: x\ndescription: bar\n---\nBody\n",
+    );
+    expect("error" in parsed).toBe(false);
+    if ("error" in parsed) return;
+    expect(parsed.frontmatter).toEqual({ name: "foo", description: "bar" });
+    expect(parsed.metadata).toEqual({ status: "candidate", owner: "x" });
+  });
+
+  test.each([
+    [
+      "the inline flow form",
+      "---\nname: foo\nmetadata: { status: candidate }\n---\nBody\n",
+      "block mapping",
+    ],
+    [
+      "a four-space entry",
+      "---\nname: foo\nmetadata:\n    status: candidate\n---\nBody\n",
+      "exactly two spaces",
+    ],
+    [
+      "a nested mapping",
+      "---\nname: foo\nmetadata:\n  status:\n    deep: x\n---\nBody\n",
+      "exactly two spaces",
+    ],
+    [
+      "an indented line outside metadata",
+      "---\nname: foo\n  status: candidate\n---\nBody\n",
+      "multi-line scalars",
+    ],
+  ])("rejects %s", (_label, source, message) => {
+    const parsed = parseFrontmatter(source);
+    expect("error" in parsed).toBe(true);
+    if (!("error" in parsed)) return;
+    expect(parsed.error).toContain(message);
   });
 
   test("rejects a file that does not open with a frontmatter fence", () => {
@@ -136,19 +182,39 @@ describe("lintSkillMarkdown", () => {
     const source = `---\nname: example\ndescription: Do the thing.\n---\n\n${SPDX_BLOCK}# Title\nBody.\n`;
     const findings = lintSkillMarkdown("example", source);
     expect(findings.find((f) => f.rule === "frontmatter-field:license")?.ok).toBe(false);
-    expect(findings.find((f) => f.rule === "frontmatter-field:status")?.ok).toBe(false);
-  });
-
-  test("rejects a status outside the allowed enum", () => {
-    const findings = lintSkillMarkdown("example", validSkill({ status: "deprecated" }));
     expect(findings.find((f) => f.rule === "frontmatter-status")?.ok).toBe(false);
   });
 
-  test("accepts both allowed status values", () => {
+  test("rejects a status outside the allowed enum", () => {
+    const findings = lintSkillMarkdown("example", validSkill({}, undefined, "deprecated"));
+    expect(findings.find((f) => f.rule === "frontmatter-status")?.ok).toBe(false);
+  });
+
+  test("accepts both allowed status values under metadata", () => {
     for (const status of ALLOWED_STATUS) {
-      const findings = lintSkillMarkdown("example", validSkill({ status }));
+      const findings = lintSkillMarkdown("example", validSkill({}, undefined, status));
       expect(findings.find((f) => f.rule === "frontmatter-status")?.ok).toBe(true);
     }
+  });
+
+  // 2026-10-14: the Agent Skills reference validator refused a skill of this
+  // collection with "Unexpected fields in frontmatter: status".
+  test("a top-level status is refused and points to metadata.status", () => {
+    const findings = lintSkillMarkdown(
+      "example",
+      validSkill({}, undefined, "candidate", "top-level"),
+    );
+    const keys = findings.find((f) => f.rule === "frontmatter-keys");
+    expect(keys?.ok).toBe(false);
+    expect(keys?.note).toContain("status lives in metadata.status since ADR-0052");
+    expect(findings.find((f) => f.rule === "frontmatter-status")?.ok).toBe(false);
+  });
+
+  test("any top-level key outside the Agent Skills fields is refused", () => {
+    const findings = lintSkillMarkdown("example", validSkill({ owner: "x" }));
+    expect(findings.find((f) => f.rule === "frontmatter-keys")?.note).toContain(
+      "outside the Agent Skills fields: owner",
+    );
   });
 
   test("rejects a license other than Apache-2.0", () => {
