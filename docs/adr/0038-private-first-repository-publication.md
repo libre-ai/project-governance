@@ -6,8 +6,8 @@
 - **Applique :** I-17 (actions human-touch), I-21 (zéro donnée personnelle dans Git) et I-12 (GitHub canonique sans dépendance de données irréversible)
 - **Périmètre :** première exposition publique d'un nouveau repository Libre AI
 - **N'autorise pas :** création distante, exposition publique, secret, donnée utilisateur, déploiement ou activation produit
-- **Décision :** D44 ; D2 amendée par D78 (attestation de toutes les refs annoncées, `refs/pull/*` comprises, 2026-10-14)
-- **Arbitrage de l'amendement :** décision du propriétaire en session le 2026-10-14. Owner-arbitration: 2026-10-14
+- **Décision :** D44 ; D2 amendée par D78 (attestation de toutes les refs annoncées, `refs/pull/*` comprises, 2026-10-14) ; D3 amendée par D79 (identités de forge admises pour les seuls commits ajoutés par la forge, 2026-10-14)
+- **Arbitrage des amendements :** décisions du propriétaire en session le 2026-10-14. Owner-arbitration: 2026-10-14
 
 ## Contexte
 
@@ -50,7 +50,12 @@ Le gate de l'arbre inspecte exactement l'index destiné au commit. Le gate d'his
 - chemins machine locaux, secrets, credentials, cookies, données personnelles,
   artefacts de capture interdits et configurations d'instance. La seule exception
   d'identité est une allowlist nominative attestée des noms/adresses contributrices
-  autorisées ; aucune catégorie ouverte « déjà publique » n'est acceptée.
+  autorisées ; aucune catégorie ouverte « déjà publique » n'est acceptée. Une identité
+  ou une adresse de forge (auteur, committer ou trailer d'un commit créé par la forge)
+  n'y est admise que pour les commits ajoutés par la forge et non atteignables depuis la
+  branche servie ; les commits atteignables depuis la branche servie restent jugés sur
+  les seules identités contributrices.
+  Voir « Amendement du 2026-10-14 — D3 ».
 
 Chaque lecture ou décodage non pris en charge refuse fermée. Les diagnostics ne recopient jamais l'octet sensible. Des repositories Git temporaires synthétiques démontrent un échec distinct pour blob supprimé, message de commit, auteur, committer, message de tag, tagger, nom de ref, nom/mode de tree entry, type non traité, ref absente de l'attestation et ref attestée dont l'OID a changé. Les canaris et commits synthétiques ne sont jamais introduits dans le candidat.
 
@@ -127,3 +132,17 @@ Owner-arbitration: 2026-10-14 — owner chose "Amender D2" (attest every adverti
 1. Les refs générées par la forge (`refs/pull/*`, branches Dependabot) et leurs objets deviennent publics au passage `private -> public`.
 2. Si une de ces refs bouge avant l'étape 5 (par exemple l'exécution hebdomadaire de Dependabot), D5 refuse la bascule et l'attestation est refaite.
 3. Aucun gate du dépôt n'encode « exactement ces refs » : l'inventaire, le recontrôle et le miroir de D4 et D5 sont exécutés par le contrôleur du candidat. Cet amendement ne modifie donc aucun comportement de gate ici.
+
+## Amendement du 2026-10-14 — D3 : identités de forge admises pour les seuls commits de la forge
+
+Owner-arbitration: 2026-10-14 — owner admits the forge identity and trailer for forge-added commits only; the served branch stays under the owner identity alone (chat).
+
+**Ce qui change.** D3 n'admettait qu'une allowlist nominative de contributeurs, sans dire ce qu'elle fait d'une identité de forge. Depuis D78, les commits créés par la forge sur des refs attestées (branche Dependabot, `refs/pull/*`) passent par les scans de D3 : leurs identités et leur trailer doivent donc être allowlistés ou refusés. L'allowlist peut désormais nommer une identité ou une adresse de forge, mais avec une portée : elle ne s'applique qu'aux commits ajoutés par la forge et non atteignables depuis la branche servie, jamais à un blob. Tout commit atteignable depuis la branche servie reste soumis aux seules identités contributrices nominatives. Le refus fermé et l'interdiction de toute catégorie « déjà publique » sont conservés.
+
+**Pourquoi.** Mesuré le 2026-10-14 sur l'attestation de `libre-ai/square-control` (`docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/`). Le commit Dependabot `f192917b55875fc32db5c61bed573770c1fc12ef`, ajouté par la forge au premier push, se termine par le trailer `Signed-off-by: dependabot[bot] <support@github.com>`. Sous la première allowlist, le scan relevait exactement un constat, ce trailer. Le même trailer a été mesuré sur un commit Dependabot de `libre-ai/signalement` (`030add73`), par un second instrument. Sans portée, admettre l'adresse aurait aussi admis un commit humain de la branche servie qui la porterait.
+
+**Conséquences.**
+
+1. Le scanner applique la portée par l'atteignabilité, non par l'origine : est traité comme ajouté par la forge tout commit que la ref de confiance (`--trusted-ref`, la branche servie) n'atteint pas (`tools/attestation/git-attestation.ts`, `forgeAdded`). Qu'un tel commit ait bien été créé par la forge n'est vérifié par aucun outil : c'est la revue de l'attestation qui le constate (pour Square Control, `evidence/identities.forge.txt` du dossier cité). Une identité de forge n'est admise qu'en dehors de la ref de confiance, et son adresse est alors retirée de tout le message du commit, pas seulement du trailer, jamais d'un blob (contrepreuve `red:strip-scope`, 2 tests rouges une fois neutralisés). Seules les occurrences délimitées sont retirées (`red:strip-boundary`, cinq sondes de contournement). L'allowlist de l'attestation de Square Control est `evidence/identity-allowlist.json` du dossier cité.
+2. Après la bascule, un merge en squash d'une pull request de la forge écrit sur la branche servie un commit dont l'auteur et le trailer sont ceux de la forge (le committer `GitHub <noreply@github.com>` de tout merge fait par l'interface de la forge, y compris par le propriétaire, est un committer technique, distinct de l'auteur et du signataire ; un futur candidat dont l'historique privé contient de tels merges doit allowlister ce committer explicitement, faute de quoi D3 le refuse). Mesuré le 2026-10-14 sur `libre-ai/signalement` : la PR Dependabot #18 échoue au contrôle d'historique du dépôt, et sa reprise sous l'identité du propriétaire, au diff identique, passe (#21). Les PR Dependabot encore ouvertes ce jour-là sur les deux dépôts publiés par I-30 (signalement #18, square-control #1) sont reprises sous l'identité du propriétaire, par décision en session ; la seconde attend la levée du gel du dépôt.
+3. Après la bascule, aucun gate de Governance ne vérifie qu'aucun commit de la branche servie n'a la forge pour auteur ou pour signataire. `libre-ai/signalement` l'impose par son propre contrôle d'historique ; `libre-ai/square-control` n'a pas de contrôle équivalent.
