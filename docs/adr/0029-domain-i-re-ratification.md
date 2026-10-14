@@ -206,6 +206,20 @@ rouvrirait exactement ce bug. Un fix naïf fondé sur la seule règle « requis
 := observé » aurait été faux ici ; l'outil rapporte l'écart quand il est
 observé, il ne le corrige pas aveuglément.
 
+**Amendement du 2026-10-14.** Owner-arbitration: 2026-10-14 — owner approves
+that check-branch-protection sets Dependabot update runs aside (counted)
+instead of reporting them (chat). La phrase précédente décrit l'outil du
+2026-08-18, et elle était déjà inexacte sur un point : `--fix` aurait rendu
+`Dependabot` requis, puisque `computeFix` reprenait tout l'observé. Mesuré le
+2026-10-14 sur `libre-ai/square-control@95e1bcea`, la HEAD de la branche par
+défaut portait deux check-runs `Dependabot`, et `--fix` les aurait rendus
+requis, bloquant toute pull request. Depuis cet amendement, l'outil écarte
+les check-runs des workflow runs Dependabot Updates (`path` commençant par
+`dynamic/dependabot/`, joints par `check_suite_id`). Il ne les déclare ni
+décoratifs ni candidats au `--fix`, et il les compte et les imprime à part
+(examinés + écartés = total). Le cas `libre-ai/notebook` devient conforme
+par construction au lieu d'être un écart rapporté.
+
 Audit fleet-wide final (rejoué à la clôture de ce domaine) : 35 des 35
 repositories actifs auditables correspondent exactement.
 
