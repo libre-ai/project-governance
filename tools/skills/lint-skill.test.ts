@@ -241,4 +241,35 @@ describe("lintEvalFile", () => {
       )?.ok,
     ).toBe(false);
   });
+
+  // ADR-0050 D3: working_if carries the observable signs a promotion is
+  // pronounced on. Form only; optional on a candidate, required once promoted.
+  const workingIf = (raw: unknown, status?: string) =>
+    lintEvalFile(raw, status).find((f) => f.rule === "eval-working-if");
+
+  test("working_if absent: accepted on a candidate, refused on a promoted skill", () => {
+    expect(workingIf(valid, "candidate")?.ok).toBe(true);
+    expect(workingIf(valid, "candidate")?.note).toContain("required before promotion");
+    expect(workingIf(valid, "promoted")?.ok).toBe(false);
+  });
+
+  test("working_if with two distinct signs passes, promoted or not", () => {
+    const signs = { ...valid, working_if: ["the output cites each gate", "no question is asked"] };
+    expect(workingIf(signs, "promoted")).toEqual({
+      rule: "eval-working-if",
+      ok: true,
+      note: "2 working sign(s)",
+    });
+    expect(workingIf(signs, "candidate")?.ok).toBe(true);
+  });
+
+  test.each([
+    ["a single sign", ["only one"]],
+    ["a string instead of a list", "the output cites each gate"],
+    ["an empty sign", ["a sign", "  "]],
+    ["a non-string sign", ["a sign", 3]],
+    ["a repeated sign", ["same", "same "]],
+  ])("working_if is refused when it is %s", (_label, value) => {
+    expect(workingIf({ ...valid, working_if: value }, "candidate")?.ok).toBe(false);
+  });
 });
