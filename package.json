@@ -32,6 +32,7 @@
     "check:repository-names": "bun run check:bun:runtime && bun tools/quality/check-retired-repository-names.ts",
     "check:forgotten": "bun run check:bun:runtime && bun tools/quality/check-forgotten.ts",
     "check:cards": "bun run check:bun:runtime && bun ecosystem/validate-cards.ts",
+    "attestation:neutralise": "bun run check:bun:runtime && bun tools/attestation/neutralise-check.ts",
     "heal:card-status": "bun run check:bun:runtime && bun tools/presentation/heal-card-status.ts",
     "check:objects": "bun run check:bun:runtime && bun tools/quality/validate-knowledge-objects.ts",
     "check:objectives": "bun run check:bun:runtime && bun tools/quality/check-objectives.ts",

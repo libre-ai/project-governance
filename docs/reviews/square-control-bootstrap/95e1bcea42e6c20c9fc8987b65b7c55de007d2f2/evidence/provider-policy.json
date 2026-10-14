@@ -1,0 +1,144 @@
+{
+  "access": {
+    "collaborators": [
+      {
+        "login": "constantin-jais",
+        "permissions": {
+          "admin": true,
+          "maintain": true,
+          "pull": true,
+          "push": true,
+          "triage": true
+        },
+        "role_name": "admin"
+      }
+    ],
+    "deploy_keys": 0,
+    "pending_invitations": 0,
+    "teams": 0,
+    "webhooks": 0
+  },
+  "actions": {
+    "environments": 0,
+    "permissions": {
+      "allowed_actions": "all",
+      "enabled": true,
+      "sha_pinning_required": false
+    },
+    "runs_in_progress": 0,
+    "runs_queued": 0,
+    "secrets": 0,
+    "selected": null,
+    "variables": 0,
+    "workflow_token": {
+      "can_approve_pull_request_reviews": false,
+      "default_workflow_permissions": "read"
+    },
+    "workflows": [
+      {
+        "name": "ci",
+        "path": ".github/workflows/ci.yml",
+        "state": "active"
+      },
+      {
+        "name": "Context hygiene",
+        "path": ".github/workflows/context-hygiene.yml",
+        "state": "active"
+      },
+      {
+        "name": "licensing",
+        "path": ".github/workflows/licensing.yml",
+        "state": "active"
+      },
+      {
+        "name": "Dependabot Updates",
+        "path": "dynamic/dependabot/dependabot-updates",
+        "state": "active"
+      }
+    ]
+  },
+  "branch_protection": null,
+  "branches": [
+    {
+      "name": "dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd",
+      "protected": false
+    },
+    {
+      "name": "main",
+      "protected": false
+    }
+  ],
+  "dependabot": {
+    "config_file": {
+      "present": true,
+      "sha": "73967896f7d1c3b68ff838e9db549f05e9761be7"
+    },
+    "open_pull_requests": [
+      {
+        "head": "dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd",
+        "head_sha": "f192917b55875fc32db5c61bed573770c1fc12ef",
+        "number": 1,
+        "user": "dependabot[bot]"
+      }
+    ]
+  },
+  "frozen_check": {
+    "blockers": [
+      "Actions are enabled: workflows can run and write (allowed_actions=all)",
+      "default branch is neither locked nor covered by a ruleset",
+      "no ruleset restricts creation or update of other refs",
+      "Dependabot version updates are configured in the tree and nothing prevents a run",
+      "1 open pull request(s): their refs/pull/* can still move",
+      "issues enabled"
+    ],
+    "frozen": false
+  },
+  "observed_at": "2026-10-14T05:17:19Z",
+  "provider": "GitHub",
+  "repository": "libre-ai/square-control",
+  "rulesets": [],
+  "security": {
+    "automated_security_fixes": false,
+    "private_vulnerability_reporting": null,
+    "vulnerability_alerts": false
+  },
+  "settings": {
+    "allow_auto_merge": false,
+    "allow_forking": false,
+    "allow_merge_commit": true,
+    "allow_rebase_merge": true,
+    "allow_squash_merge": true,
+    "archived": false,
+    "default_branch": "main",
+    "disabled": false,
+    "has_discussions": false,
+    "has_issues": true,
+    "has_pages": false,
+    "has_projects": true,
+    "has_pull_requests": true,
+    "has_wiki": true,
+    "private": true,
+    "security_and_analysis": {
+      "code_security": {
+        "status": "disabled"
+      },
+      "dependabot_security_updates": {
+        "status": "disabled"
+      },
+      "secret_scanning": {
+        "status": "disabled"
+      },
+      "secret_scanning_non_provider_patterns": {
+        "status": "disabled"
+      },
+      "secret_scanning_push_protection": {
+        "status": "disabled"
+      },
+      "secret_scanning_validity_checks": {
+        "status": "disabled"
+      }
+    },
+    "visibility": "private",
+    "web_commit_signoff_required": false
+  }
+}
