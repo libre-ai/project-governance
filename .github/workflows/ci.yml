@@ -119,11 +119,15 @@ jobs:
             fi
           done < <(git rev-list "$BEFORE_SHA..$AFTER_SHA")
           exit "$missing"
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.13"
+      # uv, not pip (python-tooling rule): an isolated environment from the
+      # pinned requirements, put on PATH because check-declared-licenses.ts
+      # below runs the `reuse` binary itself.
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Install pinned REUSE toolchain
-        run: python -m pip install --disable-pip-version-check --requirement tools/licensing/requirements.txt
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/reuse-venv"
+          uv pip install --python "$RUNNER_TEMP/reuse-venv" --requirement tools/licensing/requirements.txt
+          echo "$RUNNER_TEMP/reuse-venv/bin" >> "$GITHUB_PATH"
       - name: Verify REUSE compliance
         run: reuse lint
       # `reuse lint` proves every file has an unambiguous licence; it never
