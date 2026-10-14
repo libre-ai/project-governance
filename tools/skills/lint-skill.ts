@@ -15,7 +15,7 @@ export interface ParsedSkillFile {
   readonly body: string;
 }
 
-/** The one key whose value is a block mapping (ADR-0052). */
+/** The one key whose value is a block mapping (ADR-0053). */
 export const METADATA_KEY = "metadata";
 const METADATA_ENTRY = /^ {2}[A-Za-z0-9_-]+:(?:\s.*)?$/;
 
@@ -38,7 +38,7 @@ export interface FrontmatterError {
  *    so a skill linted green here and failed to load there. Only scalar
  *    values are admitted; booleans and numbers are returned as their text.
  *
- * One exception to the flat shape (ADR-0052, 2026-10-14): `metadata`, the
+ * One exception to the flat shape (ADR-0053, 2026-10-14): `metadata`, the
  * Agent Skills field for free keys, is a block mapping — `metadata:` alone on
  * its line, then one `  key: value` line per entry, indented by two spaces,
  * scalar values only. The block form is the only one admitted because the
@@ -180,7 +180,7 @@ export interface LintFinding {
 export const REQUIRED_FRONTMATTER_FIELDS = ["name", "description", "license"] as const;
 export const ALLOWED_STATUS = new Set(["candidate", "promoted"]);
 /**
- * Top-level keys a SKILL.md may carry (ADR-0052): the Agent Skills fields,
+ * Top-level keys a SKILL.md may carry (ADR-0053): the Agent Skills fields,
  * which the reference validator admits and nothing else, plus
  * `disable-model-invocation`, which Claude Code needs to keep a skill
  * user-invoked and which the reference validator rejects — the one known
@@ -261,7 +261,7 @@ export function lintSkillMarkdown(dirName: string, source: string): LintFinding[
     note:
       unknownKeys.length === 0
         ? "every top-level key is an Agent Skills field or disable-model-invocation"
-        : `top-level key(s) outside the Agent Skills fields: ${unknownKeys.join(", ")} — move them under "metadata:"${unknownKeys.includes("status") ? " (status lives in metadata.status since ADR-0052)" : ""}`,
+        : `top-level key(s) outside the Agent Skills fields: ${unknownKeys.join(", ")} — move them under "metadata:"${unknownKeys.includes("status") ? " (status lives in metadata.status since ADR-0053)" : ""}`,
   });
 
   const name = parsed.frontmatter.name;

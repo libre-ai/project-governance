@@ -11,7 +11,7 @@ import {
 const SPDX_BLOCK = `<!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->\n<!-- ${SPDX_LICENSE_LINE} -->\n\n`;
 
 /**
- * A valid skill. `status` is written under `metadata:` (ADR-0052) unless
+ * A valid skill. `status` is written under `metadata:` (ADR-0053) unless
  * `statusAt` says otherwise; `null` omits it.
  */
 function validSkill(
@@ -42,7 +42,7 @@ describe("parseFrontmatter", () => {
     expect(parsed.body).toBe("\n# Title\nBody.\n");
   });
 
-  // ADR-0052: metadata is the one block mapping, in the only form the Agent
+  // ADR-0053: metadata is the one block mapping, in the only form the Agent
   // Skills reference validator accepts.
   test("reads a metadata block mapping apart from the flat fields", () => {
     const parsed = parseFrontmatter(
@@ -206,7 +206,7 @@ describe("lintSkillMarkdown", () => {
     );
     const keys = findings.find((f) => f.rule === "frontmatter-keys");
     expect(keys?.ok).toBe(false);
-    expect(keys?.note).toContain("status lives in metadata.status since ADR-0052");
+    expect(keys?.note).toContain("status lives in metadata.status since ADR-0053");
     expect(findings.find((f) => f.rule === "frontmatter-status")?.ok).toBe(false);
   });
 

@@ -42,7 +42,7 @@ diff -r <harness skill directory>/<name> skills/<name> -x eval.json
 
 ## Frontmatter and the Agent Skills validators
 
-Since ADR-0052 the frontmatter carries only the Agent Skills fields, and
+Since ADR-0053 the frontmatter carries only the Agent Skills fields, and
 `status` lives under `metadata`, in block form (the reference validator
 rejects the inline `{ }` form):
 

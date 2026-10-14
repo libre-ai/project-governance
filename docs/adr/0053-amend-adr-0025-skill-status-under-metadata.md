@@ -1,4 +1,4 @@
-# ADR-0052 — Amendement d'ADR-0025 : le statut d'une skill vit sous `metadata`, le frontmatter ne porte que les champs Agent Skills
+# ADR-0053 — Amendement d'ADR-0025 : le statut d'une skill vit sous `metadata`, le frontmatter ne porte que les champs Agent Skills
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; en
   vigueur à la fusion.
@@ -13,7 +13,7 @@
 - **Amende :** ADR-0025 D6 (emplacement de `status`). D1 à D5 restent
   inchangées, de même que l'énumération fermée `candidate` | `promoted` et la
   règle « aucun gate ne promeut ».
-- **Décision :** D76 de `docs/decisions/DECISION-REGISTER.md`.
+- **Décision :** D77 de `docs/decisions/DECISION-REGISTER.md`.
 - **Applique :** I-25 (collection de skills gouvernée), dont le texte ne
   change pas : il ne fixe pas l'emplacement du statut.
 
