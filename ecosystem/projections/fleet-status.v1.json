@@ -27,18 +27,6 @@
       "last_verified_on": "2026-10-07"
     },
     {
-      "repository": "libre-ai/carriere",
-      "project": "carriere",
-      "kind": "product",
-      "layer": "couche-1",
-      "summary": "Assistant de recherche d'emploi pour cadres — souverain, explicable (8e produit, ratifié 2026-07-23).",
-      "display": "Avancement non calculable — périmètre à clarifier",
-      "maturity": "idea",
-      "confidence": "low",
-      "exposure": "idea",
-      "last_verified_on": "2026-10-08"
-    },
-    {
       "repository": "libre-ai/information-feed-filter",
       "project": "information-feed-filter",
       "kind": "product",
@@ -87,16 +75,16 @@
       "last_verified_on": "2026-10-07"
     },
     {
-      "repository": "libre-ai/travel-itinerary-planner",
-      "project": "travel-itinerary-planner",
+      "repository": "libre-ai/square-control",
+      "project": "square-control",
       "kind": "product",
       "layer": "couche-1",
-      "summary": "travel-itinerary-planner: recovered sources with documentary integration under review.",
-      "display": "Avancement non calculable — périmètre à clarifier",
-      "maturity": "idea",
+      "summary": "Local macOS window layout tool, Rust core and Swift shell, no network.",
+      "display": "26,3 % du périmètre actuellement déclaré",
+      "maturity": "specified",
       "confidence": "medium",
       "exposure": "idea",
-      "last_verified_on": "2026-10-08"
+      "last_verified_on": "2026-10-14"
     },
     {
       "repository": "libre-ai/ai-work-supervision",

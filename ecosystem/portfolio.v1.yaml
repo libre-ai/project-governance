@@ -13,13 +13,6 @@ updated_on: 2026-09-10
 families:
   couche-1-apps:
     # The seven locked couche-1 products live in repositories.v1.yaml. New additions:
-    - name: Carrière
-      exposure: idea
-      repo: libre-ai/carriere        # reserved, declared in repositories.v1.yaml
-      note: >
-        8th couche-1 product (owner decision 2026-07-23, ADR-0008 multi-repo).
-        Sovereign, explainable job-search assistant for cadres.
-      benchmark: TBD (owner to set)
     - name: Signalement
       exposure: idea
       repo: libre-ai/signalement # planned; ADR-0038/I-30 private-first publication
@@ -98,8 +91,7 @@ families:
       not_a_parity_axis: >
         model hosting, usage-based billing, and coupling to an editor account.
         Its paid tier sends content to a third-party host, which is the inverse
-        of the local-first promise of personal-knowledge-workspace
-        and travel-itinerary-planner.
+        of the local-first promise of personal-knowledge-workspace.
       sovereignty: FAIL on the hosted tier — third-party US host, hosted models
       reuse_decision: >
         EXCLUDED. No licence is published, so there is nothing to adopt, wrap or
@@ -110,7 +102,7 @@ families:
     - name: rgpd-kit
       exposure: idea
       source: LINCnil/Guide-RGPD-du-developpeur
-      serves: all PII-handling products (boussole Art.9, sessions, carriere)
+      serves: all PII-handling products (boussole Art.9, sessions)
       function: reusable AIPD (Art.35) + Art.30 register generation + data-subject-rights tooling
       priority: high (required by the P1 AIPD boussole dossier)
     - name: transcription

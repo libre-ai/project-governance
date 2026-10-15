@@ -99,30 +99,6 @@
       }
     },
     {
-      "repository": "travel-itinerary-planner",
-      "repositoryId": "1372583293",
-      "group": "products",
-      "name": {
-        "en": "Libre AI Travel Itinerary Planner",
-        "fr": "Libre AI Travel Itinerary Planner"
-      },
-      "role": {
-        "en": "Prepare a trip using destination information you can trace to its source. This proposed product is for travelers who want to see which activities could fit together and what still needs checking before relying on a plan.",
-        "fr": "Préparer un voyage à partir d’informations dont vous pouvez retrouver la source. Ce produit vise les voyageurs qui veulent organiser leurs activités et savoir ce qui reste à vérifier dans leur programme."
-      },
-      "status": "code_integration_local",
-      "sourceReadmes": {
-        "en": {
-          "path": "README.md",
-          "sha256": "21edbf499d86cdef6b46f64484116d287b0a83774618f125afbdb145749412fd"
-        },
-        "fr": {
-          "path": "README.fr.md",
-          "sha256": "4f53ff785680ec374d0e322279450bb73bc435d21ed3bb68cdddcad7ca09d0dc"
-        }
-      }
-    },
-    {
       "repository": "application-development-toolkit",
       "repositoryId": "1372583383",
       "group": "components",
