@@ -66,15 +66,6 @@
       "card": "project.v1.yaml"
     },
     {
-      "repository": "libre-ai/carriere",
-      "name": "carriere",
-      "layer": "couche-1",
-      "role": "reserved-product-home",
-      "visibility": "public",
-      "lifecycle": "active",
-      "card": "project.v1.yaml"
-    },
-    {
       "repository": "libre-ai/collaborative-data-sync",
       "name": "collaborative-data-sync",
       "layer": "couche-4",
@@ -218,15 +209,6 @@
     {
       "repository": "libre-ai/square-control",
       "name": "square-control",
-      "layer": "couche-1",
-      "role": "reserved-product-home",
-      "visibility": "public",
-      "lifecycle": "active",
-      "card": "project.v1.yaml"
-    },
-    {
-      "repository": "libre-ai/travel-itinerary-planner",
-      "name": "travel-itinerary-planner",
       "layer": "couche-1",
       "role": "reserved-product-home",
       "visibility": "public",

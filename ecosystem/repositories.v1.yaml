@@ -101,14 +101,6 @@ repositories:
     lifecycle: archived # ADR-0042 §7 acte 3, Y16 ; perimetre rejoint personal-knowledge-workspace
     owns:
       - explainable feed selection and portable curation
-  - repository: libre-ai/travel-itinerary-planner
-    card: project.v1.yaml
-    role: reserved-product-home
-    layer: couche-1
-    visibility: public
-    lifecycle: active
-    owns:
-      - itinerary planning over verified facts; trip instances stay local
   - repository: libre-ai/signalement
     card: project.v1.yaml
     role: reserved-product-home
@@ -128,25 +120,6 @@ repositories:
     lifecycle: active
     owns:
       - local macOS window layout tool, Rust core and Swift shell, no network
-  - repository: libre-ai/carriere
-    # 2026-10-08 : la fiche existait et etait correcte — AGENTS.md conforme,
-    # schema-valide, section README octet-identique a un rendu frais — et le gate
-    # de presentation assertait « no card declared — nothing to present ». Un vert
-    # qui ne mesurait rien, faute de cette ligne.
-    card: project.v1.yaml
-    role: reserved-product-home
-    layer: couche-1
-    visibility: public
-    lifecycle: active
-    # I-16 abrogated the coverage-law preconditions as conditions of a
-    # repository's existence, and ADR-0023 §2.2 confines the exposure law to the
-    # public showcase. A repository without code is therefore not a defect; an
-    # observable repository absent from this inventory is.
-    owns:
-      - >
-        sovereign, explainable job-search assistance for cadres — scope still to
-        be clarified by the owner, which its card states instead of showing a
-        percentage
   - repository: libre-ai/project-website
     role: active-application
     layer: transverse
@@ -279,7 +252,7 @@ notes:
     a protected write path links it in its own process, and it is now called by
     `ecosystem/build-index.ts`. `knowledge` became
     `ecosystem/knowledge-projection.ts`, kept as a second implementation of the
-    selection digest in another language. `carriere` is declared above and
-    conserved — the register forbids an implicit deletion, and no rule requires a
-    repository to carry code.
+    selection digest in another language. `carriere` was declared and conserved
+    here until the owner moved it, with `travel-itinerary-planner`, to a
+    personal account (D80); neither is part of this inventory any more.
   - No private personal repository belongs to this inventory (ADR-0009 §9).
