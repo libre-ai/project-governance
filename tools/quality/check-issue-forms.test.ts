@@ -588,7 +588,7 @@ body:
 
   test("a flow mapping behind a nested dash is a violation", () => {
     const text = `${IDEA}  - - {a: 1}\n`;
-    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "nested")).toBe(true);
   });
 
   test("a flow sequence as a list item is a violation", () => {
@@ -602,6 +602,164 @@ body:
     expect(validateIssueForm(inline, KNOWN_LABELS)).toEqual([]);
     const plainItem = mutate(IDEA, "  - kind:idea\n", "  - kind:idea\n  - ready\n");
     expect(validateIssueForm(plainItem, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: line whitelist", () => {
+  // Every probe below made the previous denylist scan return [] while Bun.YAML kept the last
+  // value of a repeated key; the whitelist must name each one.
+  const withName = (value: string): string => mutate(IDEA, "name: Idea\n", `${value}\n`);
+
+  test("a trailing comment after a quoted value does not blind the rest of the file", () => {
+    const text = `${withName('name: "Idea" # c')}body:\n  - type: markdown\n    attributes:\n      value: x\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "trailing comment")).toBe(true);
+    expect(mentions(violations, 'key "body"')).toBe(true);
+  });
+
+  test("a leading byte order mark is refused by name", () => {
+    const violations = validateIssueForm(`﻿${IDEA}labels:\n  - kind:idea\n`, KNOWN_LABELS);
+    expect(mentions(violations, "U+FEFF")).toBe(true);
+  });
+
+  test("an anchor or a tag before a flow mapping is refused", () => {
+    const flow = "{type: input, type: textarea, id: a, attributes: {label: PRD-ref}}";
+    expect(mentions(validateIssueForm(`${IDEA}  - &a ${flow}\n`, KNOWN_LABELS), "anchor")).toBe(
+      true,
+    );
+    expect(mentions(validateIssueForm(`${IDEA}  - !!map ${flow}\n`, KNOWN_LABELS), "tag")).toBe(
+      true,
+    );
+    const continuation = `${IDEA}      v: &v {required: false, required: true}\n`;
+    expect(mentions(validateIssueForm(continuation, KNOWN_LABELS), "anchor")).toBe(true);
+  });
+
+  test("an escaped quoted key, a complex key and an anchored key are refused", () => {
+    const escaped = `${IDEA}      "requir\\x65d": false\n`;
+    expect(mentions(validateIssueForm(escaped, KNOWN_LABELS), "quoted key")).toBe(true);
+    const complex = `${IDEA}      ? required\n      : false\n`;
+    expect(mentions(validateIssueForm(complex, KNOWN_LABELS), "complex key")).toBe(true);
+    const anchored = `${IDEA}      &k required: false\n`;
+    expect(mentions(validateIssueForm(anchored, KNOWN_LABELS), "anchor")).toBe(true);
+  });
+
+  test("a block header with an indentation digit is refused and the repeat after it is seen", () => {
+    const text = `${IDEA}      note: |2-\n        x: 'open\n      required: false\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "block scalar header")).toBe(true);
+    expect(mentions(violations, 'key "required"')).toBe(true);
+  });
+
+  test("a doubled quote inside a single-quoted scalar is refused and the repeat after it is seen", () => {
+    const text = `${IDEA}      note: 'it''s'\n      required: false\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "quoted scalar")).toBe(true);
+    expect(mentions(violations, 'key "required"')).toBe(true);
+  });
+
+  test("a continuation line is refused as a multi-line scalar, not as a list item", () => {
+    const text = `${IDEA}      note: See the page\n        [link](https://example.org) for details\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "block scalar")).toBe(true);
+    expect(mentions(violations, "list item")).toBe(false);
+  });
+
+  test("a repeated key names the key and both lines", () => {
+    const violations = validateIssueForm(withName("name: Idea\nname: Other"), KNOWN_LABELS);
+    expect(mentions(violations, 'key "name" is repeated (first on line 1)')).toBe(true);
+  });
+
+  const REFUSED: readonly (readonly [string, string, string])[] = [
+    ["a tab", withName("name:\tIdea"), "U+0009"],
+    ["a lone carriage return", withName("name: Idea\rx"), "U+000D"],
+    ["a document start marker", `---\n${IDEA}`, "document marker"],
+    ["a document end marker", `${IDEA}...\n`, "document marker"],
+    ["U+2028", withName("name: Id ea"), "U+2028"],
+    ["U+2029", withName("name: Id ea"), "U+2029"],
+    ["U+0085", withName("name: Id\u0085ea"), "U+0085"],
+    ["a trailing comment on a plain value", withName("name: Idea # c"), "trailing comment"],
+    ["a value that is only a comment", withName("name: # c"), "trailing comment"],
+    [
+      "a trailing comment after a list token",
+      mutate(IDEA, "- kind:idea", "- kind:idea # c"),
+      "list item",
+    ],
+    ["a quoted key", withName('"name": Idea'), "quoted key"],
+    ["a single-quoted key", withName("'name': Idea"), "quoted key"],
+    ["an anchor", withName("name: &a Idea"), "anchor"],
+    ["an alias", withName("name: *a"), "alias"],
+    ["a tag", withName("name: !!str Idea"), "tag"],
+    ["a merge key", withName("<<: x"), "merge key"],
+    ["a flow mapping value", withName("name: {a: 1}"), "flow"],
+    ["a flow sequence value outside labels", withName("name: [a]"), "flow"],
+    [
+      "a flow sequence holding a mapping in labels",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels: [{a: 1}]"),
+      "flow",
+    ],
+    ["a keep-chomping block header", withName("name: |+"), "block scalar header"],
+    ["a folded keep-chomping block header", withName("name: >+"), "block scalar header"],
+    ["an escape in a double-quoted scalar", withName('name: "a\\nb"'), "quoted scalar"],
+    ["a multi-line double-quoted scalar", withName('name: "a\n  b"'), "quoted scalar"],
+    ["a multi-line plain scalar", withName("name: a\n  b"), "block scalar"],
+    ["a plain scalar holding a colon and a space", withName("name: a: b"), "mapping"],
+    ["a plain scalar ending with a colon", withName("name: a:"), "mapping"],
+    ["an uppercase key", withName("Name: Idea"), "lowercase"],
+    ["a key without a space after its colon", withName("name:Idea"), "block scalar"],
+    [
+      "an odd indentation",
+      mutate(IDEA, "    id: why-deferred", "   id: why-deferred"),
+      "indentation",
+    ],
+    [
+      "an over-indented key",
+      mutate(IDEA, "    id: why-deferred", "     id: why-deferred"),
+      "indentation",
+    ],
+    ["a nested list item", `${IDEA}  - - a\n`, "nested"],
+    ["an empty list item", `${IDEA}  -\n`, "list item"],
+    ["a list item with extra spaces", `${IDEA}  -  type: markdown\n`, "list item"],
+    [
+      "a list under a mapping key",
+      mutate(
+        IDEA,
+        "    attributes:\n      label: Statement",
+        "    attributes:\n      - label: Statement",
+      ),
+      "list item",
+    ],
+    [
+      "a list item at the indentation of its key",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels:\n- kind:idea"),
+      "list item",
+    ],
+    [
+      "a key where a list item is expected",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels:\n  kind: idea"),
+      "list item",
+    ],
+  ];
+  for (const [name, text, cause] of REFUSED) {
+    test(`${name} is refused`, () => {
+      expect(mentions(validateIssueForm(text, KNOWN_LABELS), cause)).toBe(true);
+    });
+  }
+
+  test("block scalars with a header of | |- > >- hold free text, and an inline label list is read", () => {
+    const folded = mutate(
+      IDEA,
+      "      label: Why deferred\n",
+      "      label: Why deferred\n      description: >-\n        a: b\n        a: c\n\n        # not a comment\n",
+    );
+    expect(validateIssueForm(folded, KNOWN_LABELS)).toEqual([]);
+    const inline = mutate(IDEA, "labels:\n  - kind:idea", 'labels: [ "kind:idea" ,ready ]');
+    expect(validateIssueForm(inline, KNOWN_LABELS)).toEqual([]);
+    const comments = mutate(
+      IDEA,
+      "name: Idea\n",
+      "# a comment\nname: Idea\n\n    # an indented comment\n",
+    );
+    expect(validateIssueForm(comments, KNOWN_LABELS)).toEqual([]);
   });
 });
 

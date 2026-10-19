@@ -20,10 +20,11 @@
  * The validator fails closed (gate-integrity §2): every unreadable or
  * ambiguous input is a named violation, never an empty list. YAML itself is
  * ambiguous in ways the parser resolves silently (a repeated key keeps the
- * last value; an alias, a merge key or a flow mapping hides a repeat), so the
- * text is first scanned line by line and those shapes are refused. The scan
- * understands block mappings only; that is why a flow mapping is refused
- * rather than parsed.
+ * last value; anchors, tags, escaped keys and flow mappings hide a repeat), so
+ * the text is first read through a LINE WHITELIST (see "line whitelist" below):
+ * a line is accepted only if it has a known shape, and every other shape is
+ * refused by name. A denylist of ambiguous shapes was tried three times and
+ * bypassed each time; do not widen the whitelist, edit the form instead.
  *
  * The script prints the volume it examined, and exits non-zero on a
  * violation, an unreadable directory or labels file, and a directory with no
@@ -96,119 +97,118 @@ const SPECS: Readonly<Record<string, readonly FieldSpec[]>> = {
 
 const DECISION_REQUEST = "kind:decision-request";
 
-// --- YAML ambiguity scan ----------------------------------------------------
+// --- line whitelist --------------------------------------------------------
+//
+// Bun.YAML keeps the last value of a repeated key and resolves anchors, tags and escaped keys
+// silently; three denylists were each bypassed. A line is accepted only in a shape below, every
+// other shape is refused by name, and a key is a plain [a-z_]+ token (its text IS its identity).
+// 2 spaces per level: `key: scalar`, `key: |` (|- > >-; content never scanned), `key:` (opens a
+// mapping), `- token` under root `labels`, `- key: ...` under root `body` (keys at dash + 2),
+// and `labels: [token, ...]`, the only flow collection. A token is bare or "without \ or ".
 
-const KEY_LINE = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^\s#:'"][^:#]*?)[ \t]*:(?:[ \t]+(.*))?$/;
-const BLOCK_SCALAR = /^[|>][+-]?\d?[ \t]*(?:#.*)?$/;
+const PLAIN_KEY = /^([a-z_]+):(?: +(.*))?$/;
+const TOKEN = /^(?:"[^"\\]*"|[A-Za-z0-9:_.-]+)$/;
+const QUOTED = /^(?:"[^"\\]*"|'[^']*')$/;
+const FORBIDDEN = /[\uFEFF\t\r\u2028\u2029\u0085]/;
 
-interface Scope {
-  readonly indent: number;
-  readonly keys: Set<string>;
+const SHAPES: readonly (readonly [RegExp, string])[] = [
+  [/^(?:---|\.\.\.)$/, "a document marker"],
+  [/^- /, "a nested list item"],
+  [/^<</, "a merge key"],
+  [/^["']/, "a quoted key or a malformed quoted scalar"],
+  [/^&/, "an anchor"],
+  [/^\*/, "an alias"],
+  [/^!/, "a tag"],
+  [/^[[{]/, "a flow collection or a multi-line scalar (use a block scalar)"],
+  [/^[|>]/, "a block scalar header other than |, |-, > or >-"],
+  [/^\?/, "a complex key"],
+  [/^[%@`]/, "a reserved indicator"],
+  [/^#|\s#/, "a trailing comment"],
+];
+const hex = (char: string): string =>
+  char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0");
+const shapeOf = (text: string): string | null =>
+  SHAPES.find(([pattern]) => pattern.test(text))?.[1] ?? null;
+
+function scalarProblem(value: string): string | null {
+  if (QUOTED.test(value)) return null;
+  if (/^(?:"[^"\\]*"|'[^']*')\s+#/.test(value)) return "a trailing comment after a quoted value";
+  const nested = value.includes(": ") || value.endsWith(":");
+  return shapeOf(value) ?? (nested ? "a nested mapping on one line" : null);
 }
 
-const indentOf = (line: string): number => line.length - line.trimStart().length;
-
-/** True when `line` closes a quoted scalar opened on an earlier line. */
-function closesQuote(line: string, quote: string): boolean {
-  const text = line.trimEnd();
-  if (!text.endsWith(quote)) return false;
-  if (quote === "'") return true;
-  let backslashes = 0;
-  for (let index = text.length - 2; index >= 0 && text[index] === "\\"; index -= 1) {
-    backslashes += 1;
-  }
-  return backslashes % 2 === 0;
-}
-
-/** Reasons the text is ambiguous, each naming its line. Empty when nothing is. */
-function findAmbiguity(text: string): string[] {
+/** Reasons the text has a shape outside the whitelist, each naming its line. */
+function scanLines(text: string): string[] {
   const reasons: string[] = [];
-  const scopes: Scope[] = [];
+  const lines = text.split("\n");
+  const keys: (Map<string, number> | undefined)[] = []; // keys met per depth (column / 2)
+  let list: "labels" | "body" | null = null; // the root list the `- ` items belong to
+  let lastDepth = 0;
+  let opened = false; // the previous key had no value: the next line may be one level deeper
   let blockIndent: number | null = null;
-  let openQuote: string | null = null;
-
-  const inspectValue = (value: string, lineNumber: number): void => {
-    if (value.startsWith("&") || value.startsWith("*")) {
-      reasons.push(`line ${lineNumber}: an anchor or an alias hides a repeated key`);
-    } else if (value.startsWith("{")) {
-      reasons.push(`line ${lineNumber}: a flow mapping hides a repeated key; use a block mapping`);
-    } else if (value.startsWith("[") && value.includes("{")) {
-      reasons.push(
-        `line ${lineNumber}: a flow mapping inside a flow sequence hides a repeated key`,
-      );
-    } else if (value.startsWith("!")) {
-      reasons.push(`line ${lineNumber}: a YAML tag changes the type of a value silently`);
-    }
-  };
-
-  for (const [index, raw] of text.split(/\r\n?|\n/).entries()) {
-    const lineNumber = index + 1;
+  for (const [index, source] of lines.entries()) {
+    // `reject` answers true so that a refusal and its `continue` fit on one line.
+    const reject = (cause: string): boolean => {
+      reasons.push(`line ${index + 1}: ${cause}`);
+      return true;
+    };
+    const line = index < lines.length - 1 ? source.replace(/\r$/, "") : source;
+    const bad: string | null = FORBIDDEN.exec(line)?.[0] ?? null;
+    if (bad !== null && reject(`the character U+${hex(bad)} (tab, BOM, lone CR, line separator)`))
+      continue;
+    const indent = (/^ */.exec(line) as RegExpExecArray)[0].length;
     if (blockIndent !== null) {
-      if (raw.trim() === "" || indentOf(raw) > blockIndent) continue;
+      if (line.trim() === "" || indent > blockIndent) continue;
       blockIndent = null;
     }
-    if (openQuote !== null) {
-      if (closesQuote(raw, openQuote)) openQuote = null;
+    const content = line.slice(indent).trimEnd();
+    if (content === "" || content.startsWith("#")) continue;
+
+    const isItem = content.startsWith("- ");
+    const body = isItem ? content.slice(2) : content;
+    if (indent % 2 === 1 && reject("indentation must be a multiple of 2 spaces")) continue;
+    if (isItem && (list === null || indent !== 2)) {
+      reject("a list item is only allowed under labels and body, 2 spaces in");
       continue;
     }
-    const trimmed = raw.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) continue;
-
-    const indent = indentOf(raw);
-    let rest = raw.slice(indent);
-    let keyIndent = indent;
-    let isItem = false;
-    for (
-      let dash = /^-(?:[ \t]+|$)/.exec(rest);
-      dash !== null;
-      dash = /^-(?:[ \t]+|$)/.exec(rest)
-    ) {
-      isItem = true;
-      keyIndent += dash[0].length;
-      rest = rest.slice(dash[0].length);
+    if (isItem && list === "labels") {
+      if (!TOKEN.test(body)) reject("a labels list item is a bare token or a double-quoted string");
+      continue;
     }
-
-    // After the dashes are stripped, `{type: a, type: b}` would match KEY_LINE with the key
-    // "{type" and hide its repeat from inspectValue; a flow collection is refused before that.
-    if (rest.startsWith("{") || rest.startsWith("[")) {
-      reasons.push(
-        `line ${lineNumber}: a flow collection as a list item hides a repeated key; use a block mapping`,
-      );
+    const entry = PLAIN_KEY.exec(body);
+    if (entry === null) {
+      reject(shapeOf(body) ?? 'not "key: value" nor a list item (lowercase keys, block scalars)');
+      continue;
+    }
+    // A body element's keys sit 2 columns after its dash (depth 2); root keys are at depth 0.
+    const depth = isItem ? 2 : indent / 2;
+    const reach = opened ? lastDepth + 1 : lastDepth;
+    if (!isItem && (depth === 1 || depth > reach || (depth > 0 && keys[2] === undefined))) {
+      reject(depth === 1 ? "expected a '- ' list item" : "indentation does not match a level");
       continue;
     }
 
-    const keyMatch = KEY_LINE.exec(rest.trimEnd());
-    if (keyMatch === null) {
-      inspectValue(rest.trim(), lineNumber);
-      if (BLOCK_SCALAR.test(rest.trim())) blockIndent = indent;
-      continue;
-    }
+    keys.length = depth + 1;
+    if (isItem || keys[depth] === undefined) keys[depth] = new Map();
+    const seen = keys[depth] as Map<string, number>;
+    const name = entry[1] as string;
+    const value = (entry[2] ?? "").trim();
+    const firstLine: number | null = seen.get(name) ?? null;
+    if (firstLine === null) seen.set(name, index + 1);
+    else reject(`key "${name}" is repeated (first on line ${firstLine})`);
+    if (depth === 0) list = name === "labels" || name === "body" ? name : null;
+    lastDepth = depth;
+    opened = value === "";
 
-    while (scopes.length > 0) {
-      const top = scopes[scopes.length - 1] as Scope;
-      if (isItem ? top.indent >= keyIndent : top.indent > keyIndent) scopes.pop();
-      else break;
-    }
-    let scope: Scope | null = scopes[scopes.length - 1] ?? null;
-    if (scope === null || scope.indent !== keyIndent) {
-      scope = { indent: keyIndent, keys: new Set() };
-      scopes.push(scope);
-    }
-
-    const key = (keyMatch[1] as string).replace(/^(["'])(.*)\1$/, "$2");
-    if (key === "<<") reasons.push(`line ${lineNumber}: a merge key hides a repeated key`);
-    if (scope.keys.has(key)) reasons.push(`line ${lineNumber}: key "${key}" is repeated`);
-    scope.keys.add(key);
-
-    const value = (keyMatch[2] ?? "").trim();
-    inspectValue(value, lineNumber);
-    if (BLOCK_SCALAR.test(value)) blockIndent = keyIndent;
-    const quote = value[0];
-    if (
-      (quote === '"' || quote === "'") &&
-      !(value.length > 1 && closesQuote(value.slice(1), quote))
-    ) {
-      openQuote = quote;
+    if (/^[|>]-?$/.test(value)) {
+      blockIndent = depth * 2;
+    } else if (depth === 0 && name === "labels" && value.startsWith("[")) {
+      const tokens = value.slice(1, -1).trim().split(",");
+      const wellFormed = value.endsWith("]") && tokens.every((t: string) => TOKEN.test(t.trim()));
+      if (!wellFormed && value !== "[]") reject("labels: only a flow list of tokens is accepted");
+    } else {
+      const problem = scalarProblem(value);
+      if (problem !== null) reject(`key "${name}": ${problem}`);
     }
   }
   return reasons;
@@ -408,8 +408,8 @@ export function validateIssueForm(
   yamlText: string,
   knownLabels: ReadonlySet<string>,
 ): readonly string[] {
-  const ambiguity = findAmbiguity(yamlText);
-  if (ambiguity.length > 0) return ambiguity.map((reason) => `ambiguous YAML, ${reason}`);
+  const refusals = scanLines(yamlText);
+  if (refusals.length > 0) return refusals.map((reason: string): string => `YAML shape, ${reason}`);
 
   let document: unknown;
   try {
