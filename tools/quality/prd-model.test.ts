@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   atLeast,
   MATURITY_LADDER,
+  type MaturityLevel,
   parseCriteria,
   parseWorkPackages,
   readDocumentMaturity,
@@ -149,6 +150,42 @@ describe("parseWorkPackages", () => {
     );
   });
 
+  test("a comma inside braces does not split a scope entry", () => {
+    const result = parseWorkPackages(
+      table("| `WP-1` | `CA-3` | `src/{a,b}/**` | `bun test` | `two-way` |"),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value[0]?.scope).toEqual(["src/{a,b}/**"]);
+  });
+
+  test("a plain comma-separated scope list still gives separate entries", () => {
+    const result = parseWorkPackages(
+      table("| `WP-1` | `CA-3` | `a/**, b/**` | `bun test` | `two-way` |"),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value[0]?.scope).toEqual(["a/**", "b/**"]);
+  });
+
+  test("braces next to a list split only on the commas outside them", () => {
+    const result = parseWorkPackages(
+      table("| `WP-1` | `CA-3` | `src/{a,b}/**, docs/**` | `bun test` | `two-way` |"),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value[0]?.scope).toEqual(["src/{a,b}/**", "docs/**"]);
+  });
+
+  test.each([
+    "src/{a,b/**",
+    "src/a,b}/**",
+    "src/{{a,b}/**",
+  ])("unbalanced braces in %p are ok:false naming the row and line", (scope) => {
+    const result = parseWorkPackages(
+      table(`| \`WP-1\` | \`CA-3\` | \`${scope}\` | \`bun test\` | \`two-way\` |`),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("WP-1 (line 3)");
+  });
+
   test("a table inside a fenced block is ignored", () => {
     const fenced = [
       "```",
@@ -199,6 +236,14 @@ describe("atLeast", () => {
     expect(atLeast("prototype", "décision")).toBe(true);
     expect(atLeast("proposition", "décision")).toBe(false);
     expect(atLeast("décision", "décision")).toBe(true);
+  });
+
+  // A floor read from YAML/JSON and cast must never pass every document.
+  test("a level absent from the ladder is false, never true", () => {
+    const unknown = "not-a-level" as MaturityLevel;
+    expect(atLeast(unknown, "décision")).toBe(false);
+    expect(atLeast("décision", unknown)).toBe(false);
+    expect(atLeast(unknown, unknown)).toBe(false);
   });
 
   test("the ladder keeps the brief order", () => {

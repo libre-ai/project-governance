@@ -129,6 +129,30 @@ const splitList = (cell: string): readonly string[] =>
     .map((item) => item.trim())
     .filter((item) => item !== "");
 
+/**
+ * Split a scope cell on the commas outside `{}`: `src/{a,b}/**` is one glob.
+ * Unbalanced braces return null, since the split would be a guess.
+ */
+function splitGlobs(cell: string): readonly string[] | null {
+  const globs: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of unquote(cell)) {
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+    if (depth < 0) return null;
+    if (char === "," && depth === 0) {
+      globs.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  if (depth !== 0) return null;
+  globs.push(current);
+  return globs.map((glob) => glob.trim()).filter((glob) => glob !== "");
+}
+
 function isHeader(cells: readonly string[]): boolean {
   return (
     cells.length === EXPECTED_HEADER.length &&
@@ -153,7 +177,8 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
   if (badCriterion !== undefined) {
     return fail(`work package ${label}: "${badCriterion}" is not a CA-<n> identifier`);
   }
-  const scope = splitList(cells[2] ?? "");
+  const scope = splitGlobs(cells[2] ?? "");
+  if (scope === null) return fail(`work package ${label}: unbalanced braces in scope`);
   if (scope.length === 0) return fail(`work package ${label}: empty scope`);
   const verify = unquote(cells[3] ?? "");
   if (verify === "") return fail(`work package ${label}: empty verification command`);
@@ -241,5 +266,10 @@ export function readDocumentMaturity(markdown: string): MaturityLevel | null {
 
 /** True when `level` is at or above `floor` on the maturity ladder. */
 export function atLeast(level: MaturityLevel, floor: MaturityLevel): boolean {
-  return MATURITY_LADDER.indexOf(level) >= MATURITY_LADDER.indexOf(floor);
+  const levelIndex = MATURITY_LADDER.indexOf(level);
+  const floorIndex = MATURITY_LADDER.indexOf(floor);
+  // indexOf answers -1 for a value off the ladder (a floor read from YAML or
+  // JSON and cast): comparing it would pass every document, so fail closed.
+  if (levelIndex === -1 || floorIndex === -1) return false;
+  return levelIndex >= floorIndex;
 }
