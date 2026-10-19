@@ -350,3 +350,70 @@ describe("whitespace-only strings and duplicate globs are ok:false", () => {
     });
   });
 });
+
+// Fix round 2: two ways a duplicate still got through. Bun.YAML reads a bare
+// CR as a line break (the scanner did not), and resolves differently spelled
+// plain keys (`1`/`0x1`, `null`/`~`) to the same property.
+describe("a bare CR line ending is ok:false", () => {
+  test("the probe that hid a second approvedFrom", () => {
+    const why = reason(
+      "approvedFrom: décision\rexempt: {}\rowners: [a]\rapprovedFrom: proposition\r",
+    );
+    expect(why).toContain("bare CR");
+  });
+
+  test("a bare CR anywhere is refused, even with no duplicate", () => {
+    expect(reason("approvedFrom: décision\nexempt: {}\rowners: [a]\n")).toContain("bare CR");
+  });
+
+  test("a CRLF policy still loads, and a duplicate on it is reported with the right lines", () => {
+    expect(loadWorkPackagePolicy(VALID.replaceAll("\n", "\r\n")).ok).toBe(true);
+    const why = reason(`${VALID}owners: [b]\n`.replaceAll("\n", "\r\n"));
+    expect(why).toContain("line 5");
+    expect(why).toContain("line 7");
+  });
+});
+
+describe("rule names that YAML resolves to the same key are ok:false", () => {
+  test("1 and 0x1 (both the integer 1)", () => {
+    const why = reason(withRules("  1:\n    author: x\n  0x1:\n    titlePrefix: y\n"));
+    expect(why).toContain('"1"');
+  });
+
+  test("null and ~ (both null) in block and flow form", () => {
+    expect(reason(withRules("  null:\n    author: x\n  ~:\n    titlePrefix: y\n"))).toContain(
+      '"null"',
+    );
+    expect(
+      reason(`${HEAD}exempt: {~: {author: x}, null: {titlePrefix: y}}\nowners: [a]\n`),
+    ).toContain('"~"');
+  });
+
+  test("true and True (both the boolean true)", () => {
+    expect(reason(withRules("  true:\n    author: x\n  True:\n    titlePrefix: y\n"))).toContain(
+      '"true"',
+    );
+  });
+
+  test.each([
+    "Revert",
+    "docs_only",
+    "docs.only",
+    "-x",
+    "a b",
+    "1x",
+  ])("the rule name %p is refused", (name) => {
+    const why = reason(withRules(`  "${name}":\n    author: x\n`));
+    expect(why).toContain(name);
+    expect(why).toContain("rule name");
+  });
+
+  test("the shipped rule names pass", async () => {
+    const result = loadWorkPackagePolicy(await Bun.file(SHIPPED).text());
+    expect(result.ok && Object.keys(result.value.exempt)).toEqual([
+      "dependabot",
+      "docs-only",
+      "revert",
+    ]);
+  });
+});

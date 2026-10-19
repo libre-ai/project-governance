@@ -41,6 +41,10 @@ const PREDICATE_KEYS = ["author", "paths", "titlePrefix"] as const;
 // Names that would reach Object.prototype machinery if used as a property key.
 const RESERVED_NAMES: readonly string[] = ["__proto__", "constructor", "prototype"];
 
+// A rule name is an identifier, so that two spellings cannot resolve to one key
+// (see plainKeyProblem) and the name is safe to print and to compare.
+const RULE_NAME = /^[a-z][a-z0-9-]*$/;
+
 // GitHub login: 1 to 39 characters of [A-Za-z0-9-], not starting or ending
 // with a hyphen. The gate compares logins case-insensitively.
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
@@ -142,6 +146,19 @@ function mergeKeyProblem(name: string): string | undefined {
     : undefined;
 }
 
+// YAML resolves an unquoted key by its type before it becomes a property name:
+// `1`, `0x1` and `1.0` are one integer key, `null` and `~` one null key, and
+// `true` / `True` one boolean key. Two spellings of the same key would then
+// pass the duplicate check on their text and collapse silently in the parse.
+// An unquoted key must therefore be a letter-led word that is not null/true/
+// false; anything else has to be quoted, which makes it a string verbatim.
+function plainKeyProblem(name: string): string | undefined {
+  if (/^[A-Za-z]/.test(name) && !/^(?:null|true|false)$/i.test(name)) {
+    return undefined;
+  }
+  return `key "${name}" is an unquoted key that YAML may resolve to a non-string or to the same key as another spelling (use a letter-led word, or quote it)`;
+}
+
 /** Scans a one-line flow collection; returns the index after it, or a problem. */
 function scanFlow(source: string, lineNumber: number): string | undefined {
   let index = 0;
@@ -223,6 +240,11 @@ function scanFlow(source: string, lineNumber: number): string | undefined {
           return at(indicator);
         }
         name = readPlain(true);
+        // The merge key has its own, more specific refusal just below.
+        const plain = mergeKeyProblem(name) === undefined ? plainKeyProblem(name) : undefined;
+        if (plain !== undefined) {
+          return at(plain);
+        }
       }
       const merge = mergeKeyProblem(name);
       if (merge !== undefined) {
@@ -311,7 +333,8 @@ interface Frame {
 }
 
 function findAmbiguity(text: string): string | undefined {
-  const lines = text.split(/\r?\n/);
+  // Every line break the parser honours, so line numbers stay right.
+  const lines = text.split(/\r\n|\r|\n/);
   const frames: Frame[] = [];
   let sawContent = false;
 
@@ -376,6 +399,10 @@ function findAmbiguity(text: string): string | undefined {
         if (rest[index] === ":" && isBreak(rest[index + 1])) {
           name = rest.slice(0, index).trimEnd();
           valueText = rest.slice(index + 1);
+          const plain = mergeKeyProblem(name) === undefined ? plainKeyProblem(name) : undefined;
+          if (plain !== undefined) {
+            return `line ${lineNumber}: ${plain}`;
+          }
           break;
         }
       }
@@ -483,6 +510,14 @@ function parseRule(name: string, raw: unknown): Parsed<ExemptRule> {
 }
 
 export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
+  // Bun.YAML reads a lone CR as a line break; a reviewer's editor and git diff
+  // often do not. Refusing it keeps one reading of the file. (Checked before
+  // the parse so no later step sees a text read two ways.)
+  if (/\r(?!\n)/.test(text)) {
+    return fail(
+      "policy has a bare CR line ending (a lone \\r not followed by \\n); use LF or CRLF",
+    );
+  }
   let root: unknown;
   try {
     root = Bun.YAML.parse(text);
@@ -541,6 +576,11 @@ export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
     }
     if (RESERVED_NAMES.includes(name)) {
       return fail(`exempt rule name "${name}" is reserved`);
+    }
+    if (!RULE_NAME.test(name)) {
+      return fail(
+        `exempt rule name ${JSON.stringify(name)} must match ${RULE_NAME.source} (lowercase letters, digits and hyphens, letter first)`,
+      );
     }
     const rule = parseRule(name, raw);
     if (!rule.ok) {
