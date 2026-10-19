@@ -1,18 +1,19 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type CommitDeclarations,
   type Declaration,
   evaluateWorkPackageLink,
   exemptionHolds,
   type Fact,
   type LinkPorts,
   type PrFacts,
-  readLinkDeclaration,
+  readDeclaration,
+  type Trailer,
 } from "./check-work-package-link";
 import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
 
-const FENCE = "`".repeat(3);
-const LINE_SEPARATOR = String.fromCodePoint(0x2028);
 const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
+const KELVIN_SIGN = String.fromCodePoint(0x212a);
 
 const policy: WorkPackagePolicy = {
   approvedFrom: "décision",
@@ -29,664 +30,218 @@ const pr = (overrides: Partial<PrFacts> = {}): PrFacts => ({
   number: 7,
   title: "feat: something",
   author: "constantin-jais",
-  body: "",
   baseSha: "a".repeat(40),
   headSha: "b".repeat(40),
   ...overrides,
 });
 
-const unused = (name: string) => async (): Promise<never> => {
-  throw new Error(`port ${name} must not be called by the skeleton`);
+const trailer = (key: string, value: string): Trailer => ({ key, value });
+const commit = (sha: string, ...trailers: Trailer[]): CommitDeclarations => ({ sha, trailers });
+const reasonOf = (declaration: Declaration): string =>
+  declaration.kind === "invalid" ? declaration.reason : "";
+
+const WP = "libre-ai/product-research#12 WP-3";
+const WP_LINK: Declaration = {
+  kind: "link",
+  repo: "libre-ai/product-research",
+  issue: 12,
+  wp: "WP-3",
 };
 
-function portsWith(
-  changed: Fact<readonly string[]>,
-  seen: Array<[string, string]> = [],
-): LinkPorts {
-  return {
-    readIssue: unused("readIssue"),
-    readFileAt: unused("readFileAt"),
-    isAncestorOfServedHead: unused("isAncestorOfServedHead"),
-    changedFiles: async (baseSha, headSha) => {
-      seen.push([baseSha, headSha]);
-      return changed;
-    },
-  };
-}
-
-describe("readLinkDeclaration", () => {
-  test("exactly one Work-package line is a link", () => {
-    expect(
-      readLinkDeclaration("## Summary\n\nWork-package: libre-ai/product-research#12 WP-3\n"),
-    ).toEqual({ kind: "link", repo: "libre-ai/product-research", issue: 12, wp: "WP-3" });
+describe("readDeclaration", () => {
+  test("one Work-package trailer is a link", () => {
+    expect(readDeclaration([commit("c1", trailer("Work-package", WP))])).toEqual(WP_LINK);
   });
 
-  test("exactly one Exempt line is an exemption", () => {
-    expect(readLinkDeclaration("Exempt: docs-only\n")).toEqual({
+  test("one Exempt trailer is an exemption", () => {
+    expect(readDeclaration([commit("c1", trailer("Exempt", "docs-only"))])).toEqual({
       kind: "exempt",
       cls: "docs-only",
     });
   });
 
-  test("an empty description names zero declaration lines", () => {
-    const declaration = readLinkDeclaration("");
+  test("the same value on three commits is one declaration", () => {
+    expect(
+      readDeclaration([
+        commit("c1", trailer("Work-package", WP)),
+        commit("c2", trailer("Work-package", WP)),
+        commit("c3", trailer("Signed-off-by", "A <a@example.org>"), trailer("Work-package", WP)),
+      ]),
+    ).toEqual(WP_LINK);
+  });
+
+  test("a declaration on only one commit of the range is enough", () => {
+    expect(
+      readDeclaration([
+        commit("c1"),
+        commit("c2", trailer("Signed-off-by", "A <a@example.org>")),
+        commit("c3", trailer("Work-package", WP)),
+      ]),
+    ).toEqual(WP_LINK);
+  });
+
+  test("the same value repeated within one commit counts once", () => {
+    expect(
+      readDeclaration([commit("c1", trailer("Work-package", WP), trailer("Work-package", WP))]),
+    ).toEqual(WP_LINK);
+  });
+
+  test("two distinct Work-package values are refused, naming both", () => {
+    const declaration = readDeclaration([
+      commit("c1", trailer("Work-package", "libre-ai/x#1 WP-1")),
+      commit("c2", trailer("Work-package", "libre-ai/x#1 WP-2")),
+    ]);
     expect(declaration.kind).toBe("invalid");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
+    expect(reasonOf(declaration)).toContain("2 distinct declaration trailers");
+    expect(reasonOf(declaration)).toContain('"libre-ai/x#1 WP-1"');
+    expect(reasonOf(declaration)).toContain('"libre-ai/x#1 WP-2"');
   });
 
-  test("a description without any declaration names zero declaration lines", () => {
-    const declaration = readLinkDeclaration("## Summary\nA fix.\n\nDoor: two-way\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
-  });
-
-  test("two Work-package lines name the count, even when they agree", () => {
-    const line = "Work-package: libre-ai/x#1 WP-1";
-    const declaration = readLinkDeclaration(`${line}\n${line}\n`);
+  test("a Work-package and an Exempt are two distinct declarations", () => {
+    const declaration = readDeclaration([
+      commit("c1", trailer("Work-package", WP), trailer("Exempt", "revert")),
+    ]);
     expect(declaration.kind).toBe("invalid");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("2 declaration line");
+    expect(reasonOf(declaration)).toContain("2 distinct declaration trailers");
+    expect(reasonOf(declaration)).toContain(`work-package: "${WP}"`);
+    expect(reasonOf(declaration)).toContain('exempt: "revert"');
   });
 
-  test("a Work-package line and an Exempt line are one declaration too many", () => {
-    const declaration = readLinkDeclaration("Work-package: libre-ai/x#1 WP-1\nExempt: docs-only\n");
-    expect(declaration.kind).toBe("invalid");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("2 declaration line");
+  test("two Exempt values are refused", () => {
+    expect(
+      readDeclaration([commit("c1", trailer("Exempt", "revert"), trailer("Exempt", "docs-only"))])
+        .kind,
+    ).toBe("invalid");
   });
 
-  test("two Exempt lines are refused", () => {
-    expect(readLinkDeclaration("Exempt: revert\nExempt: revert\n").kind).toBe("invalid");
+  test.each([
+    "work-package",
+    "WORK-PACKAGE",
+    "Work-Package",
+    "wOrK-pAcKaGe",
+  ])("the Work-package key is case-insensitive: %s", (key) => {
+    expect(readDeclaration([commit("c1", trailer(key, WP))])).toEqual(WP_LINK);
   });
 
-  test("a Work-package line inside an HTML comment is ignored", () => {
-    const declaration = readLinkDeclaration(
-      "<!--\nWork-package: <owner>/<repo>#<n> WP-<k>\n-->\nExempt: revert\n",
-    );
-    expect(declaration).toEqual({ kind: "exempt", cls: "revert" });
-  });
-
-  test("a Work-package line inside a fenced block is ignored", () => {
-    const body = `Example:\n${FENCE}text\nWork-package: libre-ai/x#1 WP-1\n${FENCE}\nWork-package: libre-ai/y#2 WP-2\n`;
-    expect(readLinkDeclaration(body)).toEqual({
-      kind: "link",
-      repo: "libre-ai/y",
-      issue: 2,
-      wp: "WP-2",
-    });
-  });
-
-  test("a declaration only inside a comment leaves zero lines", () => {
-    const declaration = readLinkDeclaration("<!-- Work-package: libre-ai/x#1 WP-1 -->\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
-  });
-
-  test("an unterminated comment hides what follows it", () => {
-    expect(readLinkDeclaration("<!-- never closed\nWork-package: libre-ai/x#1 WP-1\n").kind).toBe(
-      "invalid",
-    );
-  });
-
-  test("CRLF line ends are read as line ends", () => {
-    expect(readLinkDeclaration("Summary\r\nExempt: revert\r\n")).toEqual({
+  test.each(["exempt", "EXEMPT", "Exempt"])("the Exempt key is case-insensitive: %s", (key) => {
+    expect(readDeclaration([commit("c1", trailer(key, "revert"))])).toEqual({
       kind: "exempt",
       cls: "revert",
     });
   });
 
-  test("leading indentation before the keyword is tolerated, as for Door", () => {
-    expect(readLinkDeclaration("  Exempt: revert\n")).toEqual({ kind: "exempt", cls: "revert" });
+  test("the same value under keys that differ only in case is one declaration", () => {
+    expect(
+      readDeclaration([
+        commit("c1", trailer("Work-package", WP)),
+        commit("c2", trailer("WORK-PACKAGE", WP)),
+      ]),
+    ).toEqual(WP_LINK);
+  });
+
+  test("the same key with values that differ only in case is two declarations", () => {
+    const declaration = readDeclaration([
+      commit("c1", trailer("Work-package", "libre-ai/x#1 WP-1")),
+      commit("c2", trailer("Work-package", "Libre-ai/x#1 WP-1")),
+    ]);
+    expect(declaration.kind).toBe("invalid");
+    expect(reasonOf(declaration)).toContain("2 distinct declaration trailers");
+  });
+
+  test("a key folded into the keyword by Unicode case mapping is not the keyword", () => {
+    // U+212A lower-cases to "k": a full lower-casing would read this as work-package.
+    const declaration = readDeclaration([commit("c1", trailer(`Work-pac${KELVIN_SIGN}age`, WP))]);
+    expect(reasonOf(declaration)).toContain("no declaration trailer");
+  });
+
+  test("a key that merely starts with the keyword is not the keyword", () => {
+    expect(reasonOf(readDeclaration([commit("c1", trailer("Work-package-extra", WP))]))).toContain(
+      "no declaration trailer",
+    );
+    expect(reasonOf(readDeclaration([commit("c1", trailer("Exempt-by", "revert"))]))).toContain(
+      "no declaration trailer",
+    );
+  });
+
+  test("unrelated trailers are ignored", () => {
+    expect(
+      readDeclaration([
+        commit(
+          "c1",
+          trailer("Signed-off-by", "A <a@example.org>"),
+          trailer("Reviewed-by", "B <b@example.org>"),
+          trailer("Work-package", WP),
+          trailer("Door", "two-way"),
+        ),
+      ]),
+    ).toEqual(WP_LINK);
+  });
+
+  test("zero trailers is refused", () => {
+    expect(reasonOf(readDeclaration([commit("c1"), commit("c2")]))).toBe(
+      "no declaration trailer in the commits of the range",
+    );
+  });
+
+  test("an empty range is refused the same way", () => {
+    expect(reasonOf(readDeclaration([]))).toBe(
+      "no declaration trailer in the commits of the range",
+    );
+  });
+
+  test("only unrelated trailers is refused", () => {
+    expect(
+      reasonOf(readDeclaration([commit("c1", trailer("Signed-off-by", "A <a@example.org>"))])),
+    ).toContain("no declaration trailer");
   });
 
   test.each([
-    ["the template placeholder left as is", "Work-package: <owner>/<repo>#<n> WP-<k>"],
-    ["issue number zero", "Work-package: libre-ai/x#0 WP-1"],
-    ["issue number with a leading zero", "Work-package: libre-ai/x#01 WP-1"],
-    [
-      "issue number beyond the safe integer range",
-      "Work-package: libre-ai/x#99999999999999999999 WP-1",
-    ],
-    ["WP-0", "Work-package: libre-ai/x#1 WP-0"],
-    ["WP-01", "Work-package: libre-ai/x#1 WP-01"],
-    ["a lowercase WP prefix", "Work-package: libre-ai/x#1 wp-1"],
-    ["a mixed-case WP prefix", "Work-package: libre-ai/x#1 Wp-1"],
-    ["an extra space after the colon", "Work-package:  libre-ai/x#1 WP-1"],
-    ["an extra space before WP", "Work-package: libre-ai/x#1  WP-1"],
-    ["a trailing space", "Work-package: libre-ai/x#1 WP-1 "],
-    ["a trailing word", "Work-package: libre-ai/x#1 WP-1 done"],
-    ["no space after the colon", "Work-package:libre-ai/x#1 WP-1"],
-    ["a missing owner", "Work-package: x#1 WP-1"],
-    ["a missing issue number", "Work-package: libre-ai/x WP-1"],
-    ["a missing work package", "Work-package: libre-ai/x#1"],
-    ["a dot repository name", "Work-package: libre-ai/..#1 WP-1"],
-    ["a nested path as repository", "Work-package: libre-ai/x/y#1 WP-1"],
-    ["a no-break space between the parts", `Work-package: libre-ai/x#1${NO_BREAK_SPACE}WP-1`],
-    ["a line separator after the value", `Work-package: libre-ai/x#1 WP-1${LINE_SEPARATOR}`],
-    ["an empty value", "Work-package:"],
-  ])("a malformed Work-package value is invalid: %s", (_label, line) => {
-    const declaration = readLinkDeclaration(`${line}\n`);
+    ["the template placeholder left as is", "<owner>/<repo>#<n> WP-<k>"],
+    ["issue number zero", "libre-ai/x#0 WP-1"],
+    ["issue number with a leading zero", "libre-ai/x#01 WP-1"],
+    ["issue number beyond the safe integer range", "libre-ai/x#99999999999999999999 WP-1"],
+    ["WP-0", "libre-ai/x#1 WP-0"],
+    ["WP-01", "libre-ai/x#1 WP-01"],
+    ["a lowercase WP prefix", "libre-ai/x#1 wp-1"],
+    ["a mixed-case WP prefix", "libre-ai/x#1 Wp-1"],
+    ["an extra space before WP", "libre-ai/x#1  WP-1"],
+    ["a trailing space", "libre-ai/x#1 WP-1 "],
+    ["a leading space", " libre-ai/x#1 WP-1"],
+    ["a trailing token", "libre-ai/x#1 WP-1 done"],
+    ["a missing owner", "x#1 WP-1"],
+    ["a missing issue number", "libre-ai/x WP-1"],
+    ["a missing work package", "libre-ai/x#1"],
+    ["a dot repository name", "libre-ai/..#1 WP-1"],
+    ["a nested path as repository", "libre-ai/x/y#1 WP-1"],
+    ["a no-break space between the parts", `libre-ai/x#1${NO_BREAK_SPACE}WP-1`],
+    ["an empty value", ""],
+  ])("a malformed Work-package value is invalid: %s", (_label, value) => {
+    const declaration = readDeclaration([commit("c1", trailer("Work-package", value))]);
     expect(declaration.kind).toBe("invalid");
   });
 
   test("a malformed value names the offending text", () => {
-    const declaration = readLinkDeclaration("Work-package: libre-ai/x#0 WP-1\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain('" libre-ai/x#0 WP-1"');
-  });
-
-  test("a keyword in another case is not a declaration line", () => {
-    const declaration = readLinkDeclaration("work-package: libre-ai/x#1 WP-1\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
-  });
-
-  test("a keyword behind a block quote marker is a declaration the gate cannot read cleanly", () => {
-    // Round 2: it used to be ignored as "not at the start of the line"; a renderer
-    // shows it as a quoted declaration, so the description is ambiguous.
-    const declaration = readLinkDeclaration("> Work-package: libre-ai/x#1 WP-1\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain(
-      "description is ambiguous to the gate: line 1: reason a",
-    );
-  });
-
-  test("a declaration glued behind a line separator is not a second line", () => {
-    const declaration = readLinkDeclaration(
-      `Work-package: libre-ai/x#1 WP-1${LINE_SEPARATOR}Exempt: revert\n`,
-    );
-    expect(declaration.kind).toBe("invalid");
+    const declaration = readDeclaration([
+      commit("c1", trailer("Work-package", "libre-ai/x#0 WP-1")),
+    ]);
+    expect(reasonOf(declaration)).toContain('"libre-ai/x#0 WP-1"');
   });
 
   test.each([
-    ["an empty class", "Exempt:"],
-    ["a blank class", "Exempt:  "],
-    ["a class in capitals", "Exempt: Docs-only"],
-    ["a class with a space", "Exempt: docs only"],
-    ["a class with a trailing space", "Exempt: docs-only "],
-    ["an extra space before the class", "Exempt:  docs-only"],
-    ["a class starting with a digit", "Exempt: 1st"],
-    ["a prototype name", "Exempt: __proto__"],
-  ])("a malformed Exempt value is invalid: %s", (_label, line) => {
-    expect(readLinkDeclaration(`${line}\n`).kind).toBe("invalid");
+    ["an empty class", ""],
+    ["a blank class", "  "],
+    ["a class in capitals", "Docs-only"],
+    ["a class with a space", "docs only"],
+    ["a class with a trailing space", "docs-only "],
+    ["a class with a leading space", " docs-only"],
+    ["a class starting with a digit", "1st"],
+    ["a prototype name", "__proto__"],
+  ])("a malformed Exempt value is invalid: %s", (_label, value) => {
+    expect(readDeclaration([commit("c1", trailer("Exempt", value))]).kind).toBe("invalid");
   });
 
   test("an empty Exempt class says it is empty", () => {
-    const declaration = readLinkDeclaration("Exempt:\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("empty");
-  });
-});
-
-// The reader decides what a declaration line is the way a CommonMark renderer
-// shows the description: a keyword inside a fence, inside a comment, or
-// indented into a code block is displayed as code or hidden, so it must not be
-// read as a declaration.
-describe("readLinkDeclaration follows the rendering", () => {
-  const FENCE4 = "`".repeat(4);
-  const TAB = String.fromCodePoint(0x09);
-  const WP = "Work-package: a/b#1 WP-1";
-  const WP_LINK: Declaration = { kind: "link", repo: "a/b", issue: 1, wp: "WP-1" };
-  const REVERT: Declaration = { kind: "exempt", cls: "revert" };
-  const text = (...parts: string[]): string => parts.join("\n");
-  const reasonOf = (declaration: Declaration): string =>
-    declaration.kind === "invalid" ? declaration.reason : "";
-
-  describe("fences", () => {
-    test("a four-backtick fence is not closed by a three-backtick line", () => {
-      // Rendered: the Work-package line is code, only `Exempt: revert` is outside.
-      expect(readLinkDeclaration(text(FENCE4, FENCE, WP, FENCE4, "Exempt: revert"))).toEqual(
-        REVERT,
-      );
-    });
-
-    test("a closing fence carrying an info string does not close", () => {
-      expect(
-        readLinkDeclaration(text(FENCE, "x", `${FENCE}ts`, WP, FENCE, "Exempt: revert")),
-      ).toEqual(REVERT);
-    });
-
-    test("a closing run may be longer than the opening run", () => {
-      expect(readLinkDeclaration(text(FENCE, WP, FENCE4, "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a closing fence may carry up to three spaces of indentation and trailing spaces", () => {
-      expect(readLinkDeclaration(text(FENCE, WP, `   ${FENCE}  `, "Exempt: revert"))).toEqual(
-        REVERT,
-      );
-    });
-
-    test("a tilde fence hides what it encloses", () => {
-      expect(readLinkDeclaration(text("~~~", WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a tilde fence is not closed by backticks", () => {
-      expect(readLinkDeclaration(text("~~~", FENCE, WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a backtick fence is not closed by tildes", () => {
-      expect(readLinkDeclaration(text(FENCE, "~~~", WP, FENCE, "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("an opening backtick fence whose info string has a backtick is not a fence", () => {
-      expect(readLinkDeclaration(text(`${FENCE}a\`b`, WP))).toEqual(WP_LINK);
-    });
-
-    test("an opening tilde fence may carry a backtick in its info string", () => {
-      expect(readLinkDeclaration(text("~~~a`b", WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a fence indented by three spaces opens", () => {
-      expect(readLinkDeclaration(text(`   ${FENCE}`, WP, FENCE, "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a fence indented by four spaces is code, not a fence", () => {
-      expect(readLinkDeclaration(text(`    ${FENCE}`, WP))).toEqual(WP_LINK);
-    });
-
-    test("an unclosed fence hides everything after it", () => {
-      const declaration = readLinkDeclaration(text(FENCE, WP, "Exempt: revert"));
-      expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain("0 declaration line");
-    });
-
-    test("a declaration before an unclosed fence stays the only declaration", () => {
-      expect(readLinkDeclaration(text("Exempt: revert", FENCE, WP))).toEqual(REVERT);
-    });
-
-    test("CRLF line ends do not break fence reading", () => {
-      expect(readLinkDeclaration(`${FENCE}\r\n${WP}\r\n${FENCE}\r\nExempt: revert\r\n`)).toEqual(
-        REVERT,
-      );
-    });
-
-    test("lone CR line ends do not break fence reading", () => {
-      expect(readLinkDeclaration(`${FENCE}\r${WP}\r${FENCE}\rExempt: revert\r`)).toEqual(REVERT);
-    });
-  });
-
-  describe("indentation", () => {
-    test("three spaces of indentation still make a declaration", () => {
-      expect(readLinkDeclaration("   Exempt: revert\n")).toEqual(REVERT);
-    });
-
-    // Round 2: four spaces can be an indented code block OR the lazy
-    // continuation of a paragraph, so the line is ambiguous, not "a code block".
-    test("four spaces are ambiguous, not a code block", () => {
-      const declaration = readLinkDeclaration("    Exempt: revert\n");
-      expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain(
-        "description is ambiguous to the gate: line 1: reason a",
-      );
-      expect(reasonOf(declaration)).not.toContain("code block, not a declaration");
-    });
-
-    test("a tab is ambiguous", () => {
-      expect(reasonOf(readLinkDeclaration(`${TAB}${WP}\n`))).toContain(
-        "description is ambiguous to the gate: line 1: reason a",
-      );
-    });
-
-    test("spaces then a tab are ambiguous", () => {
-      expect(reasonOf(readLinkDeclaration(`  ${TAB}Exempt: revert\n`))).toContain(
-        "description is ambiguous to the gate: line 1: reason a",
-      );
-    });
-
-    test("an over-indented keyword line beside a clean declaration makes the description ambiguous", () => {
-      expect(
-        reasonOf(readLinkDeclaration(text("    Work-package: x/y#9 WP-9", "Exempt: revert"))),
-      ).toContain("description is ambiguous to the gate: line 1: reason a");
-    });
-
-    test("an over-indented keyword line inside a fence is ignored", () => {
-      const declaration = readLinkDeclaration(text(FENCE, `    ${WP}`, FENCE));
-      expect(reasonOf(declaration)).toContain("0 declaration line");
-    });
-  });
-
-  describe("comments", () => {
-    test("a comment opened mid-line and closed on the next line leaves no declaration", () => {
-      const declaration = readLinkDeclaration(text("Hello <!-- start", `--> ${WP}`));
-      expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain("0 declaration line");
-    });
-
-    test("a keyword after a comment span on the same line is ambiguous", () => {
-      expect(reasonOf(readLinkDeclaration(`<!-- a --> ${WP}`))).toContain(
-        "description is ambiguous to the gate: line 1: reason a",
-      );
-    });
-
-    test("a declaration on the line after a closed comment counts", () => {
-      expect(readLinkDeclaration(text("<!-- a", "b -->", "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a second comment opened on the line where the first ends is ambiguous", () => {
-      // Round 2: the opener is not at the start of its line (reason d).
-      expect(
-        reasonOf(readLinkDeclaration(text("<!-- a --> <!-- b", "Exempt: revert", "-->", WP))),
-      ).toContain("description is ambiguous to the gate: line 1: reason d");
-    });
-
-    test("a fence marker inside a comment does not open a fence", () => {
-      expect(readLinkDeclaration(text("<!--", FENCE, "-->", "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("a comment marker inside a fence does not open a comment", () => {
-      expect(readLinkDeclaration(text(FENCE, "<!--", FENCE, "Exempt: revert"))).toEqual(REVERT);
-    });
-
-    test("an unterminated comment hides everything after it, CRLF included", () => {
-      expect(reasonOf(readLinkDeclaration(`x <!--\r\n${WP}\r\n`))).toContain("0 declaration line");
-    });
-
-    test("lone CR line ends do not break comment reading", () => {
-      expect(readLinkDeclaration(`<!--\r${WP}\r-->\rExempt: revert\r`)).toEqual(REVERT);
-    });
-  });
-
-  // Round 2: markdown constructs the reader does not model (containers, HTML
-  // blocks, comment openers in odd places) can make GitHub render something
-  // other than what the reader reads. When a declaration candidate exists and
-  // such a construct is present, the description is refused as ambiguous.
-  describe("ambiguity", () => {
-    const AMBIGUOUS = "description is ambiguous to the gate: line";
-    const ambiguousAt = (body: string, line: number, code: string): void => {
-      const declaration = readLinkDeclaration(body);
-      expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain(`${AMBIGUOUS} ${line}: reason ${code}`);
-    };
-    const lines = (...parts: string[]): string => parts.join("\n");
-
-    describe("probes that GitHub renders differently from the reader", () => {
-      test("A: a fence in a list item hides a declaration from the renderer", () => {
-        ambiguousAt(lines("- ```", "  Exempt: revert", "  ```"), 1, "b");
-      });
-
-      test("A2: the same with an ordered list item", () => {
-        ambiguousAt(lines("1. ```", "   Work-package: a/b#1 WP-1", "   ```"), 1, "b");
-      });
-
-      test("B: a list-item fence before a clean declaration and a later fence", () => {
-        ambiguousAt(
-          lines("- ```", "  x", "  ```", "Exempt: revert", "```", "Work-package: a/b#1 WP-1"),
-          1,
-          "b",
-        );
-      });
-
-      test("C: an HTML block can swallow the fence parity", () => {
-        ambiguousAt(
-          lines(
-            "<div>",
-            "```",
-            "</div>",
-            "",
-            "Work-package: a/b#1 WP-1",
-            "",
-            "```",
-            "Exempt: revert",
-            "```",
-          ),
-          1,
-          "c",
-        );
-      });
-
-      test("E: a comment opened mid-line and closed after a blank line", () => {
-        ambiguousAt(
-          lines("Hello <!-- start", "", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"),
-          1,
-          "d",
-        );
-      });
-
-      test("E2: an opener inside a code span", () => {
-        ambiguousAt(
-          lines("Use `<!--` here", "Work-package: a/b#1 WP-1", "and `-->` there", "Exempt: revert"),
-          1,
-          "d",
-        );
-      });
-
-      test("E3: an opener after a backslash", () => {
-        ambiguousAt(lines("\\<!--", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"), 1, "d");
-      });
-
-      test("G: the form <!--> ", () => {
-        ambiguousAt(lines("<!-->", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"), 1, "d");
-      });
-
-      test("G2: the form <!--->", () => {
-        ambiguousAt(lines("<!--->", "x", "-->", "Exempt: revert"), 1, "d");
-      });
-
-      test("H: a keyword line indented by four spaces may be a lazy continuation", () => {
-        ambiguousAt(lines("Summary", "    Work-package: a/b#1 WP-1", "Exempt: revert"), 2, "a");
-      });
-
-      test("I: a keyword after a comment span on the same line", () => {
-        ambiguousAt(lines("<!-- a --> Work-package: a/b#1 WP-1", "Exempt: revert"), 1, "a");
-      });
-    });
-
-    describe("each reason code", () => {
-      test("a: a block quote or a list marker before the keyword", () => {
-        ambiguousAt(lines("- Exempt: revert"), 1, "a");
-        ambiguousAt(lines("+ Exempt: revert"), 1, "a");
-        ambiguousAt(lines("* Exempt: revert"), 1, "a");
-        ambiguousAt(lines("12. Exempt: revert"), 1, "a");
-        ambiguousAt(lines("3) Exempt: revert"), 1, "a");
-        ambiguousAt(lines("> - Exempt: revert"), 1, "a");
-      });
-
-      test("b: a fence marker behind a container prefix, backticks or tildes", () => {
-        ambiguousAt(lines("> ```", "Exempt: revert"), 1, "b");
-        ambiguousAt(lines("- ~~~", "Exempt: revert"), 1, "b");
-        ambiguousAt(lines("Exempt: revert", "1) ```"), 2, "b");
-      });
-
-      test("c: an HTML block start: a tag, a closing tag, a processing instruction, a declaration", () => {
-        ambiguousAt(lines("<details>", "Exempt: revert"), 1, "c");
-        ambiguousAt(lines("Exempt: revert", "</div>"), 2, "c");
-        ambiguousAt(lines("Exempt: revert", "<?php x ?>"), 2, "c");
-        ambiguousAt(lines("Exempt: revert", "<!DOCTYPE html>"), 2, "c");
-        ambiguousAt(lines("Exempt: revert", "   <b>x</b>"), 2, "c");
-      });
-
-      test("c: an HTML block start behind a container prefix is refused too", () => {
-        ambiguousAt(
-          lines("- <div>", "  ```", "  Exempt: revert", "  ```", "  </div>", "", WP),
-          1,
-          "c",
-        );
-      });
-
-      test("d: an opener that is not at the start of its line and never closes", () => {
-        ambiguousAt(lines("Exempt: revert", "text <!-- open", "-->"), 2, "d");
-        ambiguousAt(lines("Exempt: revert", "- <!-- open"), 2, "d");
-      });
-
-      test("d: the tail of a comment closing line is checked too", () => {
-        ambiguousAt(lines("<!--", "-->  text <!-- open", "-->", "Exempt: revert"), 2, "d");
-      });
-    });
-
-    describe("what is not ambiguous", () => {
-      test("no candidate: unchanged zero declarations, even with unmodelled constructs", () => {
-        for (const body of [
-          lines("<details>", "<summary>Release notes</summary>", "<p>x</p>", "</details>"),
-          lines("- ```", "  code", "  ```"),
-          lines("Hello <!-- start", "-->", "end"),
-          lines("> quote", "    indented"),
-        ]) {
-          const declaration = readLinkDeclaration(body);
-          expect(declaration.kind).toBe("invalid");
-          expect(reasonOf(declaration)).toContain("0 declaration line");
-          expect(reasonOf(declaration)).not.toContain("ambiguous");
-        }
-      });
-
-      test("a plain Exempt line alone", () => {
-        expect(readLinkDeclaration("Exempt: revert")).toEqual(REVERT);
-      });
-
-      test("a declaration and a normal top-level fence of code", () => {
-        expect(
-          readLinkDeclaration(lines("Exempt: revert", "", `${FENCE}ts`, "let a = 1;", FENCE)),
-        ).toEqual(REVERT);
-      });
-
-      test("a declaration and a comment at the start of a line", () => {
-        expect(readLinkDeclaration(lines("<!-- note -->", "Exempt: revert"))).toEqual(REVERT);
-        expect(readLinkDeclaration(lines("Exempt: revert", "<!--", "multi-line", "-->"))).toEqual(
-          REVERT,
-        );
-      });
-
-      test("a comment closed on its own line after other text is not an ambiguity", () => {
-        // Blast radius: <!-- ... --> in the fleet template. A span closed on the
-        // line it opens cannot reach another line, whatever the renderer does with it.
-        expect(
-          readLinkDeclaration(lines("Exempt: revert", "Blast radius: <!-- which -->")),
-        ).toEqual(REVERT);
-        expect(readLinkDeclaration(lines("Exempt: revert", "Use `<!-- x -->` here"))).toEqual(
-          REVERT,
-        );
-      });
-
-      test("prose that mentions a keyword mid-sentence, with one clean declaration", () => {
-        expect(
-          readLinkDeclaration(
-            lines(
-              "We write Work-package: lines as the norm says.",
-              "- see the Exempt: classes",
-              "Exempt: revert",
-            ),
-          ),
-        ).toEqual(REVERT);
-      });
-
-      test("a candidate inside a modelled comment or fence is ignored, ambiguity included", () => {
-        expect(
-          readLinkDeclaration(lines("<!--", "- Exempt: other", "<div>", "-->", "Exempt: revert")),
-        ).toEqual(REVERT);
-        expect(
-          readLinkDeclaration(lines(FENCE, "> Exempt: other", "<div>", FENCE, "Exempt: revert")),
-        ).toEqual(REVERT);
-      });
-    });
-
-    describe("the fleet pull request template", () => {
-      // Faithful copy of libre-ai/.github/.github/pull_request_template.md, with
-      // the Work-package placeholder replaced by a filled line and the Door line
-      // chosen. Everything else, guidance comments included, is the template.
-      // Split so that the licence scanner does not read the template's own header
-      // lines as the licence of this test file.
-      const SPDX = "SPDX";
-      const EM_DASH = "—";
-      const SECTION = "§";
-      const template = (workPackageLine: string): string =>
-        lines(
-          `<!-- ${SPDX}-FileCopyrightText: 2026 Libre AI contributors -->`,
-          `<!-- ${SPDX}-License-Identifier: CC-BY-4.0 -->`,
-          "<!--",
-          "Fleet pull request template (libre-ai/.github, default for every repository",
-          "that carries no template of its own). Comments like this one are guidance:",
-          "they are not rendered, and gates reading the description ignore them.",
-          "",
-          "The declaration lines below (Door, Second-instrument, Owner-arbitration) are",
-          "read by gates, so their form is exact: the key at the start of its own line,",
-          "outside a code block. Where a repository runs the Door gate",
-          "(project-governance: tools/quality/check-pr-door.ts), a description without",
-          "a valid Door line does not pass.",
-          "-->",
-          "",
-          "## Summary",
-          "",
-          "<!--",
-          "The smallest visual that carries the change: a before/after table, a list of",
-          "the files that move, or one diagram. Prefer a table over a paragraph.",
-          "-->",
-          "",
-          "## Evidence",
-          "",
-          "<!--",
-          "Before and after: the red output of each added test on the unfixed code, then",
-          "the green one; the raw output of the repository's aggregated check (for",
-          "example `bun run check`), run after `git add`; for a change of behaviour, the",
-          "command that shows it at its real surface.",
-          "-->",
-          "",
-          "## Work package",
-          "",
-          "<!--",
-          `Work-package ${EM_DASH} exactly one declaration line in this description: the issue that`,
-          "projects the work package, and the row of the PRD table it implements. Both",
-          "must agree with the body of that issue (### PRD-ref, ### WP). Replace the line",
-          "below with `Work-package: <owner>/<repo>#<n> WP-<k>` filled in; the placeholder",
-          "is refused on purpose, choosing is the point.",
-          "",
-          "A pull request that implements no work package declares an exemption instead,",
-          "on a line of its own, copied out of this comment:",
-          "",
-          "Exempt: <class>",
-          "",
-          "where <class> is one of dependabot, docs-only or revert. The gate verifies the",
-          "predicate of the class on the pull request itself (its author, the paths it",
-          "changes, or its title); it never believes the claim. Never both lines.",
-          "-->",
-          workPackageLine,
-          "",
-          "## Reversibility and blast radius",
-          "",
-          "<!--",
-          `Door ${EM_DASH} exactly one line, one value:`,
-          "  two-way: reverting the merge restores the previous state;",
-          "  one-way: it does not (repository deletion, a published release or package,",
-          "  a ruleset change, a data migration, a force push, an external message).",
-          "Replace the line below with `Door: two-way` or `Door: one-way`.",
-          "-->",
-          "Door: two-way",
-          "",
-          "Blast radius: <!-- which repositories, consumers, branches or users this reaches -->",
-          "",
-          "<!--",
-          `One-way door only ${EM_DASH} the independent measurement taken before the act, by an`,
-          "instrument different from the one that produced the green (gate-integrity",
-          `${SECTION}3). Copy this line out of the comment and fill it:`,
-          "",
-          "Second-instrument: <instrument, what it measured, and its result>",
-          "-->",
-          "",
-          "<!--",
-          `Guarded path only ${EM_DASH} when the change touches a path that the repository's`,
-          "review-evidence gate protects (project-governance: GATED_PATH_PATTERNS in",
-          "tools/quality/check-review-evidence.ts), cite the owner arbitration with its",
-          "ISO date. Copy this line out of the comment and fill it:",
-          "",
-          "Owner-arbitration: YYYY-MM-DD <where the arbitration was given>",
-          "-->",
-          "",
-        );
-
-      test("a filled template reads exactly its one Work-package line", () => {
-        expect(
-          readLinkDeclaration(template("Work-package: libre-ai/product-research#12 WP-3")),
-        ).toEqual({
-          kind: "link",
-          repo: "libre-ai/product-research",
-          issue: 12,
-          wp: "WP-3",
-        });
-      });
-
-      test("the unfilled placeholder is refused as malformed, not as ambiguous", () => {
-        const declaration = readLinkDeclaration(
-          template("Work-package: <owner>/<repo>#<n> WP-<k>"),
-        );
-        expect(declaration.kind).toBe("invalid");
-        expect(reasonOf(declaration)).toContain("malformed Work-package value");
-      });
-
-      test("the template with its guidance only and no declaration has zero declarations", () => {
-        const declaration = readLinkDeclaration(template(""));
-        expect(reasonOf(declaration)).toContain("0 declaration line");
-      });
-    });
+    expect(reasonOf(readDeclaration([commit("c1", trailer("Exempt", ""))]))).toContain("empty");
   });
 });
 
@@ -775,110 +330,271 @@ describe("exemptionHolds", () => {
   });
 });
 
+interface Spy {
+  readonly trailerCalls: Array<[string, string]>;
+  readonly diffCalls: Array<[string, string]>;
+  readonly ports: LinkPorts;
+}
+
+const unused = (name: string) => async (): Promise<never> => {
+  throw new Error(`port ${name} must not be called by the skeleton`);
+};
+
+function spyOn(
+  commits: Fact<readonly CommitDeclarations[]>,
+  changed: Fact<readonly string[]> = { ok: false, reason: "changedFiles must not be asked" },
+): Spy {
+  const trailerCalls: Array<[string, string]> = [];
+  const diffCalls: Array<[string, string]> = [];
+  const ports: LinkPorts = {
+    readIssue: unused("readIssue"),
+    readFileAt: unused("readFileAt"),
+    isAncestorOfServedHead: unused("isAncestorOfServedHead"),
+    commitTrailers: async (baseSha, headSha) => {
+      trailerCalls.push([baseSha, headSha]);
+      return commits;
+    },
+    changedFiles: async (baseSha, headSha) => {
+      diffCalls.push([baseSha, headSha]);
+      return changed;
+    },
+  };
+  return { trailerCalls, diffCalls, ports };
+}
+
+const withCommits = (...commits: CommitDeclarations[]): Fact<readonly CommitDeclarations[]> => ({
+  ok: true,
+  value: commits,
+});
+
 describe("evaluateWorkPackageLink", () => {
-  test("a well-formed link passes and prints its volume", async () => {
-    const seen: Array<[string, string]> = [];
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Work-package: libre-ai/product-research#12 WP-3\n" }),
-      policy,
-      portsWith({ ok: false, reason: "must not be asked on the link path" }, seen),
+  test("a well-formed link passes, prints its volume and reads no diff", async () => {
+    const spy = spyOn(
+      withCommits(
+        commit("c1", trailer("Work-package", WP)),
+        commit("c2", trailer("Work-package", WP)),
+        commit("c3"),
+      ),
     );
-    // The link path reads no diff: asking for one would be a wasted, failable read.
-    expect(seen).toEqual([]);
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("pass");
     expect(report.violations).toEqual([]);
-    expect(report.volumeSummary).toContain("1 declaration line");
-    expect(report.volumeSummary).toContain("libre-ai/product-research#12 WP-3");
+    expect(spy.trailerCalls).toEqual([["a".repeat(40), "b".repeat(40)]]);
+    // The link path reads no diff: asking for one would be a wasted, failable read.
+    expect(spy.diffCalls).toEqual([]);
+    expect(report.volumeSummary).toBe(
+      `3 commit(s) examined; 2 declaration trailer pair(s) seen, 1 distinct; declaration read: Work-package: ${WP}; implicit exemption: no; 0 file(s) examined for an exemption`,
+    );
   });
 
-  test("an invalid declaration is a named violation", async () => {
+  test("an unreadable range is a violation naming the reason, never a pass", async () => {
+    const spy = spyOn({ ok: false, reason: "git log failed: bad revision" });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain("git log failed: bad revision");
+    expect(spy.diffCalls).toEqual([]);
+  });
+
+  test("an unreadable range is a violation even for an exempt author", async () => {
+    const spy = spyOn({ ok: false, reason: "git log failed" });
     const report = await evaluateWorkPackageLink(
-      pr({ body: "" }),
+      pr({ author: "dependabot[bot]" }),
       policy,
-      portsWith({ ok: true, value: [] }),
+      spy.ports,
     );
     expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("0 declaration line");
-    expect(report.volumeSummary).toContain("0 declaration line");
   });
 
-  test("two declarations are a violation", async () => {
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Work-package: libre-ai/x#1 WP-1\nExempt: revert\n" }),
-      policy,
-      portsWith({ ok: true, value: [] }),
-    );
+  test("zero declarations from a human author is a violation", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Signed-off-by", "A <a@example.org>"))));
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
-    expect(report.volumeSummary).toContain("2 declaration line");
+    expect(report.violations.join("\n")).toContain("no declaration trailer");
+    expect(report.volumeSummary).toContain("0 declaration trailer pair(s) seen, 0 distinct");
+    expect(report.volumeSummary).toContain("implicit exemption: no");
   });
 
-  test("a holding exemption passes and prints the files examined", async () => {
-    const seen: Array<[string, string]> = [];
+  test("zero declarations from an unknown author is a violation", async () => {
+    const spy = spyOn(withCommits(commit("c1")));
+    const report = await evaluateWorkPackageLink(pr({ author: null }), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+  });
+
+  test("zero declarations from the author of an author-based class is exempt (implicit)", async () => {
+    const spy = spyOn(withCommits(commit("c1"), commit("c2")));
     const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: docs-only\n" }),
+      pr({ author: "dependabot[bot]" }),
       policy,
-      portsWith({ ok: true, value: ["README.md", "docs/a.txt"] }, seen),
+      spy.ports,
     );
     expect(report.outcome).toBe("pass");
-    expect(seen).toEqual([["a".repeat(40), "b".repeat(40)]]);
+    expect(report.checks.map((check) => check.note).join("\n")).toContain(
+      "exempt (implicit: dependabot)",
+    );
+    expect(spy.diffCalls).toEqual([]);
+    expect(report.volumeSummary).toBe(
+      "2 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: exempt (implicit: dependabot); implicit exemption: yes (dependabot); 0 file(s) examined for an exemption",
+    );
+  });
+
+  test("the implicit exemption compares the author exactly", async () => {
+    for (const author of [
+      "Dependabot[bot]",
+      "dependabot[bot] ",
+      "dependabot",
+      "dependabot[bot]x",
+    ]) {
+      const spy = spyOn(withCommits(commit("c1")));
+      const report = await evaluateWorkPackageLink(pr({ author }), policy, spy.ports);
+      expect(report.outcome).toBe("violations");
+    }
+  });
+
+  test("the implicit exemption needs a class with an author predicate", async () => {
+    const withoutAuthorClass: WorkPackagePolicy = {
+      ...policy,
+      exempt: Object.assign(Object.create(null) as Record<string, ExemptRule>, {
+        revert: { titlePrefix: "Revert " },
+      }),
+    };
+    const spy = spyOn(withCommits(commit("c1")));
+    const report = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      withoutAuthorClass,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("violations");
+  });
+
+  test("the title and path classes never grant an implicit exemption", async () => {
+    const spy = spyOn(withCommits(commit("c1")));
+    const report = await evaluateWorkPackageLink(pr({ title: 'Revert "x"' }), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+  });
+
+  test("an exempt author with a bad declaration is judged on the declaration", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Work-package", "libre-ai/x#0 WP-1"))));
+    const report = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      policy,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain("malformed Work-package value");
+    expect(report.volumeSummary).toContain("implicit exemption: no");
+  });
+
+  test("an exempt author with a valid link is judged as a link, not as implicit", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Work-package", WP))));
+    const report = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      policy,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("pass");
+    expect(report.volumeSummary).toContain(`declaration read: Work-package: ${WP}`);
+    expect(report.volumeSummary).toContain("implicit exemption: no");
+  });
+
+  test("an exempt author with a declared exemption is still verified against the diff", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["src/a.ts"],
+    });
+    const report = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      policy,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(spy.diffCalls).toHaveLength(1);
+  });
+
+  test("two distinct declarations are a violation naming both, and read no diff", async () => {
+    const spy = spyOn(
+      withCommits(
+        commit("c1", trailer("Work-package", WP)),
+        commit("c2", trailer("Exempt", "docs-only")),
+      ),
+    );
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain("2 distinct declaration trailers");
+    expect(report.volumeSummary).toContain("2 declaration trailer pair(s) seen, 2 distinct");
+    expect(spy.diffCalls).toEqual([]);
+  });
+
+  test("a holding declared exemption passes and prints the files examined", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["README.md", "docs/a.txt"],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("pass");
+    expect(spy.diffCalls).toEqual([["a".repeat(40), "b".repeat(40)]]);
+    expect(report.volumeSummary).toContain("declaration read: Exempt: docs-only");
     expect(report.volumeSummary).toContain("2 file(s) examined");
   });
 
-  test("an exemption whose predicate is false is a violation", async () => {
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: docs-only\n" }),
-      policy,
-      portsWith({ ok: true, value: ["src/a.ts"] }),
-    );
+  test("a declared exemption whose predicate is false is a violation", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["src/a.ts"],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
     expect(report.violations.join("\n")).toContain("src/a.ts");
   });
 
-  test("an exemption class absent from the policy is a violation naming it", async () => {
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: chore\n" }),
-      policy,
-      portsWith({ ok: true, value: ["README.md"] }),
-    );
+  test("a declared exemption class absent from the policy is a violation naming it", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "chore"))), {
+      ok: true,
+      value: ["README.md"],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
     expect(report.violations.join("\n")).toContain("chore");
   });
 
-  test("an exempt declaration with an unreadable diff is a violation, never a pass", async () => {
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: docs-only\n" }),
-      policy,
-      portsWith({ ok: false, reason: "git diff failed" }),
-    );
+  test("a declared exemption with an unreadable diff is a violation, never a pass", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: false,
+      reason: "git diff failed",
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
     expect(report.violations.join("\n")).toContain("git diff failed");
   });
 
-  test("an unreadable diff is a violation even for an author-based exemption", async () => {
+  test("an unreadable diff is a violation even for an author-based declared exemption", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "dependabot"))), {
+      ok: false,
+      reason: "git diff failed",
+    });
     const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: dependabot\n", author: "dependabot[bot]" }),
+      pr({ author: "dependabot[bot]" }),
       policy,
-      portsWith({ ok: false, reason: "git diff failed" }),
+      spy.ports,
     );
     expect(report.outcome).toBe("violations");
   });
 
   test("a docs-only exemption on an empty diff is a violation", async () => {
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: docs-only\n" }),
-      policy,
-      portsWith({ ok: true, value: [] }),
-    );
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: [],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
   });
 
   test("a prototype-named class cannot reach an inherited rule", async () => {
-    const inherited = { ...policy, exempt: {} as Record<string, ExemptRule> };
-    const report = await evaluateWorkPackageLink(
-      pr({ body: "Exempt: constructor\n" }),
-      inherited,
-      portsWith({ ok: true, value: ["README.md"] }),
-    );
+    const inherited: WorkPackagePolicy = { ...policy, exempt: {} as Record<string, ExemptRule> };
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "constructor"))), {
+      ok: true,
+      value: ["README.md"],
+    });
+    const report = await evaluateWorkPackageLink(pr(), inherited, spy.ports);
     expect(report.outcome).toBe("violations");
   });
 });
