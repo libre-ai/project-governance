@@ -544,6 +544,65 @@ describe("validateIssueForm: ambiguous YAML fails closed", () => {
     );
     expect(validateIssueForm(flow, KNOWN_LABELS)).not.toEqual([]);
   });
+
+  /** A work-package form whose two fields are written as the given body items. */
+  const workPackageWithItems = (first: string, second: string): string => `name: Work package
+description: A work package.
+labels:
+  - kind:work-package
+body:
+  ${first}
+  ${second}
+`;
+  const WP_FIELD =
+    "- {type: input, id: wp, attributes: {label: WP}, validations: {required: true}}";
+
+  test("a flow mapping as a list item with a repeated type is a violation", () => {
+    const text = workPackageWithItems(
+      "- {type: textarea, type: input, id: a, attributes: {label: PRD-ref}, validations: {required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping as a list item with a repeated required is a violation", () => {
+    const text = workPackageWithItems(
+      "- {type: input, id: a, attributes: {label: PRD-ref}, validations: {required: false, required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping as a list item is refused even without a repeat", () => {
+    const text = workPackageWithItems(
+      "- {type: input, id: a, attributes: {label: PRD-ref}, validations: {required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping inside a flow sequence value is a violation", () => {
+    const text = mutate(IDEA, "name: Idea\n", "name: Idea\nextra: [{a: 1, a: 2}]\n");
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping behind a nested dash is a violation", () => {
+    const text = `${IDEA}  - - {a: 1}\n`;
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow sequence as a list item is a violation", () => {
+    const text = `${IDEA}  - [a, b]\n`;
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("plain scalar items, block lists and a flow sequence of strings stay valid", () => {
+    expect(validateIssueForm(IDEA, KNOWN_LABELS)).toEqual([]);
+    const inline = mutate(IDEA, "labels:\n  - kind:idea", 'labels: ["kind:idea"]');
+    expect(validateIssueForm(inline, KNOWN_LABELS)).toEqual([]);
+    const plainItem = mutate(IDEA, "  - kind:idea\n", "  - kind:idea\n  - ready\n");
+    expect(validateIssueForm(plainItem, KNOWN_LABELS)).toEqual([]);
+  });
 });
 
 describe("runIssueFormCheck", () => {

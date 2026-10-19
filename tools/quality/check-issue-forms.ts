@@ -132,6 +132,10 @@ function findAmbiguity(text: string): string[] {
       reasons.push(`line ${lineNumber}: an anchor or an alias hides a repeated key`);
     } else if (value.startsWith("{")) {
       reasons.push(`line ${lineNumber}: a flow mapping hides a repeated key; use a block mapping`);
+    } else if (value.startsWith("[") && value.includes("{")) {
+      reasons.push(
+        `line ${lineNumber}: a flow mapping inside a flow sequence hides a repeated key`,
+      );
     } else if (value.startsWith("!")) {
       reasons.push(`line ${lineNumber}: a YAML tag changes the type of a value silently`);
     }
@@ -162,6 +166,15 @@ function findAmbiguity(text: string): string[] {
       isItem = true;
       keyIndent += dash[0].length;
       rest = rest.slice(dash[0].length);
+    }
+
+    // After the dashes are stripped, `{type: a, type: b}` would match KEY_LINE with the key
+    // "{type" and hide its repeat from inspectValue; a flow collection is refused before that.
+    if (rest.startsWith("{") || rest.startsWith("[")) {
+      reasons.push(
+        `line ${lineNumber}: a flow collection as a list item hides a repeated key; use a block mapping`,
+      );
+      continue;
     }
 
     const keyMatch = KEY_LINE.exec(rest.trimEnd());
