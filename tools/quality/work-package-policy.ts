@@ -23,6 +23,7 @@
  * unambiguous by construction.
  */
 import { MATURITY_LADDER, type MaturityLevel, type Parsed } from "./prd-model";
+import { findUnreadableCharacter } from "./yaml-text-guard";
 
 export type ExemptRule =
   | { readonly author: string }
@@ -72,7 +73,7 @@ function isFilledString(value: unknown): value is string {
 //            paths:             then "- <scalar>" items (indent 6), or [<scalar>, ...]
 //   scalar   "text without quote or backslash"  |  a bare ASCII token
 //
-// Two spaces per level, no trailing space, no tab, no trailing comment, no
+// Two spaces per level, no trailing space, no trailing comment, no
 // backslash, no single quote, no document marker. Keys are plain letter-led
 // words that cannot be quoted or escaped, so text equality is key equality.
 // ---------------------------------------------------------------------------
@@ -157,11 +158,12 @@ function keyProblem(key: string, label: string): string | undefined {
   return undefined;
 }
 
-/** Characters refused anywhere, comments and quotes included. */
+/**
+ * Constructs refused anywhere, comments and quotes included. Unreadable
+ * characters (tab, NUL, separators) are not listed: the shared guard has
+ * already refused them.
+ */
 function forbiddenInLine(line: string): string | undefined {
-  if (line.includes("\t")) {
-    return "tab character";
-  }
   if (line.includes("\\")) {
     return "backslash";
   }
@@ -376,11 +378,14 @@ const sameKeys = (parsed: readonly string[], read: ReadonlyMap<string, number>):
   parsed.length === read.size && parsed.every((key) => read.has(key));
 
 export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
-  // Bun.YAML reads a lone CR as a line break; a reviewer's editor and git diff
-  // often do not. Refusing it keeps one reading of the file.
-  if (/\r(?!\n)/.test(text)) {
+  // First, before any line is read: Bun.YAML.parse silently stops at a NUL and
+  // reads a bare CR as a line break, while the line whitelist below would read
+  // the whole text. The shared guard leaves only text both read identically
+  // (LF or CRLF line ends, no tab, no control or separator characters).
+  const unreadable = findUnreadableCharacter(text);
+  if (unreadable !== null) {
     return fail(
-      "policy has a bare CR line ending (a lone \\r not followed by \\n); use LF or CRLF",
+      `policy contains an unreadable character ${unreadable.codePoint} on line ${unreadable.line}`,
     );
   }
   const seen = readLines(text.split(/\r?\n/));

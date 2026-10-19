@@ -314,8 +314,8 @@ describe("constructs the whitelist cannot read are ok:false (naming line and con
   });
 
   test("a tab", () => {
-    expect(reason(`${HEAD}exempt: {}\nowners:\t[a]\n`)).toContain("tab");
-    expect(reason(`${VALID}# a\tcomment\n`)).toContain("tab");
+    expect(reason(`${HEAD}exempt: {}\nowners:\t[a]\n`)).toContain("U+0009 on line 3");
+    expect(reason(`${VALID}# a\tcomment\n`)).toContain("U+0009 on line 7");
   });
 
   test("a backslash and a single quote, even inside quotes or comments", () => {
@@ -349,8 +349,8 @@ describe("constructs the whitelist cannot read are ok:false (naming line and con
   test("a bare CR line ending", () => {
     expect(
       reason('approvedFrom: "décision"\rexempt: {}\rowners: [a]\rapprovedFrom: proposition\r'),
-    ).toContain("bare CR");
-    expect(reason(`${HEAD}exempt: {}\rowners: [a]\n`)).toContain("bare CR");
+    ).toContain("U+000D on line 1");
+    expect(reason(`${HEAD}exempt: {}\rowners: [a]\n`)).toContain("U+000D on line 2");
   });
 });
 
@@ -449,6 +449,58 @@ describe("rule names and keys that YAML resolves to the same key are ok:false", 
       "docs-only",
       "revert",
     ]);
+  });
+});
+
+// Characters are built from code points: a literal NUL or BOM in this source would be as
+// invisible to a reviewer as it is to the parser the shared guard protects.
+const char = (codePoint: number): string => String.fromCodePoint(codePoint);
+
+describe("unreadable characters are ok:false (shared guard, run first)", () => {
+  test("a NUL inside a full-line comment, before a second rule, names U+0000 and its line", () => {
+    // Bun.YAML.parse stops at the NUL; a line scan would read on and approve rule `b`.
+    const text = [
+      HEAD.trimEnd(),
+      "owners: [a]",
+      "exempt:",
+      "  a:",
+      "    author: x",
+      `  # comment${char(0)}`,
+      "  b:",
+      "    author: y",
+      "",
+    ].join("\n");
+    expect(reason(text)).toBe("policy contains an unreadable character U+0000 on line 6");
+  });
+
+  test("a NUL at the end of a value line", () => {
+    const why = reason(`${HEAD}exempt: {}\nowners: [a]${char(0)}\n`);
+    expect(why).toBe("policy contains an unreadable character U+0000 on line 3");
+  });
+
+  test.each([
+    ["SOH", 0x0001],
+    ["DEL", 0x007f],
+    ["the next-line control", 0x0085],
+    ["a no-break space", 0x00a0],
+    ["the line separator", 0x2028],
+    ["a byte order mark", 0xfeff],
+    ["a lone surrogate", 0xd800],
+  ])("%s inside a comment is refused with its code point", (_name, codePoint) => {
+    const hex = codePoint.toString(16).toUpperCase().padStart(4, "0");
+    expect(reason(`${VALID}# a${char(codePoint)}b\n`)).toBe(
+      `policy contains an unreadable character U+${hex} on line 7`,
+    );
+  });
+
+  test("the guard runs before every other check", () => {
+    // A NUL on line 2 wins over a duplicate key, a backslash and a bare CR on later lines.
+    const text = `${HEAD}# x${char(0)}\nowners: [a]\nowners: [b]\n# \\\r`;
+    expect(reason(text)).toBe("policy contains an unreadable character U+0000 on line 2");
+  });
+
+  test("CRLF text still loads", () => {
+    expect(loadWorkPackagePolicy(VALID.replaceAll("\n", "\r\n")).ok).toBe(true);
   });
 });
 
