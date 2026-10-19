@@ -15,7 +15,12 @@
 #   titlePrefix: the pull request title starts with this string
 #
 # `owners`: logins allowed to approve a work-package change.
-approvedFrom: décision
+#
+# The loader reads only a small subset of YAML (see the line whitelist in the
+# loader): two spaces per level, bare ASCII tokens or double-quoted strings
+# without quote or backslash, no trailing comment. A value with an accent or a
+# space, such as a maturity level, is therefore quoted.
+approvedFrom: "décision"
 exempt:
   dependabot:
     author: "dependabot[bot]"

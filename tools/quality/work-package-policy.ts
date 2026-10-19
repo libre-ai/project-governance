@@ -12,10 +12,15 @@
  * The loader fails closed. A policy that cannot be read in full yields
  * `ok: false` naming the cause, never a default or a partial policy, so that
  * a gate built on it cannot confuse "no exemption declared" with "policy
- * unreadable" (gate-integrity §2). That includes ambiguity: a YAML parser
- * resolves a repeated key (last wins), a `<<` merge or an alias silently, and
- * a reviewer reading the file would see something else than what is enforced.
- * Such input is refused, not interpreted.
+ * unreadable" (gate-integrity §2).
+ *
+ * Ambiguity is refused by a LINE WHITELIST, not by a scanner. A YAML parser
+ * resolves a repeated key (last wins), a `<<` merge, an alias, a differently
+ * spelled key (`1` / `0x1`, `null` / `~`, `"\x61"` / `a`) silently, and every
+ * attempt to detect those cases by re-reading YAML left another hole. So the
+ * text is accepted only if every line has one of the few shapes below, which
+ * cannot express any of them; the parser then runs once on text that is
+ * unambiguous by construction.
  */
 import { MATURITY_LADDER, type MaturityLevel, type Parsed } from "./prd-model";
 
@@ -41,10 +46,6 @@ const PREDICATE_KEYS = ["author", "paths", "titlePrefix"] as const;
 // Names that would reach Object.prototype machinery if used as a property key.
 const RESERVED_NAMES: readonly string[] = ["__proto__", "constructor", "prototype"];
 
-// A rule name is an identifier, so that two spellings cannot resolve to one key
-// (see plainKeyProblem) and the name is safe to print and to compare.
-const RULE_NAME = /^[a-z][a-z0-9-]*$/;
-
 // GitHub login: 1 to 39 characters of [A-Za-z0-9-], not starting or ending
 // with a hyphen. The gate compares logins case-insensitively.
 const GITHUB_LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
@@ -61,385 +62,247 @@ function isFilledString(value: unknown): value is string {
 }
 
 // ---------------------------------------------------------------------------
-// Ambiguity pre-scan
+// Line whitelist
 //
-// Bun.YAML.parse offers no hook on duplicate keys, merge keys or aliases, so
-// the text is scanned structurally before (and independently of) the parse.
-// The scanner understands only what the policy needs: block mappings and
-// sequences, flow collections on one line, and plain / quoted scalars. Any
-// construct it cannot read with certainty (block scalars, multi-line flow or
-// quoted scalars, explicit `?` keys, extra documents) is refused rather than
-// skipped, so it can never hide a duplicate from the check.
+//   root     approvedFrom: <scalar>
+//            owners:            then "- <scalar>" items, or  owners: [<scalar>, ...]
+//            exempt:            then rule blocks,           or  exempt: {}
+//   rule     <name>:            (indent 2, name = [a-z][a-z0-9-]*, plain)
+//   predicate author: <scalar> | titlePrefix: <scalar>      (indent 4)
+//            paths:             then "- <scalar>" items (indent 6), or [<scalar>, ...]
+//   scalar   "text without quote or backslash"  |  a bare ASCII token
+//
+// Two spaces per level, no trailing space, no tab, no trailing comment, no
+// backslash, no single quote, no document marker. Keys are plain letter-led
+// words that cannot be quoted or escaped, so text equality is key equality.
 // ---------------------------------------------------------------------------
 
-interface Quoted {
-  readonly end: number;
-  readonly value: string;
+const KEY_LINE = /^([^:]+):(?: (.+))?$/;
+const PLAIN_KEY = /^[A-Za-z][A-Za-z0-9-]*$/;
+const RULE_NAME = /^[a-z][a-z0-9-]*$/;
+// The words YAML resolves to a boolean or null (any case), or that older
+// parsers do; two spellings of one would collapse into one key.
+const YAML_WORDS = /^(?:null|true|false|yes|no|on|off|y|n)$/i;
+const QUOTED = /^"[^"\\]*"$/;
+// Not starting with `*`: that would be an alias.
+const BARE_TOKEN = /^[A-Za-z0-9._/-][A-Za-z0-9._/*-]*$/;
+
+/** Names the construct that makes a piece of text unreadable to the whitelist. */
+function construct(text: string): string {
+  const word = text.split(/[\s,\]}]/, 1)[0] ?? text;
+  if (text.startsWith("<<")) {
+    return 'merge key "<<"';
+  }
+  if (/(^|\s)#/.test(text)) {
+    return "trailing comment";
+  }
+  if (text.startsWith("&")) {
+    return `anchor "${word}"`;
+  }
+  if (text.startsWith("*")) {
+    return `alias "${word}"`;
+  }
+  if (text.startsWith("!")) {
+    return `tag "${word}"`;
+  }
+  if (text.startsWith("{")) {
+    return "flow mapping";
+  }
+  if (text.startsWith("[")) {
+    return "flow sequence that is not closed on its own line, or nested";
+  }
+  if (text.startsWith("|") || text.startsWith(">")) {
+    return "block scalar";
+  }
+  if (text.startsWith("?")) {
+    return "explicit key";
+  }
+  if (text.startsWith('"')) {
+    return "quoted scalar that is malformed or spans lines";
+  }
+  return `unsupported text ${JSON.stringify(text)}`;
 }
 
-function readQuoted(source: string, start: number): Quoted | undefined {
-  const quote = source[start];
-  let index = start + 1;
-  while (index < source.length) {
-    const char = source[index];
-    if (quote === '"' && char === "\\") {
-      index += 2;
-      continue;
-    }
-    if (char === quote) {
-      if (quote === "'" && source[index + 1] === "'") {
-        index += 2;
-        continue;
-      }
-      const token = source.slice(start, index + 1);
-      return { end: index + 1, value: unquote(token) };
-    }
-    index += 1;
-  }
-  return undefined;
+function scalarProblem(text: string): string | undefined {
+  return QUOTED.test(text) || BARE_TOKEN.test(text) ? undefined : construct(text);
 }
 
-function unquote(token: string): string {
-  if (token.startsWith('"')) {
-    try {
-      const decoded: unknown = JSON.parse(token);
-      if (typeof decoded === "string") {
-        return decoded;
-      }
-    } catch {
-      // Not valid JSON escapes: compare the raw text, which still catches the
-      // common case of the same spelling repeated.
-    }
-    return token.slice(1, -1);
-  }
-  return token.slice(1, -1).replaceAll("''", "'");
-}
-
-function isBreak(char: string | undefined): boolean {
-  return char === undefined || char === " " || char === "\t";
-}
-
-/** Names the node-start indicator that makes a node ambiguous, if any. */
-function indicatorProblem(source: string): string | undefined {
-  const token = (): string => source.split(/[\s,}\]]/, 1)[0] ?? "";
-  if (source.startsWith("&")) {
-    return `anchor "${token()}" is not supported (a rule must declare its own predicate)`;
-  }
-  if (source.startsWith("*")) {
-    return `alias "${token()}" is not supported (a rule must declare its own predicate)`;
-  }
-  if (source.startsWith("!")) {
-    return `tag "${token()}" is not supported`;
-  }
-  if (source.startsWith("|") || source.startsWith(">")) {
-    return "block scalars are not supported";
-  }
-  if (source.startsWith("?") && isBreak(source[1])) {
-    return "explicit keys (?) are not supported";
-  }
-  return undefined;
-}
-
-function mergeKeyProblem(name: string): string | undefined {
-  return name === "<<"
-    ? 'merge key "<<" is not supported (a rule must declare its own predicate)'
-    : undefined;
-}
-
-// YAML resolves an unquoted key by its type before it becomes a property name:
-// `1`, `0x1` and `1.0` are one integer key, `null` and `~` one null key, and
-// `true` / `True` one boolean key. Two spellings of the same key would then
-// pass the duplicate check on their text and collapse silently in the parse.
-// An unquoted key must therefore be a letter-led word that is not null/true/
-// false; anything else has to be quoted, which makes it a string verbatim.
-function plainKeyProblem(name: string): string | undefined {
-  if (/^[A-Za-z]/.test(name) && !/^(?:null|true|false)$/i.test(name)) {
-    return undefined;
-  }
-  return `key "${name}" is an unquoted key that YAML may resolve to a non-string or to the same key as another spelling (use a letter-led word, or quote it)`;
-}
-
-/** Scans a one-line flow collection; returns the index after it, or a problem. */
-function scanFlow(source: string, lineNumber: number): string | undefined {
-  let index = 0;
-  const at = (message: string): string => `line ${lineNumber}: ${message}`;
-  const skipSpaces = (): void => {
-    while (source[index] === " " || source[index] === "\t") {
-      index += 1;
-    }
-  };
-
-  const readPlain = (stopAtColon: boolean): string => {
-    const begin = index;
-    while (index < source.length) {
-      const char = source[index];
-      if (char === "," || char === "}" || char === "]") {
-        break;
-      }
-      if (
-        stopAtColon &&
-        char === ":" &&
-        (isBreak(source[index + 1]) || /[,}\]]/.test(source[index + 1] ?? ""))
-      ) {
-        break;
-      }
-      index += 1;
-    }
-    return source.slice(begin, index).trim();
-  };
-
-  const readNode = (): string | undefined => {
-    skipSpaces();
-    const char = source[index];
-    if (char === "{") {
-      return readMapping();
-    }
-    if (char === "[") {
-      return readSequence();
-    }
-    if (char === '"' || char === "'") {
-      const quoted = readQuoted(source, index);
-      if (quoted === undefined) {
-        return at("unterminated quoted scalar (multi-line scalars are not supported)");
-      }
-      index = quoted.end;
-      return undefined;
-    }
-    const indicator = indicatorProblem(source.slice(index));
-    if (indicator !== undefined) {
-      return at(indicator);
-    }
-    readPlain(false);
-    return undefined;
-  };
-
-  const readMapping = (): string | undefined => {
-    index += 1;
-    const seen = new Set<string>();
-    for (;;) {
-      skipSpaces();
-      if (index >= source.length) {
-        return at("unterminated flow mapping (multi-line flow collections are not supported)");
-      }
-      if (source[index] === "}") {
-        index += 1;
-        return undefined;
-      }
-      let name: string;
-      const char = source[index];
-      if (char === '"' || char === "'") {
-        const quoted = readQuoted(source, index);
-        if (quoted === undefined) {
-          return at("unterminated quoted scalar (multi-line scalars are not supported)");
-        }
-        index = quoted.end;
-        name = quoted.value;
-      } else {
-        const indicator = indicatorProblem(source.slice(index));
-        if (indicator !== undefined) {
-          return at(indicator);
-        }
-        name = readPlain(true);
-        // The merge key has its own, more specific refusal just below.
-        const plain = mergeKeyProblem(name) === undefined ? plainKeyProblem(name) : undefined;
-        if (plain !== undefined) {
-          return at(plain);
-        }
-      }
-      const merge = mergeKeyProblem(name);
-      if (merge !== undefined) {
-        return at(merge);
-      }
-      if (seen.has(name)) {
-        return at(`duplicate key "${name}" (line ${lineNumber} and line ${lineNumber})`);
-      }
-      seen.add(name);
-      skipSpaces();
-      if (source[index] === ":") {
-        index += 1;
-        const problem = readNode();
-        if (problem !== undefined) {
-          return problem;
-        }
-      }
-      skipSpaces();
-      if (source[index] === ",") {
-        index += 1;
-      } else if (source[index] !== "}") {
-        return at("unexpected character in flow mapping");
-      }
-    }
-  };
-
-  const readSequence = (): string | undefined => {
-    index += 1;
-    for (;;) {
-      skipSpaces();
-      if (index >= source.length) {
-        return at("unterminated flow sequence (multi-line flow collections are not supported)");
-      }
-      if (source[index] === "]") {
-        index += 1;
-        return undefined;
-      }
-      const problem = readNode();
+function valueProblem(value: string): string | undefined {
+  if (value.startsWith("[") && value.endsWith("]")) {
+    const inner = value.slice(1, -1).trim();
+    for (const item of inner === "" ? [] : inner.split(",")) {
+      const problem = scalarProblem(item.trim());
       if (problem !== undefined) {
         return problem;
       }
-      skipSpaces();
-      if (source[index] === ",") {
-        index += 1;
-      } else if (source[index] !== "]") {
-        return at("unexpected character in flow sequence");
-      }
     }
-  };
-
-  const problem = readNode();
-  if (problem !== undefined) {
-    return problem;
-  }
-  skipSpaces();
-  if (index < source.length && source[index] !== "#") {
-    return at("unexpected content after a flow collection");
-  }
-  return undefined;
-}
-
-/** Checks the text of a value or of a bare node (no key in front of it). */
-function scanNode(source: string, lineNumber: number): string | undefined {
-  const text = source.trim();
-  if (text === "" || text.startsWith("#")) {
     return undefined;
   }
-  const indicator = indicatorProblem(text);
-  if (indicator !== undefined) {
-    return `line ${lineNumber}: ${indicator}`;
+  return scalarProblem(value);
+}
+
+function keyProblem(key: string, label: string): string | undefined {
+  if (key.startsWith("<<")) {
+    return 'merge key "<<"';
   }
-  if (text.startsWith("{") || text.startsWith("[")) {
-    return scanFlow(text, lineNumber);
+  if (key.startsWith('"')) {
+    return `quoted ${label} ${key} (use a plain word)`;
   }
-  if (text.startsWith('"') || text.startsWith("'")) {
-    return readQuoted(text, 0) === undefined
-      ? `line ${lineNumber}: unterminated quoted scalar (multi-line scalars are not supported)`
-      : undefined;
+  if (!PLAIN_KEY.test(key)) {
+    return `${label} ${JSON.stringify(key)} is not a plain letter-led word`;
+  }
+  if (YAML_WORDS.test(key)) {
+    return `${label} ${JSON.stringify(key)} is a YAML word that resolves to a non-string`;
   }
   return undefined;
 }
 
-interface Frame {
-  readonly indent: number;
-  readonly keys: Map<string, number>;
+/** Characters refused anywhere, comments and quotes included. */
+function forbiddenInLine(line: string): string | undefined {
+  if (line.includes("\t")) {
+    return "tab character";
+  }
+  if (line.includes("\\")) {
+    return "backslash";
+  }
+  if (line.includes("'")) {
+    return "single quote";
+  }
+  if (/^(?:---|\.\.\.)(?:\s|$)/.test(line)) {
+    return "document marker";
+  }
+  return undefined;
 }
 
-function findAmbiguity(text: string): string | undefined {
-  // Every line break the parser honours, so line numbers stay right.
-  const lines = text.split(/\r\n|\r|\n/);
-  const frames: Frame[] = [];
-  let sawContent = false;
+interface Seen {
+  readonly rootKeys: ReadonlyMap<string, number>;
+  readonly ruleNames: ReadonlyMap<string, number>;
+}
+
+function readLines(lines: readonly string[]): Parsed<Seen> {
+  for (const [position, line] of lines.entries()) {
+    const forbidden = forbiddenInLine(line);
+    if (forbidden !== undefined) {
+      return fail(`line ${position + 1}: ${forbidden} is not allowed`);
+    }
+  }
+
+  const rootKeys = new Map<string, number>();
+  const ruleNames = new Map<string, number>();
+  let predicateKeys = new Map<string, number>();
+  let section: "owners" | "exempt" | undefined;
+  let inRule = false;
+  let inPaths = false;
 
   for (const [position, line] of lines.entries()) {
-    const lineNumber = position + 1;
-    const trimmed = line.trim();
-    if (trimmed === "" || trimmed.startsWith("#")) {
+    const number = position + 1;
+    const refuse = (why: string): { readonly ok: false; readonly reason: string } =>
+      fail(`line ${number}: ${why}`);
+    if (line === "") {
       continue;
     }
-    if (/^(---|\.\.\.)(\s|$)/.test(line)) {
-      if (!sawContent && trimmed === "---") {
-        continue;
-      }
-      return `line ${lineNumber}: document markers are not supported (a policy is a single document)`;
+    if (/\s$/.test(line)) {
+      return refuse("trailing space");
     }
-    sawContent = true;
-
-    let column = line.length - line.trimStart().length;
-    let rest = line.slice(column);
-    while (rest === "-" || rest.startsWith("- ") || rest.startsWith("-\t")) {
-      // A new sequence entry closes every mapping opened inside the previous one.
-      while (frames.length > 0 && (frames.at(-1)?.indent ?? 0) > column) {
-        frames.pop();
-      }
-      const after = rest.slice(1);
-      column += 1 + (after.length - after.trimStart().length);
-      rest = after.trimStart();
-    }
-    if (rest === "" || rest.startsWith("#")) {
+    const spaces = (/^ */.exec(line) as RegExpExecArray)[0].length;
+    const content = line.slice(spaces);
+    if (content.startsWith("#")) {
       continue;
     }
-
-    const indicator = indicatorProblem(rest);
-    if (indicator !== undefined) {
-      return `line ${lineNumber}: ${indicator}`;
+    if (spaces % 2 !== 0) {
+      return refuse("indentation must be a multiple of 2 spaces");
     }
-    if (rest.startsWith("{") || rest.startsWith("[")) {
-      const problem = scanFlow(rest, lineNumber);
+    const level = spaces / 2;
+
+    if (content.startsWith("- ")) {
+      const owned = level === 1 && section === "owners";
+      if (!owned && !(level === 3 && inPaths)) {
+        return refuse(
+          level === 0
+            ? "policy root must be a block mapping, not a list"
+            : "unexpected indentation or list item here",
+        );
+      }
+      const problem = scalarProblem(content.slice(2));
       if (problem !== undefined) {
-        return problem;
+        return refuse(problem);
       }
       continue;
     }
 
-    let name: string | undefined;
-    let valueText = "";
-    if (rest.startsWith('"') || rest.startsWith("'")) {
-      const quoted = readQuoted(rest, 0);
-      if (quoted === undefined) {
-        return `line ${lineNumber}: unterminated quoted scalar (multi-line scalars are not supported)`;
+    const match = KEY_LINE.exec(content);
+    if (match === null) {
+      return refuse(
+        level === 0
+          ? `policy root must be a block mapping of plain keys (${construct(content)})`
+          : `${construct(content)} where a key line is expected`,
+      );
+    }
+    const key = match[1] as string;
+    const value = match[2];
+
+    if (level === 0) {
+      const problem = keyProblem(key, "key");
+      if (problem !== undefined) {
+        return refuse(`policy root: ${problem}`);
       }
-      const after = rest.slice(quoted.end).trimStart();
-      if (after.startsWith(":") && isBreak(after[1])) {
-        name = quoted.value;
-        valueText = after.slice(1);
+      const first = rootKeys.get(key);
+      if (first !== undefined) {
+        return fail(`duplicate key "${key}" (line ${first} and line ${number})`);
+      }
+      rootKeys.set(key, number);
+      section = value === undefined && (key === "owners" || key === "exempt") ? key : undefined;
+      inRule = false;
+      inPaths = false;
+      const valueIssue =
+        value === undefined || (key === "exempt" && value === "{}")
+          ? undefined
+          : valueProblem(value);
+      if (valueIssue !== undefined) {
+        return refuse(`${valueIssue} in the value of "${key}"`);
+      }
+    } else if (level === 1 && section === "exempt") {
+      const problem =
+        keyProblem(key, "exempt rule name") ??
+        (RULE_NAME.test(key)
+          ? undefined
+          : `exempt rule name "${key}" must be lowercase letters, digits and hyphens`);
+      if (problem !== undefined) {
+        return refuse(problem);
+      }
+      const first = ruleNames.get(key);
+      if (first !== undefined) {
+        return fail(`duplicate key "${key}" (line ${first} and line ${number})`);
+      }
+      ruleNames.set(key, number);
+      if (value !== undefined) {
+        return refuse(
+          `${valueProblem(value) ?? "scalar value"} after rule name "${key}" (a rule is a block of predicates)`,
+        );
+      }
+      inRule = true;
+      inPaths = false;
+      predicateKeys = new Map();
+    } else if (level === 2 && inRule) {
+      const problem = keyProblem(key, "key");
+      if (problem !== undefined) {
+        return refuse(problem);
+      }
+      const first = predicateKeys.get(key);
+      if (first !== undefined) {
+        return fail(`duplicate key "${key}" (line ${first} and line ${number})`);
+      }
+      predicateKeys.set(key, number);
+      inPaths = key === "paths" && value === undefined;
+      const valueIssue = value === undefined ? undefined : valueProblem(value);
+      if (valueIssue !== undefined) {
+        return refuse(`${valueIssue} in the value of "${key}"`);
       }
     } else {
-      for (let index = 0; index < rest.length; index += 1) {
-        if (rest[index] === "#" && index > 0 && isBreak(rest[index - 1])) {
-          break;
-        }
-        if (rest[index] === ":" && isBreak(rest[index + 1])) {
-          name = rest.slice(0, index).trimEnd();
-          valueText = rest.slice(index + 1);
-          const plain = mergeKeyProblem(name) === undefined ? plainKeyProblem(name) : undefined;
-          if (plain !== undefined) {
-            return `line ${lineNumber}: ${plain}`;
-          }
-          break;
-        }
-      }
-    }
-
-    if (name === undefined) {
-      const problem = scanNode(rest, lineNumber);
-      if (problem !== undefined) {
-        return problem;
-      }
-      continue;
-    }
-
-    const merge = mergeKeyProblem(name);
-    if (merge !== undefined) {
-      return `line ${lineNumber}: ${merge}`;
-    }
-    while (frames.length > 0 && (frames.at(-1)?.indent ?? 0) > column) {
-      frames.pop();
-    }
-    let frame = frames.at(-1);
-    if (frame === undefined || frame.indent < column) {
-      frame = { indent: column, keys: new Map() };
-      frames.push(frame);
-    }
-    const first = frame.keys.get(name);
-    if (first !== undefined) {
-      return `duplicate key "${name}" (line ${first} and line ${lineNumber})`;
-    }
-    frame.keys.set(name, lineNumber);
-
-    const problem = scanNode(valueText, lineNumber);
-    if (problem !== undefined) {
-      return problem;
+      return refuse("unexpected indentation or list item here");
     }
   }
-  return undefined;
+  return { ok: true, value: { rootKeys, ruleNames } };
 }
 
 // ---------------------------------------------------------------------------
@@ -509,35 +372,42 @@ function parseRule(name: string, raw: unknown): Parsed<ExemptRule> {
   return { ok: true, value: { paths: [...globs] } };
 }
 
+const sameKeys = (parsed: readonly string[], read: ReadonlyMap<string, number>): boolean =>
+  parsed.length === read.size && parsed.every((key) => read.has(key));
+
 export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
   // Bun.YAML reads a lone CR as a line break; a reviewer's editor and git diff
-  // often do not. Refusing it keeps one reading of the file. (Checked before
-  // the parse so no later step sees a text read two ways.)
+  // often do not. Refusing it keeps one reading of the file.
   if (/\r(?!\n)/.test(text)) {
     return fail(
       "policy has a bare CR line ending (a lone \\r not followed by \\n); use LF or CRLF",
     );
   }
+  const seen = readLines(text.split(/\r?\n/));
+  if (!seen.ok) {
+    return fail(`policy is outside the supported YAML subset: ${seen.reason}`);
+  }
+
   let root: unknown;
   try {
     root = Bun.YAML.parse(text);
   } catch (error) {
-    // The parser reports e.g. "Unresolved alias" without naming the construct
-    // the author wrote: add the scanner's finding when it has one.
-    const construct = findAmbiguity(text);
     return fail(
-      `policy is not valid YAML: ${error instanceof Error ? error.message : String(error)}${
-        construct === undefined ? "" : ` (${construct})`
-      }`,
+      `policy is not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }
-  const ambiguity = findAmbiguity(text);
-  if (ambiguity !== undefined) {
-    return fail(`policy YAML is ambiguous: ${ambiguity}`);
   }
   if (!isRecord(root)) {
     return fail("policy root must be an object");
   }
+  // Belt and braces: the parser must have found exactly the keys the whitelist
+  // read. A difference means a key resolved to something else than its text.
+  if (!sameKeys(Object.keys(root), seen.value.rootKeys)) {
+    return fail("policy keys differ between the lines read and the parsed value");
+  }
+  if (isRecord(root.exempt) && !sameKeys(Object.keys(root.exempt), seen.value.ruleNames)) {
+    return fail("exempt rule names differ between the lines read and the parsed value");
+  }
+
   const unknownRoot = Object.keys(root).filter(
     (key) => !(ROOT_KEYS as readonly string[]).includes(key),
   );
@@ -571,16 +441,8 @@ export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
   // No prototype: a rule name can then never collide with an inherited member.
   const exempt = Object.create(null) as Record<string, ExemptRule>;
   for (const [name, raw] of Object.entries(root.exempt)) {
-    if (!isFilledString(name)) {
-      return fail("exempt rule names must be non-blank");
-    }
     if (RESERVED_NAMES.includes(name)) {
       return fail(`exempt rule name "${name}" is reserved`);
-    }
-    if (!RULE_NAME.test(name)) {
-      return fail(
-        `exempt rule name ${JSON.stringify(name)} must match ${RULE_NAME.source} (lowercase letters, digits and hyphens, letter first)`,
-      );
     }
     const rule = parseRule(name, raw);
     if (!rule.ok) {
