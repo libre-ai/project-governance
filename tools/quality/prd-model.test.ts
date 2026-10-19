@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 import {
   atLeast,
   MATURITY_LADDER,
@@ -257,5 +258,75 @@ describe("atLeast", () => {
       "industrialisation",
       "standardisation",
     ]);
+  });
+});
+
+// The norm is read by people and by the gate; its examples are the only place
+// where the two could drift apart. These tests feed the examples of the norm
+// to the parsers, so that a sentence of the norm cannot contradict them.
+const NORM_PATH: string = join(import.meta.dir, "../../docs/specifications/WORK-PACKAGES.md");
+
+async function readNorm(): Promise<string> {
+  return Bun.file(NORM_PATH).text();
+}
+
+// The text INSIDE the one fenced block `markdown <label>`: the parsers ignore
+// fenced blocks, so an example must be handed to them without its fence.
+function exampleOf(norm: string, label: string): string {
+  const pattern = new RegExp(`^\`\`\`markdown ${label}\\n([\\s\\S]*?)\\n\`\`\`$`, "gm");
+  const blocks: RegExpMatchArray[] = [...norm.matchAll(pattern)];
+  if (blocks.length !== 1) {
+    throw new Error(`expected exactly one "${label}" block in the norm, found ${blocks.length}`);
+  }
+  return blocks[0]?.[1] ?? "";
+}
+
+describe("the work-package norm", () => {
+  test("the norm's example parses", async () => {
+    const norm: string = await readNorm();
+    const criteria = parseCriteria(exampleOf(norm, "criteria-example"));
+    expect(criteria.ok).toBe(true);
+    if (!criteria.ok) return;
+    expect(criteria.value.map((criterion) => criterion.id)).toEqual(["CA-3", "CA-15", "CA-16"]);
+    expect(criteria.value.every((criterion) => criterion.hasValidation)).toBe(true);
+
+    const packages = parseWorkPackages(exampleOf(norm, "work-package-table-example"));
+    expect(packages.ok).toBe(true);
+    if (!packages.ok) return;
+    expect(packages.value).toHaveLength(2);
+    expect(packages.value[0]).toEqual({
+      id: "WP-1",
+      criteria: ["CA-3", "CA-15"],
+      scope: ["crates/work-supervision-daemon/**"],
+      verify: "cargo test -p work-supervision-daemon --locked",
+      door: "two-way",
+    });
+    expect(packages.value[1]?.door).toBe("one-way");
+
+    // Every criterion a work package cites is declared by the criteria example.
+    const declared = new Set(criteria.value.map((criterion) => criterion.id));
+    for (const workPackage of packages.value) {
+      for (const cited of workPackage.criteria) expect(declared.has(cited)).toBe(true);
+    }
+  });
+
+  test("the norm covers the seven required subjects under stable headings", async () => {
+    const text: string = await readNorm();
+    const lines: string[] = text.split("\n");
+    const headings: string[] = [
+      "## Location of the documents",
+      "## Criteria grammar",
+      "## Work-package table",
+      "## Document maturity",
+      "## Pull-request line",
+      "## Issue body",
+      "## Limit of the control",
+    ];
+    for (const heading of headings) {
+      expect(lines).toContain(heading);
+    }
+    // The ladder in the prose is the one the parser enforces, in the same order.
+    const expectedLadder = `Ladder: ${MATURITY_LADDER.map((level) => `\`${level}\``).join(", ")}.`;
+    expect(lines.filter((line) => line.startsWith("Ladder: "))).toEqual([expectedLadder]);
   });
 });
