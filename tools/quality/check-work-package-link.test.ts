@@ -849,14 +849,35 @@ describe("evaluateWorkPackageLink", () => {
     expect(report.outcome).toBe("pass");
   });
 
-  test("the other classes read the diff as before and do not validate its paths", async () => {
+  // Every class validates the paths of the diff: the guarded-path refusal
+  // below needs paths it can trust, whatever the predicate reads.
+  test.each([
+    ["revert", { title: 'Revert "x"' }],
+    ["dependabot", { author: "dependabot[bot]" }],
+  ] as const)("the %s class refuses an unreadable path before its predicate", async (cls: string, facts: Partial<PrFacts>) => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", cls))), {
+      ok: true,
+      value: ["src/a.ts", "../x"],
+    });
+    const report = await evaluateWorkPackageLink(pr(facts), policy, spy.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: ${cls}: 1 of 2 changed file path(s) unreadable: "../x" (it has a ".." segment)`,
+    ]);
+    expect(report.checks).toHaveLength(1);
+    expect(spy.diffCalls).toHaveLength(1);
+    expect(report.volumeSummary).toContain(
+      "; exemption decision: 1 of 2 changed file path(s) unreadable",
+    );
+  });
+
+  test("a holding exemption says so in the volume", async () => {
     const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "revert"))), {
       ok: true,
-      value: ["../x"],
+      value: ["src/a.ts"],
     });
     const report = await evaluateWorkPackageLink(pr({ title: 'Revert "x"' }), policy, spy.ports);
     expect(report.outcome).toBe("pass");
-    expect(spy.diffCalls).toHaveLength(1);
+    expect(report.volumeSummary).toContain("; exemption decision: predicate held");
   });
 
   test("a prototype-named class cannot reach an inherited rule", async () => {
@@ -2417,6 +2438,29 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
     ]);
   });
 
+  test("an owner listed in another ASCII case accepts the lower-case actor", async () => {
+    const mixedCase: WorkPackagePolicy = { ...policy, owners: ["Constantin-Jais"] };
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: "constantin-jais" } }),
+      mixedCase,
+    );
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+  });
+
+  test.each([
+    ["null", null, "null"],
+    ["a string", "ready", '"ready"'],
+    ["an object", { name: "ready" }, '{"name":"ready"}'],
+  ])("labels that are %s from a careless port are an inconsistent issue read", async (_name: string, value: unknown, rendered: string) => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, labels: value as unknown as readonly string[] } }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the labels are ${rendered}, not a list of names`,
+    ]);
+  });
+
   test.each([
     ["a number", 42, "42"],
     ["an object", { login: "constantin-jais" }, '{"login":"constantin-jais"}'],
@@ -2483,6 +2527,97 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
     const report = await evaluateWorkPackageLink(pr(), policy, ports);
     expect(reads).toBe(1);
     expect(report.volumeSummary).toContain(`; ready: explicit required (${GUARDED_REASON}), held`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// An exemption never covers a guarded path (I-17, norm "Readiness"): a pull
+// request that touches a guarded surface declares a work package and obtains
+// the owner `ready`. The implicit exemption by author reads no diff.
+// ---------------------------------------------------------------------------
+
+describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path", () => {
+  const CLASSES: ReadonlyArray<readonly [string, Partial<PrFacts>]> = [
+    ["docs-only", {}],
+    ["revert", { title: 'Revert "x"' }],
+    ["dependabot", { author: "dependabot[bot]" }],
+  ];
+  const GUARDED_PATHS: readonly string[] = [
+    "docs/adr/0001-x.md",
+    "docs/decisions/INVARIANTS.md",
+    "ecosystem/FORGOTTEN.yaml",
+  ];
+  const refusal = (named: string): string =>
+    `an exemption cannot cover a guarded path (${named}): declare a Work-package and obtain the owner ready`;
+
+  async function judgeExempt(
+    cls: string,
+    facts: Partial<PrFacts>,
+    changed: readonly string[],
+  ): Promise<{ readonly report: GateReport; readonly diffCalls: number }> {
+    const spy: Spy = spyOn(withCommits(commit("c1", trailer("Exempt", cls))), {
+      ok: true,
+      value: changed,
+    });
+    const report: GateReport = await evaluateWorkPackageLink(pr(facts), policy, spy.ports);
+    return { report, diffCalls: spy.diffCalls.length };
+  }
+
+  for (const [cls, facts] of CLASSES) {
+    test.each([...GUARDED_PATHS])(`Exempt: ${cls} touching %s is refused`, async (path: string) => {
+      const { report, diffCalls } = await judgeExempt(cls, facts, ["README.md", path]);
+      expect(report.violations).toEqual([`PR #7 — Exempt: ${cls}: ${refusal(`"${path}"`)}`]);
+      expect(report.checks).toHaveLength(1);
+      expect(diffCalls).toBe(1);
+      expect(report.volumeSummary).toContain(
+        "; exemption decision: refused, an exemption cannot cover a guarded path: 1 guarded path(s) touched",
+      );
+    });
+
+    test(`Exempt: ${cls} on a diff without guarded path is judged by its predicate`, async () => {
+      // `docs-only` holds on a Markdown file; `revert` and `dependabot` hold on any file.
+      const { report } = await judgeExempt(cls, facts, ["README.md", "docs/guide.md"]);
+      expect(report.violations).toEqual([]);
+      expect(report.outcome).toBe("pass");
+      expect(report.volumeSummary).toContain("; exemption decision: predicate held");
+    });
+  }
+
+  test("a rename out of docs/adr/ is two paths, and its source is guarded", async () => {
+    const { report } = await judgeExempt("revert", { title: 'Revert "x"' }, [
+      "docs/adr/0001-x.md",
+      "docs/archive/0001-x.md",
+    ]);
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: revert: ${refusal('"docs/adr/0001-x.md"')}`,
+    ]);
+  });
+
+  test("more than twenty guarded paths: twenty are named and the rest counted", async () => {
+    const changed: string[] = Array.from(
+      { length: 22 },
+      (_, i: number): string => `docs/adr/${String(i).padStart(4, "0")}-x.md`,
+    );
+    const { report } = await judgeExempt("docs-only", {}, changed);
+    const named: string = changed
+      .slice(0, 20)
+      .map((path: string): string => `"${path}"`)
+      .join(", ");
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: docs-only: ${refusal(`${named}, and 2 more`)}`,
+    ]);
+    expect(report.volumeSummary).toContain("22 guarded path(s) touched");
+  });
+
+  test("the implicit exemption by author reads no diff, so no guarded path is checked", async () => {
+    const spy: Spy = spyOn(withCommits(commit("c1")), { ok: true, value: ["docs/adr/0001-x.md"] });
+    const report: GateReport = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      policy,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("pass");
+    expect(spy.diffCalls).toEqual([]);
   });
 });
 

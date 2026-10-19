@@ -606,6 +606,23 @@ function implicitClassOf(policy: WorkPackagePolicy, author: string | null): stri
   return null;
 }
 
+/** What the judgement of a declared exemption examined and decided, for the volume. */
+interface ExemptionVolume {
+  readonly filesExamined: number;
+  readonly decision: string;
+}
+
+/**
+ * Judge a declared exemption against the diff.
+ *
+ * Why in this order: every path is validated first, for EVERY class (the port
+ * is not trusted, and `docs/adr/../x` must not hide a guarded path from the
+ * next step, nor `docs/../src/x.ts` match `docs/**`). Then an exemption never
+ * covers a guarded path of I-17 (norm, "Readiness"): the title of a revert and
+ * the paths of a documentation change are in the author's hands, and a
+ * guarded surface needs the owner `ready` of a work package. Only then is the
+ * predicate of the class consulted.
+ */
 async function evaluateExemption(
   report: GateReport,
   label: string,
@@ -613,33 +630,42 @@ async function evaluateExemption(
   pr: PrFacts,
   policy: WorkPackagePolicy,
   ports: LinkPorts,
-): Promise<number> {
+): Promise<ExemptionVolume> {
+  const item: string = `${label} — Exempt: ${cls}`;
   const changed: Fact<readonly string[]> = await ports.changedFiles(pr.baseSha, pr.headSha);
   if (!changed.ok) {
-    report.check(
-      `${label} — Exempt: ${cls}`,
-      false,
-      `changed files unreadable (${changed.reason})`,
-    );
-    return 0;
+    report.check(item, false, `changed files unreadable (${changed.reason})`);
+    return { filesExamined: 0, decision: "changed files unreadable" };
   }
-  // Only a class whose predicate reads paths needs them to be paths: the port
-  // is not trusted, and `docs/../src/x.ts` would match `docs/**`. The author
-  // and title classes never look at the diff and are judged as before.
-  const rule: ExemptRule | undefined = ruleOf(policy, cls);
-  const refusal = rule !== undefined && "paths" in rule ? unreadablePaths(changed.value) : null;
+  const paths: readonly string[] = changed.value;
+  const refusal = unreadablePaths(paths);
   if (refusal !== null) {
-    report.check(`${label} — Exempt: ${cls}`, false, refusal.note);
-    return changed.value.length;
+    report.check(item, false, refusal.note);
+    return { filesExamined: paths.length, decision: refusal.summary };
+  }
+  const guarded: readonly string[] = touchesGatedPaths(paths);
+  if (guarded.length > 0) {
+    report.check(
+      item,
+      false,
+      `an exemption cannot cover a guarded path (${boundedList(guarded.map(asciiQuoted))}): declare a Work-package and obtain the owner ready`,
+    );
+    return {
+      filesExamined: paths.length,
+      decision: `refused, an exemption cannot cover a guarded path: ${guarded.length} guarded path(s) touched`,
+    };
   }
   const verdict: { readonly ok: boolean; readonly note: string } = exemptionHolds(
     cls,
-    rule,
+    ruleOf(policy, cls),
     pr,
-    changed.value,
+    paths,
   );
-  report.check(`${label} — Exempt: ${cls}`, verdict.ok, verdict.note);
-  return changed.value.length;
+  report.check(item, verdict.ok, verdict.note);
+  return {
+    filesExamined: paths.length,
+    decision: verdict.ok ? "predicate held" : "predicate false",
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1060,8 +1086,14 @@ function shown(value: unknown): string {
  */
 function readyRefusals(issue: IssueRead, owners: readonly string[], reason: string): string[] {
   const refusals: string[] = [];
-  // The port is not trusted: a non-string label is no label.
-  const labelled: boolean = issue.labels.some(
+  // The port is not trusted: labels that are not a list leave nothing the
+  // other controls could be judged against, so the read itself is refused.
+  const labels: unknown = issue.labels;
+  if (!Array.isArray(labels)) {
+    return [`inconsistent issue read: the labels are ${shown(labels)}, not a list of names`];
+  }
+  // A non-string label is no label.
+  const labelled: boolean = labels.some(
     (name: unknown): boolean => typeof name === "string" && sameAsciiFolded(name, READY_LABEL),
   );
   const actor: unknown = issue.readyLabeledBy;
@@ -1227,6 +1259,8 @@ async function resolveLink(
 interface Outcome {
   readonly read: string;
   readonly filesExamined: number;
+  /** What a declared exemption decided, or null on any other path. */
+  readonly exemption: string | null;
   /** The volume of the resolution of a link, or null on any other path. */
   readonly resolution: string | null;
 }
@@ -1238,7 +1272,12 @@ function passImplicitly(report: GateReport, label: string, cls: string, pr: PrFa
     true,
     `exempt (implicit: ${cls}): no declaration trailer, and the author ${JSON.stringify(pr.author)} is the author of class ${JSON.stringify(cls)}`,
   );
-  return { read: `exempt (implicit: ${cls})`, filesExamined: 0, resolution: null };
+  return {
+    read: `exempt (implicit: ${cls})`,
+    filesExamined: 0,
+    exemption: null,
+    resolution: null,
+  };
 }
 
 /** Judge the declaration of a range that carries at least one declaration trailer, or none and no implicit exemption. */
@@ -1252,10 +1291,10 @@ async function judgeDeclaration(
 ): Promise<Outcome> {
   if (declaration.kind === "invalid") {
     report.check(`${label} — declaration`, false, declaration.reason);
-    return { read: "none (invalid)", filesExamined: 0, resolution: null };
+    return { read: "none (invalid)", filesExamined: 0, exemption: null, resolution: null };
   }
   if (declaration.kind === "exempt") {
-    const filesExamined: number = await evaluateExemption(
+    const judged: ExemptionVolume = await evaluateExemption(
       report,
       label,
       declaration.cls,
@@ -1263,12 +1302,17 @@ async function judgeDeclaration(
       policy,
       ports,
     );
-    return { read: `Exempt: ${declaration.cls}`, filesExamined, resolution: null };
+    return {
+      read: `Exempt: ${declaration.cls}`,
+      filesExamined: judged.filesExamined,
+      exemption: judged.decision,
+      resolution: null,
+    };
   }
   const read: string = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
   report.check(`${label} — declaration`, true, read);
   const resolution: string = await resolveLink(report, label, pr, declaration, policy, ports);
-  return { read, filesExamined: 0, resolution };
+  return { read, filesExamined: 0, exemption: null, resolution };
 }
 
 /**
@@ -1319,6 +1363,7 @@ export async function evaluateWorkPackageLink(
       `${pairs.distinct.length} distinct; declaration read: ${outcome.read}; ` +
       `implicit exemption: ${implicit === null ? "no" : `yes (${implicit})`}; ` +
       `${outcome.filesExamined} file(s) examined for an exemption` +
+      (outcome.exemption === null ? "" : `; exemption decision: ${outcome.exemption}`) +
       (outcome.resolution === null ? "" : `; resolution: ${outcome.resolution}`),
   );
 }
