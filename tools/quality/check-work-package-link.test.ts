@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import {
   type CommitDeclarations,
+  changedPathProblem,
   type Declaration,
   evaluateWorkPackageLink,
   exemptionHolds,
@@ -9,9 +10,11 @@ import {
   type IssueFields,
   type IssueRead,
   type LinkPorts,
+  matchesScope,
   type PrFacts,
   readDeclaration,
   readIssueFields,
+  scopeEntryProblem,
   type Trailer,
 } from "./check-work-package-link";
 import type { Parsed } from "./prd-model";
@@ -470,7 +473,8 @@ function linkWorld(overrides: Partial<World> = {}): LinkWorld {
     ancestor: { ok: true, value: true },
     prd: { ok: true, value: prdText() },
     cahier: { ok: true, value: CAHIER },
-    changed: { ok: false, reason: "changedFiles must not be asked on the link path" },
+    // Inside the scope `src/**` of WP-3 in `prdText()`.
+    changed: { ok: true, value: ["src/a.ts"] },
     ...overrides,
   };
   const calls: string[] = [];
@@ -506,21 +510,25 @@ const CALL_ISSUE = `readIssue ${PRD_REPO}#12`;
 const CALL_ANCESTOR = `isAncestorOfServedHead ${PRD_REPO}@${PRD_SHA}`;
 const CALL_PRD = `readFileAt ${PRD_REPO}@${PRD_SHA}:docs/prd.md`;
 const CALL_CAHIER = `readFileAt ${PRD_REPO}@${PRD_SHA}:docs/cahier-des-charges.md`;
+const CALL_CHANGED = "changedFiles";
 // Mutable only because `toEqual` does not accept a readonly array.
-const FULL_RESOLUTION_CALLS: string[] = [
+const RESOLUTION_CALLS: string[] = [
   CALL_TRAILERS,
   CALL_ISSUE,
   CALL_ANCESTOR,
   CALL_PRD,
   CALL_CAHIER,
 ];
+// A fully valid chain reads the diff last, once, after every check of the chain.
+const FULL_RESOLUTION_CALLS: string[] = [...RESOLUTION_CALLS, CALL_CHANGED];
 
 const GREEN_RESOLUTION: string =
   `; resolution: issue ${PRD_REPO}#12 read; PRD ${PRD_REF}; maturity décision; ` +
-  "work packages parsed: 2; criteria parsed: 3; criteria cited: 2";
+  "work packages parsed: 2; criteria parsed: 3; criteria cited: 2; " +
+  "scope entries: 1; files examined: 1; scope decision: all 1 changed file(s) inside the scope";
 
 describe("evaluateWorkPackageLink", () => {
-  test("a well-formed link passes, prints its volume and reads no diff", async () => {
+  test("a well-formed link passes, prints its volume and reads the diff once, last", async () => {
     const world: LinkWorld = linkWorld({
       commits: withCommits(
         commit("c1", trailer("Work-package", WP)),
@@ -531,7 +539,8 @@ describe("evaluateWorkPackageLink", () => {
     const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
     expect(report.outcome).toBe("pass");
     expect(report.violations).toEqual([]);
-    // The link path reads no diff: asking for one would be a wasted, failable read.
+    // The diff is read only once the whole chain has held: before that, asking
+    // for it would be a wasted, failable read.
     expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
     expect(report.volumeSummary).toBe(
       `3 commit(s) examined; 2 declaration trailer pair(s) seen, 1 distinct; declaration read: Work-package: ${WP}; implicit exemption: no; 0 file(s) examined for an exemption${GREEN_RESOLUTION}`,
@@ -1193,7 +1202,7 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     expect((await judge(world)).violations).toEqual([
       `${PRD_ITEM}: docs/cahier-des-charges.md unreadable (path not in tree)`,
     ]);
-    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
   });
 
   test("a PRD at maturity proposition is not approved", async () => {
@@ -1419,6 +1428,7 @@ describe("evaluateWorkPackageLink — owner of the work package and of the PRD",
       `isAncestorOfServedHead LIBRE-AI/x@${PRD_SHA}`,
       `readFileAt LIBRE-AI/x@${PRD_SHA}:docs/prd.md`,
       `readFileAt LIBRE-AI/x@${PRD_SHA}:docs/cahier-des-charges.md`,
+      CALL_CHANGED,
     ]);
   });
 
@@ -1540,5 +1550,434 @@ describe("evaluateWorkPackageLink — owner of the work package and of the PRD",
     });
     const report = await evaluateWorkPackageLink(pr({ repo: "Kilo/x" }), policy, world.ports);
     expect(report.outcome).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Containment of the diff in the scope of the work package (norm, "Work-package
+// table"): every changed file must be inside at least one entry of the
+// `Périmètre` cell of the PRD at the cited commit.
+//
+// The expectations of this table were MEASURED on Bun 1.4.0 (`Bun.Glob#match`),
+// not assumed; the gate relies on them and this table is what notices a Bun
+// that changes them. A rename is two paths (the port contract is
+// `--no-renames`), so the matcher only ever sees one path at a time.
+// ---------------------------------------------------------------------------
+
+describe("matchesScope", () => {
+  test.each([
+    // `**` crosses `/`, matches dotfiles and a file directly under the prefix.
+    ["src/**", "src/a/b.ts", true],
+    ["src/**", "src/x", true],
+    ["src/**", "src/.hidden", true],
+    ["src/**", "src/a/.h/b", true],
+    // The directory itself is not a file under it; git never prints a directory.
+    ["src/**", "src", false],
+    ["docs/**", "docs", false],
+    ["src/**", "xsrc/a.ts", false],
+    ["**", "a/b/c", true],
+    ["**/*.md", ".md", true],
+    ["**/*.md", "README.md", true],
+    ["**/*.md", "docs/a.md", true],
+    ["**/*.md", "docs/.hidden.md", true],
+    ["**/*.md", ".hidden/a.md", true],
+    ["**/*.md", "docs/a.txt", false],
+    // `*` does not cross `/`, and matches a dotfile.
+    ["*", "a", true],
+    ["*", ".a", true],
+    ["*", "a/b", false],
+    ["src/*", "src/a", true],
+    ["src/*", "src/a/b", false],
+    ["src/*.ts", "src/a/b.ts", false],
+    // Alternation, including in the middle of a path and with `**` after it.
+    ["{a,b}", "a", true],
+    ["{a,b}", "b", true],
+    ["{a,b}", "c", false],
+    ["src/{a,b}/**", "src/a/x.ts", true],
+    ["src/{a,b}/**", "src/c/x.ts", false],
+    ["*.{ts,md}", "a.md", true],
+    ["*.{ts,md}", "a/b.md", false],
+    // Literal paths are exact, and case matters.
+    ["src/a.ts", "src/a.ts", true],
+    ["src/a.ts", "src/a.tsx", false],
+    ["src/a.ts", "SRC/a.ts", false],
+    ["src/**", "SRC/a.ts", false],
+    ["a=b", "a=b", true],
+    ["a@b", "a@b", true],
+  ])("%s against %s is %p", (pattern: string, path: string, expected: boolean) => {
+    expect(matchesScope(pattern, path)).toBe(expected);
+  });
+});
+
+describe("scopeEntryProblem", () => {
+  test.each([
+    "src/**",
+    "docs/a.md",
+    "**/*.md",
+    "src/{a,b}/**",
+    "a=b",
+    "a@b+c",
+    ".github/**",
+    "*",
+    "a,b",
+  ])("%s is a supported entry", (entry: string) => {
+    expect(scopeEntryProblem(entry)).toBeNull();
+  });
+
+  const CHARSET = "[A-Za-z0-9._/@+=,{}*-]";
+  test.each([
+    ["", "the entry is empty"],
+    ["!src/**", `the character "!" is outside ${CHARSET}`],
+    ["src/[ab]", `the character "[" is outside ${CHARSET}`],
+    ["src/a?", `the character "?" is outside ${CHARSET}`],
+    ["src/a b", `the character " " is outside ${CHARSET}`],
+    ["src/é", `the character "\\u{e9}" is outside ${CHARSET}`],
+    ["/abs", 'it starts with "/"'],
+    ["/", 'it starts with "/"'],
+    ["../x", 'it has a ".." segment'],
+    ["a/../x", 'it has a ".." segment'],
+    ["a/..", 'it has a ".." segment'],
+    // A `..` hidden inside an alternation is still a `..` segment of one branch.
+    ["src/{..,a}/x", 'it has a ".." segment'],
+    ["{../x,a}", 'it has a ".." segment'],
+    ["src/{a,b", "its braces are unbalanced"],
+    ["src/a,b}", "its braces are unbalanced"],
+    ["}{", "its braces are unbalanced"],
+  ])("%p is refused: %s", (entry: string, cause: string) => {
+    expect(scopeEntryProblem(entry)).toBe(cause);
+  });
+});
+
+describe("changedPathProblem", () => {
+  test.each([
+    "src/a.ts",
+    ".github/workflows/x.yml",
+    "docs/.hidden",
+    "a b.md",
+    "docs/été.md",
+    "a..b/c",
+    "...",
+  ])("%s is a repository-relative path", (path: string) => {
+    expect(changedPathProblem(path)).toBeNull();
+  });
+
+  test.each([
+    ["", "it is empty"],
+    ["/etc/x", "it is absolute"],
+    ["./x", 'it starts with "./"'],
+    ["../x", 'it has a ".." segment'],
+    ["src/../../etc/passwd", 'it has a ".." segment'],
+    ["a/..", 'it has a ".." segment'],
+    ["a/./b", 'it has a "." segment'],
+    ["a//b", "it has an empty segment"],
+    ["a/", "it has an empty segment"],
+    [`a${NUL}b`, "it contains the unreadable character U+0000"],
+    [`a${LF}b`, "it contains the unreadable character U+000A"],
+    [`a${CR}${LF}b`, "it contains the unreadable character U+000A"],
+    [`a${CR}b`, "it contains the unreadable character U+000D"],
+    [`a${String.fromCodePoint(0x09)}b`, "it contains the unreadable character U+0009"],
+    [`a${String.fromCodePoint(0x7f)}b`, "it contains the unreadable character U+007F"],
+    [`a${NEXT_LINE}b`, "it contains the unreadable character U+0085"],
+    [`a${NO_BREAK_SPACE}b`, "it contains the unreadable character U+00A0"],
+    [`a${LINE_SEPARATOR}b`, "it contains the unreadable character U+2028"],
+    [`a${PARAGRAPH_SEPARATOR}b`, "it contains the unreadable character U+2029"],
+    [`a${BYTE_ORDER_MARK}b`, "it contains the unreadable character U+FEFF"],
+    // Allowed by the YAML guard, invisible all the same: the path guard adds them.
+    [`a${ZERO_WIDTH_SPACE}b`, "it contains the unreadable character U+200B"],
+    [`a${String.fromCodePoint(0x202e)}b`, "it contains the unreadable character U+202E"],
+    [`a${String.fromCodePoint(0x3000)}b`, "it contains the unreadable character U+3000"],
+    [`a${String.fromCodePoint(0xe000)}b`, "it contains the unreadable character U+E000"],
+  ])("%p is refused: %s", (path: string, cause: string) => {
+    expect(changedPathProblem(path)).toBe(cause);
+  });
+});
+
+describe("evaluateWorkPackageLink — scope of the diff", () => {
+  const SCOPE_ITEM = "PR #7 — WP-3 scope";
+  const CHANGED_ITEM = "PR #7 — WP-3 changed files";
+  const CHARSET = "[A-Za-z0-9._/@+=,{}*-]";
+
+  const rows = (scopeCell: string): string =>
+    "| `WP-1` | `CA-1` | `docs/**` | `bun test` | `two-way` |\n" +
+    `| \`WP-3\` | \`CA-1\`, \`CA-2\` | ${scopeCell} | \`bun test\` | \`two-way\` |\n`;
+
+  /** A world whose WP-3 has the given scope cell and whose diff is `changed`. */
+  const scoped = (scopeCell: string, changed: Fact<readonly string[]>): LinkWorld =>
+    linkWorld({ prd: { ok: true, value: prdText(undefined, rows(scopeCell)) }, changed });
+  const files = (...paths: string[]): Fact<readonly string[]> => ({ ok: true, value: paths });
+
+  async function judge(world: LinkWorld) {
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    return {
+      report,
+      outcome: report.outcome,
+      violations: report.violations,
+      volume: report.volumeSummary,
+    };
+  }
+
+  test("every file inside the scope: pass, the diff read once after the chain", async () => {
+    const world = scoped("`src/**`", files("src/a.ts", "src/b/c.ts"));
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.report.checks.at(-1)).toEqual({
+      item: SCOPE_ITEM,
+      ok: true,
+      note: 'all 2 changed file(s) are inside the scope ["src/**"]',
+    });
+    expect(verdict.volume).toContain(
+      "; scope entries: 1; files examined: 2; scope decision: all 2 changed file(s) inside the scope",
+    );
+  });
+
+  test("the diff is asked for the base and the head of the pull request", async () => {
+    const asked: Array<[string, string]> = [];
+    const world = scoped("`src/**`", files("src/a.ts"));
+    const ports: LinkPorts = {
+      ...world.ports,
+      changedFiles: async (baseSha, headSha) => {
+        asked.push([baseSha, headSha]);
+        return files("src/a.ts");
+      },
+    };
+    const report = await evaluateWorkPackageLink(pr(), policy, ports);
+    expect(report.outcome).toBe("pass");
+    expect(asked).toEqual([["a".repeat(40), "b".repeat(40)]]);
+  });
+
+  test("one file outside the scope: a violation naming the file and the scope", async () => {
+    const world = scoped("`src/**`", files("src/a.ts", "docs/x.md"));
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 2 changed file(s) outside the scope ["src/**"]: "docs/x.md"`,
+    ]);
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; scope entries: 1; files examined: 2; scope decision: 1 of 2 changed file(s) outside the scope",
+    );
+  });
+
+  test("every file outside the scope is named, in the order of the diff", async () => {
+    const world = scoped("`src/**`, `lib/**`", files("z.md", "src/a.ts", "docs/x.md", "lib/b.ts"));
+    expect((await judge(world)).violations).toEqual([
+      `${SCOPE_ITEM}: 2 of 4 changed file(s) outside the scope ["src/**","lib/**"]: "z.md", "docs/x.md"`,
+    ]);
+  });
+
+  const outsideRange = (count: number): string[] =>
+    Array.from({ length: count }, (_unused, index) => `out/f${index}.txt`);
+  const named = (names: readonly string[]): string => names.map((n) => `"${n}"`).join(", ");
+
+  test("exactly twenty files outside the scope are all named, with no remainder", async () => {
+    const outside = outsideRange(20);
+    const verdict = await judge(scoped("`src/**`", files(...outside)));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 20 of 20 changed file(s) outside the scope ["src/**"]: ${named(outside)}`,
+    ]);
+  });
+
+  test("more than twenty files outside the scope: twenty are named and the rest counted", async () => {
+    const outside = outsideRange(25);
+    const verdict = await judge(scoped("`src/**`", files(...outside)));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 25 of 25 changed file(s) outside the scope ["src/**"]: ${named(outside.slice(0, 20))}, and 5 more`,
+    ]);
+  });
+
+  test("twenty-one files outside the scope: and 1 more", async () => {
+    const outside = outsideRange(21);
+    const verdict = await judge(scoped("`src/**`", files(...outside)));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 21 of 21 changed file(s) outside the scope ["src/**"]: ${named(outside.slice(0, 20))}, and 1 more`,
+    ]);
+  });
+
+  test("an empty diff is an explicit, reasoned empty verdict, never a mute pass", async () => {
+    const world = scoped("`src/**`", files());
+    const verdict = await judge(world);
+    const reason =
+      "the diff of the pull request is empty: there is no changed file to compare with the scope of WP-3";
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.report.emptyReason).toBe(reason);
+    expect(verdict.report.checks.at(-1)).toEqual({ item: SCOPE_ITEM, ok: true, note: reason });
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; scope entries: 1; files examined: 0; scope decision: empty diff",
+    );
+  });
+
+  test("a non-empty diff declares no empty reason", async () => {
+    const verdict = await judge(scoped("`src/**`", files("src/a.ts")));
+    expect(verdict.report.emptyReason).toBeNull();
+  });
+
+  test("an unreadable diff is a violation naming the cause, never a pass", async () => {
+    const world = scoped("`src/**`", { ok: false, reason: "git diff failed: bad object" });
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${CHANGED_ITEM}: changed files unreadable (git diff failed: bad object)`,
+    ]);
+    expect(verdict.report.emptyReason).toBeNull();
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; scope entries: 1; files examined: not read; scope decision: changed files unreadable",
+    );
+  });
+
+  // Defence in depth: the port is not trusted. Each of these would match
+  // `src/**` or `**` if it reached the matcher.
+  const SHOWN_PREFIX = `${SCOPE_ITEM}: 1 of 1 changed file path(s) unreadable: `;
+  test.each([
+    ["../x", '"../x" (it has a ".." segment)'],
+    ["src/../../etc/passwd", '"src/../../etc/passwd" (it has a ".." segment)'],
+    ["/etc/x", '"/etc/x" (it is absolute)'],
+    ["./x", '"./x" (it starts with "./")'],
+    ["", '"" (it is empty)'],
+    [`src/a${NUL}b`, '"src/a\\u0000b" (it contains the unreadable character U+0000)'],
+    [`src/a${LF}b`, '"src/a\\nb" (it contains the unreadable character U+000A)'],
+    [
+      `src/a${ZERO_WIDTH_SPACE}b`,
+      '"src/a\\u{200b}b" (it contains the unreadable character U+200B)',
+    ],
+    ["src//x", '"src//x" (it has an empty segment)'],
+  ])("the changed path %p is refused before any match", async (path: string, shown: string) => {
+    const world = scoped("`src/**`, `**`", files(path));
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([`${SHOWN_PREFIX}${shown}`]);
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; scope entries: 2; files examined: 1; scope decision: 1 of 1 changed file path(s) unreadable",
+    );
+  });
+
+  test("an unreadable path refuses the diff even beside files inside the scope", async () => {
+    const verdict = await judge(scoped("`src/**`", files("src/a.ts", "../x", "src/b.ts")));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 3 changed file path(s) unreadable: "../x" (it has a ".." segment)`,
+    ]);
+  });
+
+  test("twenty-two unreadable paths: twenty are named and the rest counted", async () => {
+    const bad = Array.from({ length: 22 }, (_unused, index) => `../f${index}`);
+    const shown = bad
+      .slice(0, 20)
+      .map((path) => `"${path}" (it has a ".." segment)`)
+      .join(", ");
+    const verdict = await judge(scoped("`src/**`", files(...bad)));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 22 of 22 changed file path(s) unreadable: ${shown}, and 2 more`,
+    ]);
+  });
+
+  test.each([
+    ["!src/**", `the character "!" is outside ${CHARSET}`],
+    ["../x", 'it has a ".." segment'],
+    ["/abs", 'it starts with "/"'],
+    ["src/[ab]", `the character "[" is outside ${CHARSET}`],
+    ["src/a b", `the character " " is outside ${CHARSET}`],
+    ["src/{..,a}/x", 'it has a ".." segment'],
+  ])("the scope entry %p is refused, fail closed, and the diff is not read", async (entry: string, cause: string) => {
+    const world = scoped(entry, files("src/a.ts"));
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: unsupported scope glob ${JSON.stringify(entry)}: ${cause}`,
+    ]);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; scope entries: 1; files examined: not read; scope decision: 1 unsupported scope glob(s)",
+    );
+  });
+
+  test("every unsupported entry is named, beside the supported ones", async () => {
+    const world = scoped("`src/**`, `!a`, `../b`", files("src/a.ts"));
+    expect((await judge(world)).violations).toEqual([
+      `${SCOPE_ITEM}: unsupported scope glob "!a": the character "!" is outside ${CHARSET}`,
+      `${SCOPE_ITEM}: unsupported scope glob "../b": it has a ".." segment`,
+    ]);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
+  });
+
+  test("an unbalanced brace is refused with the table, before the diff is read", async () => {
+    const world = scoped("`src/{a,b`", files("src/a/x.ts"));
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toHaveLength(1);
+    expect(verdict.violations[0]).toContain("unbalanced braces in scope");
+    expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE, CALL_ANCESTOR, CALL_PRD, CALL_CAHIER]);
+  });
+
+  test("the diff is not read while a cited criterion is faulty", async () => {
+    const world = linkWorld({
+      cahier: { ok: true, value: "- CA-1 One. Validation : `bun test one`\n" },
+      changed: files("src/a.ts"),
+    });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      "PR #7 — WP-3 cites CA-2: docs/cahier-des-charges.md does not declare it",
+    ]);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
+  });
+
+  test.each([
+    ["a dotfile under a recursive scope", "`src/**`", ["src/.hidden", "src/a/.env"]],
+    ["an alternation", "`src/{a,b}/**`", ["src/a/x.ts", "src/b/y.ts"]],
+    ["a literal path", "`docs/a.md`", ["docs/a.md"]],
+    ["the second of two entries", "`lib/**`, `docs/**`", ["docs/a.md", "lib/b.ts"]],
+    ["a markdown file at the root", "`**/*.md`", ["README.md", ".md"]],
+  ])("inside the scope: %s", async (_label: string, cell: string, paths: string[]) => {
+    const verdict = await judge(scoped(cell, files(...paths)));
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+  });
+
+  test.each([
+    ["a dotfile outside a docs scope", "`docs/**`", [".github/x.yml"]],
+    ["an alternation that does not list the branch", "`src/{a,b}/**`", ["src/c/x.ts"]],
+    ["a different case", "`src/**`", ["SRC/a.ts"]],
+    ["a sibling directory with the same prefix", "`src/**`", ["src-old/a.ts"]],
+    ["a star that does not cross a slash", "`src/*`", ["src/a/b.ts"]],
+  ])("outside the scope: %s", async (_label: string, cell: string, paths: string[]) => {
+    const verdict = await judge(scoped(cell, files(...paths)));
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toHaveLength(1);
+    expect(verdict.violations[0]).toContain(`outside the scope`);
+  });
+
+  test("a rename from src/a.ts to docs/a.md is seen as two paths and refused for its source", async () => {
+    const verdict = await judge(scoped("`docs/**`", files("src/a.ts", "docs/a.md")));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 2 changed file(s) outside the scope ["docs/**"]: "src/a.ts"`,
+    ]);
+  });
+
+  test("the scope is the table of the PRD at the cited commit, WP-3 and not WP-1", async () => {
+    // WP-1 owns docs/**; the declared WP-3 owns src/**.
+    const verdict = await judge(scoped("`src/**`", files("docs/x.md")));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 1 changed file(s) outside the scope ["src/**"]: "docs/x.md"`,
+    ]);
+  });
+});
+
+// The matcher of the scope and the matcher of `docs-only` are one function:
+// the same table, read through the exemption, must give the same answers.
+describe("exemptionHolds — docs-only shares the matcher of the scope", () => {
+  test.each([
+    ["src/**", "src/.hidden", true],
+    ["src/**", "SRC/a.ts", false],
+    ["src/**", "src", false],
+    ["src/{a,b}/**", "src/a/x.ts", true],
+    ["src/{a,b}/**", "src/c/x.ts", false],
+    ["*", "a/b", false],
+    ["**/*.md", ".md", true],
+  ])("%s against %s is %p", (pattern: string, path: string, expected: boolean) => {
+    const rule: ExemptRule = { paths: [pattern] };
+    expect(exemptionHolds("docs-only", rule, pr(), [path]).ok).toBe(expected);
   });
 });

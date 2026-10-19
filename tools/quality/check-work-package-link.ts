@@ -10,6 +10,7 @@ import {
   type WorkPackage,
 } from "./prd-model";
 import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
+import { findUnreadableCharacter, type UnreadableCharacter } from "./yaml-text-guard";
 
 /**
  * Work-package link gate — every pull request names the work package it
@@ -29,9 +30,10 @@ import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
  * description is not an input of this gate.
  *
  * This file holds the reader of the declaration, the verifier of exemptions,
- * the reader of the issue body and the resolution of a link (issue, approved
- * PRD, work package, cited criteria). Comparing the scope and checking
- * `ready` are added to `evaluateWorkPackageLink` by the following tasks.
+ * the reader of the issue body, the resolution of a link (issue, approved PRD,
+ * work package, cited criteria) and the containment of the diff in the scope
+ * of the work package. Checking `ready` is added to `evaluateWorkPackageLink`
+ * by a following task.
  */
 
 /** A value read through a port: either the value, or the reason it could not be read. */
@@ -332,6 +334,126 @@ export function readIssueFields(body: string): Parsed<IssueFields> {
   return { ok: true, value: { prdRef: prdRef.value, wp } };
 }
 
+// ---------------------------------------------------------------------------
+// Containment of a path in a glob
+//
+// ONE function decides it, for the `paths` predicate of an exempt class and for
+// the scope of a work package: two matchers would let the same file be inside
+// a scope for one and outside it for the other. `Bun.Glob#match` is used as
+// is; its behaviour on the grammar the gate accepts was measured on Bun 1.4.0
+// and is pinned by the tests (`**` crosses `/` and matches dotfiles, `*` does
+// not cross `/`, `{a,b}` alternates, matching is case-sensitive, and a
+// directory itself is not matched by `dir/**`).
+// ---------------------------------------------------------------------------
+
+/** Whether `path`, a repository-relative path, is inside the glob `pattern`. */
+export function matchesScope(pattern: string, path: string): boolean {
+  return new Bun.Glob(pattern).match(path);
+}
+
+/** The characters a scope entry may hold: the grammar the gate can match with certainty. */
+const SCOPE_CHARACTERS = "[A-Za-z0-9._/@+=,{}*-]";
+const OUTSIDE_SCOPE_CHARACTERS: RegExp = /[^A-Za-z0-9._/@+=,{}*-]/u;
+
+// A character that renders as nothing, or as a blank, in a log or a review UI
+// and that `findUnreadableCharacter` lets through (U+200B is inside its
+// allow-class): space separators other than U+0020, format characters (zero
+// width, bidirectional controls) and private use.
+const INVISIBLE_CHARACTER: RegExp = /(?! )[\p{Zs}\p{Zl}\p{Zp}\p{Cf}\p{Co}]/u;
+
+/** A text safe to print: JSON quoting, then every non-ASCII character as `\u{hex}`. */
+function asciiQuoted(text: string): string {
+  return JSON.stringify(text).replace(
+    /[^\x20-\x7E]/gu,
+    (char: string): string => `\\u{${(char.codePointAt(0) as number).toString(16)}}`,
+  );
+}
+
+const codePointLabel = (char: string): string =>
+  `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, "0")}`;
+
+function bracesBalanced(text: string): boolean {
+  let depth = 0;
+  for (const char of text) {
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+/**
+ * Why the gate refuses a scope entry, or null when it accepts it.
+ *
+ * Why: the norm only says authors SHOULD use literal paths, `*`, `**` and
+ * `{a,b}`; the gate, which decides, refuses what it cannot match with
+ * certainty rather than guess (fail closed). `!` negation, `[..]`, `?`, `\`,
+ * `(..)` and spaces are outside the grammar; so are an absolute entry and a
+ * `..` segment, in any branch of an alternation.
+ */
+export function scopeEntryProblem(entry: string): string | null {
+  if (entry === "") {
+    return "the entry is empty";
+  }
+  const outside: RegExpExecArray | null = OUTSIDE_SCOPE_CHARACTERS.exec(entry);
+  if (outside !== null) {
+    return `the character ${asciiQuoted(outside[0])} is outside ${SCOPE_CHARACTERS}`;
+  }
+  if (entry.startsWith("/")) {
+    return 'it starts with "/"';
+  }
+  if (entry.split(/[/{},]/).includes("..")) {
+    return 'it has a ".." segment';
+  }
+  return bracesBalanced(entry) ? null : "its braces are unbalanced";
+}
+
+/** The first character of `path` that is a control, a separator or invisible, as `U+XXXX`. */
+function unreadableCharacterOf(path: string): string | null {
+  // `findUnreadableCharacter` is meant for multi-line text and lets a line feed through.
+  if (path.includes("\n")) {
+    return "U+000A";
+  }
+  const guarded: UnreadableCharacter | null = findUnreadableCharacter(path);
+  if (guarded !== null) {
+    return guarded.codePoint;
+  }
+  const invisible: RegExpExecArray | null = INVISIBLE_CHARACTER.exec(path);
+  return invisible === null ? null : codePointLabel(invisible[0]);
+}
+
+/**
+ * Why a path handed over by the `changedFiles` port is not a repository-relative
+ * path, or null when it is.
+ *
+ * Why: the port is not trusted. `src/../../etc/passwd` matches `src/**`, and a
+ * path holding a control or invisible character would be printed unreadable
+ * in the verdict. Git never prints either, so a hit is a misread source.
+ */
+export function changedPathProblem(path: string): string | null {
+  if (path === "") {
+    return "it is empty";
+  }
+  const unreadable: string | null = unreadableCharacterOf(path);
+  if (unreadable !== null) {
+    return `it contains the unreadable character ${unreadable}`;
+  }
+  if (path.startsWith("/")) {
+    return "it is absolute";
+  }
+  if (path.startsWith("./")) {
+    return 'it starts with "./"';
+  }
+  const segments: readonly string[] = path.split("/");
+  if (segments.includes("..")) {
+    return 'it has a ".." segment';
+  }
+  if (segments.includes(".")) {
+    return 'it has a "." segment';
+  }
+  return segments.includes("") ? "it has an empty segment" : null;
+}
+
 function holdsPaths(
   globs: readonly string[],
   changed: readonly string[],
@@ -339,9 +461,8 @@ function holdsPaths(
   if (changed.length === 0) {
     return { ok: false, note: "no changed file: an empty diff is not a documentation-only change" };
   }
-  const matchers: Bun.Glob[] = globs.map((pattern) => new Bun.Glob(pattern));
   const outside: string[] = changed.filter(
-    (path) => !matchers.some((matcher) => matcher.match(path)),
+    (path) => !globs.some((pattern) => matchesScope(pattern, path)),
   );
   return outside.length === 0
     ? { ok: true, note: `all ${changed.length} changed file(s) match ${JSON.stringify(globs)}` }
@@ -451,13 +572,16 @@ interface ResolutionVolume {
   workPackages: string;
   criteria: string;
   cited: string;
+  scopeEntries: string;
+  filesExamined: string;
+  scopeDecision: string;
 }
 
 interface Resolution {
   readonly report: GateReport;
   readonly label: string;
-  /** `<owner>/<name>` of the pull request: the owner every link must stay within. */
-  readonly prRepo: string;
+  /** The pull request: its repository's owner is the one every link must stay within. */
+  readonly pr: PrFacts;
   readonly volume: ResolutionVolume;
 }
 
@@ -523,13 +647,13 @@ function checkSameOwner(
   repo: string,
 ): boolean {
   const owner: string | null = ownerOf(repo);
-  const prOwner: string | null = ownerOf(resolution.prRepo);
+  const prOwner: string | null = ownerOf(resolution.pr.repo);
   const same: boolean =
     owner !== null && prOwner !== null && asciiLower(owner) === asciiLower(prOwner);
   if (!same) {
     const cause: string =
       prOwner === null
-        ? `the pull request repository has no owner (${JSON.stringify(resolution.prRepo)} is not <owner>/<repo>)`
+        ? `the pull request repository has no owner (${JSON.stringify(resolution.pr.repo)} is not <owner>/<repo>)`
         : `the ${kind} repository belongs to owner ${JSON.stringify(owner ?? repo)}, the pull request to owner ${JSON.stringify(prOwner)}`;
     resolution.report.check(
       item,
@@ -640,13 +764,17 @@ function findWorkPackage(
   return row;
 }
 
-/** Step 8: every criterion the work package cites is declared once, with a `Validation :` clause. */
+/**
+ * Step 8: every criterion the work package cites is declared once, with a
+ * `Validation :` clause. Every faulty citation is reported; the answer says
+ * whether all of them held.
+ */
 function checkCitedCriteria(
   resolution: Resolution,
   item: string,
   requirements: string,
   workPackage: WorkPackage,
-): void {
+): boolean {
   const parsed: Parsed<readonly Criterion[]> = parseCriteria(requirements);
   if (!parsed.ok) {
     resolution.report.check(
@@ -654,18 +782,21 @@ function checkCitedCriteria(
       false,
       `${REQUIREMENTS_PATH} unreadable as criteria (${parsed.reason})`,
     );
-    return;
+    return false;
   }
   resolution.volume.criteria = String(parsed.value.length);
   resolution.volume.cited = String(workPackage.criteria.length);
+  let allHold = true;
   for (const cited of workPackage.criteria) {
     const criterionItem: string = `${resolution.label} — ${workPackage.id} cites ${cited}`;
     const criterion: Criterion | undefined = parsed.value.find(
       (candidate) => candidate.id === cited,
     );
     if (criterion === undefined) {
+      allHold = false;
       resolution.report.check(criterionItem, false, `${REQUIREMENTS_PATH} does not declare it`);
     } else if (!criterion.hasValidation) {
+      allHold = false;
       resolution.report.check(criterionItem, false, "it has no `Validation :` clause");
     } else {
       resolution.report.check(
@@ -675,6 +806,105 @@ function checkCitedCriteria(
       );
     }
   }
+  return allHold;
+}
+
+// At most this many paths are spelled out in one message; the rest is counted.
+const NAMED_LIMIT = 20;
+
+function boundedList(items: readonly string[]): string {
+  const shown: string = items.slice(0, NAMED_LIMIT).join(", ");
+  const rest: number = items.length - NAMED_LIMIT;
+  return rest > 0 ? `${shown}, and ${rest} more` : shown;
+}
+
+/**
+ * Step 9: the files of the pull request are all inside the scope of the work
+ * package (norm, "Work-package table"). The scope is the `Périmètre` cell of
+ * the PRD at the cited commit, never a text editable outside a pull request.
+ *
+ * Why in this order: the entries come from the PRD already read, so they are
+ * validated before the diff is asked for (a refused scope makes the read
+ * pointless); then the paths the port returns, which are not trusted; then
+ * the containment itself. Any doubt is a violation, never a pass: an entry the
+ * gate cannot match with certainty, an unreadable diff and an unreadable path
+ * all refuse. An empty diff is the one verdict that asserts nothing, and it
+ * says so with its reason instead of passing mute.
+ */
+async function checkScope(
+  resolution: Resolution,
+  workPackage: WorkPackage,
+  ports: LinkPorts,
+): Promise<void> {
+  const { report, label, volume, pr } = resolution;
+  const { scope } = workPackage;
+  const item: string = `${label} — ${workPackage.id} scope`;
+  volume.scopeEntries = String(scope.length);
+
+  const unsupported: number = scope.reduce((count: number, entry: string): number => {
+    const problem: string | null = scopeEntryProblem(entry);
+    if (problem === null) {
+      return count;
+    }
+    report.check(item, false, `unsupported scope glob ${asciiQuoted(entry)}: ${problem}`);
+    return count + 1;
+  }, 0);
+  if (unsupported > 0) {
+    volume.scopeDecision = `${unsupported} unsupported scope glob(s)`;
+    return;
+  }
+
+  const changed: Fact<readonly string[]> = await ports.changedFiles(pr.baseSha, pr.headSha);
+  if (!changed.ok) {
+    report.check(
+      `${label} — ${workPackage.id} changed files`,
+      false,
+      `changed files unreadable (${changed.reason})`,
+    );
+    volume.scopeDecision = "changed files unreadable";
+    return;
+  }
+  const paths: readonly string[] = changed.value;
+  volume.filesExamined = String(paths.length);
+  if (paths.length === 0) {
+    const reason = `the diff of the pull request is empty: there is no changed file to compare with the scope of ${workPackage.id}`;
+    report.check(item, true, reason);
+    report.allowEmpty(reason);
+    volume.scopeDecision = "empty diff";
+    return;
+  }
+
+  const unreadable: string[] = [];
+  for (const path of paths) {
+    const problem: string | null = changedPathProblem(path);
+    if (problem !== null) {
+      unreadable.push(`${asciiQuoted(path)} (${problem})`);
+    }
+  }
+  if (unreadable.length > 0) {
+    volume.scopeDecision = `${unreadable.length} of ${paths.length} changed file path(s) unreadable`;
+    report.check(item, false, `${volume.scopeDecision}: ${boundedList(unreadable)}`);
+    return;
+  }
+
+  const outside: string[] = paths.filter(
+    (path: string): boolean => !scope.some((entry: string) => matchesScope(entry, path)),
+  );
+  if (outside.length > 0) {
+    volume.scopeDecision = `${outside.length} of ${paths.length} changed file(s) outside the scope`;
+    report.check(
+      item,
+      false,
+      `${volume.scopeDecision} ${JSON.stringify(scope)}: ${boundedList(outside.map((path: string): string => JSON.stringify(path)))}`,
+    );
+    return;
+  }
+  volume.scopeDecision = `all ${paths.length} changed file(s) inside the scope`;
+  report.check(
+    item,
+    true,
+    `all ${paths.length} changed file(s) are inside the scope ${JSON.stringify(scope)}`,
+  );
 }
 
 async function verifyChain(
@@ -723,14 +953,17 @@ async function verifyChain(
   if (workPackage === null) {
     return;
   }
-  checkCitedCriteria(resolution, item, requirements, workPackage);
+  if (!checkCitedCriteria(resolution, item, requirements, workPackage)) {
+    return;
+  }
+  await checkScope(resolution, workPackage, ports);
 }
 
 /** Resolve a link and return the volume of what was read, for the summary line. */
 async function resolveLink(
   report: GateReport,
   label: string,
-  prRepo: string,
+  pr: PrFacts,
   link: LinkDeclaration,
   policy: WorkPackagePolicy,
   ports: LinkPorts,
@@ -742,12 +975,16 @@ async function resolveLink(
     workPackages: "not read",
     criteria: "not read",
     cited: "not read",
+    scopeEntries: "not read",
+    filesExamined: "not read",
+    scopeDecision: "not reached",
   };
-  await verifyChain({ report, label, prRepo, volume }, link, policy, ports);
+  await verifyChain({ report, label, pr, volume }, link, policy, ports);
   return (
     `issue ${volume.issue}; PRD ${volume.prd}; maturity ${volume.maturity}; ` +
     `work packages parsed: ${volume.workPackages}; criteria parsed: ${volume.criteria}; ` +
-    `criteria cited: ${volume.cited}`
+    `criteria cited: ${volume.cited}; scope entries: ${volume.scopeEntries}; ` +
+    `files examined: ${volume.filesExamined}; scope decision: ${volume.scopeDecision}`
   );
 }
 
@@ -794,7 +1031,7 @@ async function judgeDeclaration(
   }
   const read: string = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
   report.check(`${label} — declaration`, true, read);
-  const resolution: string = await resolveLink(report, label, pr.repo, declaration, policy, ports);
+  const resolution: string = await resolveLink(report, label, pr, declaration, policy, ports);
   return { read, filesExamined: 0, resolution };
 }
 
@@ -802,8 +1039,9 @@ async function judgeDeclaration(
  * Verdict over one pull request.
  *
  * The `link` path resolves the issue, the approved PRD at the cited commit,
- * the work package and its criteria. The scope of the diff and the explicit
- * `ready` come with the following tasks.
+ * the work package and its criteria, then requires every changed file to be
+ * inside the scope of the work package. The explicit `ready` comes with a
+ * following task.
  */
 export async function evaluateWorkPackageLink(
   pr: PrFacts,
