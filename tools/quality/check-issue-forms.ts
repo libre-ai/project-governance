@@ -21,7 +21,8 @@
  * ambiguous input is a named violation, never an empty list. YAML itself is
  * ambiguous in ways the parser resolves silently (a repeated key keeps the
  * last value; anchors, tags, escaped keys and flow mappings hide a repeat), so
- * the text is first read through a LINE WHITELIST (see "line whitelist" below):
+ * the text is first checked for unreadable characters (yaml-text-guard.ts: a NUL
+ * makes Bun.YAML stop silently) and then read through a LINE WHITELIST (below):
  * a line is accepted only if it has a known shape, and every other shape is
  * refused by name. A denylist of ambiguous shapes was tried three times and
  * bypassed each time; do not widen the whitelist, edit the form instead.
@@ -42,6 +43,7 @@ import { join } from "node:path";
 
 import type { LabelSpec } from "../fleet/sync-labels";
 import { parseLabelsFile } from "../fleet/sync-labels";
+import { findUnreadableCharacter } from "./yaml-text-guard";
 
 // --- field model ------------------------------------------------------------
 
@@ -109,7 +111,6 @@ const DECISION_REQUEST = "kind:decision-request";
 const PLAIN_KEY = /^([a-z_]+):(?: +(.*))?$/;
 const TOKEN = /^(?:"[^"\\]*"|[A-Za-z0-9:_.-]+)$/;
 const QUOTED = /^(?:"[^"\\]*"|'[^']*')$/;
-const FORBIDDEN = /[\uFEFF\t\r\u2028\u2029\u0085]/;
 
 const SHAPES: readonly (readonly [RegExp, string])[] = [
   [/^(?:---|\.\.\.)$/, "a document marker"],
@@ -125,8 +126,6 @@ const SHAPES: readonly (readonly [RegExp, string])[] = [
   [/^[%@`]/, "a reserved indicator"],
   [/^#|\s#/, "a trailing comment"],
 ];
-const hex = (char: string): string =>
-  char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0");
 const shapeOf = (text: string): string | null =>
   SHAPES.find(([pattern]) => pattern.test(text))?.[1] ?? null;
 
@@ -140,22 +139,18 @@ function scalarProblem(value: string): string | null {
 /** Reasons the text has a shape outside the whitelist, each naming its line. */
 function scanLines(text: string): string[] {
   const reasons: string[] = [];
-  const lines = text.split("\n");
+  const lines = text.replaceAll("\r\n", "\n").split("\n"); // a bare CR was refused by the guard
   const keys: (Map<string, number> | undefined)[] = []; // keys met per depth (column / 2)
   let list: "labels" | "body" | null = null; // the root list the `- ` items belong to
   let lastDepth = 0;
   let opened = false; // the previous key had no value: the next line may be one level deeper
   let blockIndent: number | null = null;
-  for (const [index, source] of lines.entries()) {
+  for (const [index, line] of lines.entries()) {
     // `reject` answers true so that a refusal and its `continue` fit on one line.
     const reject = (cause: string): boolean => {
       reasons.push(`line ${index + 1}: ${cause}`);
       return true;
     };
-    const line = index < lines.length - 1 ? source.replace(/\r$/, "") : source;
-    const bad: string | null = FORBIDDEN.exec(line)?.[0] ?? null;
-    if (bad !== null && reject(`the character U+${hex(bad)} (tab, BOM, lone CR, line separator)`))
-      continue;
     const indent = (/^ */.exec(line) as RegExpExecArray)[0].length;
     if (blockIndent !== null) {
       if (line.trim() === "" || indent > blockIndent) continue;
@@ -408,6 +403,10 @@ export function validateIssueForm(
   yamlText: string,
   knownLabels: ReadonlySet<string>,
 ): readonly string[] {
+  const unreadable = findUnreadableCharacter(yamlText);
+  if (unreadable !== null) {
+    return [`line ${unreadable.line}: unreadable character ${unreadable.codePoint}`];
+  }
   const refusals = scanLines(yamlText);
   if (refusals.length > 0) return refusals.map((reason: string): string => `YAML shape, ${reason}`);
 

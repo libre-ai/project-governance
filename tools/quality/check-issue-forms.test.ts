@@ -618,7 +618,10 @@ describe("validateIssueForm: line whitelist", () => {
   });
 
   test("a leading byte order mark is refused by name", () => {
-    const violations = validateIssueForm(`﻿${IDEA}labels:\n  - kind:idea\n`, KNOWN_LABELS);
+    const violations = validateIssueForm(
+      `${String.fromCodePoint(0xfeff)}${IDEA}labels:\n  - kind:idea\n`,
+      KNOWN_LABELS,
+    );
     expect(mentions(violations, "U+FEFF")).toBe(true);
   });
 
@@ -674,8 +677,8 @@ describe("validateIssueForm: line whitelist", () => {
     ["a lone carriage return", withName("name: Idea\rx"), "U+000D"],
     ["a document start marker", `---\n${IDEA}`, "document marker"],
     ["a document end marker", `${IDEA}...\n`, "document marker"],
-    ["U+2028", withName("name: Id ea"), "U+2028"],
-    ["U+2029", withName("name: Id ea"), "U+2029"],
+    ["U+2028", withName(`name: Id${String.fromCodePoint(0x2028)}ea`), "U+2028"],
+    ["U+2029", withName(`name: Id${String.fromCodePoint(0x2029)}ea`), "U+2029"],
     ["U+0085", withName("name: Id\u0085ea"), "U+0085"],
     ["a trailing comment on a plain value", withName("name: Idea # c"), "trailing comment"],
     ["a value that is only a comment", withName("name: # c"), "trailing comment"],
@@ -760,6 +763,85 @@ describe("validateIssueForm: line whitelist", () => {
       "# a comment\nname: Idea\n\n    # an indented comment\n",
     );
     expect(validateIssueForm(comments, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: unreadable characters", () => {
+  // Bun.YAML stops reading at a NUL without saying so, while a line scanner reads on: the
+  // text after it looks like part of the form and is silently dropped by the parser.
+  const EXTRA_ELEMENT = `  - type: textarea
+    id: extra
+    attributes:
+      label: Extra field
+    validations:
+      required: true
+`;
+  const hiddenAfter = (character: string): string =>
+    `${IDEA.trimEnd()}${character}\n${EXTRA_ELEMENT}`;
+
+  test("probe N1: a NUL ending the last line hides a whole extra element", () => {
+    const violations = validateIssueForm(hiddenAfter("\u0000"), KNOWN_LABELS);
+    expect(mentions(violations, "U+0000")).toBe(true);
+  });
+
+  test("probe K6: a NUL hides options, a required Recommendation and a root key", () => {
+    const element = (id: string, label: string, required: boolean, tail = ""): string =>
+      `  - type: textarea
+    id: ${id}
+    attributes:
+      label: ${label}
+    validations:
+      required: ${required}${tail}
+`;
+    const text = `name: Decision request
+description: A decision.
+labels:
+  - kind:decision-request
+body:
+${element("context", "Context", true)}${element("option-a", "Option A", true)}${element("option-b", "Option B", true, "\u0000")}${element("option-c", "Option C", true)}${element("option-d", "Option D", true)}${element("option-e", "Option E", true)}${element("option-f", "Option F", true)}${element("recommendation", "Recommendation", true)}assignees: someone
+`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "U+0000")).toBe(true);
+  });
+
+  const CONTROLS: readonly (readonly [string, string])[] = [
+    ["\u0001", "U+0001"],
+    ["\u0008", "U+0008"],
+    ["\u000B", "U+000B"],
+    ["\u000C", "U+000C"],
+    ["\u001B", "U+001B"],
+    ["\u001F", "U+001F"],
+    ["\u007F", "U+007F"],
+    ["\u0080", "U+0080"],
+    ["\u009F", "U+009F"],
+    [String.fromCodePoint(0xa0), "U+00A0"],
+    [String.fromCodePoint(0xfffe), "U+FFFE"],
+    [String.fromCodePoint(0xd800), "U+D800"],
+  ];
+  for (const [character, codePoint] of CONTROLS) {
+    test(`${codePoint} hiding an element is refused and named`, () => {
+      expect(mentions(validateIssueForm(hiddenAfter(character), KNOWN_LABELS), codePoint)).toBe(
+        true,
+      );
+    });
+  }
+
+  test("the violation names the line", () => {
+    const violations = validateIssueForm("name: Idea\r\nbody:\u0000\r\n", KNOWN_LABELS);
+    expect(violations).toEqual(["line 2: unreadable character U+0000"]);
+  });
+
+  test("CRLF line endings are accepted", () => {
+    expect(validateIssueForm(IDEA.replaceAll("\n", "\r\n"), KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("accented French text in a description is accepted", () => {
+    const accented = mutate(
+      IDEA,
+      "description: A deferred idea.",
+      "description: Une idée différée, « à revoir » — œuvre…",
+    );
+    expect(validateIssueForm(accented, KNOWN_LABELS)).toEqual([]);
   });
 });
 
