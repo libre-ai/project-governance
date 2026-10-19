@@ -202,6 +202,59 @@ describe("parseLabelsFile", () => {
   });
 });
 
+describe("parseLabelsFile: unreadable characters", () => {
+  // Built from code points: a literal NUL or BOM in this source would be as invisible
+  // to a reviewer as it is to the parser.
+  const char = (codePoint: number): string => String.fromCodePoint(codePoint);
+  const FIRST = ["- name: ready", '  color: "0e8a16"', "  description: ok"];
+  const SECOND = ["- name: bad", '  color: "zzzzzz"', "  description: x"];
+
+  const reasonOf = (text: string): string => {
+    const parsed = parseLabelsFile(text);
+    if (parsed.ok) throw new Error(`expected a refusal, got ${parsed.value.length} label(s)`);
+    return parsed.reason;
+  };
+
+  test("a NUL ending a value line no longer hides the invalid entry after it", () => {
+    const lines = [...FIRST.slice(0, 2), `${FIRST[2]}${char(0)}`, ...SECOND];
+    expect(reasonOf(lines.join("\n"))).toBe(
+      "labels file contains an unreadable character U+0000 on line 3",
+    );
+  });
+
+  test("a NUL at the end of the last line is refused", () => {
+    const text = `${[...FIRST, ...SECOND].join("\n")}${char(0)}`;
+    expect(reasonOf(text)).toBe("labels file contains an unreadable character U+0000 on line 6");
+  });
+
+  test.each([
+    ["U+0001", 0x0001],
+    ["U+007F", 0x007f],
+    ["U+0085", 0x0085],
+    ["U+00A0", 0x00a0],
+    ["U+2028", 0x2028],
+    ["a lone surrogate", 0xd800],
+  ])("%s inside a value is refused with its line", (_label, codePoint) => {
+    const text = [...FIRST.slice(0, 2), `${FIRST[2]}${char(codePoint)}`].join("\n");
+    const hex = codePoint.toString(16).toUpperCase().padStart(4, "0");
+    expect(reasonOf(text)).toBe(`labels file contains an unreadable character U+${hex} on line 3`);
+  });
+
+  test("a byte order mark at the start is refused", () => {
+    expect(reasonOf(`${char(0xfeff)}${FIRST.join("\n")}`)).toBe(
+      "labels file contains an unreadable character U+FEFF on line 1",
+    );
+  });
+
+  test("CRLF line endings still load", () => {
+    const parsed = parseLabelsFile(`${FIRST.join("\r\n")}\r\n`);
+    expect(parsed).toEqual({
+      ok: true,
+      value: [{ name: "ready", color: "0e8a16", description: "ok" }],
+    });
+  });
+});
+
 // --- the orchestrator, with a fake gh ---------------------------------------
 
 const DESIRED_TEXT = [

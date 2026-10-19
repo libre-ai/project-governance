@@ -22,6 +22,7 @@
 import { readFile } from "node:fs/promises";
 
 import type { Parsed } from "../quality/prd-model";
+import { findUnreadableCharacter } from "../quality/yaml-text-guard";
 
 export interface LabelSpec {
   readonly name: string;
@@ -100,8 +101,21 @@ const refuse = (reason: string): { readonly ok: false; readonly reason: string }
  * Reads the vocabulary file. Every defect is a refusal that names its entry:
  * a vocabulary that parses to fewer labels than the file declares would be
  * synchronised as if the missing ones did not exist.
+ *
+ * Known open gap: a key repeated inside one entry (`name:` twice) is read by
+ * Bun.YAML.parse with last-wins and no error. A reliable check needs a line
+ * scanner for every YAML shape (block, flow, multi-line scalars), which is out of
+ * proportion here, so it is not faked with a partial regex.
  */
 export function parseLabelsFile(text: string): Parsed<readonly LabelSpec[]> {
+  // First, before the parser: Bun.YAML.parse silently stops at a NUL, which would drop
+  // every entry after it without any error (an invalid label would simply vanish).
+  const unreadable = findUnreadableCharacter(text);
+  if (unreadable !== null) {
+    return refuse(
+      `labels file contains an unreadable character ${unreadable.codePoint} on line ${unreadable.line}`,
+    );
+  }
   let document: unknown;
   try {
     document = Bun.YAML.parse(text);
