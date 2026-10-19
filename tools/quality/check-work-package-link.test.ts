@@ -2417,6 +2417,30 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
     ]);
   });
 
+  test.each([
+    ["a number", 42, "42"],
+    ["an object", { login: "constantin-jais" }, '{"login":"constantin-jais"}'],
+  ])("an actor that is %s from a careless port is an inconsistent issue read", async (_name: string, value: unknown, rendered: string) => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: value as unknown as string } }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the actor of the "ready" label is ${rendered}, neither a login nor null`,
+    ]);
+  });
+
+  test("a label that is not a string from a careless port is no ready label", async () => {
+    const verdict = await judge(
+      readyWorld({
+        issue: { ...OWNER_READY, labels: [{ name: "ready" } as unknown as string] },
+      }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON}`,
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is absent but its actor is "constantin-jais"`,
+    ]);
+  });
+
   test("only the guarded paths are named, not the other files of the diff", async () => {
     const verdict = await judge(
       readyWorld({ changed: ["src/a.ts", "docs/decisions/INVARIANTS.md", "docs/guide.md"] }),
