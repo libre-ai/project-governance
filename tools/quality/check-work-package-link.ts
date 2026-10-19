@@ -454,6 +454,37 @@ export function changedPathProblem(path: string): string | null {
   return segments.includes("") ? "it has an empty segment" : null;
 }
 
+// At most this many paths are spelled out in one message; the rest is counted.
+const NAMED_LIMIT = 20;
+
+function boundedList(items: readonly string[]): string {
+  const shown: string = items.slice(0, NAMED_LIMIT).join(", ");
+  const rest: number = items.length - NAMED_LIMIT;
+  return rest > 0 ? `${shown}, and ${rest} more` : shown;
+}
+
+/**
+ * The refusal of the paths of a diff that are not repository-relative paths,
+ * or null when every one is. One message shape for the link path and the
+ * exempt path, so the same defect reads the same way in both.
+ */
+function unreadablePaths(
+  paths: readonly string[],
+): { readonly summary: string; readonly note: string } | null {
+  const unreadable: string[] = [];
+  for (const path of paths) {
+    const problem: string | null = changedPathProblem(path);
+    if (problem !== null) {
+      unreadable.push(`${asciiQuoted(path)} (${problem})`);
+    }
+  }
+  if (unreadable.length === 0) {
+    return null;
+  }
+  const summary = `${unreadable.length} of ${paths.length} changed file path(s) unreadable`;
+  return { summary, note: `${summary}: ${boundedList(unreadable)}` };
+}
+
 function holdsPaths(
   globs: readonly string[],
   changed: readonly string[],
@@ -544,9 +575,18 @@ async function evaluateExemption(
     );
     return 0;
   }
+  // Only a class whose predicate reads paths needs them to be paths: the port
+  // is not trusted, and `docs/../src/x.ts` would match `docs/**`. The author
+  // and title classes never look at the diff and are judged as before.
+  const rule: ExemptRule | undefined = ruleOf(policy, cls);
+  const refusal = rule !== undefined && "paths" in rule ? unreadablePaths(changed.value) : null;
+  if (refusal !== null) {
+    report.check(`${label} — Exempt: ${cls}`, false, refusal.note);
+    return changed.value.length;
+  }
   const verdict: { readonly ok: boolean; readonly note: string } = exemptionHolds(
     cls,
-    ruleOf(policy, cls),
+    rule,
     pr,
     changed.value,
   );
@@ -809,15 +849,6 @@ function checkCitedCriteria(
   return allHold;
 }
 
-// At most this many paths are spelled out in one message; the rest is counted.
-const NAMED_LIMIT = 20;
-
-function boundedList(items: readonly string[]): string {
-  const shown: string = items.slice(0, NAMED_LIMIT).join(", ");
-  const rest: number = items.length - NAMED_LIMIT;
-  return rest > 0 ? `${shown}, and ${rest} more` : shown;
-}
-
 /**
  * Step 9: the files of the pull request are all inside the scope of the work
  * package (norm, "Work-package table"). The scope is the `Périmètre` cell of
@@ -866,24 +897,20 @@ async function checkScope(
   }
   const paths: readonly string[] = changed.value;
   volume.filesExamined = String(paths.length);
+  // A zero is a failure, not a pass: a diff with no file has nothing to attach
+  // to the work package (gate-integrity section 2), like an empty commit range.
   if (paths.length === 0) {
-    const reason = `the diff of the pull request is empty: there is no changed file to compare with the scope of ${workPackage.id}`;
-    report.check(item, true, reason);
-    report.allowEmpty(reason);
-    volume.scopeDecision = "empty diff";
+    const reason =
+      "the diff holds no changed file: a pull request that cites a work package changes at least one file";
+    report.check(`${label} — ${workPackage.id} changed files`, false, reason);
+    volume.scopeDecision = "the diff holds no changed file";
     return;
   }
 
-  const unreadable: string[] = [];
-  for (const path of paths) {
-    const problem: string | null = changedPathProblem(path);
-    if (problem !== null) {
-      unreadable.push(`${asciiQuoted(path)} (${problem})`);
-    }
-  }
-  if (unreadable.length > 0) {
-    volume.scopeDecision = `${unreadable.length} of ${paths.length} changed file path(s) unreadable`;
-    report.check(item, false, `${volume.scopeDecision}: ${boundedList(unreadable)}`);
+  const unreadable = unreadablePaths(paths);
+  if (unreadable !== null) {
+    volume.scopeDecision = unreadable.summary;
+    report.check(item, false, unreadable.note);
     return;
   }
 

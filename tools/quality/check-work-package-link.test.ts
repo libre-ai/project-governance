@@ -789,6 +789,58 @@ describe("evaluateWorkPackageLink", () => {
     });
     const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      'PR #7 — Exempt: docs-only: no changed file: an empty diff is not a documentation-only change (class "docs-only")',
+    ]);
+    expect(spy.diffCalls).toHaveLength(1);
+  });
+
+  // Defence in depth: the port is not trusted. `docs/../src/x.ts` matches
+  // `docs/**` if it reaches the matcher, so every path is validated first and
+  // the predicate is never consulted.
+  test.each([
+    ["docs/../src/x.ts", '"docs/../src/x.ts" (it has a ".." segment)'],
+    ["./docs/a.md", '"./docs/a.md" (it starts with "./")'],
+    ["/docs/a.md", '"/docs/a.md" (it is absolute)'],
+    [`docs/a${NUL}.md`, '"docs/a\\u0000.md" (it contains the unreadable character U+0000)'],
+    [
+      `docs/a${ZERO_WIDTH_SPACE}.md`,
+      '"docs/a\\u{200b}.md" (it contains the unreadable character U+200B)',
+    ],
+  ])("a docs-only exemption refuses the path %p before the predicate", async (path: string, shown: string) => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["README.md", path],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+    // One violation only: the predicate (which would have matched) was not reached.
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: docs-only: 1 of 2 changed file path(s) unreadable: ${shown}`,
+    ]);
+    expect(spy.diffCalls).toEqual([["a".repeat(40), "b".repeat(40)]]);
+    // The refusal is the only check: the predicate did not run.
+    expect(report.checks).toHaveLength(1);
+  });
+
+  test("a docs-only exemption on valid documentation paths still passes", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["README.md", "docs/.hidden", "docs/a/b.txt"],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.violations).toEqual([]);
+    expect(report.outcome).toBe("pass");
+  });
+
+  test("the other classes read the diff as before and do not validate its paths", async () => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "revert"))), {
+      ok: true,
+      value: ["../x"],
+    });
+    const report = await evaluateWorkPackageLink(pr({ title: 'Revert "x"' }), policy, spy.ports);
+    expect(report.outcome).toBe("pass");
+    expect(spy.diffCalls).toHaveLength(1);
   });
 
   test("a prototype-named class cannot reach an inherited rule", async () => {
@@ -1795,23 +1847,21 @@ describe("evaluateWorkPackageLink — scope of the diff", () => {
     ]);
   });
 
-  test("an empty diff is an explicit, reasoned empty verdict, never a mute pass", async () => {
+  // A zero must be a failure (gate-integrity section 2): a diff with no file has
+  // nothing to attach to the work package, exactly like an empty commit range.
+  test("an empty diff is a violation, never a pass and never a declared emptiness", async () => {
     const world = scoped("`src/**`", files());
     const verdict = await judge(world);
-    const reason =
-      "the diff of the pull request is empty: there is no changed file to compare with the scope of WP-3";
-    expect(verdict.violations).toEqual([]);
-    expect(verdict.report.emptyReason).toBe(reason);
-    expect(verdict.report.checks.at(-1)).toEqual({ item: SCOPE_ITEM, ok: true, note: reason });
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${CHANGED_ITEM}: the diff holds no changed file: a pull request that cites a work package changes at least one file`,
+    ]);
+    expect(verdict.report.emptyReason).toBeNull();
+    // The diff was asked for exactly once, after the whole chain.
     expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
     expect(verdict.volume).toContain(
-      "; scope entries: 1; files examined: 0; scope decision: empty diff",
+      "; scope entries: 1; files examined: 0; scope decision: the diff holds no changed file",
     );
-  });
-
-  test("a non-empty diff declares no empty reason", async () => {
-    const verdict = await judge(scoped("`src/**`", files("src/a.ts")));
-    expect(verdict.report.emptyReason).toBeNull();
   });
 
   test("an unreadable diff is a violation naming the cause, never a pass", async () => {
@@ -1821,7 +1871,6 @@ describe("evaluateWorkPackageLink — scope of the diff", () => {
     expect(verdict.violations).toEqual([
       `${CHANGED_ITEM}: changed files unreadable (git diff failed: bad object)`,
     ]);
-    expect(verdict.report.emptyReason).toBeNull();
     expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
     expect(verdict.volume).toContain(
       "; scope entries: 1; files examined: not read; scope decision: changed files unreadable",
