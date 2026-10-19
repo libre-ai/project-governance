@@ -1,0 +1,29 @@
+# Policy of the work-package gate, read by tools/quality/work-package-policy.ts.
+#
+# The policy lives in data so that changing who is exempt, or from which
+# maturity level a PRD must declare its work packages, is a reviewed edit of
+# this file and not of the gate.
+#
+# `approvedFrom`: the lowest document maturity level at which the gate applies
+# (a level of the maturity ladder, see MATURITY_LADDER in tools/quality/prd-model.ts).
+#
+# `exempt`: named rules, each describing ONE predicate the gate verifies on the
+# pull request itself — never a claim the author makes about it. A rule has
+# exactly one of:
+#   author:      the pull request author login equals this string
+#   paths:       every changed file matches one of these globs
+#   titlePrefix: the pull request title starts with this string
+#
+# `owners`: logins allowed to approve a work-package change.
+approvedFrom: décision
+exempt:
+  dependabot:
+    author: "dependabot[bot]"
+  docs-only:
+    paths:
+      - "**/*.md"
+      - "docs/**"
+  revert:
+    titlePrefix: "Revert "
+owners:
+  - constantin-jais
