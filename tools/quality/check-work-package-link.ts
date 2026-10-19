@@ -75,9 +75,17 @@ export type Declaration =
 // that starts like a declaration but is malformed is counted and refused,
 // never silently skipped.
 const DECLARATION_PREFIX: RegExp = /^ {0,3}(Work-package|Exempt):/;
-// The same keyword with any indentation: what is left over after the prefix
-// above is a declaration shown as code, reported to the author as a hint.
-const INDENTED_KEYWORD: RegExp = /^[ \t]*(?:Work-package|Exempt):/;
+// A CANDIDATE is a line a reader could take for a declaration: the keyword
+// once leading whitespace, container markers (block quote, list item) and
+// closed single-line comment spans are stripped. A candidate that is not also
+// a clean top-level declaration makes the description ambiguous.
+const CANDIDATE_START: RegExp = /^(?:Work-package|Exempt):/;
+const CONTAINER_MARKER: RegExp = /^(?:>|[-+*](?=[ \t])|\d{1,9}[.)](?=[ \t]))/;
+const LEADING_COMMENT_SPAN: RegExp = /^<!--[\s\S]*?-->/;
+const FENCE_MARKER: RegExp = /^(?:`{3,}|~{3,})/;
+// Start of an HTML block that can swallow what follows, fences included:
+// `<` and a letter, `/` or `?`, or `<!` that is not a comment.
+const HTML_BLOCK_START: RegExp = /^<(?:[A-Za-z/?]|!(?!--))/;
 
 // Fences (CommonMark): 0 to 3 spaces of indentation, then a run of 3 or more
 // backticks (whose info string holds no backtick) or tildes. A closing fence
@@ -107,8 +115,10 @@ interface DeclarationCandidate {
 
 interface DeclarationRead {
   readonly declaration: Declaration;
+  /** Candidate lines seen outside modelled fences and comments. */
   readonly lineCount: number;
-  readonly overIndented: number;
+  /** Lines that make a candidate ambiguous (0 when the description is read as is). */
+  readonly ambiguities: number;
 }
 
 function readWorkPackageValue(value: string): Declaration {
@@ -162,114 +172,243 @@ function closesFence(line: string, fence: Fence): boolean {
   return run.startsWith(fence.char) && run.length >= fence.length;
 }
 
+interface CommentScan {
+  /** A comment is still open at the end of the line. */
+  readonly open: boolean;
+  /** An opener the reader models only at the start of a line sits elsewhere and never closes on its line. */
+  readonly oddOpener: boolean;
+  /** The forms `<!-->` and `<!--->`, which renderers disagree on. */
+  readonly oddForm: boolean;
+}
+
 /**
- * Whether a comment is still open at the end of `line`. `<!--` opens anywhere
- * on a line; the first `-->` after it closes, possibly lines later.
+ * Follow comments along one line. `<!--` opens at any position and the first
+ * `-->` after it closes, possibly lines later. A span that opens and closes on
+ * the same line cannot reach another line, so it is neutral wherever it sits
+ * (the fleet template has `Blast radius: <!-- ... -->`). An opener that stays
+ * open is modelled only at the start of its line (after 0-3 spaces): anywhere
+ * else (after text, in a code span, after a backslash, behind a list marker)
+ * a renderer may not treat it as a comment, so it is reported as odd.
  */
-function commentOpenAfter(line: string, startsInside: boolean): boolean {
+function scanComments(line: string, startsInside: boolean): CommentScan {
   let inside: boolean = startsInside;
   let at: number = 0;
+  let oddOpener: boolean = false;
+  let oddForm: boolean = false;
   for (;;) {
     if (inside) {
       const end: number = line.indexOf("-->", at);
       if (end < 0) {
-        return true;
+        return { open: true, oddOpener, oddForm };
       }
       at = end + 3;
       inside = false;
-    } else {
-      const start: number = line.indexOf("<!--", at);
-      if (start < 0) {
-        return false;
-      }
-      at = start + 4;
-      inside = true;
+      continue;
     }
+    const start: number = line.indexOf("<!--", at);
+    if (start < 0) {
+      return { open: false, oddOpener, oddForm };
+    }
+    if (line.startsWith("<!-->", start) || line.startsWith("<!--->", start)) {
+      oddForm = true;
+    }
+    const end: number = line.indexOf("-->", start + 4);
+    if (end >= 0) {
+      at = end + 3;
+      continue;
+    }
+    oddOpener = !/^ {0,3}$/.test(line.slice(0, start));
+    return { open: true, oddOpener, oddForm };
   }
 }
 
+interface Prefixes {
+  readonly indent: string;
+  readonly rest: string;
+  readonly containers: number;
+  readonly spans: number;
+}
+
+const stripLeadingBlanks = (text: string): string => text.replace(/^[ \t]+/, "");
+
+/** Strip leading whitespace, then container markers and closed comment spans, repeatedly. */
+function stripPrefixes(line: string): Prefixes {
+  const indent: string = (/^[ \t]*/.exec(line) as RegExpExecArray)[0];
+  let rest: string = line.slice(indent.length);
+  let containers: number = 0;
+  let spans: number = 0;
+  for (;;) {
+    const marker: RegExpExecArray | null = CONTAINER_MARKER.exec(rest);
+    if (marker !== null) {
+      containers += 1;
+      rest = stripLeadingBlanks(rest.slice(marker[0].length));
+      continue;
+    }
+    const span: RegExpExecArray | null = LEADING_COMMENT_SPAN.exec(rest);
+    if (span === null) {
+      return { indent, rest, containers, spans };
+    }
+    spans += 1;
+    rest = stripLeadingBlanks(rest.slice(span[0].length));
+  }
+}
+
+/** A clean top-level line: no container, no comment span, at most 3 spaces of indentation. */
+const isCleanTopLevel = (prefixes: Prefixes): boolean =>
+  prefixes.containers === 0 && prefixes.spans === 0 && /^ {0,3}$/.test(prefixes.indent);
+
+type AmbiguityCode = "a" | "b" | "c" | "d";
+
+interface Ambiguity {
+  readonly line: number;
+  readonly code: AmbiguityCode;
+  readonly why: string;
+}
+
+const AMBIGUITY_WHY: Readonly<Record<AmbiguityCode, string>> = {
+  a: "a declaration candidate that is not a clean top-level line (container prefix, 4+ spaces or a tab, or a comment before it)",
+  b: "a fence marker behind a container prefix",
+  c: "an HTML block start, which can swallow the parity of the fences after it",
+  d: "a comment opener the reader cannot place (not at the start of its line, or the form <!--> or <!--->)",
+};
+
+/** The first reason, in the order a, b, c, d, for which one line makes a candidate ambiguous. */
+function ambiguityOf(prefixes: Prefixes, scan: CommentScan): AmbiguityCode | null {
+  if (CANDIDATE_START.test(prefixes.rest) && !isCleanTopLevel(prefixes)) {
+    return "a";
+  }
+  if (prefixes.containers > 0 && FENCE_MARKER.test(prefixes.rest)) {
+    return "b";
+  }
+  const topLevel: boolean = prefixes.containers > 0 || /^ {0,3}$/.test(prefixes.indent);
+  if (topLevel && prefixes.spans === 0 && HTML_BLOCK_START.test(prefixes.rest)) {
+    return "c";
+  }
+  return scan.oddOpener || scan.oddForm ? "d" : null;
+}
+
+interface OutsideLine {
+  /** The line, if it is a clean top-level declaration. */
+  readonly declaration: DeclarationCandidate | null;
+  /** The keyword shows up on this line in some form (clean or not). */
+  readonly isCandidate: boolean;
+  readonly ambiguity: AmbiguityCode | null;
+  readonly commentOpen: boolean;
+}
+
+/** Read one line that is neither inside a fence nor inside a comment. */
+function readOutsideLine(line: string): OutsideLine {
+  const prefixes: Prefixes = stripPrefixes(line);
+  const scan: CommentScan = scanComments(line, false);
+  const isCandidate: boolean = CANDIDATE_START.test(prefixes.rest);
+  const match: RegExpExecArray | null =
+    isCandidate && isCleanTopLevel(prefixes) ? DECLARATION_PREFIX.exec(line) : null;
+  return {
+    declaration: match === null ? null : { line, match },
+    isCandidate,
+    ambiguity: ambiguityOf(prefixes, scan),
+    commentOpen: scan.open,
+  };
+}
+
 interface DeclarationLines {
-  readonly candidates: readonly DeclarationCandidate[];
-  /** Keyword lines indented into a code block: shown as code, never declarations. */
-  readonly overIndented: number;
+  /** Clean top-level declaration lines, in order. */
+  readonly declarations: readonly DeclarationCandidate[];
+  /** Every line where the keyword shows up outside modelled fences and comments. */
+  readonly candidateCount: number;
+  /** The lines that make a candidate ambiguous, in order. */
+  readonly ambiguities: readonly Ambiguity[];
 }
 
 /**
  * Find the lines that render as declaration lines.
  *
  * The decision is taken on the ORIGINAL line, not on a copy with comments
- * blanked out: a keyword that follows the end of a comment on the same line
- * does not start the line. Fences and comments are tracked only to know which
- * lines are inside one. Not modelled: containers (list items, block quotes)
- * and HTML blocks other than comments; a keyword there is not at the start of
- * its line, or is read strictly and refused.
+ * blanked out. Top-level fences and comments are modelled, only to know which
+ * lines are inside one (their content is never a declaration, ambiguity
+ * included). Containers (list items, block quotes) and HTML blocks are NOT
+ * modelled: they are detected, and when a candidate exists beside one the
+ * caller refuses the description as ambiguous rather than guess how a renderer
+ * nests it.
  */
 function findDeclarationLines(body: string): DeclarationLines {
   // CR and CRLF are line ends for a renderer. Split on LF only afterwards: a
   // regex with the `m` flag would also break at U+2028 / U+2029, which a
   // reader of the rendered description does not see as a line end.
   const text: string = body.replace(/\r\n?/g, "\n");
-  const candidates: DeclarationCandidate[] = [];
-  let overIndented: number = 0;
+  const declarations: DeclarationCandidate[] = [];
+  const ambiguities: Ambiguity[] = [];
+  let candidateCount: number = 0;
   let fence: Fence | null = null;
   let inComment: boolean = false;
-  for (const line of text.split("\n")) {
+  for (const [index, line] of text.split("\n").entries()) {
     if (fence !== null) {
-      if (closesFence(line, fence)) {
-        fence = null;
-      }
+      fence = closesFence(line, fence) ? null : fence;
       continue;
     }
     if (inComment) {
-      inComment = commentOpenAfter(line, true);
+      const scan: CommentScan = scanComments(line, true);
+      if (scan.oddOpener || scan.oddForm) {
+        ambiguities.push({ line: index + 1, code: "d", why: AMBIGUITY_WHY.d });
+      }
+      inComment = scan.open;
       continue;
     }
     fence = openingFence(line);
     if (fence !== null) {
       continue;
     }
-    const match: RegExpExecArray | null = DECLARATION_PREFIX.exec(line);
-    if (match !== null) {
-      candidates.push({ line, match });
-    } else if (INDENTED_KEYWORD.test(line)) {
-      overIndented += 1;
+    const read: OutsideLine = readOutsideLine(line);
+    candidateCount += read.isCandidate ? 1 : 0;
+    if (read.declaration !== null) {
+      declarations.push(read.declaration);
     }
-    inComment = commentOpenAfter(line, false);
+    if (read.ambiguity !== null) {
+      ambiguities.push({
+        line: index + 1,
+        code: read.ambiguity,
+        why: AMBIGUITY_WHY[read.ambiguity],
+      });
+    }
+    inComment = read.commentOpen;
   }
-  return { candidates, overIndented };
+  return { declarations, candidateCount, ambiguities };
 }
 
 const ZERO_LINES: string =
   "0 declaration line(s): expected one `Work-package:` or `Exempt:` line outside comments and code blocks";
-const OVER_INDENTED_HINT: string =
-  "a declaration indented by 4+ spaces or a tab is a code block, not a declaration";
+
+function ambiguousReason(first: Ambiguity): string {
+  return `description is ambiguous to the gate: line ${first.line}: reason ${first.code} (${first.why})`;
+}
 
 function readDeclaration(body: string): DeclarationRead {
-  const { candidates, overIndented }: DeclarationLines = findDeclarationLines(body);
-  const lineCount: number = candidates.length;
-  const only: DeclarationCandidate | undefined = candidates[0];
-  if (lineCount === 0) {
-    return {
-      lineCount,
-      overIndented,
-      declaration: invalid(
-        overIndented === 0 ? ZERO_LINES : `${ZERO_LINES} (${OVER_INDENTED_HINT})`,
-      ),
-    };
+  const { declarations, candidateCount, ambiguities }: DeclarationLines =
+    findDeclarationLines(body);
+  const first: Ambiguity | undefined = ambiguities[0];
+  const counts: Pick<DeclarationRead, "lineCount" | "ambiguities"> = {
+    lineCount: candidateCount,
+    ambiguities: ambiguities.length,
+  };
+  if (candidateCount === 0) {
+    return { ...counts, declaration: invalid(ZERO_LINES) };
   }
-  if (lineCount > 1 || only === undefined) {
+  // A candidate beside a construct the reader does not model: refuse, do not guess.
+  if (first !== undefined) {
+    return { ...counts, declaration: invalid(ambiguousReason(first)) };
+  }
+  const only: DeclarationCandidate | undefined = declarations[0];
+  if (candidateCount > 1 || only === undefined) {
     return {
-      lineCount,
-      overIndented,
+      ...counts,
       declaration: invalid(
-        `${lineCount} declaration line(s): exactly one \`Work-package:\` or \`Exempt:\` line is allowed in total`,
+        `${candidateCount} declaration line(s): exactly one \`Work-package:\` or \`Exempt:\` line is allowed in total`,
       ),
     };
   }
   const value: string = only.line.slice(only.match[0].length);
   return {
-    lineCount,
-    overIndented,
+    ...counts,
     declaration:
       only.match[1] === "Work-package" ? readWorkPackageValue(value) : readExemptValue(value),
   };
@@ -381,7 +520,7 @@ export async function evaluateWorkPackageLink(
 ): Promise<GateReport> {
   const report: GateReport = new GateReport();
   const label: string = pr.number === null ? "pull request" : `PR #${pr.number}`;
-  const { declaration, lineCount, overIndented }: DeclarationRead = readDeclaration(pr.body);
+  const { declaration, lineCount, ambiguities }: DeclarationRead = readDeclaration(pr.body);
   let filesExamined: number = 0;
   // null = no valid declaration was read (the volume line says so).
   let read: string | null = null;
@@ -397,7 +536,7 @@ export async function evaluateWorkPackageLink(
   }
 
   report.volume(
-    `${lineCount} declaration line(s) seen (${overIndented} over-indented keyword line(s) ignored); declaration read: ${read ?? "none (invalid)"}; ` +
+    `${lineCount} declaration line(s) seen (${ambiguities} ambiguity marker(s)); declaration read: ${read ?? "none (invalid)"}; ` +
       `${filesExamined} file(s) examined for an exemption`,
   );
   return report;

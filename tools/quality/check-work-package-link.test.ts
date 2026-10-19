@@ -175,9 +175,13 @@ describe("readLinkDeclaration", () => {
     expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
   });
 
-  test("a keyword not at the start of the line is not a declaration line", () => {
+  test("a keyword behind a block quote marker is a declaration the gate cannot read cleanly", () => {
+    // Round 2: it used to be ignored as "not at the start of the line"; a renderer
+    // shows it as a quoted declaration, so the description is ambiguous.
     const declaration = readLinkDeclaration("> Work-package: libre-ai/x#1 WP-1\n");
-    expect(declaration.kind === "invalid" && declaration.reason).toContain("0 declaration line");
+    expect(declaration.kind === "invalid" && declaration.reason).toContain(
+      "description is ambiguous to the gate: line 1: reason a",
+    );
   });
 
   test("a declaration glued behind a line separator is not a second line", () => {
@@ -298,41 +302,38 @@ describe("readLinkDeclaration follows the rendering", () => {
       expect(readLinkDeclaration("   Exempt: revert\n")).toEqual(REVERT);
     });
 
-    test("four spaces make a code block, not a declaration, and the message says so", () => {
+    // Round 2: four spaces can be an indented code block OR the lazy
+    // continuation of a paragraph, so the line is ambiguous, not "a code block".
+    test("four spaces are ambiguous, not a code block", () => {
       const declaration = readLinkDeclaration("    Exempt: revert\n");
       expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain("0 declaration line");
       expect(reasonOf(declaration)).toContain(
-        "a declaration indented by 4+ spaces or a tab is a code block, not a declaration",
+        "description is ambiguous to the gate: line 1: reason a",
+      );
+      expect(reasonOf(declaration)).not.toContain("code block, not a declaration");
+    });
+
+    test("a tab is ambiguous", () => {
+      expect(reasonOf(readLinkDeclaration(`${TAB}${WP}\n`))).toContain(
+        "description is ambiguous to the gate: line 1: reason a",
       );
     });
 
-    test("a tab makes a code block, not a declaration, and the message says so", () => {
-      const declaration = readLinkDeclaration(`${TAB}${WP}\n`);
-      expect(declaration.kind).toBe("invalid");
-      expect(reasonOf(declaration)).toContain("a tab is a code block");
-    });
-
-    test("spaces then a tab make a code block", () => {
+    test("spaces then a tab are ambiguous", () => {
       expect(reasonOf(readLinkDeclaration(`  ${TAB}Exempt: revert\n`))).toContain(
-        "indented by 4+ spaces or a tab",
+        "description is ambiguous to the gate: line 1: reason a",
       );
     });
 
-    test("the hint is absent when nothing was over-indented", () => {
-      expect(reasonOf(readLinkDeclaration("Summary only\n"))).not.toContain("indented by 4+");
+    test("an over-indented keyword line beside a clean declaration makes the description ambiguous", () => {
+      expect(
+        reasonOf(readLinkDeclaration(text("    Work-package: x/y#9 WP-9", "Exempt: revert"))),
+      ).toContain("description is ambiguous to the gate: line 1: reason a");
     });
 
-    test("an over-indented line is ignored when a real declaration exists", () => {
-      expect(readLinkDeclaration(text("    Work-package: x/y#9 WP-9", "Exempt: revert"))).toEqual(
-        REVERT,
-      );
-    });
-
-    test("an over-indented line inside a fence is not reported as a hint", () => {
-      expect(reasonOf(readLinkDeclaration(text(FENCE, `    ${WP}`, FENCE)))).not.toContain(
-        "indented by 4+",
-      );
+    test("an over-indented keyword line inside a fence is ignored", () => {
+      const declaration = readLinkDeclaration(text(FENCE, `    ${WP}`, FENCE));
+      expect(reasonOf(declaration)).toContain("0 declaration line");
     });
   });
 
@@ -343,18 +344,21 @@ describe("readLinkDeclaration follows the rendering", () => {
       expect(reasonOf(declaration)).toContain("0 declaration line");
     });
 
-    test("text after a comment end is not at the start of the line", () => {
-      expect(reasonOf(readLinkDeclaration(`<!-- a --> ${WP}`))).toContain("0 declaration line");
+    test("a keyword after a comment span on the same line is ambiguous", () => {
+      expect(reasonOf(readLinkDeclaration(`<!-- a --> ${WP}`))).toContain(
+        "description is ambiguous to the gate: line 1: reason a",
+      );
     });
 
     test("a declaration on the line after a closed comment counts", () => {
       expect(readLinkDeclaration(text("<!-- a", "b -->", "Exempt: revert"))).toEqual(REVERT);
     });
 
-    test("a second comment opened on the line where the first ends hides the next lines", () => {
-      expect(readLinkDeclaration(text("<!-- a --> <!-- b", "Exempt: revert", "-->", WP))).toEqual(
-        WP_LINK,
-      );
+    test("a second comment opened on the line where the first ends is ambiguous", () => {
+      // Round 2: the opener is not at the start of its line (reason d).
+      expect(
+        reasonOf(readLinkDeclaration(text("<!-- a --> <!-- b", "Exempt: revert", "-->", WP))),
+      ).toContain("description is ambiguous to the gate: line 1: reason d");
     });
 
     test("a fence marker inside a comment does not open a fence", () => {
@@ -371,6 +375,317 @@ describe("readLinkDeclaration follows the rendering", () => {
 
     test("lone CR line ends do not break comment reading", () => {
       expect(readLinkDeclaration(`<!--\r${WP}\r-->\rExempt: revert\r`)).toEqual(REVERT);
+    });
+  });
+
+  // Round 2: markdown constructs the reader does not model (containers, HTML
+  // blocks, comment openers in odd places) can make GitHub render something
+  // other than what the reader reads. When a declaration candidate exists and
+  // such a construct is present, the description is refused as ambiguous.
+  describe("ambiguity", () => {
+    const AMBIGUOUS = "description is ambiguous to the gate: line";
+    const ambiguousAt = (body: string, line: number, code: string): void => {
+      const declaration = readLinkDeclaration(body);
+      expect(declaration.kind).toBe("invalid");
+      expect(reasonOf(declaration)).toContain(`${AMBIGUOUS} ${line}: reason ${code}`);
+    };
+    const lines = (...parts: string[]): string => parts.join("\n");
+
+    describe("probes that GitHub renders differently from the reader", () => {
+      test("A: a fence in a list item hides a declaration from the renderer", () => {
+        ambiguousAt(lines("- ```", "  Exempt: revert", "  ```"), 1, "b");
+      });
+
+      test("A2: the same with an ordered list item", () => {
+        ambiguousAt(lines("1. ```", "   Work-package: a/b#1 WP-1", "   ```"), 1, "b");
+      });
+
+      test("B: a list-item fence before a clean declaration and a later fence", () => {
+        ambiguousAt(
+          lines("- ```", "  x", "  ```", "Exempt: revert", "```", "Work-package: a/b#1 WP-1"),
+          1,
+          "b",
+        );
+      });
+
+      test("C: an HTML block can swallow the fence parity", () => {
+        ambiguousAt(
+          lines(
+            "<div>",
+            "```",
+            "</div>",
+            "",
+            "Work-package: a/b#1 WP-1",
+            "",
+            "```",
+            "Exempt: revert",
+            "```",
+          ),
+          1,
+          "c",
+        );
+      });
+
+      test("E: a comment opened mid-line and closed after a blank line", () => {
+        ambiguousAt(
+          lines("Hello <!-- start", "", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"),
+          1,
+          "d",
+        );
+      });
+
+      test("E2: an opener inside a code span", () => {
+        ambiguousAt(
+          lines("Use `<!--` here", "Work-package: a/b#1 WP-1", "and `-->` there", "Exempt: revert"),
+          1,
+          "d",
+        );
+      });
+
+      test("E3: an opener after a backslash", () => {
+        ambiguousAt(lines("\\<!--", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"), 1, "d");
+      });
+
+      test("G: the form <!--> ", () => {
+        ambiguousAt(lines("<!-->", "Work-package: a/b#1 WP-1", "-->", "Exempt: revert"), 1, "d");
+      });
+
+      test("G2: the form <!--->", () => {
+        ambiguousAt(lines("<!--->", "x", "-->", "Exempt: revert"), 1, "d");
+      });
+
+      test("H: a keyword line indented by four spaces may be a lazy continuation", () => {
+        ambiguousAt(lines("Summary", "    Work-package: a/b#1 WP-1", "Exempt: revert"), 2, "a");
+      });
+
+      test("I: a keyword after a comment span on the same line", () => {
+        ambiguousAt(lines("<!-- a --> Work-package: a/b#1 WP-1", "Exempt: revert"), 1, "a");
+      });
+    });
+
+    describe("each reason code", () => {
+      test("a: a block quote or a list marker before the keyword", () => {
+        ambiguousAt(lines("- Exempt: revert"), 1, "a");
+        ambiguousAt(lines("+ Exempt: revert"), 1, "a");
+        ambiguousAt(lines("* Exempt: revert"), 1, "a");
+        ambiguousAt(lines("12. Exempt: revert"), 1, "a");
+        ambiguousAt(lines("3) Exempt: revert"), 1, "a");
+        ambiguousAt(lines("> - Exempt: revert"), 1, "a");
+      });
+
+      test("b: a fence marker behind a container prefix, backticks or tildes", () => {
+        ambiguousAt(lines("> ```", "Exempt: revert"), 1, "b");
+        ambiguousAt(lines("- ~~~", "Exempt: revert"), 1, "b");
+        ambiguousAt(lines("Exempt: revert", "1) ```"), 2, "b");
+      });
+
+      test("c: an HTML block start: a tag, a closing tag, a processing instruction, a declaration", () => {
+        ambiguousAt(lines("<details>", "Exempt: revert"), 1, "c");
+        ambiguousAt(lines("Exempt: revert", "</div>"), 2, "c");
+        ambiguousAt(lines("Exempt: revert", "<?php x ?>"), 2, "c");
+        ambiguousAt(lines("Exempt: revert", "<!DOCTYPE html>"), 2, "c");
+        ambiguousAt(lines("Exempt: revert", "   <b>x</b>"), 2, "c");
+      });
+
+      test("c: an HTML block start behind a container prefix is refused too", () => {
+        ambiguousAt(
+          lines("- <div>", "  ```", "  Exempt: revert", "  ```", "  </div>", "", WP),
+          1,
+          "c",
+        );
+      });
+
+      test("d: an opener that is not at the start of its line and never closes", () => {
+        ambiguousAt(lines("Exempt: revert", "text <!-- open", "-->"), 2, "d");
+        ambiguousAt(lines("Exempt: revert", "- <!-- open"), 2, "d");
+      });
+
+      test("d: the tail of a comment closing line is checked too", () => {
+        ambiguousAt(lines("<!--", "-->  text <!-- open", "-->", "Exempt: revert"), 2, "d");
+      });
+    });
+
+    describe("what is not ambiguous", () => {
+      test("no candidate: unchanged zero declarations, even with unmodelled constructs", () => {
+        for (const body of [
+          lines("<details>", "<summary>Release notes</summary>", "<p>x</p>", "</details>"),
+          lines("- ```", "  code", "  ```"),
+          lines("Hello <!-- start", "-->", "end"),
+          lines("> quote", "    indented"),
+        ]) {
+          const declaration = readLinkDeclaration(body);
+          expect(declaration.kind).toBe("invalid");
+          expect(reasonOf(declaration)).toContain("0 declaration line");
+          expect(reasonOf(declaration)).not.toContain("ambiguous");
+        }
+      });
+
+      test("a plain Exempt line alone", () => {
+        expect(readLinkDeclaration("Exempt: revert")).toEqual(REVERT);
+      });
+
+      test("a declaration and a normal top-level fence of code", () => {
+        expect(
+          readLinkDeclaration(lines("Exempt: revert", "", `${FENCE}ts`, "let a = 1;", FENCE)),
+        ).toEqual(REVERT);
+      });
+
+      test("a declaration and a comment at the start of a line", () => {
+        expect(readLinkDeclaration(lines("<!-- note -->", "Exempt: revert"))).toEqual(REVERT);
+        expect(readLinkDeclaration(lines("Exempt: revert", "<!--", "multi-line", "-->"))).toEqual(
+          REVERT,
+        );
+      });
+
+      test("a comment closed on its own line after other text is not an ambiguity", () => {
+        // Blast radius: <!-- ... --> in the fleet template. A span closed on the
+        // line it opens cannot reach another line, whatever the renderer does with it.
+        expect(
+          readLinkDeclaration(lines("Exempt: revert", "Blast radius: <!-- which -->")),
+        ).toEqual(REVERT);
+        expect(readLinkDeclaration(lines("Exempt: revert", "Use `<!-- x -->` here"))).toEqual(
+          REVERT,
+        );
+      });
+
+      test("prose that mentions a keyword mid-sentence, with one clean declaration", () => {
+        expect(
+          readLinkDeclaration(
+            lines(
+              "We write Work-package: lines as the norm says.",
+              "- see the Exempt: classes",
+              "Exempt: revert",
+            ),
+          ),
+        ).toEqual(REVERT);
+      });
+
+      test("a candidate inside a modelled comment or fence is ignored, ambiguity included", () => {
+        expect(
+          readLinkDeclaration(lines("<!--", "- Exempt: other", "<div>", "-->", "Exempt: revert")),
+        ).toEqual(REVERT);
+        expect(
+          readLinkDeclaration(lines(FENCE, "> Exempt: other", "<div>", FENCE, "Exempt: revert")),
+        ).toEqual(REVERT);
+      });
+    });
+
+    describe("the fleet pull request template", () => {
+      // Faithful copy of libre-ai/.github/.github/pull_request_template.md, with
+      // the Work-package placeholder replaced by a filled line and the Door line
+      // chosen. Everything else, guidance comments included, is the template.
+      // Split so that the licence scanner does not read the template's own header
+      // lines as the licence of this test file.
+      const SPDX = "SPDX";
+      const EM_DASH = "—";
+      const SECTION = "§";
+      const template = (workPackageLine: string): string =>
+        lines(
+          `<!-- ${SPDX}-FileCopyrightText: 2026 Libre AI contributors -->`,
+          `<!-- ${SPDX}-License-Identifier: CC-BY-4.0 -->`,
+          "<!--",
+          "Fleet pull request template (libre-ai/.github, default for every repository",
+          "that carries no template of its own). Comments like this one are guidance:",
+          "they are not rendered, and gates reading the description ignore them.",
+          "",
+          "The declaration lines below (Door, Second-instrument, Owner-arbitration) are",
+          "read by gates, so their form is exact: the key at the start of its own line,",
+          "outside a code block. Where a repository runs the Door gate",
+          "(project-governance: tools/quality/check-pr-door.ts), a description without",
+          "a valid Door line does not pass.",
+          "-->",
+          "",
+          "## Summary",
+          "",
+          "<!--",
+          "The smallest visual that carries the change: a before/after table, a list of",
+          "the files that move, or one diagram. Prefer a table over a paragraph.",
+          "-->",
+          "",
+          "## Evidence",
+          "",
+          "<!--",
+          "Before and after: the red output of each added test on the unfixed code, then",
+          "the green one; the raw output of the repository's aggregated check (for",
+          "example `bun run check`), run after `git add`; for a change of behaviour, the",
+          "command that shows it at its real surface.",
+          "-->",
+          "",
+          "## Work package",
+          "",
+          "<!--",
+          `Work-package ${EM_DASH} exactly one declaration line in this description: the issue that`,
+          "projects the work package, and the row of the PRD table it implements. Both",
+          "must agree with the body of that issue (### PRD-ref, ### WP). Replace the line",
+          "below with `Work-package: <owner>/<repo>#<n> WP-<k>` filled in; the placeholder",
+          "is refused on purpose, choosing is the point.",
+          "",
+          "A pull request that implements no work package declares an exemption instead,",
+          "on a line of its own, copied out of this comment:",
+          "",
+          "Exempt: <class>",
+          "",
+          "where <class> is one of dependabot, docs-only or revert. The gate verifies the",
+          "predicate of the class on the pull request itself (its author, the paths it",
+          "changes, or its title); it never believes the claim. Never both lines.",
+          "-->",
+          workPackageLine,
+          "",
+          "## Reversibility and blast radius",
+          "",
+          "<!--",
+          `Door ${EM_DASH} exactly one line, one value:`,
+          "  two-way: reverting the merge restores the previous state;",
+          "  one-way: it does not (repository deletion, a published release or package,",
+          "  a ruleset change, a data migration, a force push, an external message).",
+          "Replace the line below with `Door: two-way` or `Door: one-way`.",
+          "-->",
+          "Door: two-way",
+          "",
+          "Blast radius: <!-- which repositories, consumers, branches or users this reaches -->",
+          "",
+          "<!--",
+          `One-way door only ${EM_DASH} the independent measurement taken before the act, by an`,
+          "instrument different from the one that produced the green (gate-integrity",
+          `${SECTION}3). Copy this line out of the comment and fill it:`,
+          "",
+          "Second-instrument: <instrument, what it measured, and its result>",
+          "-->",
+          "",
+          "<!--",
+          `Guarded path only ${EM_DASH} when the change touches a path that the repository's`,
+          "review-evidence gate protects (project-governance: GATED_PATH_PATTERNS in",
+          "tools/quality/check-review-evidence.ts), cite the owner arbitration with its",
+          "ISO date. Copy this line out of the comment and fill it:",
+          "",
+          "Owner-arbitration: YYYY-MM-DD <where the arbitration was given>",
+          "-->",
+          "",
+        );
+
+      test("a filled template reads exactly its one Work-package line", () => {
+        expect(
+          readLinkDeclaration(template("Work-package: libre-ai/product-research#12 WP-3")),
+        ).toEqual({
+          kind: "link",
+          repo: "libre-ai/product-research",
+          issue: 12,
+          wp: "WP-3",
+        });
+      });
+
+      test("the unfilled placeholder is refused as malformed, not as ambiguous", () => {
+        const declaration = readLinkDeclaration(
+          template("Work-package: <owner>/<repo>#<n> WP-<k>"),
+        );
+        expect(declaration.kind).toBe("invalid");
+        expect(reasonOf(declaration)).toContain("malformed Work-package value");
+      });
+
+      test("the template with its guidance only and no declaration has zero declarations", () => {
+        const declaration = readLinkDeclaration(template(""));
+        expect(reasonOf(declaration)).toContain("0 declaration line");
+      });
     });
   });
 });
