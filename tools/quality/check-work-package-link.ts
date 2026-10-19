@@ -1,4 +1,14 @@
 import { GateReport } from "./gate-report";
+import {
+  atLeast,
+  type Criterion,
+  type MaturityLevel,
+  type Parsed,
+  parseCriteria,
+  parseWorkPackages,
+  readDocumentMaturity,
+  type WorkPackage,
+} from "./prd-model";
 import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
 
 /**
@@ -18,11 +28,10 @@ import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
  * than what a reviewer sees. A trailer has no Markdown semantics. The
  * description is not an input of this gate.
  *
- * This file holds the reader of the declaration, the verifier of exemptions
- * and the skeleton of the verdict. Reading the issue, resolving the PRD,
- * comparing the scope and checking `ready` are added to
- * `evaluateWorkPackageLink` by the following tasks; until then a well-formed
- * link passes without any further control.
+ * This file holds the reader of the declaration, the verifier of exemptions,
+ * the reader of the issue body and the resolution of a link (issue, approved
+ * PRD, work package, cited criteria). Comparing the scope and checking
+ * `ready` are added to `evaluateWorkPackageLink` by the following tasks.
  */
 
 /** A value read through a port: either the value, or the reason it could not be read. */
@@ -103,8 +112,16 @@ export type Declaration =
 // (an unfolded continuation), a NUL, a CR or a Unicode separator, and only
 // whole-value anchors refuse such a value instead of reading one of its lines.
 // The tests pin this against every such character.
-const WORK_PACKAGE_VALUE: RegExp =
-  /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]{0,8})$/;
+//
+// The owner, repository-name and WP sources are shared with the reader of the
+// issue body, whose `PRD-ref` and `WP` values have the grammar of the trailer.
+const OWNER_SOURCE = "[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?";
+const REPOSITORY_NAME_SOURCE = "[A-Za-z0-9._-]{1,100}";
+const WP_SOURCE = "WP-[1-9][0-9]{0,8}";
+
+const WORK_PACKAGE_VALUE: RegExp = new RegExp(
+  `^(${OWNER_SOURCE})\\/((?!\\.{1,2}#)${REPOSITORY_NAME_SOURCE})#([1-9][0-9]*) (${WP_SOURCE})$`,
+);
 
 // `Exempt: <class>`: the same shape as the names of the policy's rules.
 const EXEMPT_VALUE: RegExp = /^([a-z][a-z0-9-]*)$/;
@@ -197,6 +214,122 @@ function declarationOf(distinct: readonly Pair[]): Declaration {
 /** Pure reading of the declaration carried by the commits of a pull request. */
 export function readDeclaration(commits: readonly CommitDeclarations[]): Declaration {
   return declarationOf(collectPairs(commits).distinct);
+}
+
+// ---------------------------------------------------------------------------
+// Issue body
+//
+// The body of an issue is Markdown written by whoever opened it, through the
+// web form, `gh issue create` or the API. It is accepted only in the EXACT
+// shape the `work-package` issue form produces (norm, "Issue body"): any
+// heuristic reading ("first non-empty line after the heading") leaves a class
+// of bodies where the gate reads something other than what a reviewer sees.
+// ---------------------------------------------------------------------------
+
+/** The PRD cited by an issue: a repository, a full commit, and the path of the PRD. */
+export interface PrdRef {
+  readonly repo: string;
+  readonly sha: string;
+  readonly path: string;
+}
+
+export interface IssueFields {
+  readonly prdRef: PrdRef;
+  readonly wp: string;
+}
+
+const PRD_PATH = "docs/prd.md";
+const REQUIREMENTS_PATH = "docs/cahier-des-charges.md";
+
+// One entry per line of the body: a fixed text, or `null` for a value line.
+const ISSUE_BODY_SHAPE: readonly (string | null)[] = [
+  "### PRD-ref",
+  "",
+  null,
+  "",
+  "### WP",
+  "",
+  null,
+];
+const PRD_REF_LINE = 2;
+const WP_LINE = 6;
+
+// Whole-value anchors, no `m` flag, no `.`, no `\s`: see WORK_PACKAGE_VALUE.
+const REPOSITORY: RegExp = new RegExp(`^${OWNER_SOURCE}\\/(?!\\.{1,2}$)${REPOSITORY_NAME_SOURCE}$`);
+const FULL_COMMIT: RegExp = /^[0-9a-f]{40}$/;
+const WP_VALUE: RegExp = new RegExp(`^${WP_SOURCE}$`);
+
+const failed = (reason: string): { readonly ok: false; readonly reason: string } => ({
+  ok: false,
+  reason,
+});
+
+/** Line ends normalised (CRLF to LF), and at most one final line end removed. */
+function bodyLines(body: string): readonly string[] {
+  const normalised: string = body.replaceAll("\r\n", "\n");
+  const trimmed: string = normalised.endsWith("\n") ? normalised.slice(0, -1) : normalised;
+  return trimmed.split("\n");
+}
+
+/** The first line that departs from the form, or null when every fixed line is in place. */
+function shapeProblem(lines: readonly string[]): string | null {
+  for (const [index, expected] of ISSUE_BODY_SHAPE.entries()) {
+    const actual: string | undefined = lines[index];
+    if (actual === undefined) {
+      return `issue body ends after line ${lines.length}, expected exactly ${ISSUE_BODY_SHAPE.length} lines`;
+    }
+    if (expected !== null && actual !== expected) {
+      const wanted: string = expected === "" ? "an empty line" : JSON.stringify(expected);
+      return `issue body line ${index + 1} is ${JSON.stringify(actual)}, expected ${wanted}`;
+    }
+  }
+  if (lines.length > ISSUE_BODY_SHAPE.length) {
+    return `issue body has ${lines.length} lines, expected exactly ${ISSUE_BODY_SHAPE.length}: nothing may follow the WP value`;
+  }
+  return null;
+}
+
+function readPrdRef(value: string): Parsed<PrdRef> {
+  const at: number = value.indexOf("@");
+  const colon: number = at === -1 ? -1 : value.indexOf(":", at + 1);
+  if (colon === -1) {
+    return failed(`PRD-ref ${JSON.stringify(value)} is not <owner>/<repo>@<40 hex>:${PRD_PATH}`);
+  }
+  const repo: string = value.slice(0, at);
+  const sha: string = value.slice(at + 1, colon);
+  const path: string = value.slice(colon + 1);
+  if (!REPOSITORY.test(repo)) {
+    return failed(`PRD-ref repository ${JSON.stringify(repo)} is not <owner>/<repo>`);
+  }
+  if (!FULL_COMMIT.test(sha)) {
+    return failed(
+      `PRD-ref commit ${JSON.stringify(sha)} is not a full commit of 40 lowercase hexadecimal characters`,
+    );
+  }
+  if (path !== PRD_PATH) {
+    return failed(`PRD-ref path ${JSON.stringify(path)} is not ${JSON.stringify(PRD_PATH)}`);
+  }
+  return { ok: true, value: { repo, sha, path } };
+}
+
+/** Read the `PRD-ref` and `WP` of an issue body written exactly as the work-package form writes it. */
+export function readIssueFields(body: string): Parsed<IssueFields> {
+  const lines: readonly string[] = bodyLines(body);
+  const problem: string | null = shapeProblem(lines);
+  if (problem !== null) {
+    return failed(problem);
+  }
+  const prdRef: Parsed<PrdRef> = readPrdRef(lines[PRD_REF_LINE] as string);
+  if (!prdRef.ok) {
+    return prdRef;
+  }
+  const wp: string = lines[WP_LINE] as string;
+  if (!WP_VALUE.test(wp)) {
+    return failed(
+      `WP ${JSON.stringify(wp)} is not WP-<k> with <k> a positive integer of at most nine digits, without a leading zero`,
+    );
+  }
+  return { ok: true, value: { prdRef: prdRef.value, wp } };
 }
 
 function holdsPaths(
@@ -300,9 +433,272 @@ async function evaluateExemption(
   return changed.value.length;
 }
 
+// ---------------------------------------------------------------------------
+// Resolution of a link: issue, PRD at the cited commit, approval, work
+// package, cited criteria (norm, "Issue body", "Approved PRD", "Criteria
+// grammar"). Each step stops the chain on a failure, since every later step
+// reads what the failed one would have resolved; the last step reports every
+// cited criterion, so that one pull request shows all its faulty citations.
+// ---------------------------------------------------------------------------
+
+type LinkDeclaration = Extract<Declaration, { readonly kind: "link" }>;
+
+/** What the resolution read, printed in the volume. A field that was never reached says so. */
+interface ResolutionVolume {
+  issue: string;
+  prd: string;
+  maturity: string;
+  workPackages: string;
+  criteria: string;
+  cited: string;
+}
+
+interface Resolution {
+  readonly report: GateReport;
+  readonly label: string;
+  readonly volume: ResolutionVolume;
+}
+
+/** Steps 1 to 3: the issue is readable, its body is the form, and it projects the declared WP. */
+async function readLinkedIssue(
+  resolution: Resolution,
+  link: LinkDeclaration,
+  ports: LinkPorts,
+): Promise<IssueFields | null> {
+  const item: string = `${resolution.label} — issue ${link.repo}#${link.issue}`;
+  const issue: Fact<IssueRead> = await ports.readIssue(link.repo, link.issue);
+  if (!issue.ok) {
+    resolution.volume.issue = `${link.repo}#${link.issue} unreadable`;
+    resolution.report.check(item, false, `issue unreadable (${issue.reason})`);
+    return null;
+  }
+  resolution.volume.issue = `${link.repo}#${link.issue} read`;
+  const fields: Parsed<IssueFields> = readIssueFields(issue.value.body);
+  if (!fields.ok) {
+    resolution.report.check(
+      item,
+      false,
+      `the issue body is not the work-package form: ${fields.reason}`,
+    );
+    return null;
+  }
+  if (fields.value.wp !== link.wp) {
+    resolution.report.check(
+      item,
+      false,
+      `the issue projects ${fields.value.wp}, the trailer declares ${link.wp}`,
+    );
+    return null;
+  }
+  const { repo, sha, path } = fields.value.prdRef;
+  resolution.volume.prd = `${repo}@${sha}:${path}`;
+  resolution.report.check(item, true, `projects ${fields.value.wp} of ${repo}@${sha}:${path}`);
+  return fields.value;
+}
+
+/** Step 4: the cited commit is on the branch the repository serves. */
+async function checkServed(
+  resolution: Resolution,
+  item: string,
+  prdRef: PrdRef,
+  ports: LinkPorts,
+): Promise<boolean> {
+  const served: Fact<boolean> = await ports.isAncestorOfServedHead(prdRef.repo, prdRef.sha);
+  if (!served.ok) {
+    resolution.report.check(
+      item,
+      false,
+      `ancestry of the cited commit unreadable (${served.reason})`,
+    );
+    return false;
+  }
+  resolution.report.check(
+    item,
+    served.value,
+    served.value
+      ? `the cited commit is on the served branch of ${prdRef.repo}`
+      : `the cited commit is not on the served branch of ${prdRef.repo}`,
+  );
+  return served.value;
+}
+
+/** Step 5: one document of the repository at the cited commit; unreadable is a violation naming its path. */
+async function readAtCitedCommit(
+  resolution: Resolution,
+  item: string,
+  prdRef: PrdRef,
+  path: string,
+  ports: LinkPorts,
+): Promise<string | null> {
+  const file: Fact<string> = await ports.readFileAt(prdRef.repo, prdRef.sha, path);
+  if (!file.ok) {
+    resolution.report.check(item, false, `${path} unreadable (${file.reason})`);
+    return null;
+  }
+  return file.value;
+}
+
+/** Step 6: the PRD declares a maturity at least equal to the policy's threshold. */
+function checkApproved(
+  resolution: Resolution,
+  item: string,
+  prd: string,
+  floor: MaturityLevel,
+): boolean {
+  const level: MaturityLevel | null = readDocumentMaturity(prd);
+  if (level === null) {
+    resolution.volume.maturity = "none";
+    resolution.report.check(
+      item,
+      false,
+      `no \`Maturité du document :\` line gives a level (absent, unknown or contradictory): the PRD is not approved (threshold: ${floor})`,
+    );
+    return false;
+  }
+  resolution.volume.maturity = level;
+  const approved: boolean = atLeast(level, floor);
+  resolution.report.check(
+    item,
+    approved,
+    approved
+      ? `maturity ${level} is at least ${floor}: the PRD is approved`
+      : `maturity ${level} is below ${floor}: the PRD is not approved`,
+  );
+  return approved;
+}
+
+/** Step 7: the declared WP is a row of the work-package table of the PRD. */
+function findWorkPackage(
+  resolution: Resolution,
+  item: string,
+  prd: string,
+  wp: string,
+): WorkPackage | null {
+  const table: Parsed<readonly WorkPackage[]> = parseWorkPackages(prd);
+  if (!table.ok) {
+    resolution.report.check(item, false, `work-package table unreadable (${table.reason})`);
+    return null;
+  }
+  resolution.volume.workPackages = String(table.value.length);
+  const row: WorkPackage | undefined = table.value.find((candidate) => candidate.id === wp);
+  if (row === undefined) {
+    const rows: string = table.value.map((candidate) => candidate.id).join(", ");
+    resolution.report.check(
+      item,
+      false,
+      `${wp} is not a row of the work-package table (rows: ${rows})`,
+    );
+    return null;
+  }
+  resolution.report.check(item, true, `${wp} is a row of the work-package table`);
+  return row;
+}
+
+/** Step 8: every criterion the work package cites is declared once, with a `Validation :` clause. */
+function checkCitedCriteria(
+  resolution: Resolution,
+  item: string,
+  requirements: string,
+  workPackage: WorkPackage,
+): void {
+  const parsed: Parsed<readonly Criterion[]> = parseCriteria(requirements);
+  if (!parsed.ok) {
+    resolution.report.check(
+      item,
+      false,
+      `${REQUIREMENTS_PATH} unreadable as criteria (${parsed.reason})`,
+    );
+    return;
+  }
+  resolution.volume.criteria = String(parsed.value.length);
+  resolution.volume.cited = String(workPackage.criteria.length);
+  for (const cited of workPackage.criteria) {
+    const criterionItem: string = `${resolution.label} — ${workPackage.id} cites ${cited}`;
+    const criterion: Criterion | undefined = parsed.value.find(
+      (candidate) => candidate.id === cited,
+    );
+    if (criterion === undefined) {
+      resolution.report.check(criterionItem, false, `${REQUIREMENTS_PATH} does not declare it`);
+    } else if (!criterion.hasValidation) {
+      resolution.report.check(criterionItem, false, "it has no `Validation :` clause");
+    } else {
+      resolution.report.check(
+        criterionItem,
+        true,
+        `declared at line ${criterion.line} with a \`Validation :\` clause`,
+      );
+    }
+  }
+}
+
+async function verifyChain(
+  resolution: Resolution,
+  link: LinkDeclaration,
+  policy: WorkPackagePolicy,
+  ports: LinkPorts,
+): Promise<void> {
+  const fields: IssueFields | null = await readLinkedIssue(resolution, link, ports);
+  if (fields === null) {
+    return;
+  }
+  const { prdRef } = fields;
+  const item: string = `${resolution.label} — PRD ${prdRef.repo}@${prdRef.sha}`;
+  if (!(await checkServed(resolution, item, prdRef, ports))) {
+    return;
+  }
+  const prd: string | null = await readAtCitedCommit(resolution, item, prdRef, PRD_PATH, ports);
+  if (prd === null) {
+    return;
+  }
+  const requirements: string | null = await readAtCitedCommit(
+    resolution,
+    item,
+    prdRef,
+    REQUIREMENTS_PATH,
+    ports,
+  );
+  if (requirements === null) {
+    return;
+  }
+  if (!checkApproved(resolution, item, prd, policy.approvedFrom)) {
+    return;
+  }
+  const workPackage: WorkPackage | null = findWorkPackage(resolution, item, prd, link.wp);
+  if (workPackage === null) {
+    return;
+  }
+  checkCitedCriteria(resolution, item, requirements, workPackage);
+}
+
+/** Resolve a link and return the volume of what was read, for the summary line. */
+async function resolveLink(
+  report: GateReport,
+  label: string,
+  link: LinkDeclaration,
+  policy: WorkPackagePolicy,
+  ports: LinkPorts,
+): Promise<string> {
+  const volume: ResolutionVolume = {
+    issue: `${link.repo}#${link.issue} not read`,
+    prd: "not resolved",
+    maturity: "not read",
+    workPackages: "not read",
+    criteria: "not read",
+    cited: "not read",
+  };
+  await verifyChain({ report, label, volume }, link, policy, ports);
+  return (
+    `issue ${volume.issue}; PRD ${volume.prd}; maturity ${volume.maturity}; ` +
+    `work packages parsed: ${volume.workPackages}; criteria parsed: ${volume.criteria}; ` +
+    `criteria cited: ${volume.cited}`
+  );
+}
+
 interface Outcome {
   readonly read: string;
   readonly filesExamined: number;
+  /** The volume of the resolution of a link, or null on any other path. */
+  readonly resolution: string | null;
 }
 
 /** No declaration, and the author is the author of an exempt class: exempt, and the verdict says it is implicit. */
@@ -312,7 +708,7 @@ function passImplicitly(report: GateReport, label: string, cls: string, pr: PrFa
     true,
     `exempt (implicit: ${cls}): no declaration trailer, and the author ${JSON.stringify(pr.author)} is the author of class ${JSON.stringify(cls)}`,
   );
-  return { read: `exempt (implicit: ${cls})`, filesExamined: 0 };
+  return { read: `exempt (implicit: ${cls})`, filesExamined: 0, resolution: null };
 }
 
 /** Judge the declaration of a range that carries at least one declaration trailer, or none and no implicit exemption. */
@@ -326,7 +722,7 @@ async function judgeDeclaration(
 ): Promise<Outcome> {
   if (declaration.kind === "invalid") {
     report.check(`${label} — declaration`, false, declaration.reason);
-    return { read: "none (invalid)", filesExamined: 0 };
+    return { read: "none (invalid)", filesExamined: 0, resolution: null };
   }
   if (declaration.kind === "exempt") {
     const filesExamined: number = await evaluateExemption(
@@ -337,19 +733,20 @@ async function judgeDeclaration(
       policy,
       ports,
     );
-    return { read: `Exempt: ${declaration.cls}`, filesExamined };
+    return { read: `Exempt: ${declaration.cls}`, filesExamined, resolution: null };
   }
-  const read = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
+  const read: string = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
   report.check(`${label} — declaration`, true, read);
-  return { read, filesExamined: 0 };
+  const resolution: string = await resolveLink(report, label, declaration, policy, ports);
+  return { read, filesExamined: 0, resolution };
 }
 
 /**
  * Verdict over one pull request.
  *
- * Skeleton: the `link` path only proves that the declaration is well formed.
- * The reads of the issue, of the PRD, of the scope and of `ready` come with
- * the following tasks.
+ * The `link` path resolves the issue, the approved PRD at the cited commit,
+ * the work package and its criteria. The scope of the diff and the explicit
+ * `ready` come with the following tasks.
  */
 export async function evaluateWorkPackageLink(
   pr: PrFacts,
@@ -390,6 +787,7 @@ export async function evaluateWorkPackageLink(
     `${commits.value.length} commit(s) examined; ${pairs.seen} declaration trailer pair(s) seen, ` +
       `${pairs.distinct.length} distinct; declaration read: ${outcome.read}; ` +
       `implicit exemption: ${implicit === null ? "no" : `yes (${implicit})`}; ` +
-      `${outcome.filesExamined} file(s) examined for an exemption`,
+      `${outcome.filesExamined} file(s) examined for an exemption` +
+      (outcome.resolution === null ? "" : `; resolution: ${outcome.resolution}`),
   );
 }

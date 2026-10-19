@@ -119,23 +119,37 @@ Signed-off-by: Example Author <author@users.noreply.github.com>
 
 ## Issue body
 
-The issue that projects a work package has a body with two headings, whether it was created by the web form, by `gh issue create` or by the API:
+The issue that projects a work package has a body of two sections, whether it was created by the web form, by `gh issue create` or by the API:
 
 ```text
 ### PRD-ref
 
-<owner>/<repo>@<40 hex>:<path>
+<owner>/<repo>@<40 hex>:docs/prd.md
 
 ### WP
 
 WP-<k>
 ```
 
-- Each value is on the first non-empty line after its heading.
-- `PRD-ref` is the repository, the full 40-hexadecimal commit and the path of the PRD (`docs/prd.md`). A short or symbolic revision is refused.
+- The issue body MUST be exactly the text the `work-package` issue form produces, and nothing else: the line `### PRD-ref`, an empty line, the `PRD-ref` value on one line, an empty line, the line `### WP`, an empty line, the `WP` value on one line. Line ends MAY be CRLF, and one final line end MAY follow the `WP` value.
+- Anything else makes the body unreadable and the gate refuses it, naming the line or the value at fault: text before, between or after the sections, a third or a repeated section, the sections in another order, a comment, the form's `_No response_`, a value on two lines, a space or a tab at the start or end of a line, a byte order mark or any other invisible character. The gate never reads the body heuristically.
+- `PRD-ref` is the repository (`<owner>/<repo>`, the grammar of the trailer), the full commit as 40 lowercase hexadecimal characters, and the path of the PRD, which MUST be exactly `docs/prd.md`. A short, uppercase or symbolic revision is refused.
+- `WP` is `WP-<k>`, with the grammar of the trailer, and MUST equal the `WP-<k>` of the trailer.
 - A `PRD-ref` MAY point to a public repository of the organization. For a private repository it MUST be the repository of the pull request. A commit that is unreachable or rewritten is a named failure.
 - The gate validates the structure of the body itself, because the web form is not the only way to create an issue.
-- Nothing else is required in the body: scope and verification live in the PRD.
+- Nothing else is allowed in the body: scope and verification live in the PRD.
+
+The example below is read by the test `tools/quality/check-work-package-link.test.ts`:
+
+```text issue-body-example
+### PRD-ref
+
+libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md
+
+### WP
+
+WP-1
+```
 
 ## Readiness
 
