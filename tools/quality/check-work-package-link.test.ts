@@ -17,6 +17,7 @@ import {
   scopeEntryProblem,
   type Trailer,
 } from "./check-work-package-link";
+import type { GateOutcome, GateReport } from "./gate-report";
 import type { Parsed } from "./prd-model";
 import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
 
@@ -525,7 +526,8 @@ const FULL_RESOLUTION_CALLS: string[] = [...RESOLUTION_CALLS, CALL_CHANGED];
 const GREEN_RESOLUTION: string =
   `; resolution: issue ${PRD_REPO}#12 read; PRD ${PRD_REF}; maturity décision; ` +
   "work packages parsed: 2; criteria parsed: 3; criteria cited: 2; " +
-  "scope entries: 1; files examined: 1; scope decision: all 1 changed file(s) inside the scope";
+  "scope entries: 1; files examined: 1; scope decision: all 1 changed file(s) inside the scope; " +
+  "ready: implicit (no guarded path touched, work package two-way)";
 
 describe("evaluateWorkPackageLink", () => {
   test("a well-formed link passes, prints its volume and reads the diff once, last", async () => {
@@ -2114,6 +2116,349 @@ describe("evaluateWorkPackageLink — scope of the diff", () => {
     expect(verdict.violations).toEqual([
       `${SCOPE_ITEM}: 1 of 1 changed file(s) outside the scope ["src/**"]: "docs/x.md"`,
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Explicit `ready` (norm, "Readiness"): inside an approved PRD a work package is
+// ready implicitly; an explicit `ready` of an owner, with the issue body not
+// edited since, is required only when the diff touches a guarded path of I-17
+// (`GATED_PATH_PATTERNS`) or when the work package is `one-way` in the
+// `Porte anticipée` column of the PRD at the cited commit.
+// ---------------------------------------------------------------------------
+
+describe("evaluateWorkPackageLink — explicit ready", () => {
+  const READY_ITEM = "PR #7 — WP-3 ready";
+  const SCOPE_ITEM = "PR #7 — WP-3 scope";
+  const GUARDED = "docs/adr/0001-x.md";
+  const GUARDED_REASON = `guarded path(s) touched: "${GUARDED}"`;
+  const ONE_WAY_REASON = "work package WP-3 is one-way";
+  const OWNERS_TEXT = '["constantin-jais"]';
+
+  const rows = (door: string): string =>
+    "| `WP-1` | `CA-1` | `docs/**` | `bun test` | `two-way` |\n" +
+    `| \`WP-3\` | \`CA-1\`, \`CA-2\` | \`src/**\`, \`docs/**\` | \`bun test\` | \`${door}\` |\n`;
+
+  const OWNER_READY: Partial<IssueRead> = {
+    labels: ["kind:work-package", "ready"],
+    readyLabeledBy: "constantin-jais",
+    bodyEditedAfterReady: false,
+  };
+
+  interface ReadyCase {
+    readonly door?: "one-way" | "two-way";
+    readonly changed?: readonly string[];
+    readonly issue?: Partial<IssueRead>;
+  }
+
+  function readyWorld(given: ReadyCase = {}): LinkWorld {
+    const issue: IssueRead = {
+      body: issueBody(),
+      labels: ["kind:work-package"],
+      readyLabeledBy: null,
+      bodyEditedAfterReady: false,
+      ...given.issue,
+    };
+    return linkWorld({
+      prd: { ok: true, value: prdText(undefined, rows(given.door ?? "two-way")) },
+      changed: { ok: true, value: given.changed ?? [GUARDED] },
+      issue: { ok: true, value: issue },
+    });
+  }
+
+  interface ReadyVerdict {
+    readonly report: GateReport;
+    readonly outcome: GateOutcome;
+    readonly violations: readonly string[];
+    readonly volume: string | null;
+  }
+
+  async function judge(
+    world: LinkWorld,
+    onPolicy: WorkPackagePolicy = policy,
+  ): Promise<ReadyVerdict> {
+    const report: GateReport = await evaluateWorkPackageLink(pr(), onPolicy, world.ports);
+    return {
+      report,
+      outcome: report.outcome,
+      violations: report.violations,
+      volume: report.volumeSummary,
+    };
+  }
+
+  test("a guarded path without the ready label is a violation naming the path", async () => {
+    const world = readyWorld();
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON}`,
+    ]);
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      `; ready: explicit required (${GUARDED_REASON}), 1 check(s) failed`,
+    );
+  });
+
+  test("a ready set by someone-else, not an owner, does not count", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: "someone-else" } }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the "ready" label was set by "someone-else", who is not in owners ${OWNERS_TEXT}: it does not count`,
+    ]);
+  });
+
+  test("a ready of an owner followed by an edit of the body is cancelled", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, bodyEditedAfterReady: true } }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue body was edited after the "ready" label: the ready is cancelled, set it again`,
+    ]);
+  });
+
+  test("a ready of an owner, body not edited since: pass, saying why it was required", async () => {
+    const world = readyWorld({ issue: OWNER_READY });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.report.checks.at(-1)).toEqual({
+      item: READY_ITEM,
+      ok: true,
+      note: `explicit ready set by "constantin-jais" (an owner), the issue body not edited since; required because ${GUARDED_REASON}`,
+    });
+    expect(verdict.volume).toContain(`; ready: explicit required (${GUARDED_REASON}), held`);
+    // The shared identity of the agents and the owner (norm, "Limit of the
+    // control") forbids presenting the owner check as an authentication.
+    expect(String(verdict.volume).toLowerCase()).not.toContain("authentic");
+    expect(JSON.stringify(verdict.report.checks).toLowerCase()).not.toContain("authentic");
+  });
+
+  test("the owner login in another ASCII case is the owner", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: "Constantin-Jais" } }),
+    );
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+  });
+
+  describe("a list of several owners", () => {
+    const owners: WorkPackagePolicy = { ...policy, owners: ["constantin-jais", "kilo"] };
+    const OWNERS_TWO = '["constantin-jais","kilo"]';
+
+    test.each([
+      "kilo",
+      "KILO",
+      "constantin-jais",
+    ])("the owner %s is accepted", async (actor: string) => {
+      const verdict = await judge(
+        readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: actor } }),
+        owners,
+      );
+      expect(verdict.violations).toEqual([]);
+    });
+
+    test("a login with the Kelvin sign does not fold onto the owner kilo", async () => {
+      const verdict = await judge(
+        readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: `${KELVIN_SIGN}ilo` } }),
+        owners,
+      );
+      expect(verdict.violations).toEqual([
+        `${READY_ITEM}: the "ready" label was set by "\\u{212a}ilo", who is not in owners ${OWNERS_TWO}: it does not count`,
+      ]);
+    });
+
+    test("a login outside the list is refused, naming every owner", async () => {
+      const verdict = await judge(
+        readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: "mallory" } }),
+        owners,
+      );
+      expect(verdict.violations).toEqual([
+        `${READY_ITEM}: the "ready" label was set by "mallory", who is not in owners ${OWNERS_TWO}: it does not count`,
+      ]);
+    });
+  });
+
+  test("a one-way work package outside the guarded paths without ready is a violation", async () => {
+    const world = readyWorld({ door: "one-way", changed: ["src/a.ts"] });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${ONE_WAY_REASON}`,
+    ]);
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      `; ready: explicit required (${ONE_WAY_REASON}), 1 check(s) failed`,
+    );
+  });
+
+  test("a one-way work package with a valid ready passes", async () => {
+    const verdict = await judge(
+      readyWorld({ door: "one-way", changed: ["src/a.ts"], issue: OWNER_READY }),
+    );
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(verdict.volume).toContain(`; ready: explicit required (${ONE_WAY_REASON}), held`);
+  });
+
+  test("a guarded path and a one-way work package give both reasons", async () => {
+    const verdict = await judge(readyWorld({ door: "one-way" }));
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON} and ${ONE_WAY_REASON}`,
+    ]);
+  });
+
+  test("an ordinary two-way pull request outside the guarded paths needs no ready label", async () => {
+    const world = readyWorld({ changed: ["src/a.ts", "docs/guide.md"] });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+    expect(verdict.volume).toContain(
+      "; ready: implicit (no guarded path touched, work package two-way)",
+    );
+    // An implicit ready adds no check: the scope stays the last thing asserted.
+    expect(verdict.report.checks.at(-1)?.item).toBe(SCOPE_ITEM);
+  });
+
+  test.each([
+    "Ready",
+    "READY",
+    "ready",
+  ])("the label %s is the ready label (ASCII case folded)", async (label: string) => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, labels: ["kind:work-package", label] } }),
+    );
+    expect(verdict.violations).toEqual([]);
+  });
+
+  test.each([
+    "ready-for-review",
+    " ready",
+    "ready ",
+    "not-ready",
+    `${NO_BREAK_SPACE}ready`,
+  ])("the label %p is not the ready label", async (label: string) => {
+    const verdict = await judge(
+      readyWorld({ issue: { ...OWNER_READY, labels: ["kind:work-package", label] } }),
+    );
+    // The actor is the owner but no ready label is there: both are reported.
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON}`,
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is absent but its actor is "constantin-jais"`,
+    ]);
+  });
+
+  test.each([
+    ["undefined", undefined, "undefined"],
+    ["null", null, "null"],
+    ["the string false", "false", '"false"'],
+    ["zero", 0, "0"],
+  ])("bodyEditedAfterReady %s from a careless port is a violation", async (_name: string, value: unknown, shown: string) => {
+    const verdict = await judge(
+      readyWorld({
+        issue: { ...OWNER_READY, bodyEditedAfterReady: value as unknown as boolean },
+      }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: bodyEditedAfterReady is ${shown}, not the boolean false: the issue read cannot show the body unedited since the ready`,
+    ]);
+  });
+
+  test("a ready label without an actor is an inconsistent issue read", async () => {
+    const verdict = await judge(readyWorld({ issue: { ...OWNER_READY, readyLabeledBy: null } }));
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is present but its actor is null`,
+    ]);
+  });
+
+  test("an actor without a ready label is an inconsistent issue read, beside the missing label", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: { labels: ["kind:work-package"], readyLabeledBy: "constantin-jais" } }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON}`,
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is absent but its actor is "constantin-jais"`,
+    ]);
+  });
+
+  test("every failed control is reported, not only the first", async () => {
+    const verdict = await judge(
+      readyWorld({
+        issue: {
+          labels: ["kind:work-package"],
+          readyLabeledBy: "someone-else",
+          bodyEditedAfterReady: true,
+        },
+      }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because ${GUARDED_REASON}`,
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is absent but its actor is "someone-else"`,
+      `${READY_ITEM}: the "ready" label was set by "someone-else", who is not in owners ${OWNERS_TEXT}: it does not count`,
+      `${READY_ITEM}: the issue body was edited after the "ready" label: the ready is cancelled, set it again`,
+    ]);
+    expect(verdict.volume).toContain(
+      `; ready: explicit required (${GUARDED_REASON}), 4 check(s) failed`,
+    );
+  });
+
+  test("more than twenty guarded paths: twenty are named and the rest counted", async () => {
+    const changed: string[] = Array.from(
+      { length: 21 },
+      (_, i) => `docs/adr/${String(i).padStart(4, "0")}-x.md`,
+    );
+    const verdict = await judge(readyWorld({ changed }));
+    const named: string = changed
+      .slice(0, 20)
+      .map((path) => `"${path}"`)
+      .join(", ");
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because guarded path(s) touched: ${named}, and 1 more`,
+    ]);
+  });
+
+  test("only the guarded paths are named, not the other files of the diff", async () => {
+    const verdict = await judge(
+      readyWorld({ changed: ["src/a.ts", "docs/decisions/INVARIANTS.md", "docs/guide.md"] }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: the issue carries no "ready" label: an explicit ready is required because guarded path(s) touched: "docs/decisions/INVARIANTS.md"`,
+    ]);
+  });
+
+  test("an invalid guarded-looking path is refused by the scope check and ready is not reached", async () => {
+    const world = readyWorld({ changed: ["docs/adr/../x.md"] });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 1 changed file path(s) unreadable: "docs/adr/../x.md" (it has a ".." segment)`,
+    ]);
+    expect(verdict.volume).toContain("; ready: not reached");
+    expect(world.calls).toEqual(FULL_RESOLUTION_CALLS);
+  });
+
+  test("ready is not reached while the scope is violated", async () => {
+    const world = readyWorld({ changed: ["lib/x.ts", GUARDED] });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 2 changed file(s) outside the scope ["src/**","docs/**"]: "lib/x.ts"`,
+    ]);
+    expect(verdict.volume).toContain("; ready: not reached");
+  });
+
+  test("the guarded paths are read from the diff the scope check validated, read once", async () => {
+    let reads = 0;
+    const world = readyWorld({ issue: OWNER_READY });
+    const ports: LinkPorts = {
+      ...world.ports,
+      changedFiles: async (): Promise<Fact<readonly string[]>> => {
+        reads += 1;
+        // A second read would see a diff without the guarded path and pass.
+        return { ok: true, value: reads === 1 ? [GUARDED] : ["src/a.ts"] };
+      },
+    };
+    const report = await evaluateWorkPackageLink(pr(), policy, ports);
+    expect(reads).toBe(1);
+    expect(report.volumeSummary).toContain(`; ready: explicit required (${GUARDED_REASON}), held`);
   });
 });
 

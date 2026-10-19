@@ -1,3 +1,4 @@
+import { touchesGatedPaths } from "./check-review-evidence";
 import { GateReport } from "./gate-report";
 import {
   atLeast,
@@ -31,9 +32,9 @@ import { findUnreadableCharacter, type UnreadableCharacter } from "./yaml-text-g
  *
  * This file holds the reader of the declaration, the verifier of exemptions,
  * the reader of the issue body, the resolution of a link (issue, approved PRD,
- * work package, cited criteria) and the containment of the diff in the scope
- * of the work package. Checking `ready` is added to `evaluateWorkPackageLink`
- * by a following task.
+ * work package, cited criteria), the containment of the diff in the scope of
+ * the work package, and the explicit `ready` of an owner where the norm
+ * requires one (section "Readiness").
  */
 
 /** A value read through a port: either the value, or the reason it could not be read. */
@@ -41,6 +42,24 @@ export type Fact<T> =
   | { readonly ok: true; readonly value: T }
   | { readonly ok: false; readonly reason: string };
 
+/**
+ * What the gate reads of the issue that projects a work package.
+ *
+ * Contract for the real implementation (Task 12), from the timeline of the
+ * issue:
+ * - `labels`: the names of the labels the issue carries now, as written.
+ * - `readyLabeledBy`: the actor of the LAST `labeled` event of the label
+ *   `ready` (ASCII case-insensitive) that no later `unlabeled` event of that
+ *   label follows; `null` when the issue does not carry `ready`. A label
+ *   removed then set again gives the actor of the new `labeled` event.
+ * - `bodyEditedAfterReady`: `true` when an edit of the issue body is later
+ *   than that `labeled` event, `false` otherwise (and `false` when there is no
+ *   such event). Setting the label again restarts the comparison from the new
+ *   event.
+ * An implementation that cannot read the timeline returns `ok: false`, never
+ * a default value. The gate takes no value but the boolean `false` as "not
+ * edited since".
+ */
 export interface IssueRead {
   readonly body: string;
   readonly labels: readonly string[];
@@ -644,6 +663,8 @@ interface ResolutionVolume {
   scopeEntries: string;
   filesExamined: string;
   scopeDecision: string;
+  /** Whether `ready` is implicit or explicit, why, and the result of the explicit check. */
+  ready: string;
   /** The unbounded entries of the scope, empty when it is bounded. */
   unbounded: readonly string[];
 }
@@ -656,12 +677,18 @@ interface Resolution {
   readonly volume: ResolutionVolume;
 }
 
+/** The issue as read, with the fields of its body; the readiness step reads its labels. */
+interface LinkedIssue {
+  readonly read: IssueRead;
+  readonly fields: IssueFields;
+}
+
 /** Steps 1 to 3: the issue is readable, its body is the form, and it projects the declared WP. */
 async function readLinkedIssue(
   resolution: Resolution,
   link: LinkDeclaration,
   ports: LinkPorts,
-): Promise<IssueFields | null> {
+): Promise<LinkedIssue | null> {
   const item: string = `${resolution.label} — issue ${link.repo}#${link.issue}`;
   const issue: Fact<IssueRead> = await ports.readIssue(link.repo, link.issue);
   if (!issue.ok) {
@@ -689,7 +716,7 @@ async function readLinkedIssue(
   }
   const { repo, sha, path } = fields.value.prdRef;
   resolution.report.check(item, true, `projects ${fields.value.wp} of ${repo}@${sha}:${path}`);
-  return fields.value;
+  return { read: issue.value, fields: fields.value };
 }
 
 /** The owner segment of `<owner>/<name>`, or null when there is no slash. */
@@ -892,12 +919,16 @@ function checkCitedCriteria(
  * gate cannot match with certainty, an unreadable diff and an unreadable path
  * all refuse. An empty diff is the one verdict that asserts nothing, and it
  * says so with its reason instead of passing mute.
+ *
+ * Returns the validated paths of the diff when every one is inside the scope,
+ * so the readiness step judges the very list judged here without asking the
+ * port again; null on any refusal.
  */
 async function checkScope(
   resolution: Resolution,
   workPackage: WorkPackage,
   ports: LinkPorts,
-): Promise<void> {
+): Promise<readonly string[] | null> {
   const { report, label, volume, pr } = resolution;
   const { scope } = workPackage;
   const item: string = `${label} — ${workPackage.id} scope`;
@@ -913,7 +944,7 @@ async function checkScope(
   }, 0);
   if (unsupported > 0) {
     volume.scopeDecision = `${unsupported} unsupported scope glob(s)`;
-    return;
+    return null;
   }
   // Accepted, never silently: such an entry leaves the containment check with
   // almost nothing to refuse, and a reader of the verdict must see that.
@@ -936,7 +967,7 @@ async function checkScope(
       `changed files unreadable (${changed.reason})`,
     );
     volume.scopeDecision = "changed files unreadable";
-    return;
+    return null;
   }
   const paths: readonly string[] = changed.value;
   volume.filesExamined = String(paths.length);
@@ -947,14 +978,14 @@ async function checkScope(
       "the diff holds no changed file: a pull request that cites a work package changes at least one file";
     report.check(`${label} — ${workPackage.id} changed files`, false, reason);
     volume.scopeDecision = "the diff holds no changed file";
-    return;
+    return null;
   }
 
   const unreadable = unreadablePaths(paths);
   if (unreadable !== null) {
     volume.scopeDecision = unreadable.summary;
     report.check(item, false, unreadable.note);
-    return;
+    return null;
   }
 
   const outside: string[] = paths.filter(
@@ -967,7 +998,7 @@ async function checkScope(
       false,
       `${volume.scopeDecision} ${JSON.stringify(scope)}: ${boundedList(outside.map(asciiQuoted))}`,
     );
-    return;
+    return null;
   }
   volume.scopeDecision = `all ${paths.length} changed file(s) inside the scope`;
   report.check(
@@ -975,6 +1006,130 @@ async function checkScope(
     true,
     `all ${paths.length} changed file(s) are inside the scope ${JSON.stringify(scope)}`,
   );
+  return paths;
+}
+
+// ---------------------------------------------------------------------------
+// Readiness (norm, "Readiness"). Inside an approved PRD a work package is
+// ready implicitly. An explicit `ready` is required when the diff touches a
+// guarded path of I-17 (`GATED_PATH_PATTERNS`, the surface the review-evidence
+// gate already guards) or when the work package is `one-way` in the
+// `Porte anticipée` column of the PRD at the cited commit. The door is read
+// from that versioned table, never from the pull request description: the
+// description is Markdown and is not an input of this gate.
+//
+// The owner check is a consistency check, not an authentication: the agents
+// share the owner's account (norm, "Limit of the control").
+// ---------------------------------------------------------------------------
+
+const READY_LABEL = "ready";
+
+/** GitHub logins and label names compare ASCII case-insensitively, never Unicode case. */
+const sameAsciiFolded = (left: string, right: string): boolean =>
+  asciiLower(left) === asciiLower(right);
+
+/** Why an explicit ready is required, or null when it is implicit. */
+function explicitReadyReason(workPackage: WorkPackage, paths: readonly string[]): string | null {
+  const reasons: string[] = [];
+  const guarded: readonly string[] = touchesGatedPaths(paths);
+  if (guarded.length > 0) {
+    reasons.push(`guarded path(s) touched: ${boundedList(guarded.map(asciiQuoted))}`);
+  }
+  if (workPackage.door === "one-way") {
+    reasons.push(`work package ${workPackage.id} is one-way`);
+  }
+  return reasons.length === 0 ? null : reasons.join(" and ");
+}
+
+/** A printable rendering of a value a careless port may hand over in place of a boolean. */
+function shown(value: unknown): string {
+  // JSON.stringify answers undefined for undefined, a function or a symbol.
+  const json: string | undefined = JSON.stringify(value);
+  return json === undefined
+    ? typeof value
+    : json.replace(
+        /[^\x20-\x7E]/gu,
+        (char: string): string => `\\u{${(char.codePointAt(0) as number).toString(16)}}`,
+      );
+}
+
+/**
+ * The refusals of an explicit ready, in a fixed order, every one reported:
+ * one pull request shows all the defects of its issue at once, like the cited
+ * criteria. An empty list means the ready holds.
+ */
+function readyRefusals(issue: IssueRead, owners: readonly string[], reason: string): string[] {
+  const refusals: string[] = [];
+  // The port is not trusted: a non-string label is no label.
+  const labelled: boolean = issue.labels.some(
+    (name: unknown): boolean => typeof name === "string" && sameAsciiFolded(name, READY_LABEL),
+  );
+  const actor: unknown = issue.readyLabeledBy;
+  if (!labelled) {
+    refusals.push(
+      `the issue carries no "ready" label: an explicit ready is required because ${reason}`,
+    );
+  }
+  if (actor !== null && typeof actor !== "string") {
+    refusals.push(
+      `inconsistent issue read: the actor of the "ready" label is ${shown(actor)}, neither a login nor null`,
+    );
+  } else if (labelled !== (actor !== null)) {
+    refusals.push(
+      `inconsistent issue read: the "ready" label is ${labelled ? "present" : "absent"} but its actor is ${actor === null ? "null" : asciiQuoted(actor)}`,
+    );
+  }
+  if (typeof actor === "string" && !owners.some((owner) => sameAsciiFolded(owner, actor))) {
+    refusals.push(
+      `the "ready" label was set by ${asciiQuoted(actor)}, who is not in owners ${JSON.stringify(owners)}: it does not count`,
+    );
+  }
+  // Strictly `false`: a careless port answering undefined, null or "false"
+  // must not read as "not edited since".
+  const edited: unknown = issue.bodyEditedAfterReady;
+  if (edited === true) {
+    refusals.push(
+      'the issue body was edited after the "ready" label: the ready is cancelled, set it again',
+    );
+  } else if (edited !== false) {
+    refusals.push(
+      `bodyEditedAfterReady is ${shown(edited)}, not the boolean false: the issue read cannot show the body unedited since the ready`,
+    );
+  }
+  return refusals;
+}
+
+/** Step 10: an explicit ready of an owner where the norm requires one; otherwise ready is implicit. */
+function checkReady(
+  resolution: Resolution,
+  workPackage: WorkPackage,
+  issue: IssueRead,
+  paths: readonly string[],
+  owners: readonly string[],
+): void {
+  const reason: string | null = explicitReadyReason(workPackage, paths);
+  if (reason === null) {
+    // No check is added: nothing is asserted, and the volume says why.
+    resolution.volume.ready = `implicit (no guarded path touched, work package ${workPackage.door})`;
+    return;
+  }
+  const item: string = `${resolution.label} — ${workPackage.id} ready`;
+  const refusals: string[] = readyRefusals(issue, owners, reason);
+  for (const refusal of refusals) {
+    resolution.report.check(item, false, refusal);
+  }
+  // No refusal implies a string actor (the consistency check refuses null with a label).
+  const actor: string | null = issue.readyLabeledBy;
+  if (refusals.length === 0 && actor !== null) {
+    resolution.report.check(
+      item,
+      true,
+      `explicit ready set by ${asciiQuoted(actor)} (an owner), the issue body not edited since; required because ${reason}`,
+    );
+  }
+  resolution.volume.ready =
+    `explicit required (${reason}), ` +
+    (refusals.length === 0 ? "held" : `${refusals.length} check(s) failed`);
 }
 
 async function verifyChain(
@@ -988,11 +1143,11 @@ async function verifyChain(
   if (!checkSameOwner(resolution, issueItem, "issue", link.repo)) {
     return;
   }
-  const fields: IssueFields | null = await readLinkedIssue(resolution, link, ports);
-  if (fields === null) {
+  const issue: LinkedIssue | null = await readLinkedIssue(resolution, link, ports);
+  if (issue === null) {
     return;
   }
-  const { prdRef } = fields;
+  const { prdRef } = issue.fields;
   const item: string = `${resolution.label} — PRD ${prdRef.repo}@${prdRef.sha}`;
   // Before the ancestry: a PRD of another owner is never resolved.
   if (!checkSameOwner(resolution, item, "PRD-ref", prdRef.repo)) {
@@ -1026,7 +1181,14 @@ async function verifyChain(
   if (!checkCitedCriteria(resolution, item, requirements, workPackage)) {
     return;
   }
-  await checkScope(resolution, workPackage, ports);
+  // Ready is judged on the diff the scope check validated, never on a second
+  // read of the port: a port answering differently twice cannot slip a guarded
+  // path past this step.
+  const paths: readonly string[] | null = await checkScope(resolution, workPackage, ports);
+  if (paths === null) {
+    return;
+  }
+  checkReady(resolution, workPackage, issue.read, paths, policy.owners);
 }
 
 /** Resolve a link and return the volume of what was read, for the summary line. */
@@ -1048,6 +1210,7 @@ async function resolveLink(
     scopeEntries: "not read",
     filesExamined: "not read",
     scopeDecision: "not reached",
+    ready: "not reached",
     unbounded: [],
   };
   await verifyChain({ report, label, pr, volume }, link, policy, ports);
@@ -1055,7 +1218,8 @@ async function resolveLink(
     `issue ${volume.issue}; PRD ${volume.prd}; maturity ${volume.maturity}; ` +
     `work packages parsed: ${volume.workPackages}; criteria parsed: ${volume.criteria}; ` +
     `criteria cited: ${volume.cited}; scope entries: ${volume.scopeEntries}; ` +
-    `files examined: ${volume.filesExamined}; scope decision: ${volume.scopeDecision}` +
+    `files examined: ${volume.filesExamined}; scope decision: ${volume.scopeDecision}; ` +
+    `ready: ${volume.ready}` +
     (volume.unbounded.length === 0 ? "" : "; scope: unbounded")
   );
 }
@@ -1112,8 +1276,8 @@ async function judgeDeclaration(
  *
  * The `link` path resolves the issue, the approved PRD at the cited commit,
  * the work package and its criteria, then requires every changed file to be
- * inside the scope of the work package. The explicit `ready` comes with a
- * following task.
+ * inside the scope of the work package, and last an explicit `ready` of an
+ * owner when the diff touches a guarded path or the work package is one-way.
  */
 export async function evaluateWorkPackageLink(
   pr: PrFacts,
