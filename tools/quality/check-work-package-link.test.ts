@@ -1494,4 +1494,51 @@ describe("evaluateWorkPackageLink — owner of the work package and of the PRD",
     ]);
     expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE]);
   });
+
+  // An unset or malformed pull request repository (an empty GITHUB_REPOSITORY,
+  // for instance) has no owner to compare with: every link is refused, the
+  // same-owner-looking one included, before any read.
+  const noOwner = (prRepo: string): string =>
+    `the pull request repository has no owner (${JSON.stringify(prRepo)} is not <owner>/<repo>): the chain is resolved only within the owner of the pull request`;
+
+  test.each([
+    ["empty", ""],
+    ["an owner without a slash", "libre-ai"],
+    ["an owner with an empty name", "libre-ai/"],
+    ["a name with an empty owner", "/gov"],
+  ])("a pull request repository that is %s refuses every link", async (_label: string, prRepo: string) => {
+    for (const declared of ["evil-owner/x", "libre-ai/product-research"]) {
+      const world: LinkWorld = linkWorld({
+        commits: withCommits(commit("c1", trailer("Work-package", `${declared}#12 WP-3`))),
+      });
+      const report = await evaluateWorkPackageLink(pr({ repo: prRepo }), policy, world.ports);
+      expect(report.violations).toEqual([`PR #7 — issue ${declared}#12: ${noOwner(prRepo)}`]);
+      expect(world.calls).toEqual([CALL_TRAILERS]);
+    }
+  });
+
+  // U+212A (Kelvin sign) lower-cases to "k" under Unicode case mapping: a
+  // full lower-casing would read the owner "Kilo" written with it as "kilo".
+  test.each([
+    ["the Kelvin sign", `${KELVIN_SIGN}ilo/x`],
+    ["the Kelvin sign in a longer owner", `${KELVIN_SIGN}ILO/x`],
+  ])("a pull request owner written with %s is not the ASCII owner", async (_label: string, prRepo: string) => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", "kilo/x#12 WP-3"))),
+    });
+    const report = await evaluateWorkPackageLink(pr({ repo: prRepo }), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — issue kilo/x#12: ${ownerViolation("issue", "kilo", prRepo.slice(0, prRepo.indexOf("/")))}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS]);
+  });
+
+  test("the ASCII owner kilo matches its upper-case spelling", async () => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", "kilo/x#12 WP-3"))),
+      issue: issueRead(issueBody(`KILO/x@${PRD_SHA}:docs/prd.md`)),
+    });
+    const report = await evaluateWorkPackageLink(pr({ repo: "Kilo/x" }), policy, world.ports);
+    expect(report.outcome).toBe("pass");
+  });
 });

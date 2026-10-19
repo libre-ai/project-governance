@@ -500,7 +500,12 @@ async function readLinkedIssue(
 /** The owner segment of `<owner>/<name>`, or null when there is no slash. */
 function ownerOf(repo: string): string | null {
   const slash: number = repo.indexOf("/");
-  return slash === -1 ? null : repo.slice(0, slash);
+  if (slash === -1) {
+    return null;
+  }
+  const owner: string = repo.slice(0, slash);
+  // `libre-ai/` or `/gov` is no repository: an empty side never names an owner.
+  return owner === "" || slash === repo.length - 1 ? null : owner;
 }
 
 /**
@@ -522,10 +527,14 @@ function checkSameOwner(
   const same: boolean =
     owner !== null && prOwner !== null && asciiLower(owner) === asciiLower(prOwner);
   if (!same) {
+    const cause: string =
+      prOwner === null
+        ? `the pull request repository has no owner (${JSON.stringify(resolution.prRepo)} is not <owner>/<repo>)`
+        : `the ${kind} repository belongs to owner ${JSON.stringify(owner ?? repo)}, the pull request to owner ${JSON.stringify(prOwner)}`;
     resolution.report.check(
       item,
       false,
-      `the ${kind} repository belongs to owner ${JSON.stringify(owner ?? repo)}, the pull request to owner ${JSON.stringify(prOwner ?? resolution.prRepo)}: the chain is resolved only within the owner of the pull request`,
+      `${cause}: the chain is resolved only within the owner of the pull request`,
     );
   }
   return same;
