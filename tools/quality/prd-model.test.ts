@@ -310,6 +310,36 @@ describe("the work-package norm", () => {
     }
   });
 
+  test("the maturity example reads as the level it shows", async () => {
+    const norm: string = await readNorm();
+    expect(readDocumentMaturity(exampleOf(norm, "maturity-example"))).toBe("décision");
+  });
+
+  // Pins the header sentence of the norm: the WP cell is exact, the four others
+  // only have to begin with their word.
+  test("the WP header cell must be exactly WP, the other four only begin with their word", () => {
+    const row: string = "| `WP-1` | `CA-3` | `a/**` | `bun test` | `two-way` |";
+    const withHeader = (first: string, last: string): string =>
+      [
+        `| ${first} | CA-n couverts | Périmètre (chemins, globs) | Vérification (commande) | ${last} |`,
+        TABLE_RULE,
+        row,
+      ].join("\n");
+    expect(parseWorkPackages(withHeader("WP (id)", "Porte anticipée")).ok).toBe(false);
+    expect(parseWorkPackages(withHeader("WP", "Porte anticipée")).ok).toBe(true);
+    expect(parseWorkPackages(withHeader("WP", "Porte")).ok).toBe(true);
+    expect(parseWorkPackages(withHeader("WP", "Porte anticipée (voir note)")).ok).toBe(true);
+  });
+
+  test("the norm refuses a work package citing a criterion without Validation", async () => {
+    const text: string = await readNorm();
+    expect(text).toContain(
+      "A work package MUST NOT cite a criterion that has no `Validation :` clause; the gate refuses it.",
+    );
+    expect(text).not.toContain("the gate decides what to do with it");
+    expect(text).toContain("Each of the other four cells only has to begin with its word");
+  });
+
   test("the norm covers the seven required subjects under stable headings", async () => {
     const text: string = await readNorm();
     const lines: string[] = text.split("\n");

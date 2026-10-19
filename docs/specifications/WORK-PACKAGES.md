@@ -2,7 +2,7 @@
 
 Every change to a repository of the constellation traces back to an objective of a product requirements document (PRD) through a chain that a gate can read: PRD, criterion, work package, pull request, evidence. This standard fixes the documents that carry the chain, the grammar of each link, and the limit of what the chain proves. It complements section 12 (Work packages) of `SPECIFICATION-STANDARD.md` and does not amend it.
 
-The grammars below are the ones accepted by `tools/quality/prd-model.ts`. The two examples in this document are fenced blocks that the test `tools/quality/prd-model.test.ts` extracts and feeds to those parsers: a sentence here that the parser contradicts fails that test. Where this document and the parser disagree, the parser is the defect to fix or the sentence is, never both left standing.
+The grammars below are the ones accepted by `tools/quality/prd-model.ts`. The three labelled examples below (`criteria-example`, `work-package-table-example`, `maturity-example`) are parsed by the test `tools/quality/prd-model.test.ts`; other sentences are checked by the other tests named there (the table header rule, the `Validation :` rule, the section headings and the ladder). A sentence that no test pins is not guaranteed against the parser. Where this document and the parser disagree, the parser is the defect to fix or the sentence is, never both left standing.
 
 ## Normative language
 
@@ -23,7 +23,7 @@ The grammars below are the ones accepted by `tools/quality/prd-model.ts`. The tw
 A criterion is one bullet of `docs/cahier-des-charges.md`:
 
 - The bullet starts with `-`, `*` or `+`, optionally followed by bold markers, then `CA-` and decimal digits (`CA-3`, `CA-15`).
-- The bullet MUST contain the clause `Validation :` (a colon after the word, optional spaces before it) naming how the criterion is verified. The clause MAY be on an indented continuation line of the same bullet. A criterion without it is read, flagged as having no validation, and the gate decides what to do with it.
+- The bullet MUST contain the clause `Validation :` (a colon after the word, optional spaces before it) naming how the criterion is verified. The clause MAY be on an indented continuation line of the same bullet. The parser reads a criterion without it and reports that it has no validation; it does not refuse the document. A work package MUST NOT cite a criterion that has no `Validation :` clause; the gate refuses it.
 - A `CA-n` MUST be declared once per document. A second declaration makes the document unreadable.
 - Numbers are local to a repository. Outside it a criterion is cited by its qualified reference `<owner>/<repo>@<40 hex>:<path>#CA-<n>`; the commit digest is the only integrity mechanism, no second hash is added.
 - Fenced code blocks and HTML comments are not read: a criterion inside one does not exist.
@@ -40,7 +40,7 @@ A criterion is one bullet of `docs/cahier-des-charges.md`:
 
 The PRD holds one table, with exactly this header, one row per work package. The table is part of the merged PRD, so a change of scope is a pull request visible on the PRD.
 
-- The header has five cells: `WP`, `CA-n couverts`, `Périmètre (chemins, globs)`, `Vérification (commande)`, `Porte anticipée`. Each cell is matched on its first word (`WP`, `CA-n`, `Périmètre`, `Vérification`, `Porte`), case-insensitively, backticks ignored; accents MUST be written.
+- The header has five cells: `WP`, `CA-n couverts`, `Périmètre (chemins, globs)`, `Vérification (commande)`, `Porte anticipée`. Matching is case-insensitive and ignores backticks; accents MUST be written. The `WP` cell MUST be exactly `WP`: a header such as `WP (id)` is refused. Each of the other four cells only has to begin with its word (`CA-n`, `Périmètre`, `Vérification`, `Porte`), so `Porte anticipée` and `Porte` are both accepted.
 - The next line is a separator row whose every cell is three or more dashes, with optional colons.
 - Each following line that starts with `|` is a row. The first line that does not start with `|` ends the table. Only the first table with this header is read.
 - `WP`: `WP-` and decimal digits, unique in the table, optionally in backticks.
@@ -64,7 +64,7 @@ The gate compares the diff of a pull request with the `Périmètre` cell of the 
 
 A PRD declares its own maturity on one line:
 
-```text
+```markdown maturity-example
 Maturité du document : décision
 ```
 
