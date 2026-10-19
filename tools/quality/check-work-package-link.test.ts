@@ -14,6 +14,16 @@ import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
 
 const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
 const KELVIN_SIGN = String.fromCodePoint(0x212a);
+// Line boundaries and invisible characters, built from code points so that the
+// file itself carries none of them.
+const LF: string = String.fromCodePoint(0x0a);
+const CR: string = String.fromCodePoint(0x0d);
+const NUL: string = String.fromCodePoint(0x00);
+const NEXT_LINE: string = String.fromCodePoint(0x85);
+const LINE_SEPARATOR: string = String.fromCodePoint(0x2028);
+const PARAGRAPH_SEPARATOR: string = String.fromCodePoint(0x2029);
+const ZERO_WIDTH_SPACE: string = String.fromCodePoint(0x200b);
+const BYTE_ORDER_MARK: string = String.fromCodePoint(0xfeff);
 
 const policy: WorkPackagePolicy = {
   approvedFrom: "décision",
@@ -215,9 +225,31 @@ describe("readDeclaration", () => {
     ["a nested path as repository", "libre-ai/x/y#1 WP-1"],
     ["a no-break space between the parts", `libre-ai/x#1${NO_BREAK_SPACE}WP-1`],
     ["an empty value", ""],
+    ["a WP number of ten digits", "libre-ai/x#1 WP-1234567890"],
+    ["a trailing line feed", `libre-ai/x#1 WP-1${LF}`],
+    ["a line feed instead of the inner space", `libre-ai/x#1${LF}WP-1`],
+    ["a line of junk before the value", `junk${LF}libre-ai/x#1 WP-1`],
+    ["a line of junk after the value", `libre-ai/x#1 WP-1${LF}junk`],
+    ["a second trailer after a line feed", `libre-ai/x#1 WP-1${LF}Exempt: revert`],
+    ["a trailing NUL", `libre-ai/x#1 WP-1${NUL}`],
+    ["a NUL inside the owner", `libre${NUL}ai/x#1 WP-1`],
+    ["a trailing carriage return", `libre-ai/x#1 WP-1${CR}`],
+    ["a carriage return before a second line", `libre-ai/x#1 WP-1${CR}junk`],
+    ["a trailing U+2028 line separator", `libre-ai/x#1 WP-1${LINE_SEPARATOR}`],
+    ["a trailing U+2029 paragraph separator", `libre-ai/x#1 WP-1${PARAGRAPH_SEPARATOR}`],
+    ["a trailing U+0085 next line", `libre-ai/x#1 WP-1${NEXT_LINE}`],
+    ["a zero-width space inside the owner", `libre${ZERO_WIDTH_SPACE}-ai/x#1 WP-1`],
+    ["a trailing zero-width space", `libre-ai/x#1 WP-1${ZERO_WIDTH_SPACE}`],
+    ["a leading byte order mark", `${BYTE_ORDER_MARK}libre-ai/x#1 WP-1`],
   ])("a malformed Work-package value is invalid: %s", (_label, value) => {
     const declaration = readDeclaration([commit("c1", trailer("Work-package", value))]);
     expect(declaration.kind).toBe("invalid");
+  });
+
+  test("a WP number of nine digits is the longest accepted", () => {
+    expect(
+      readDeclaration([commit("c1", trailer("Work-package", "libre-ai/x#1 WP-123456789"))]),
+    ).toEqual({ kind: "link", repo: "libre-ai/x", issue: 1, wp: "WP-123456789" });
   });
 
   test("a malformed value names the offending text", () => {
@@ -236,6 +268,19 @@ describe("readDeclaration", () => {
     ["a class with a leading space", " docs-only"],
     ["a class starting with a digit", "1st"],
     ["a prototype name", "__proto__"],
+    ["a trailing line feed", `revert${LF}`],
+    ["a line of junk before the class", `junk${LF}revert`],
+    ["a line of junk after the class", `revert${LF}junk`],
+    ["a second trailer after a line feed", `revert${LF}Work-package: libre-ai/x#1 WP-1`],
+    ["a trailing NUL", `revert${NUL}`],
+    ["a NUL inside the class", `re${NUL}vert`],
+    ["a trailing carriage return", `revert${CR}`],
+    ["a trailing U+2028 line separator", `revert${LINE_SEPARATOR}`],
+    ["a trailing U+2029 paragraph separator", `revert${PARAGRAPH_SEPARATOR}`],
+    ["a trailing U+0085 next line", `revert${NEXT_LINE}`],
+    ["a zero-width space inside the class", `re${ZERO_WIDTH_SPACE}vert`],
+    ["a trailing zero-width space", `revert${ZERO_WIDTH_SPACE}`],
+    ["a leading byte order mark", `${BYTE_ORDER_MARK}revert`],
   ])("a malformed Exempt value is invalid: %s", (_label, value) => {
     expect(readDeclaration([commit("c1", trailer("Exempt", value))]).kind).toBe("invalid");
   });
@@ -403,6 +448,49 @@ describe("evaluateWorkPackageLink", () => {
       spy.ports,
     );
     expect(report.outcome).toBe("violations");
+  });
+
+  // A pull request always has at least one commit: an empty list can only be a
+  // misread range, never "nothing to declare".
+  const EMPTY_RANGE: string =
+    "PR #7 — declaration: the range holds no commit: a pull request has at least one, so an empty list is a misread range";
+
+  test("an empty range is a violation for an exempt author, not an implicit exemption", async () => {
+    const spy: Spy = spyOn(withCommits());
+    const report = await evaluateWorkPackageLink(
+      pr({ author: "dependabot[bot]" }),
+      policy,
+      spy.ports,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([EMPTY_RANGE]);
+    expect(spy.diffCalls).toEqual([]);
+    expect(report.volumeSummary).toBe("0 commit(s) examined: the range holds no commit");
+  });
+
+  test("an empty range is the same violation for a human author, not a missing declaration", async () => {
+    const spy: Spy = spyOn(withCommits());
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([EMPTY_RANGE]);
+    expect(spy.diffCalls).toEqual([]);
+    expect(report.volumeSummary).toBe("0 commit(s) examined: the range holds no commit");
+  });
+
+  test("an empty author never matches a class whose author predicate is empty", async () => {
+    const emptyAuthorClass: WorkPackagePolicy = {
+      ...policy,
+      exempt: Object.assign(Object.create(null) as Record<string, ExemptRule>, {
+        ghost: { author: "" },
+      }),
+    };
+    const spy: Spy = spyOn(withCommits(commit("c1")));
+    const report = await evaluateWorkPackageLink(pr({ author: "" }), emptyAuthorClass, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      "PR #7 — declaration: no declaration trailer in the commits of the range",
+    ]);
+    expect(report.volumeSummary).toContain("implicit exemption: no");
   });
 
   test("zero declarations from a human author is a violation", async () => {

@@ -95,9 +95,16 @@ export type Declaration =
 // there is exactly one space and nothing follows `WP-<k>`. `<n>` and `<k>`
 // are positive integers without a leading zero. The owner is a GitHub login;
 // the repository is GitHub's repository charset, which is never `.` or `..`
-// (the lookahead refuses both).
+// (the lookahead refuses both). `<k>` has at most nine digits: a PRD table has
+// no row beyond that, and a bounded number cannot overflow a later reader.
+//
+// Both value grammars are anchored on the WHOLE value and must never take the
+// `m` flag, a `.` or a `\s`: git can hand over a value holding a line feed
+// (an unfolded continuation), a NUL, a CR or a Unicode separator, and only
+// whole-value anchors refuse such a value instead of reading one of its lines.
+// The tests pin this against every such character.
 const WORK_PACKAGE_VALUE: RegExp =
-  /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]*)$/;
+  /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]{0,8})$/;
 
 // `Exempt: <class>`: the same shape as the names of the policy's rules.
 const EXEMPT_VALUE: RegExp = /^([a-z][a-z0-9-]*)$/;
@@ -254,7 +261,8 @@ function ruleOf(policy: WorkPackagePolicy, cls: string): ExemptRule | undefined 
 
 /** The class whose `author` predicate equals the author EXACTLY, or null when none does. */
 function implicitClassOf(policy: WorkPackagePolicy, author: string | null): string | null {
-  if (author === null) {
+  // An empty login is no author: a rule written `author: ""` must not exempt it.
+  if (author === null || author === "") {
     return null;
   }
   for (const [cls, rule] of Object.entries(policy.exempt)) {
@@ -357,6 +365,17 @@ export async function evaluateWorkPackageLink(
   if (!commits.ok) {
     report.check(`${label} — declaration`, false, `commit trailers unreadable (${commits.reason})`);
     return report.volume("0 commit(s) examined: the range could not be read");
+  }
+  // A pull request has at least one commit, so an empty list is a misread
+  // range (an unreadable source turned into zero), for every author: read as
+  // "no declaration" it would grant the implicit exemption to a bot.
+  if (commits.value.length === 0) {
+    report.check(
+      `${label} — declaration`,
+      false,
+      "the range holds no commit: a pull request has at least one, so an empty list is a misread range",
+    );
+    return report.volume("0 commit(s) examined: the range holds no commit");
   }
 
   const pairs: Pairs = collectPairs(commits.value);
