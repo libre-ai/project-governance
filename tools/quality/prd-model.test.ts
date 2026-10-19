@@ -272,8 +272,8 @@ async function readNorm(): Promise<string> {
 
 // The text INSIDE the one fenced block `markdown <label>`: the parsers ignore
 // fenced blocks, so an example must be handed to them without its fence.
-function exampleOf(norm: string, label: string): string {
-  const pattern = new RegExp(`^\`\`\`markdown ${label}\\n([\\s\\S]*?)\\n\`\`\`$`, "gm");
+function exampleOf(norm: string, label: string, language: string = "markdown"): string {
+  const pattern = new RegExp(`^\`\`\`${language} ${label}\\n([\\s\\S]*?)\\n\`\`\`$`, "gm");
   const blocks: RegExpMatchArray[] = [...norm.matchAll(pattern)];
   if (blocks.length !== 1) {
     throw new Error(`expected exactly one "${label}" block in the norm, found ${blocks.length}`);
@@ -340,6 +340,78 @@ describe("the work-package norm", () => {
     expect(text).toContain("Each of the other four cells only has to begin with its word");
   });
 
+  // No parser of the trailer exists in prd-model.ts: the gate reads trailers
+  // through git. These two constants are the value grammar the norm states,
+  // declared here only so that the norm's example cannot drift from it. A gate
+  // that implements the grammar must accept and refuse exactly the same values.
+  const WORK_PACKAGE_TRAILER: RegExp =
+    /^Work-package: ([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]*)$/;
+  const EXEMPT_TRAILER: RegExp = /^Exempt: ([a-z][a-z0-9-]*)$/;
+
+  test("the trailer example holds two commits that declare one distinct value", async () => {
+    const norm: string = await readNorm();
+    const example: string = exampleOf(norm, "trailer-example", "text");
+    const declarations: string[] = example
+      .split("\n")
+      .filter((line) => line.startsWith("Work-package:") || line.startsWith("Exempt:"));
+    expect(declarations).toHaveLength(2);
+    for (const declaration of declarations) {
+      expect(WORK_PACKAGE_TRAILER.test(declaration) || EXEMPT_TRAILER.test(declaration)).toBe(true);
+    }
+    expect(new Set(declarations).size).toBe(1);
+    expect(WORK_PACKAGE_TRAILER.exec(declarations[0] ?? "")?.slice(1)).toEqual([
+      "libre-ai",
+      "ai-work-supervision",
+      "12",
+      "WP-1",
+    ]);
+    // Two commit messages of the shape "subject, blank line, trailer block",
+    // separated by one more blank line: four paragraphs, trailers in the 2nd and 4th.
+    const paragraphs: string[] = example.split("\n\n");
+    expect(paragraphs).toHaveLength(4);
+    expect(paragraphs[1]?.startsWith("Work-package: ")).toBe(true);
+    expect(paragraphs[3]?.startsWith("Work-package: ")).toBe(true);
+  });
+
+  test("the trailer grammar refuses what the norm says it refuses", () => {
+    const accepted: string[] = [
+      "Work-package: libre-ai/ai-work-supervision#12 WP-1",
+      "Work-package: a/b.c_d-e#1 WP-30",
+    ];
+    const refused: string[] = [
+      "Work-package: libre-ai/ai-work-supervision#012 WP-1",
+      "Work-package: libre-ai/ai-work-supervision#12 WP-01",
+      "Work-package: libre-ai/ai-work-supervision#12 WP-0",
+      "Work-package:  libre-ai/ai-work-supervision#12 WP-1",
+      "Work-package: libre-ai/ai-work-supervision#12  WP-1",
+      "Work-package: libre-ai/ai-work-supervision#12 WP-1 ",
+      "Work-package: libre-ai/../x#12 WP-1",
+      "Work-package: <owner>/<repo>#<n> WP-<k>",
+    ];
+    for (const value of accepted) expect(WORK_PACKAGE_TRAILER.test(value)).toBe(true);
+    for (const value of refused) expect(WORK_PACKAGE_TRAILER.test(value)).toBe(false);
+    expect(EXEMPT_TRAILER.test("Exempt: docs-only")).toBe(true);
+    expect(EXEMPT_TRAILER.test("Exempt: Docs")).toBe(false);
+    expect(EXEMPT_TRAILER.test("Exempt: <class>")).toBe(false);
+  });
+
+  test("the norm states the trailer rules, and no longer reads the description", async () => {
+    const text: string = await readNorm();
+    for (const sentence of [
+      "git commit --trailer",
+      "exactly one distinct value",
+      "is not a declaration",
+      "The description of the pull request plays no role in the declaration.",
+      "is exempt implicitly",
+      "It is not an authorization.",
+      "are therefore the same for the agent and for the owner.",
+    ]) {
+      expect(text).toContain(sentence);
+    }
+    expect(text).not.toContain("## Pull-request line");
+    expect(text).not.toContain("carries exactly one declaration line");
+  });
+
   test("the norm covers the seven required subjects under stable headings", async () => {
     const text: string = await readNorm();
     const lines: string[] = text.split("\n");
@@ -348,7 +420,7 @@ describe("the work-package norm", () => {
       "## Criteria grammar",
       "## Work-package table",
       "## Document maturity",
-      "## Pull-request line",
+      "## Commit trailer",
       "## Issue body",
       "## Limit of the control",
     ];

@@ -85,19 +85,37 @@ A PRD is approved for a pull request when both hold:
 
 No other status and no gated path is introduced. Promoting a PRD is a dedicated pull request that edits the maturity line; its body cites the arbitration given by the owner. The gate does not verify that citation, which is declarative.
 
-## Pull-request line
+## Commit trailer
 
-The description of a pull request carries exactly one declaration line, outside HTML comments and fenced blocks, in one of these forms:
+A pull request declares its work package in a git trailer of its commits: the last paragraph of a commit message, as `git interpret-trailers` reads it. A trailer has no Markdown semantics, which is why the description is not used: the declaration the gate reads is the one that was written. The trailer has one of two forms:
 
 ```text
 Work-package: <owner>/<repo>#<n> WP-<k>
 Exempt: <class>
 ```
 
+Set it with `git commit --trailer "Work-package: <owner>/<repo>#<n> WP-<k>"`, or with `git commit --trailer "Exempt: <class>"`, on at least one commit of the pull request.
+
+```text trailer-example
+feat(daemon): refuse a command whose signature does not verify
+
+Work-package: libre-ai/ai-work-supervision#12 WP-1
+Signed-off-by: Example Author <author@users.noreply.github.com>
+
+test(daemon): cover the refusal code
+
+Work-package: libre-ai/ai-work-supervision#12 WP-1
+Signed-off-by: Example Author <author@users.noreply.github.com>
+```
+
 - `<owner>/<repo>#<n>` is the issue that projects the work package, `WP-<k>` the row of the PRD table. Both MUST agree with the issue body (next section).
-- Zero lines, two lines, or one line of each form is a refusal.
+- The value of `Work-package:` has one space after the colon and one space between its two parts, and nothing after `WP-<k>`. `<owner>` is a GitHub login, `<repo>` a GitHub repository name, `<n>` and `<k>` are positive decimal integers without a leading zero; a row named `WP-01` therefore cannot be declared. The value of `Exempt:` is one space and a class name (lowercase letters, digits and hyphens, starting with a letter).
+- The gate collects the declarations of every commit in `base..head`. The range MUST carry exactly one distinct value: at least one commit carries it, and the same value repeated on several commits is fine. Two distinct values, or a `Work-package` and an `Exempt`, is a refusal that names them. A range with no declaration is a refusal, except for the implicit exemption below.
+- A `Work-package:` or `Exempt:` line anywhere else in a commit message (in the free body, outside the trailer block) is not a declaration.
+- The description of the pull request plays no role in the declaration. The `Door:` line is the only declaration still read from the description, by its own gate.
+- A pull request with no declaration whose author satisfies the `author` predicate of an exempt class (a bot that writes its own commits) is exempt implicitly in that class, and the verdict says that the exemption is implicit.
 - `Exempt:` takes only a class listed in the `exempt` section of `ecosystem/work-package-policy.v1.yaml`. Each class describes one predicate on the pull request itself (its author, the paths it changes, or its title); the gate verifies the predicate and never believes the author's claim. A class that is not listed, or whose predicate is false, is a refusal. Adding a class is a reviewed edit of that data file.
-- The existing `Door: one-way` or `Door: two-way` line remains required by its own gate. `Door: one-way` also triggers the explicit `ready` described below.
+- The existing `Door: one-way` or `Door: two-way` line remains required in the description by its own gate. `Door: one-way` also triggers the explicit `ready` described below.
 
 ## Issue body
 
@@ -127,7 +145,7 @@ WP-<k>
 
 ## What the gate reports
 
-The gate prints the volume it examined: how many pull requests it examined, how many are linked, how many are exempt (by class), and how many it could not read. A source declared but unreadable (an issue, a PRD, a commit) is a failure, never a zero. Its tests show each refusal case failing against a mutant of the gate, with the environment of the child process cleared.
+The gate prints the volume it examined: how many pull requests it examined, how many are linked, how many are exempt (by class, the implicit exemptions counted as such), and how many it could not read. A source declared but unreadable (an issue, a PRD, a commit) is a failure, never a zero. Its tests show each refusal case failing against a mutant of the gate, with the environment of the child process cleared.
 
 ## Limit of the control
 
