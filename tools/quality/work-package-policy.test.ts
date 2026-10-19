@@ -59,7 +59,9 @@ describe("loadWorkPackagePolicy", () => {
       '    author: "dependabot[bot]"',
       '    author: "dependabot[bot]"\n    titlePrefix: "Bump "',
     );
-    expect(reason(text)).toContain("dependabot");
+    const why = reason(text);
+    expect(why).toContain("dependabot");
+    expect(why).toContain("exactly one");
   });
 
   test("an empty owners list is ok:false", () => {
@@ -148,6 +150,203 @@ describe("loadWorkPackagePolicy", () => {
     expect(loadWorkPackagePolicy("approvedFrom: proposition\nexempt: {}\nowners: [a]\n")).toEqual({
       ok: true,
       value: { approvedFrom: "proposition", exempt: {}, owners: ["a"] },
+    });
+  });
+});
+
+// Fix round 1: the loader must fail closed on ambiguity. YAML parsers resolve
+// ambiguous input silently (last duplicate key wins, `<<` merges, aliases
+// copy), so each site below used to return ok:true with a value the author
+// did not plainly write.
+const HEAD = "approvedFrom: décision\n";
+
+function withRules(rules: string, owners = "[a]"): string {
+  return `${HEAD}exempt:\n${rules}owners: ${owners}\n`;
+}
+
+describe("duplicate keys are ok:false (naming the key and both lines)", () => {
+  test("a repeated root key", () => {
+    const owners = reason(`${VALID}owners:\n  - other\n`);
+    expect(owners).toContain("duplicate key");
+    expect(owners).toContain('"owners"');
+    expect(owners).toContain("line 5");
+    expect(owners).toContain("line 7");
+    const approved = reason(`${VALID}approvedFrom: proposition\n`);
+    expect(approved).toContain('"approvedFrom"');
+    expect(approved).toContain("line 1");
+    expect(approved).toContain("line 7");
+  });
+
+  test("a repeated class name under exempt", () => {
+    const why = reason(withRules("  r:\n    author: x\n  r:\n    titlePrefix: y\n"));
+    expect(why).toContain("duplicate key");
+    expect(why).toContain('"r"');
+    expect(why).toContain("line 3");
+    expect(why).toContain("line 5");
+  });
+
+  test("a repeated predicate key inside one rule", () => {
+    const why = reason(withRules("  r:\n    author: x\n    author: y\n"));
+    expect(why).toContain("duplicate key");
+    expect(why).toContain('"author"');
+    expect(why).toContain("line 4");
+    expect(why).toContain("line 5");
+  });
+
+  test("a repeated key in a flow mapping", () => {
+    const why = reason(withRules('  revert: {titlePrefix: "A", titlePrefix: "B"}\n'));
+    expect(why).toContain("duplicate key");
+    expect(why).toContain('"titlePrefix"');
+    expect(why).toContain("line 3");
+  });
+
+  test("a repeated key in a nested flow mapping and in a flow root", () => {
+    expect(reason(`${HEAD}exempt: {r: {author: x, author: y}}\nowners: [a]\n`)).toContain(
+      '"author"',
+    );
+    expect(reason("{approvedFrom: décision, approvedFrom: proposition}\n")).toContain(
+      '"approvedFrom"',
+    );
+  });
+
+  test("quoting does not hide a repeated key", () => {
+    expect(reason(`${VALID}"owners": [z]\n`)).toContain('"owners"');
+    expect(reason(`${VALID}'owners': [z]\n`)).toContain('"owners"');
+  });
+
+  test("the same key in two different mappings is not a duplicate", () => {
+    const text = withRules(
+      '  one:\n    author: x # a comment with a: colon and "quote\n  two:\n    author: "y # not a comment"\n',
+    );
+    expect(loadWorkPackagePolicy(text)).toEqual({
+      ok: true,
+      value: {
+        approvedFrom: "décision",
+        exempt: { one: { author: "x" }, two: { author: "y # not a comment" } },
+        owners: ["a"],
+      },
+    });
+  });
+});
+
+describe("reserved names are ok:false", () => {
+  test("__proto__, constructor and prototype as a rule name", () => {
+    for (const name of ["__proto__", "constructor", "prototype"]) {
+      const why = reason(withRules(`  "${name}":\n    author: x\n`));
+      expect(why).toContain(name);
+      expect(why).toContain("reserved");
+    }
+  });
+
+  test("the exempt object has no prototype to pollute", () => {
+    const result = loadWorkPackagePolicy(VALID);
+    if (!result.ok) {
+      throw new Error(result.reason);
+    }
+    expect(Object.getPrototypeOf(result.value.exempt)).toBeNull();
+  });
+});
+
+describe("merge keys, anchors, aliases and tags are ok:false (naming the construct)", () => {
+  test("a merge key", () => {
+    const why = reason(withRules("  r:\n    <<: {author: x}\n"));
+    expect(why).toContain("merge key");
+    expect(why).toContain("<<");
+  });
+
+  test("an anchor", () => {
+    const why = reason(withRules("  p: &p\n    author: x\n"));
+    expect(why).toContain("anchor");
+    expect(why).toContain("&p");
+  });
+
+  test("an alias", () => {
+    const why = reason(withRules("  p:\n    author: x\n  s: *p\n"));
+    expect(why).toContain("alias");
+    expect(why).toContain("*p");
+  });
+
+  test("anchors and aliases inside flow collections and sequences", () => {
+    expect(reason(withRules("  r: {author: &a x}\n"))).toContain("anchor");
+    expect(reason(withRules("  r: {author: *a}\n"))).toContain("alias");
+    expect(reason(`${HEAD}exempt: {}\nowners: [*a]\n`)).toContain("alias");
+    expect(reason(`${HEAD}exempt: {}\nowners:\n  - &a x\n  - *a\n`)).toContain("anchor");
+  });
+
+  test("a tag", () => {
+    expect(reason(withRules("  r:\n    author: !!str x\n"))).toContain("tag");
+  });
+
+  test("quoted look-alikes are plain strings, not constructs", () => {
+    const text = withRules('  r:\n    author: "&p *p <<"\n');
+    expect(loadWorkPackagePolicy(text).ok).toBe(true);
+  });
+});
+
+describe("owners must be GitHub logins", () => {
+  const withOwners = (owners: string): string => `${HEAD}exempt: {}\nowners: ${owners}\n`;
+
+  test.each([
+    ['"@Foo"', "@Foo"],
+    ['"Foo Bar"', "Foo Bar"],
+    ['"-x"', "-x"],
+    ['"x-"', "x-"],
+    [`"${"a".repeat(40)}"`, "a".repeat(40)],
+    ['"a_b"', "a_b"],
+  ])("%s is refused and named", (yamlValue, entry) => {
+    const why = reason(withOwners(`[${yamlValue}]`));
+    expect(why).toContain("owners");
+    expect(why).toContain(entry);
+  });
+
+  test("a duplicate compared case-insensitively is refused, value kept as written elsewhere", () => {
+    const why = reason(withOwners("[A, a]"));
+    expect(why).toContain("duplicate");
+    expect(why).toContain('"a"');
+  });
+
+  test("a valid mixed-case login passes and is stored as written", () => {
+    expect(loadWorkPackagePolicy(withOwners(`[Foo-Bar9, ${"a".repeat(39)}, x]`))).toEqual({
+      ok: true,
+      value: {
+        approvedFrom: "décision",
+        exempt: {},
+        owners: ["Foo-Bar9", "a".repeat(39), "x"],
+      },
+    });
+  });
+});
+
+describe("whitespace-only strings and duplicate globs are ok:false", () => {
+  test.each(["author", "titlePrefix"])("a whitespace-only %s", (key) => {
+    const why = reason(withRules(`  r:\n    ${key}: "   "\n`));
+    expect(why).toContain("r");
+    expect(why).toContain(key);
+  });
+
+  test("a whitespace-only paths entry", () => {
+    expect(reason(withRules('  r:\n    paths: ["docs/**", "  "]\n'))).toContain("paths");
+  });
+
+  test("a whitespace-only owner", () => {
+    expect(reason(`${HEAD}exempt: {}\nowners: ["  "]\n`)).toContain("owners");
+  });
+
+  test("a duplicate paths glob names the entry", () => {
+    const why = reason(withRules('  r:\n    paths: ["docs/**", "*.md", "docs/**"]\n'));
+    expect(why).toContain("duplicate");
+    expect(why).toContain("docs/**");
+  });
+
+  test("a trailing space is kept in the stored value", () => {
+    const result = loadWorkPackagePolicy(withRules('  revert:\n    titlePrefix: "Revert "\n'));
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        approvedFrom: "décision",
+        exempt: { revert: { titlePrefix: "Revert " } },
+        owners: ["a"],
+      },
     });
   });
 });
