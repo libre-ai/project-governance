@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  type Declaration,
   evaluateWorkPackageLink,
   exemptionHolds,
   type Fact,
@@ -205,13 +206,184 @@ describe("readLinkDeclaration", () => {
   });
 });
 
+// The reader decides what a declaration line is the way a CommonMark renderer
+// shows the description: a keyword inside a fence, inside a comment, or
+// indented into a code block is displayed as code or hidden, so it must not be
+// read as a declaration.
+describe("readLinkDeclaration follows the rendering", () => {
+  const FENCE4 = "`".repeat(4);
+  const TAB = String.fromCodePoint(0x09);
+  const WP = "Work-package: a/b#1 WP-1";
+  const WP_LINK: Declaration = { kind: "link", repo: "a/b", issue: 1, wp: "WP-1" };
+  const REVERT: Declaration = { kind: "exempt", cls: "revert" };
+  const text = (...parts: string[]): string => parts.join("\n");
+  const reasonOf = (declaration: Declaration): string =>
+    declaration.kind === "invalid" ? declaration.reason : "";
+
+  describe("fences", () => {
+    test("a four-backtick fence is not closed by a three-backtick line", () => {
+      // Rendered: the Work-package line is code, only `Exempt: revert` is outside.
+      expect(readLinkDeclaration(text(FENCE4, FENCE, WP, FENCE4, "Exempt: revert"))).toEqual(
+        REVERT,
+      );
+    });
+
+    test("a closing fence carrying an info string does not close", () => {
+      expect(
+        readLinkDeclaration(text(FENCE, "x", `${FENCE}ts`, WP, FENCE, "Exempt: revert")),
+      ).toEqual(REVERT);
+    });
+
+    test("a closing run may be longer than the opening run", () => {
+      expect(readLinkDeclaration(text(FENCE, WP, FENCE4, "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a closing fence may carry up to three spaces of indentation and trailing spaces", () => {
+      expect(readLinkDeclaration(text(FENCE, WP, `   ${FENCE}  `, "Exempt: revert"))).toEqual(
+        REVERT,
+      );
+    });
+
+    test("a tilde fence hides what it encloses", () => {
+      expect(readLinkDeclaration(text("~~~", WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a tilde fence is not closed by backticks", () => {
+      expect(readLinkDeclaration(text("~~~", FENCE, WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a backtick fence is not closed by tildes", () => {
+      expect(readLinkDeclaration(text(FENCE, "~~~", WP, FENCE, "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("an opening backtick fence whose info string has a backtick is not a fence", () => {
+      expect(readLinkDeclaration(text(`${FENCE}a\`b`, WP))).toEqual(WP_LINK);
+    });
+
+    test("an opening tilde fence may carry a backtick in its info string", () => {
+      expect(readLinkDeclaration(text("~~~a`b", WP, "~~~", "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a fence indented by three spaces opens", () => {
+      expect(readLinkDeclaration(text(`   ${FENCE}`, WP, FENCE, "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a fence indented by four spaces is code, not a fence", () => {
+      expect(readLinkDeclaration(text(`    ${FENCE}`, WP))).toEqual(WP_LINK);
+    });
+
+    test("an unclosed fence hides everything after it", () => {
+      const declaration = readLinkDeclaration(text(FENCE, WP, "Exempt: revert"));
+      expect(declaration.kind).toBe("invalid");
+      expect(reasonOf(declaration)).toContain("0 declaration line");
+    });
+
+    test("a declaration before an unclosed fence stays the only declaration", () => {
+      expect(readLinkDeclaration(text("Exempt: revert", FENCE, WP))).toEqual(REVERT);
+    });
+
+    test("CRLF line ends do not break fence reading", () => {
+      expect(readLinkDeclaration(`${FENCE}\r\n${WP}\r\n${FENCE}\r\nExempt: revert\r\n`)).toEqual(
+        REVERT,
+      );
+    });
+
+    test("lone CR line ends do not break fence reading", () => {
+      expect(readLinkDeclaration(`${FENCE}\r${WP}\r${FENCE}\rExempt: revert\r`)).toEqual(REVERT);
+    });
+  });
+
+  describe("indentation", () => {
+    test("three spaces of indentation still make a declaration", () => {
+      expect(readLinkDeclaration("   Exempt: revert\n")).toEqual(REVERT);
+    });
+
+    test("four spaces make a code block, not a declaration, and the message says so", () => {
+      const declaration = readLinkDeclaration("    Exempt: revert\n");
+      expect(declaration.kind).toBe("invalid");
+      expect(reasonOf(declaration)).toContain("0 declaration line");
+      expect(reasonOf(declaration)).toContain(
+        "a declaration indented by 4+ spaces or a tab is a code block, not a declaration",
+      );
+    });
+
+    test("a tab makes a code block, not a declaration, and the message says so", () => {
+      const declaration = readLinkDeclaration(`${TAB}${WP}\n`);
+      expect(declaration.kind).toBe("invalid");
+      expect(reasonOf(declaration)).toContain("a tab is a code block");
+    });
+
+    test("spaces then a tab make a code block", () => {
+      expect(reasonOf(readLinkDeclaration(`  ${TAB}Exempt: revert\n`))).toContain(
+        "indented by 4+ spaces or a tab",
+      );
+    });
+
+    test("the hint is absent when nothing was over-indented", () => {
+      expect(reasonOf(readLinkDeclaration("Summary only\n"))).not.toContain("indented by 4+");
+    });
+
+    test("an over-indented line is ignored when a real declaration exists", () => {
+      expect(readLinkDeclaration(text("    Work-package: x/y#9 WP-9", "Exempt: revert"))).toEqual(
+        REVERT,
+      );
+    });
+
+    test("an over-indented line inside a fence is not reported as a hint", () => {
+      expect(reasonOf(readLinkDeclaration(text(FENCE, `    ${WP}`, FENCE)))).not.toContain(
+        "indented by 4+",
+      );
+    });
+  });
+
+  describe("comments", () => {
+    test("a comment opened mid-line and closed on the next line leaves no declaration", () => {
+      const declaration = readLinkDeclaration(text("Hello <!-- start", `--> ${WP}`));
+      expect(declaration.kind).toBe("invalid");
+      expect(reasonOf(declaration)).toContain("0 declaration line");
+    });
+
+    test("text after a comment end is not at the start of the line", () => {
+      expect(reasonOf(readLinkDeclaration(`<!-- a --> ${WP}`))).toContain("0 declaration line");
+    });
+
+    test("a declaration on the line after a closed comment counts", () => {
+      expect(readLinkDeclaration(text("<!-- a", "b -->", "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a second comment opened on the line where the first ends hides the next lines", () => {
+      expect(readLinkDeclaration(text("<!-- a --> <!-- b", "Exempt: revert", "-->", WP))).toEqual(
+        WP_LINK,
+      );
+    });
+
+    test("a fence marker inside a comment does not open a fence", () => {
+      expect(readLinkDeclaration(text("<!--", FENCE, "-->", "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("a comment marker inside a fence does not open a comment", () => {
+      expect(readLinkDeclaration(text(FENCE, "<!--", FENCE, "Exempt: revert"))).toEqual(REVERT);
+    });
+
+    test("an unterminated comment hides everything after it, CRLF included", () => {
+      expect(reasonOf(readLinkDeclaration(`x <!--\r\n${WP}\r\n`))).toContain("0 declaration line");
+    });
+
+    test("lone CR line ends do not break comment reading", () => {
+      expect(readLinkDeclaration(`<!--\r${WP}\r-->\rExempt: revert\r`)).toEqual(REVERT);
+    });
+  });
+});
+
 describe("exemptionHolds", () => {
   const docsOnly = policy.exempt["docs-only"];
 
   test("docs-only holds when every changed file matches a glob", () => {
     const result = exemptionHolds("docs-only", docsOnly, pr(), ["README.md", "docs/a/b.txt"]);
-    expect(result.ok).toBe(true);
-    expect(result.note).toContain("2");
+    expect(result).toEqual({
+      ok: true,
+      note: 'all 2 changed file(s) match ["**/*.md","docs/**"] (class "docs-only")',
+    });
   });
 
   test("docs-only fails when one changed file is outside the globs", () => {
@@ -290,11 +462,14 @@ describe("exemptionHolds", () => {
 
 describe("evaluateWorkPackageLink", () => {
   test("a well-formed link passes and prints its volume", async () => {
+    const seen: Array<[string, string]> = [];
     const report = await evaluateWorkPackageLink(
       pr({ body: "Work-package: libre-ai/product-research#12 WP-3\n" }),
       policy,
-      portsWith({ ok: false, reason: "must not be asked on the link path" }),
+      portsWith({ ok: false, reason: "must not be asked on the link path" }, seen),
     );
+    // The link path reads no diff: asking for one would be a wasted, failable read.
+    expect(seen).toEqual([]);
     expect(report.outcome).toBe("pass");
     expect(report.violations).toEqual([]);
     expect(report.volumeSummary).toContain("1 declaration line");
