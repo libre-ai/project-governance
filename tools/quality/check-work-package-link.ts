@@ -341,9 +341,11 @@ export function readIssueFields(body: string): Parsed<IssueFields> {
 // the scope of a work package: two matchers would let the same file be inside
 // a scope for one and outside it for the other. `Bun.Glob#match` is used as
 // is; its behaviour on the grammar the gate accepts was measured on Bun 1.4.0
-// and is pinned by the tests (`**` crosses `/` and matches dotfiles, `*` does
-// not cross `/`, `{a,b}` alternates, matching is case-sensitive, and a
-// directory itself is not matched by `dir/**`).
+// and is pinned by the tests (outside braces `**` crosses `/` and matches
+// dotfiles, `*` does not cross `/`, `{a,b}` alternates literals, matching is
+// case-sensitive, and a directory itself is not matched by `dir/**`). Inside
+// braces a `*` does NOT behave the same (`{src/**,lib/**}` misses `src/a/b`),
+// which is why `scopeEntryProblem` refuses any `*` inside braces.
 // ---------------------------------------------------------------------------
 
 /** Whether `path`, a repository-relative path, is inside the glob `pattern`. */
@@ -388,8 +390,9 @@ function bracesBalanced(text: string): boolean {
  * Why: the norm only says authors SHOULD use literal paths, `*`, `**` and
  * `{a,b}`; the gate, which decides, refuses what it cannot match with
  * certainty rather than guess (fail closed). `!` negation, `[..]`, `?`, `\`,
- * `(..)` and spaces are outside the grammar; so are an absolute entry and a
- * `..` segment, in any branch of an alternation.
+ * `(..)` and spaces are outside the grammar; so are an absolute entry, a
+ * `..` segment in any branch of an alternation, and a `*` inside braces
+ * (braces are for literal alternatives only).
  */
 export function scopeEntryProblem(entry: string): string | null {
   if (entry === "") {
@@ -405,8 +408,34 @@ export function scopeEntryProblem(entry: string): string | null {
   if (entry.split(/[/{},]/).includes("..")) {
     return 'it has a ".." segment';
   }
-  return bracesBalanced(entry) ? null : "its braces are unbalanced";
+  if (!bracesBalanced(entry)) {
+    return "its braces are unbalanced";
+  }
+  return hasWildcardInBraces(entry)
+    ? 'it has a "*" inside braces: list the alternatives as separate entries outside braces'
+    : null;
 }
+
+/**
+ * Whether a `*` sits inside `{...}`. Measured on Bun 1.4.0: there `**` no longer
+ * crosses `/` (`{src/**,lib/**}` does not match `src/a/b`, `src{/**,}` does not
+ * match `src/x/y`), so the entry would silently match less than it says.
+ */
+function hasWildcardInBraces(entry: string): boolean {
+  let depth = 0;
+  for (const char of entry) {
+    if (char === "{") depth += 1;
+    if (char === "}") depth -= 1;
+    if (char === "*" && depth > 0) return true;
+  }
+  return false;
+}
+
+// The scope entries that bound (almost) nothing: the double star and the double
+// star followed by a slash and a star match every path, the single star every
+// path at the root. Accepted (a work package may cover everything) but flagged,
+// because with one of them the containment check can hardly refuse a file.
+const UNBOUNDED_SCOPE_ENTRIES: readonly string[] = ["**", "*", "**/*"];
 
 /** The first character of `path` that is a control, a separator or invisible, as `U+XXXX`. */
 function unreadableCharacterOf(path: string): string | null {
@@ -499,7 +528,7 @@ function holdsPaths(
     ? { ok: true, note: `all ${changed.length} changed file(s) match ${JSON.stringify(globs)}` }
     : {
         ok: false,
-        note: `${outside.length} of ${changed.length} changed file(s) outside ${JSON.stringify(globs)}: ${outside.join(", ")}`,
+        note: `${outside.length} of ${changed.length} changed file(s) outside ${JSON.stringify(globs)}: ${outside.map(asciiQuoted).join(", ")}`,
       };
 }
 
@@ -615,6 +644,8 @@ interface ResolutionVolume {
   scopeEntries: string;
   filesExamined: string;
   scopeDecision: string;
+  /** The unbounded entries of the scope, empty when it is bounded. */
+  unbounded: readonly string[];
 }
 
 interface Resolution {
@@ -884,6 +915,18 @@ async function checkScope(
     volume.scopeDecision = `${unsupported} unsupported scope glob(s)`;
     return;
   }
+  // Accepted, never silently: such an entry leaves the containment check with
+  // almost nothing to refuse, and a reader of the verdict must see that.
+  volume.unbounded = scope.filter((entry: string): boolean =>
+    UNBOUNDED_SCOPE_ENTRIES.includes(entry),
+  );
+  if (volume.unbounded.length > 0) {
+    report.check(
+      item,
+      true,
+      `scope unbounded: the entries ${JSON.stringify(volume.unbounded)} are accepted and flagged, because they do not bound the files of the work package`,
+    );
+  }
 
   const changed: Fact<readonly string[]> = await ports.changedFiles(pr.baseSha, pr.headSha);
   if (!changed.ok) {
@@ -922,7 +965,7 @@ async function checkScope(
     report.check(
       item,
       false,
-      `${volume.scopeDecision} ${JSON.stringify(scope)}: ${boundedList(outside.map((path: string): string => JSON.stringify(path)))}`,
+      `${volume.scopeDecision} ${JSON.stringify(scope)}: ${boundedList(outside.map(asciiQuoted))}`,
     );
     return;
   }
@@ -1005,13 +1048,15 @@ async function resolveLink(
     scopeEntries: "not read",
     filesExamined: "not read",
     scopeDecision: "not reached",
+    unbounded: [],
   };
   await verifyChain({ report, label, pr, volume }, link, policy, ports);
   return (
     `issue ${volume.issue}; PRD ${volume.prd}; maturity ${volume.maturity}; ` +
     `work packages parsed: ${volume.workPackages}; criteria parsed: ${volume.criteria}; ` +
     `criteria cited: ${volume.cited}; scope entries: ${volume.scopeEntries}; ` +
-    `files examined: ${volume.filesExamined}; scope decision: ${volume.scopeDecision}`
+    `files examined: ${volume.filesExamined}; scope decision: ${volume.scopeDecision}` +
+    (volume.unbounded.length === 0 ? "" : "; scope: unbounded")
   );
 }
 

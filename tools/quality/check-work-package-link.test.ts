@@ -823,6 +823,20 @@ describe("evaluateWorkPackageLink", () => {
     expect(report.checks).toHaveLength(1);
   });
 
+  test.each([
+    ["U+3164", 0x3164],
+    ["U+2800", 0x2800],
+  ])("a docs-only exemption names an outside path holding %s escaped", async (_label: string, codePoint: number) => {
+    const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["README.md", `src/${String.fromCodePoint(codePoint)}.ts`],
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: docs-only: 1 of 2 changed file(s) outside ["**/*.md","docs/**"]: "src/\\u{${codePoint.toString(16)}}.ts" (class "docs-only")`,
+    ]);
+  });
+
   test("a docs-only exemption on valid documentation paths still passes", async () => {
     const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
       ok: true,
@@ -1672,11 +1686,17 @@ describe("scopeEntryProblem", () => {
     ".github/**",
     "*",
     "a,b",
+    // Braces stay available for LITERAL alternatives; the `*` is outside them.
+    "{a,b}/x.ts",
+    "*/{a,b}",
+    "src/{a,b}/**/*.md",
   ])("%s is a supported entry", (entry: string) => {
     expect(scopeEntryProblem(entry)).toBeNull();
   });
 
   const CHARSET = "[A-Za-z0-9._/@+=,{}*-]";
+  const STAR_IN_BRACES =
+    'it has a "*" inside braces: list the alternatives as separate entries outside braces';
   test.each([
     ["", "the entry is empty"],
     ["!src/**", `the character "!" is outside ${CHARSET}`],
@@ -1695,6 +1715,13 @@ describe("scopeEntryProblem", () => {
     ["src/{a,b", "its braces are unbalanced"],
     ["src/a,b}", "its braces are unbalanced"],
     ["}{", "its braces are unbalanced"],
+    // Measured on Bun 1.4.0: a `*` inside braces does not behave as outside them
+    // (`{src/**,lib/**}` does not match `src/a/b`), so the gate refuses it.
+    ["{src/**,lib/**}", STAR_IN_BRACES],
+    ["src{/**,}", STAR_IN_BRACES],
+    ["{**/*.md,x}", STAR_IN_BRACES],
+    ["{a,b*}", STAR_IN_BRACES],
+    ["{a,{b,c*}}", STAR_IN_BRACES],
   ])("%p is refused: %s", (entry: string, cause: string) => {
     expect(scopeEntryProblem(entry)).toBe(cause);
   });
@@ -1996,6 +2023,82 @@ describe("evaluateWorkPackageLink — scope of the diff", () => {
     expect(verdict.outcome).toBe("violations");
     expect(verdict.violations).toHaveLength(1);
     expect(verdict.violations[0]).toContain(`outside the scope`);
+  });
+
+  test("a wildcard inside braces is refused at the evaluation, with the cause, before the diff", async () => {
+    const world = scoped("`{src/**,lib/**}`", files("src/a/b.ts"));
+    const verdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: unsupported scope glob "{src/**,lib/**}": it has a "*" inside braces: list the alternatives as separate entries outside braces`,
+    ]);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
+  });
+
+  test("literal alternatives in braces are accepted, with the wildcard outside them", async () => {
+    const verdict = await judge(scoped("`src/{a,b}/**`", files("src/a/x/y.ts", "src/b/z.ts")));
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+  });
+
+  test("a non-ASCII scope entry is refused with its escaped rendering", async () => {
+    const world = scoped("`src/é`", files("src/a.ts"));
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: unsupported scope glob "src/\\u{e9}": the character "\\u{e9}" is outside ${CHARSET}`,
+    ]);
+    expect(world.calls).toEqual(RESOLUTION_CALLS);
+  });
+
+  // An entry the gate accepts but that bounds nothing makes the containment
+  // check assert nothing: accepted, never silently.
+  const UNBOUNDED_NOTE = (entries: string): string =>
+    `scope unbounded: the entries ${entries} are accepted and flagged, because they do not bound the files of the work package`;
+
+  test.each([
+    ["**", ["src/a.ts", "x/y/z.md"], '["**"]'],
+    ["*", ["a.ts", ".env"], '["*"]'],
+    ["**/*", ["a.ts", "x/y/z.md"], '["**/*"]'],
+    ["**, *", ["a.ts"], '["**","*"]'],
+    ["`src/**`, `**`", ["src/a.ts", "z/y.ts"], '["**"]'],
+    ["`lib/**`, `**/*`, `src/**`", ["src/a.ts"], '["**/*"]'],
+  ])("the unbounded scope %s passes and is flagged", async (cell: string, paths: string[], listed: string) => {
+    const verdict = await judge(scoped(cell, files(...paths)));
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(
+      verdict.report.checks.filter((check) => check.note.startsWith("scope unbounded")),
+    ).toEqual([{ item: SCOPE_ITEM, ok: true, note: UNBOUNDED_NOTE(listed) }]);
+    expect(verdict.volume).toContain("; scope: unbounded");
+  });
+
+  test("a bounded scope carries no flag", async () => {
+    const verdict = await judge(scoped("`src/**`, `lib/*.ts`", files("src/a.ts")));
+    expect(verdict.outcome).toBe("pass");
+    expect(verdict.report.checks.some((check) => check.note.includes("unbounded"))).toBe(false);
+    expect(verdict.volume).not.toContain("unbounded");
+  });
+
+  test("an unbounded scope does not turn a refusal into a pass", async () => {
+    const verdict = await judge(scoped("`**`", files("../x")));
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 1 changed file path(s) unreadable: "../x" (it has a ".." segment)`,
+    ]);
+  });
+
+  // Accepted invisible characters (a filler, a blank braille cell) still reach
+  // the log as `\u{...}` when the path is named in a refusal.
+  test.each([
+    ["U+3164 HANGUL FILLER", 0x3164],
+    ["U+2800 BRAILLE PATTERN BLANK", 0x2800],
+    ["U+115F HANGUL CHOSEONG FILLER", 0x115f],
+  ])("an outside path holding %s is printed escaped", async (_label: string, codePoint: number) => {
+    const path = `lib/${String.fromCodePoint(codePoint)}.ts`;
+    const verdict = await judge(scoped("`src/**`", files(path)));
+    expect(verdict.violations).toEqual([
+      `${SCOPE_ITEM}: 1 of 1 changed file(s) outside the scope ["src/**"]: "lib/\\u{${codePoint.toString(16)}}.ts"`,
+    ]);
   });
 
   test("a rename from src/a.ts to docs/a.md is seen as two paths and refused for its source", async () => {
