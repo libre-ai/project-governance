@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { join } from "node:path";
 import { loadWorkPackagePolicy } from "./work-package-policy";
 
@@ -457,8 +457,11 @@ describe("rule names and keys that YAML resolves to the same key are ok:false", 
 const char = (codePoint: number): string => String.fromCodePoint(codePoint);
 
 describe("unreadable characters are ok:false (shared guard, run first)", () => {
-  test("a NUL inside a full-line comment, before a second rule, names U+0000 and its line", () => {
-    // Bun.YAML.parse stops at the NUL; a line scan would read on and approve rule `b`.
+  test("a NUL inside a full-line comment is refused even though the parser reads past it", () => {
+    // Bun 1.4 does NOT stop at a NUL inside a comment, so no truncation divergence is shown
+    // here: this proves the guard refuses an unreadable character wherever it is, as a
+    // defence against parser variation. The truncation itself is proven by the value-line
+    // tests below.
     const text = [
       HEAD.trimEnd(),
       "owners: [a]",
@@ -471,6 +474,11 @@ describe("unreadable characters are ok:false (shared guard, run first)", () => {
       "",
     ].join("\n");
     expect(reason(text)).toBe("policy contains an unreadable character U+0000 on line 6");
+  });
+
+  test("premise: Bun.YAML.parse silently truncates at a NUL ending a value line", () => {
+    // The divergence the guard exists for: the parser sees `{a: 1}`, a line scan sees both keys.
+    expect(Bun.YAML.parse(`a: 1${char(0)}\nb: 2\n`)).toEqual({ a: 1 });
   });
 
   test("a NUL at the end of a value line", () => {
@@ -493,14 +501,58 @@ describe("unreadable characters are ok:false (shared guard, run first)", () => {
     );
   });
 
-  test("the guard runs before every other check", () => {
-    // A NUL on line 2 wins over a duplicate key, a backslash and a bare CR on later lines.
+  test("the first unreadable character by position wins over a later one and over other refusals", () => {
+    // A NUL on line 2 is reported before a duplicate key, a backslash and a bare CR on later lines.
     const text = `${HEAD}# x${char(0)}\nowners: [a]\nowners: [b]\n# \\\r`;
     expect(reason(text)).toBe("policy contains an unreadable character U+0000 on line 2");
   });
 
   test("CRLF text still loads", () => {
     expect(loadWorkPackagePolicy(VALID.replaceAll("\n", "\r\n")).ok).toBe(true);
+  });
+});
+
+// The parsed-vs-read key-set check cannot be reached with real text (the whitelist leaves no
+// text on which the parser disagrees), so the parser result is replaced to prove each branch.
+describe("the parsed value must have exactly the keys the whitelist read", () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  const parsed = (root: Record<string, unknown>, exempt: Record<string, unknown> = {}) => ({
+    approvedFrom: "décision",
+    exempt: { dependabot: { author: "dependabot[bot]" }, ...exempt },
+    owners: ["constantin-jais"],
+    ...root,
+  });
+
+  test("an extra or a missing root key in the parsed value is ok:false", () => {
+    const parse = spyOn(Bun.YAML, "parse");
+    parse.mockReturnValue(parsed({ extra: 1 }));
+    expect(reason(VALID)).toContain(
+      "policy keys differ between the lines read and the parsed value",
+    );
+    const { owners: _owners, ...withoutOwners } = parsed({});
+    parse.mockReturnValue(withoutOwners);
+    expect(reason(VALID)).toContain(
+      "policy keys differ between the lines read and the parsed value",
+    );
+  });
+
+  test("an extra or a missing exempt rule name in the parsed value is ok:false", () => {
+    const parse = spyOn(Bun.YAML, "parse");
+    parse.mockReturnValue(parsed({}, { sneaky: { author: "y" } }));
+    expect(reason(VALID)).toContain(
+      "exempt rule names differ between the lines read and the parsed value",
+    );
+    parse.mockReturnValue(parsed({ exempt: {} }));
+    expect(reason(VALID)).toContain(
+      "exempt rule names differ between the lines read and the parsed value",
+    );
+  });
+
+  test("the unmocked parser is back after each test", () => {
+    expect(loadWorkPackagePolicy(VALID).ok).toBe(true);
   });
 });
 

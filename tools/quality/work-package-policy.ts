@@ -406,6 +406,8 @@ export function loadWorkPackagePolicy(text: string): Parsed<WorkPackagePolicy> {
   }
   // Belt and braces: the parser must have found exactly the keys the whitelist
   // read. A difference means a key resolved to something else than its text.
+  // No real text reaches these branches (the whitelist leaves none on which the
+  // parser disagrees); both are proven by tests that replace the parser result.
   if (!sameKeys(Object.keys(root), seen.value.rootKeys)) {
     return fail("policy keys differ between the lines read and the parsed value");
   }
