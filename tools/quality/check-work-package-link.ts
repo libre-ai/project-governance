@@ -456,6 +456,8 @@ interface ResolutionVolume {
 interface Resolution {
   readonly report: GateReport;
   readonly label: string;
+  /** `<owner>/<name>` of the pull request: the owner every link must stay within. */
+  readonly prRepo: string;
   readonly volume: ResolutionVolume;
 }
 
@@ -491,9 +493,42 @@ async function readLinkedIssue(
     return null;
   }
   const { repo, sha, path } = fields.value.prdRef;
-  resolution.volume.prd = `${repo}@${sha}:${path}`;
   resolution.report.check(item, true, `projects ${fields.value.wp} of ${repo}@${sha}:${path}`);
   return fields.value;
+}
+
+/** The owner segment of `<owner>/<name>`, or null when there is no slash. */
+function ownerOf(repo: string): string | null {
+  const slash: number = repo.indexOf("/");
+  return slash === -1 ? null : repo.slice(0, slash);
+}
+
+/**
+ * Record whether `repo` belongs to the owner of the pull request.
+ *
+ * Why: an issue or a PRD of another owner is a public file anyone can write
+ * at `décision`, so the chain would prove nothing. GitHub logins are
+ * case-insensitive, and the owner grammar is ASCII, so the comparison folds
+ * ASCII case only (`asciiLower`), never Unicode case.
+ */
+function checkSameOwner(
+  resolution: Resolution,
+  item: string,
+  kind: "issue" | "PRD-ref",
+  repo: string,
+): boolean {
+  const owner: string | null = ownerOf(repo);
+  const prOwner: string | null = ownerOf(resolution.prRepo);
+  const same: boolean =
+    owner !== null && prOwner !== null && asciiLower(owner) === asciiLower(prOwner);
+  if (!same) {
+    resolution.report.check(
+      item,
+      false,
+      `the ${kind} repository belongs to owner ${JSON.stringify(owner ?? repo)}, the pull request to owner ${JSON.stringify(prOwner ?? resolution.prRepo)}: the chain is resolved only within the owner of the pull request`,
+    );
+  }
+  return same;
 }
 
 /** Step 4: the cited commit is on the branch the repository serves. */
@@ -512,14 +547,16 @@ async function checkServed(
     );
     return false;
   }
+  // Strictly `true`: a sloppy port answering "false" or 1 must not read as ancestry.
+  const onServedBranch: boolean = served.value === true;
   resolution.report.check(
     item,
-    served.value,
-    served.value
+    onServedBranch,
+    onServedBranch
       ? `the cited commit is on the served branch of ${prdRef.repo}`
       : `the cited commit is not on the served branch of ${prdRef.repo}`,
   );
-  return served.value;
+  return onServedBranch;
 }
 
 /** Step 5: one document of the repository at the cited commit; unreadable is a violation naming its path. */
@@ -637,12 +674,22 @@ async function verifyChain(
   policy: WorkPackagePolicy,
   ports: LinkPorts,
 ): Promise<void> {
+  // Before any port call: the issue of another owner is never read.
+  const issueItem: string = `${resolution.label} — issue ${link.repo}#${link.issue}`;
+  if (!checkSameOwner(resolution, issueItem, "issue", link.repo)) {
+    return;
+  }
   const fields: IssueFields | null = await readLinkedIssue(resolution, link, ports);
   if (fields === null) {
     return;
   }
   const { prdRef } = fields;
   const item: string = `${resolution.label} — PRD ${prdRef.repo}@${prdRef.sha}`;
+  // Before the ancestry: a PRD of another owner is never resolved.
+  if (!checkSameOwner(resolution, item, "PRD-ref", prdRef.repo)) {
+    return;
+  }
+  resolution.volume.prd = `${prdRef.repo}@${prdRef.sha}:${prdRef.path}`;
   if (!(await checkServed(resolution, item, prdRef, ports))) {
     return;
   }
@@ -674,6 +721,7 @@ async function verifyChain(
 async function resolveLink(
   report: GateReport,
   label: string,
+  prRepo: string,
   link: LinkDeclaration,
   policy: WorkPackagePolicy,
   ports: LinkPorts,
@@ -686,7 +734,7 @@ async function resolveLink(
     criteria: "not read",
     cited: "not read",
   };
-  await verifyChain({ report, label, volume }, link, policy, ports);
+  await verifyChain({ report, label, prRepo, volume }, link, policy, ports);
   return (
     `issue ${volume.issue}; PRD ${volume.prd}; maturity ${volume.maturity}; ` +
     `work packages parsed: ${volume.workPackages}; criteria parsed: ${volume.criteria}; ` +
@@ -737,7 +785,7 @@ async function judgeDeclaration(
   }
   const read: string = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
   report.check(`${label} — declaration`, true, read);
-  const resolution: string = await resolveLink(report, label, declaration, policy, ports);
+  const resolution: string = await resolveLink(report, label, pr.repo, declaration, policy, ports);
   return { read, filesExamined: 0, resolution };
 }
 

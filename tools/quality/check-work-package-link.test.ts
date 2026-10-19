@@ -971,6 +971,16 @@ describe("readIssueFields", () => {
       'PRD-ref repository "libre-ai/.." is not <owner>/<repo>',
     ],
     [
+      "a single-dot repository name",
+      issueBody(`libre-ai/.@${PRD_SHA}:docs/prd.md`),
+      'PRD-ref repository "libre-ai/." is not <owner>/<repo>',
+    ],
+    [
+      "a commit of 41 hexadecimal characters",
+      issueBody(`${PRD_REPO}@${PRD_SHA}0:docs/prd.md`),
+      `PRD-ref commit "${PRD_SHA}0" is not a full commit of 40 lowercase hexadecimal characters`,
+    ],
+    [
       "a repository without an owner",
       issueBody(`product-research@${PRD_SHA}:docs/prd.md`),
       'PRD-ref repository "product-research" is not <owner>/<repo>',
@@ -1320,5 +1330,168 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     const report = await evaluateWorkPackageLink(pr({ title: 'Revert "x"' }), policy, world.ports);
     expect(report.outcome).toBe("pass");
     expect(world.calls).toEqual([CALL_TRAILERS, "changedFiles"]);
+  });
+
+  // Identifiers are compared exactly: a near miss that merely starts like the
+  // cited identifier is another identifier.
+  test("a cited CA-1 is not satisfied by a declared CA-10", async () => {
+    const world: LinkWorld = linkWorld({
+      cahier: {
+        ok: true,
+        value:
+          "- CA-10 Ten. Validation : `bun test ten`\n- CA-2 Two. Validation : `bun test two`\n",
+      },
+    });
+    expect((await judge(world)).violations).toEqual([
+      "PR #7 — WP-3 cites CA-1: docs/cahier-des-charges.md does not declare it",
+    ]);
+  });
+
+  test("a declared WP-1 is not satisfied by a row WP-10", async () => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", `${PRD_REPO}#12 WP-1`))),
+      issue: issueRead(issueBody(PRD_REF, "WP-1")),
+      prd: {
+        ok: true,
+        value: prdText(undefined, "| `WP-10` | `CA-1` | `src/**` | `bun test` | `two-way` |\n"),
+      },
+    });
+    expect((await judge(world)).violations).toEqual([
+      `${PRD_ITEM}: WP-1 is not a row of the work-package table (rows: WP-10)`,
+    ]);
+  });
+
+  // A sloppy port can hand over a truthy non-boolean; only `true` proves ancestry.
+  test.each([
+    ["the string false", "false"],
+    ["the number 1", 1],
+  ])("an ancestry answered with %s is not on the served branch", async (_label, value) => {
+    const world: LinkWorld = linkWorld({
+      ancestor: { ok: true, value: value as unknown as boolean },
+    });
+    expect((await judge(world)).violations).toEqual([
+      `${PRD_ITEM}: the cited commit is not on the served branch of ${PRD_REPO}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE, CALL_ANCESTOR]);
+  });
+});
+
+// The chain is an audit trail inside ONE owner: an issue or a PRD of another
+// owner is a public file anyone can write at `décision`.
+describe("evaluateWorkPackageLink — owner of the work package and of the PRD", () => {
+  const ownerViolation = (kind: "issue" | "PRD-ref", owner: string, prOwner: string): string =>
+    `the ${kind} repository belongs to owner ${JSON.stringify(owner)}, the pull request to owner ${JSON.stringify(prOwner)}: the chain is resolved only within the owner of the pull request`;
+
+  test("the reviewer's probe: a trailer naming an issue of another owner", async () => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", "evil-owner/x#1 WP-1"))),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — issue evil-owner/x#1: ${ownerViolation("issue", "evil-owner", "libre-ai")}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS]);
+  });
+
+  test("the reviewer's probe: an issue of the owner whose PRD-ref names another owner", async () => {
+    const world: LinkWorld = linkWorld({
+      issue: issueRead(issueBody(`evil-owner/x@${PRD_SHA}:docs/prd.md`)),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — PRD evil-owner/x@${PRD_SHA}: ${ownerViolation("PRD-ref", "evil-owner", "libre-ai")}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE]);
+    expect(report.volumeSummary).toContain("; PRD not resolved;");
+  });
+
+  test("the same owner in another case is the same owner", async () => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", "LIBRE-AI/x#12 WP-3"))),
+      issue: issueRead(issueBody(`LIBRE-AI/x@${PRD_SHA}:docs/prd.md`)),
+    });
+    const report = await evaluateWorkPackageLink(pr({ repo: "libre-ai/y" }), policy, world.ports);
+    expect(report.violations).toEqual([]);
+    expect(report.outcome).toBe("pass");
+    expect(world.calls).toEqual([
+      CALL_TRAILERS,
+      "readIssue LIBRE-AI/x#12",
+      `isAncestorOfServedHead LIBRE-AI/x@${PRD_SHA}`,
+      `readFileAt LIBRE-AI/x@${PRD_SHA}:docs/prd.md`,
+      `readFileAt LIBRE-AI/x@${PRD_SHA}:docs/cahier-des-charges.md`,
+    ]);
+  });
+
+  test("a pull request owner in another case is the same owner", async () => {
+    const world: LinkWorld = linkWorld();
+    const report = await evaluateWorkPackageLink(
+      pr({ repo: "Libre-AI/project-governance" }),
+      policy,
+      world.ports,
+    );
+    expect(report.outcome).toBe("pass");
+  });
+
+  test.each([
+    ["libre-ai2", "libre-ai2/x"],
+    ["libre-ai-evil", "libre-ai-evil/x"],
+    ["libre", "libre/ai"],
+  ])("an issue of owner %s is refused", async (owner: string, repo: string) => {
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", `${repo}#12 WP-3`))),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — issue ${repo}#12: ${ownerViolation("issue", owner, "libre-ai")}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS]);
+  });
+
+  test.each([
+    ["libre-ai2", "libre-ai2/x"],
+    ["libre-ai-evil", "libre-ai-evil/x"],
+    ["libre", "libre/ai"],
+  ])("a PRD-ref of owner %s is refused", async (owner: string, repo: string) => {
+    const world: LinkWorld = linkWorld({
+      issue: issueRead(issueBody(`${repo}@${PRD_SHA}:docs/prd.md`)),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — PRD ${repo}@${PRD_SHA}: ${ownerViolation("PRD-ref", owner, "libre-ai")}`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE]);
+  });
+
+  // U+0456 is the Cyrillic small letter i, drawn like the Latin i. Neither it nor
+  // a trailing dot is in the owner grammar, so both are refused before any read.
+  const LOOK_ALIKE_OWNER: string = `l${String.fromCodePoint(0x0456)}bre-ai`;
+
+  test.each([
+    ["a trailing dot", "libre-ai."],
+    ["a Unicode look-alike", LOOK_ALIKE_OWNER],
+  ])("an issue owner with %s is refused before any read", async (_label: string, owner: string) => {
+    const value = `${owner}/x#12 WP-3`;
+    const world: LinkWorld = linkWorld({
+      commits: withCommits(commit("c1", trailer("Work-package", value))),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — declaration: malformed Work-package value ${JSON.stringify(value)} — expected "<owner>/<repo>#<n> WP-<k>" with one space, <n> and <k> positive without a leading zero`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS]);
+  });
+
+  test.each([
+    ["a trailing dot", "libre-ai."],
+    ["a Unicode look-alike", LOOK_ALIKE_OWNER],
+  ])("a PRD-ref owner with %s is refused before the ancestry", async (_label: string, owner: string) => {
+    const world: LinkWorld = linkWorld({
+      issue: issueRead(issueBody(`${owner}/x@${PRD_SHA}:docs/prd.md`)),
+    });
+    const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
+    expect(report.violations).toEqual([
+      `PR #7 — issue ${PRD_REPO}#12: the issue body is not the work-package form: PRD-ref repository ${JSON.stringify(`${owner}/x`)} is not <owner>/<repo>`,
+    ]);
+    expect(world.calls).toEqual([CALL_TRAILERS, CALL_ISSUE]);
   });
 });

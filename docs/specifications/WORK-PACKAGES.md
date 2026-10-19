@@ -135,7 +135,7 @@ WP-<k>
 - Anything else makes the body unreadable and the gate refuses it, naming the line or the value at fault: text before, between or after the sections, a third or a repeated section, the sections in another order, a comment, the form's `_No response_`, a value on two lines, a space or a tab at the start or end of a line, a byte order mark or any other invisible character. The gate never reads the body heuristically.
 - `PRD-ref` is the repository (`<owner>/<repo>`, the grammar of the trailer), the full commit as 40 lowercase hexadecimal characters, and the path of the PRD, which MUST be exactly `docs/prd.md`. A short, uppercase or symbolic revision is refused.
 - `WP` is `WP-<k>`, with the grammar of the trailer, and MUST equal the `WP-<k>` of the trailer.
-- A `PRD-ref` MAY point to a public repository of the organization. For a private repository it MUST be the repository of the pull request. A commit that is unreachable or rewritten is a named failure.
+- The repository of the issue (`<owner>/<repo>` of the trailer) and the repository of the `PRD-ref` MUST belong to the same owner as the repository of the pull request, the owners being compared case-insensitively; the repository name MAY differ. The gate refuses any other owner, before reading the issue for the first and before resolving the commit for the second, naming both owners. A repository that the gate's token cannot read is a named failure, never a pass. A commit that is unreachable or rewritten is a named failure.
 - The gate validates the structure of the body itself, because the web form is not the only way to create an issue.
 - Nothing else is allowed in the body: scope and verification live in the PRD.
 
