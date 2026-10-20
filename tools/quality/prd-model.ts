@@ -186,6 +186,13 @@ export function blankFencesAndComments(markdown: string): Parsed<string> {
           kept += blankOf(rest.slice(0, end + COMMENT_CLOSE.length));
           rest = rest.slice(end + COMMENT_CLOSE.length);
           inComment = false;
+          // CommonMark ends the comment block with the whole line holding
+          // `-->`: text after it is hidden when rendered, so it is not read.
+          if (/[^ \t]/.test(rest)) {
+            return fail(
+              `line ${lineNumber}: text after "${COMMENT_CLOSE}" on the same line is not read; end the comment at the end of its line`,
+            );
+          }
         }
       } else {
         const start: number = rest.indexOf(COMMENT_OPEN);
@@ -263,6 +270,9 @@ const EXPECTED_HEADER: readonly RegExp[] = [
   /^Porte\b/i,
 ];
 const RULE_CELL = /^:?-{3,}:?$/;
+// Leading whitespace that reaches four columns: four spaces, or a tab after
+// at most three spaces.
+const INDENTED_BLOCK: RegExp = /^(?: {4}| {0,3}\t)/;
 // The grammar of the `WP-<k>` of the trailer (check-work-package-link.ts,
 // WP_SOURCE): a row the trailer cannot name could never be declared.
 const WP_ID: RegExp = /^WP-[1-9][0-9]{0,8}$/;
@@ -363,8 +373,17 @@ export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage
   const lines: readonly string[] = text.value.split("\n");
   const headers: number[] = [];
   for (let index = 0; index < lines.length; index += 1) {
-    const cells: readonly string[] | null = splitRow(lines[index] ?? "");
-    if (cells !== null && isHeader(cells)) headers.push(index);
+    const line: string = lines[index] ?? "";
+    const cells: readonly string[] | null = splitRow(line);
+    if (cells === null || !isHeader(cells)) continue;
+    // An indented block renders as code: a header there is a quoted example
+    // for the reader of the PRD, so it is refused even when it is the only one.
+    if (INDENTED_BLOCK.test(line)) {
+      return fail(
+        `work-package table header at line ${index + 1} is indented by four spaces or a tab: an indented block renders as code, so it is not read`,
+      );
+    }
+    headers.push(index);
   }
   const headerAt: number | undefined = headers[0];
   if (headerAt === undefined) {

@@ -375,20 +375,21 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
     expect(maturityOf(markdown)).toBe("décision");
   });
 
-  test("a comment on several lines hides them, and the text after its end on the same line counts", () => {
+  test("a comment on several lines hides them, up to the line of its end", () => {
     const markdown: string = [
       "- CA-1 Real. Validation : a",
       "<!-- start",
       "- CA-2 Hidden. Validation : b",
-      "end --> - CA-3 After the comment. Validation : c",
-      "<!-- not this --> Maturité du document : décision",
+      "end -->  \t",
+      "- CA-3 After the comment. Validation : c",
+      "<!-- one line -->",
       "Maturité du document : décision",
     ].join("\n");
     expect(parseCriteria(markdown)).toEqual({
       ok: true,
       value: [
         { id: "CA-1", line: 1, hasValidation: true },
-        { id: "CA-3", line: 4, hasValidation: true },
+        { id: "CA-3", line: 5, hasValidation: true },
       ],
     });
     expect(maturityOf(markdown)).toBe("décision");
@@ -444,12 +445,10 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
   });
 
   test("blankFencesAndComments keeps every line, normalises line ends and blanks with spaces", () => {
-    const source: string = ["<!-- x --> keep", "~~~~", "~~~", "hidden", "~~~~ ", "after"].join(
-      "\r\n",
-    );
+    const source: string = ["<!-- x --> ", "~~~~", "~~~", "hidden", "~~~~ ", "after"].join("\r\n");
     expect(blankFencesAndComments(source)).toEqual({
       ok: true,
-      value: ["           keep", "    ", "   ", "      ", "     ", "after"].join("\n"),
+      value: ["           ", "    ", "   ", "      ", "     ", "after"].join("\n"),
     });
     expect(blanked("a\rb\r\nc\n").split("\n")).toEqual(["a", "b", "c", ""]);
   });
@@ -569,7 +568,6 @@ describe("constructions the reader refuses", () => {
     ["a tab before it", "\t<!--"],
     ["prose before it", "Maturité du document : <!-- x --> décision"],
     ["a quote", "> <!--"],
-    ["a second comment after a closed one", "<!-- a --> b <!-- c -->"],
   ])("(C1 b) %s opening a comment is refused", (_label: string, line: string) => {
     const markdown: string = [
       "# PRD",
@@ -588,6 +586,27 @@ describe("constructions the reader refuses", () => {
       "Maturité du document : décision",
     ].join("\n");
     expect(readDocumentMaturity(markdown).ok).toBe(false);
+  });
+
+  // Wave H2 (2): CommonMark ends an HTML comment block with the WHOLE line
+  // holding `-->`, so text after it on that line is hidden when rendered and
+  // would be read as live here.
+  const TEXT_AFTER_CLOSE: string = 'text after "-->" on the same line';
+
+  test.each([
+    ["a one-line comment", "<!-- x --> Maturité du document : décision", 2],
+    ["the end of a multi-line comment", "end --> Maturité du document : décision", 3],
+    ["a second comment after a closed one", "<!-- a --> b <!-- c -->", 2],
+    ["a criterion after the end", "<!-- a --> - CA-9 Phantom. Validation : x", 2],
+  ])("(H2-2) %s followed by text is refused", (_label: string, line: string, at: number) => {
+    const opening: readonly string[] = at === 3 ? ["# PRD", "<!-- start"] : ["# PRD"];
+    const markdown: string = [...opening, line, "Maturité du document : proposition"].join("\n");
+    expectRefused(markdown, at, TEXT_AFTER_CLOSE);
+  });
+
+  test("(H2-2) spaces or tabs after the end of a comment are not text", () => {
+    expect(maturityOf("<!-- x -->  \t\nMaturité du document : décision")).toBe("décision");
+    expect(maturityOf("<!--\nx\n--> \nMaturité du document : décision")).toBe("décision");
   });
 
   test("a comment opener after at most three spaces is read as before", () => {
@@ -645,9 +664,9 @@ describe("constructions the reader refuses", () => {
     const markdown: string = [
       "# PRD",
       "",
-      "    | WP | CA-n | Périmètre | Vérification | Porte |",
-      "    | --- | --- | --- | --- | --- |",
-      "    | `WP-1` | `CA-1` | `**` | `true` | `two-way` |",
+      "| WP | CA-n | Périmètre | Vérification | Porte |",
+      "| --- | --- | --- | --- | --- |",
+      "| `WP-1` | `CA-1` | `**` | `true` | `two-way` |",
       "",
       REAL_TABLE,
     ].join("\n");
@@ -663,7 +682,64 @@ describe("constructions the reader refuses", () => {
     const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(
       [REAL_TABLE, "", REAL_TABLE].join("\n"),
     );
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      reason:
+        "work-package table header at lines 1 and 5: a PRD holds exactly one work-package table",
+    });
+  });
+
+  // Wave H2 (3): an indented header renders as an indented code block, so it
+  // is refused, also when it is the only header of the document.
+  const INDENTED_HEADER: string = "| WP | CA-n | Périmètre | Vérification | Porte |";
+  test.each([
+    ["four spaces", "    "],
+    ["six spaces", "      "],
+    ["a tab", "\t"],
+    ["two spaces and a tab", "  \t"],
+  ])("(H2-3) a header indented by %s is refused, with or without a real table", (_label: string, indent: string) => {
+    const example: readonly string[] = [
+      `${indent}${INDENTED_HEADER}`,
+      `${indent}| --- | --- | --- | --- | --- |`,
+      `${indent}| \`WP-1\` | \`CA-1\` | \`**\` | \`true\` | \`two-way\` |`,
+    ];
+    const expected: Parsed<readonly WorkPackage[]> = {
+      ok: false,
+      reason:
+        "work-package table header at line 3 is indented by four spaces or a tab: an indented block renders as code, so it is not read",
+    };
+    expect(parseWorkPackages(["# PRD", "", ...example].join("\n"))).toEqual(expected);
+    expect(parseWorkPackages(["# PRD", "", ...example, "", REAL_TABLE].join("\n"))).toEqual(
+      expected,
+    );
+  });
+
+  test("(H2-3) a header indented by at most three spaces is read", () => {
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(
+      [
+        `   ${TABLE_HEADER}`,
+        TABLE_RULE,
+        "| `WP-1` | `CA-1` | `a/**` | `bun test` | `one-way` |",
+      ].join("\n"),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  // Wave H2 (1), documented, not refused: inside a list item whose content
+  // column is four or more, CommonMark opens a fence that this reader does not
+  // see. Its content is read as live, so a quoted level disagrees with the
+  // real one and the document has no level: never the quoted one.
+  test("(H2-1) a fence indented by four spaces in a list item is read as live, and the disagreement gives no level", () => {
+    const markdown: string = [
+      "10. item",
+      "",
+      `    ${THREE}markdown`,
+      "    Maturité du document : décision",
+      `    ${THREE}`,
+      "",
+      "Maturité du document : proposition",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toEqual({ ok: true, value: null });
   });
 
   test("(C1 bis) a header quoted in a fence is not a second header", () => {
@@ -986,6 +1062,9 @@ describe("the work-package norm", () => {
       "the characters U+0085, U+2028 and U+2029, anywhere in the file",
       "Outside fences, `<!--` opens a comment only at the start of a line, after at most three spaces",
       "More than one line that reads as this header, outside fences and comments, makes the document unreadable, naming the lines: the parser never picks one of them.",
+      "any text other than spaces or tabs after `-->` on the line where a comment ends",
+      "A header line indented by four or more spaces, or by a tab, makes the document unreadable, even when it is the only header",
+      "A fence indented by four or more spaces inside a list item is not read as a fence: its content counts as live text",
     ]) {
       expect(text).toContain(sentence);
     }
