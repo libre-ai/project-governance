@@ -1,5 +1,5 @@
 import { touchesGatedPaths } from "./check-review-evidence";
-import { GateReport } from "./gate-report";
+import { concludeGate, GateReport } from "./gate-report";
 import {
   atLeast,
   type Criterion,
@@ -10,7 +10,12 @@ import {
   readDocumentMaturity,
   type WorkPackage,
 } from "./prd-model";
-import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
+import {
+  type ExemptRule,
+  loadWorkPackagePolicy,
+  type WorkPackagePolicy,
+} from "./work-package-policy";
+import { realPorts } from "./work-package-ports";
 import { findUnreadableCharacter, type UnreadableCharacter } from "./yaml-text-guard";
 
 /**
@@ -1366,4 +1371,141 @@ export async function evaluateWorkPackageLink(
       (outcome.exemption === null ? "" : `; exemption decision: ${outcome.exemption}`) +
       (outcome.resolution === null ? "" : `; resolution: ${outcome.resolution}`),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Entry point (event `pull_request`). Every input is read strictly: a field
+// that is absent or mistyped is a named violation, never a default, because a
+// default would let the gate judge a pull request other than the one it runs
+// for.
+// ---------------------------------------------------------------------------
+
+const GATE_NAME = "Work package link";
+
+/** The policy is trusted data of THIS repository, resolved from the module, never from the checkout. */
+const POLICY_PATH: string = `${import.meta.dir}/../../ecosystem/work-package-policy.v1.yaml`;
+
+type Environment = Readonly<Record<string, string | undefined>>;
+
+function recordOf(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function shaField(pullRequest: Record<string, unknown>, side: "base" | "head"): Parsed<string> {
+  const sha: unknown = recordOf(pullRequest[side])?.sha;
+  return typeof sha === "string" && FULL_COMMIT.test(sha)
+    ? { ok: true, value: sha }
+    : failed(
+        `pull_request.${side}.sha ${shown(sha)} is not a full commit of 40 lowercase hexadecimal characters`,
+      );
+}
+
+/** Pure reading of the event payload and of `GITHUB_REPOSITORY`, without any I/O. */
+export function readPullRequestFacts(payload: string, env: Environment): Parsed<PrFacts> {
+  let event: unknown;
+  try {
+    event = JSON.parse(payload);
+  } catch (error) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    return failed(`event payload is not valid JSON (${message})`);
+  }
+  const pullRequest: Record<string, unknown> | null = recordOf(recordOf(event)?.pull_request);
+  if (pullRequest === null) {
+    return failed("event payload carries no pull_request object");
+  }
+  const number: unknown = pullRequest.number;
+  if (typeof number !== "number" || !Number.isSafeInteger(number) || number <= 0) {
+    return failed(`pull_request.number ${shown(number)} is not a positive integer`);
+  }
+  const title: unknown = pullRequest.title;
+  if (typeof title !== "string") {
+    return failed(`pull_request.title ${shown(title)} is not a string`);
+  }
+  const login: unknown = recordOf(pullRequest.user)?.login;
+  if (typeof login !== "string" || login === "") {
+    return failed(`pull_request.user.login ${shown(login)} is not a non-empty string`);
+  }
+  const base: Parsed<string> = shaField(pullRequest, "base");
+  if (!base.ok) {
+    return base;
+  }
+  const head: Parsed<string> = shaField(pullRequest, "head");
+  if (!head.ok) {
+    return head;
+  }
+  const repo: string | undefined = env.GITHUB_REPOSITORY;
+  if (repo === undefined || !REPOSITORY.test(repo)) {
+    return failed(`GITHUB_REPOSITORY ${shown(repo)} is not <owner>/<repo>`);
+  }
+  return {
+    ok: true,
+    value: { repo, number, title, author: login, baseSha: base.value, headSha: head.value },
+  };
+}
+
+const violation = (item: string, reason: string): GateReport =>
+  new GateReport().check(item, false, reason);
+
+/**
+ * The run of the command. No `allowEmpty`: the gate is wired on
+ * `pull_request` only, so a run on any other event is a misconfiguration and
+ * fails, rather than a legitimate empty verdict.
+ */
+async function runFromEnvironment(env: Environment): Promise<GateReport> {
+  const eventName: string | undefined = env.GITHUB_EVENT_NAME;
+  if (eventName !== "pull_request") {
+    const named: string =
+      eventName === undefined ? "GITHUB_EVENT_NAME unset" : `GITHUB_EVENT_NAME=${shown(eventName)}`;
+    return violation(
+      "pull request event",
+      `not a pull_request event (${named}): this gate reads the commits of a pull request and runs on no other event`,
+    );
+  }
+  const eventPath: string | undefined = env.GITHUB_EVENT_PATH;
+  if (eventPath === undefined || eventPath === "") {
+    return violation("pull request event", "GITHUB_EVENT_PATH is unset on a pull_request run");
+  }
+  let payload: string;
+  try {
+    payload = await Bun.file(eventPath).text();
+  } catch (error) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    return violation("pull request event", `event payload unreadable at ${eventPath} (${message})`);
+  }
+  const facts: Parsed<PrFacts> = readPullRequestFacts(payload, env);
+  if (!facts.ok) {
+    return violation("pull request event", facts.reason);
+  }
+  const workspace: string | undefined = env.GITHUB_WORKSPACE;
+  if (workspace === undefined || workspace === "") {
+    return violation(
+      "pull request checkout",
+      "GITHUB_WORKSPACE is unset: the commits cannot be read",
+    );
+  }
+  let policyText: string;
+  try {
+    policyText = await Bun.file(POLICY_PATH).text();
+  } catch (error) {
+    const message: string = error instanceof Error ? error.message : String(error);
+    return violation("policy", `work-package policy unreadable at ${POLICY_PATH} (${message})`);
+  }
+  const policy: Parsed<WorkPackagePolicy> = loadWorkPackagePolicy(policyText);
+  if (!policy.ok) {
+    return violation("policy", `work-package policy unreadable: ${policy.reason}`);
+  }
+  const token: string | undefined = env.GITHUB_TOKEN;
+  const ports: LinkPorts = realPorts({
+    token: token === undefined || token === "" ? null : token,
+    workspace,
+    prRepo: facts.value.repo,
+    env,
+  });
+  return evaluateWorkPackageLink(facts.value, policy.value, ports);
+}
+
+if (import.meta.main) {
+  concludeGate(GATE_NAME, await runFromEnvironment(process.env));
 }

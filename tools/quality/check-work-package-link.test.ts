@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type CommitDeclarations,
@@ -14,6 +16,7 @@ import {
   type PrFacts,
   readDeclaration,
   readIssueFields,
+  readPullRequestFacts,
   scopeEntryProblem,
   type Trailer,
 } from "./check-work-package-link";
@@ -2635,5 +2638,215 @@ describe("exemptionHolds — docs-only shares the matcher of the scope", () => {
   ])("%s against %s is %p", (pattern: string, path: string, expected: boolean) => {
     const rule: ExemptRule = { paths: [pattern] };
     expect(exemptionHolds("docs-only", rule, pr(), [path]).ok).toBe(expected);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The entry point: the facts of the pull_request event, then the command.
+// ---------------------------------------------------------------------------
+
+const BASE_SHA = "1111111111111111111111111111111111111111";
+const HEAD_SHA = "2222222222222222222222222222222222222222";
+const ENV_REPOSITORY: Readonly<Record<string, string | undefined>> = {
+  GITHUB_REPOSITORY: "libre-ai/project-governance",
+};
+
+interface EventShape {
+  number?: unknown;
+  title?: unknown;
+  user?: unknown;
+  base?: unknown;
+  head?: unknown;
+}
+
+function eventPayload(
+  overrides: EventShape = {},
+  drop: readonly (keyof EventShape)[] = [],
+): string {
+  const pullRequest: Record<string, unknown> = {
+    number: 42,
+    title: "feat: something",
+    user: { login: "constantin-jais" },
+    base: { sha: BASE_SHA },
+    head: { sha: HEAD_SHA },
+    ...overrides,
+  };
+  for (const key of drop) {
+    delete pullRequest[key];
+  }
+  return JSON.stringify({ pull_request: pullRequest });
+}
+
+describe("readPullRequestFacts", () => {
+  test("reads the facts of a well-formed event", () => {
+    expect(readPullRequestFacts(eventPayload(), ENV_REPOSITORY)).toEqual({
+      ok: true,
+      value: {
+        repo: "libre-ai/project-governance",
+        number: 42,
+        title: "feat: something",
+        author: "constantin-jais",
+        baseSha: BASE_SHA,
+        headSha: HEAD_SHA,
+      },
+    });
+  });
+
+  test.each([
+    ["not JSON", "{"],
+    ["no pull_request object", JSON.stringify({ action: "opened" })],
+    ["a null pull_request", JSON.stringify({ pull_request: null })],
+    ["a missing number", eventPayload({}, ["number"])],
+    ["a string number", eventPayload({ number: "42" })],
+    ["a zero number", eventPayload({ number: 0 })],
+    ["a negative number", eventPayload({ number: -3 })],
+    ["a fractional number", eventPayload({ number: 4.2 })],
+    ["a missing title", eventPayload({}, ["title"])],
+    ["a non-string title", eventPayload({ title: 7 })],
+    ["a null title", eventPayload({ title: null })],
+    ["a missing user", eventPayload({}, ["user"])],
+    ["a non-string login", eventPayload({ user: { login: 3 } })],
+    ["an empty login", eventPayload({ user: { login: "" } })],
+    ["a missing base", eventPayload({}, ["base"])],
+    ["a short base sha", eventPayload({ base: { sha: "1111111" } })],
+    ["an upper-case head sha", eventPayload({ head: { sha: HEAD_SHA.replace(/2/g, "A") } })],
+    ["a non-string head sha", eventPayload({ head: { sha: 22 } })],
+    ["a missing head", eventPayload({}, ["head"])],
+  ])("%s is a named failure, never a default", (_label: string, payload: string) => {
+    const read: Parsed<PrFacts> = readPullRequestFacts(payload, ENV_REPOSITORY);
+    expect(read.ok).toBe(false);
+  });
+
+  test.each([
+    ["absent", {}],
+    ["without a slash", { GITHUB_REPOSITORY: "project-governance" }],
+    ["with an empty owner", { GITHUB_REPOSITORY: "/project-governance" }],
+    ["with a dot-dot name", { GITHUB_REPOSITORY: "libre-ai/.." }],
+  ])("a GITHUB_REPOSITORY %s is a named failure", (_label: string, env: Record<string, string>) => {
+    const read: Parsed<PrFacts> = readPullRequestFacts(eventPayload(), env);
+    expect(read.ok).toBe(false);
+    expect(read.ok ? "" : read.reason).toContain("GITHUB_REPOSITORY");
+  });
+});
+
+describe("the command", () => {
+  const SCRIPT: string = join(import.meta.dir, "check-work-package-link.ts");
+  const directories: string[] = [];
+  const scratchDirectory = (prefix: string): string => {
+    const directory: string = mkdtempSync(join(tmpdir(), prefix));
+    directories.push(directory);
+    return directory;
+  };
+  afterAll((): void => {
+    for (const directory of directories) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  // The environment is the whole input: nothing inherited, so a CI run's own
+  // GITHUB_* variables cannot make the probe measure the ambient event.
+  function runCommand(
+    script: string,
+    env: Record<string, string>,
+  ): { code: number; output: string } {
+    const result = Bun.spawnSync([process.execPath, script], {
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const decoder: TextDecoder = new TextDecoder();
+    return {
+      code: result.exitCode,
+      output: decoder.decode(result.stdout) + decoder.decode(result.stderr),
+    };
+  }
+
+  const eventFile = (payload: string): string => {
+    const path: string = join(scratchDirectory("wp-event-"), "event.json");
+    writeFileSync(path, payload);
+    return path;
+  };
+
+  test("outside a pull_request event it fails: a run elsewhere is a misconfiguration", () => {
+    const result = runCommand(SCRIPT, { GITHUB_EVENT_NAME: "push" });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('not a pull_request event (GITHUB_EVENT_NAME="push")');
+  });
+
+  test("an unset event name fails the same way", () => {
+    const result = runCommand(SCRIPT, {});
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("not a pull_request event (GITHUB_EVENT_NAME unset)");
+  });
+
+  test("a pull_request run without an event path fails", () => {
+    const result = runCommand(SCRIPT, { GITHUB_EVENT_NAME: "pull_request" });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("GITHUB_EVENT_PATH is unset");
+  });
+
+  test("an unreadable event file fails", () => {
+    const result = runCommand(SCRIPT, {
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: join(scratchDirectory("wp-noevent-"), "absent.json"),
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("event payload unreadable");
+  });
+
+  test("a malformed event fails with the field it lacks", () => {
+    const result = runCommand(SCRIPT, {
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventFile(eventPayload({ head: { sha: "abc" } })),
+      GITHUB_REPOSITORY: "libre-ai/project-governance",
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("pull_request.head.sha");
+  });
+
+  test("a missing workspace fails", () => {
+    const result = runCommand(SCRIPT, {
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventFile(eventPayload()),
+      GITHUB_REPOSITORY: "libre-ai/project-governance",
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("GITHUB_WORKSPACE is unset");
+  });
+
+  // The modules of the command, copied without the policy beside them. The
+  // workspace DOES hold a policy: the command must not read it, because the
+  // policy is trusted and the checkout of a pull request is not.
+  const COMMAND_MODULES: readonly string[] = [
+    "check-work-package-link.ts",
+    "check-review-evidence.ts",
+    "check-pr-door.ts",
+    "gate-report.ts",
+    "prd-model.ts",
+    "work-package-policy.ts",
+    "work-package-ports.ts",
+    "yaml-text-guard.ts",
+  ];
+
+  test("the policy is read beside the module, never from the workspace: absent there, the run fails", () => {
+    const copy: string = join(scratchDirectory("wp-module-"), "tools", "quality");
+    mkdirSync(copy, { recursive: true });
+    for (const module of COMMAND_MODULES) {
+      copyFileSync(join(import.meta.dir, module), join(copy, module));
+    }
+    const workspace: string = scratchDirectory("wp-workspace-");
+    mkdirSync(join(workspace, "ecosystem"));
+    copyFileSync(
+      join(import.meta.dir, "..", "..", "ecosystem", "work-package-policy.v1.yaml"),
+      join(workspace, "ecosystem", "work-package-policy.v1.yaml"),
+    );
+    const result = runCommand(join(copy, "check-work-package-link.ts"), {
+      GITHUB_EVENT_NAME: "pull_request",
+      GITHUB_EVENT_PATH: eventFile(eventPayload()),
+      GITHUB_REPOSITORY: "libre-ai/project-governance",
+      GITHUB_WORKSPACE: workspace,
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain("work-package policy unreadable");
   });
 });
