@@ -655,6 +655,32 @@ describe("the work-package norm", () => {
     expect(text).not.toContain("The three labelled examples");
   });
 
+  // Wave G (G3, G4): the norm says what the gate prints and what the suite
+  // holds, and names two limits of the control it had left unwritten.
+  test("the norm states only what the gate prints, and the limits of the cited commit and of the push", async () => {
+    const text: string = await readNorm();
+    for (const sentence of [
+      "The gate judges one pull request per run and prints the volume it examined on one line",
+      "the suite holds no mutant of the gate.",
+      "Each following line whose first character, after leading spaces and tabs, is `|` is a row",
+      "a backtick written in it is lost, not refused.",
+      "coexists with the `WP-<k>` grammar and does not concern it.",
+      "The work package is judged at the commit the issue cites, not at the latest PRD.",
+      "runs on `opened`, `synchronize` and `reopened`. An edit of the issue, or a change of its labels, after a green verdict is seen only at the next run.",
+    ]) {
+      expect(text).toContain(sentence);
+    }
+    for (const stale of [
+      "how many pull requests it examined",
+      "failing against a mutant of the gate",
+      "Each following line that starts with `|` is a row.",
+      "or a backtick (backticks are stripped)",
+      "The `Door:` line is the only declaration still read from the description",
+    ]) {
+      expect(text).not.toContain(stale);
+    }
+  });
+
   test("the norm covers the seven required subjects under stable headings", async () => {
     const text: string = await readNorm();
     const lines: string[] = text.split("\n");
