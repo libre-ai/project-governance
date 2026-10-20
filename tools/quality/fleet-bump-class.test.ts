@@ -198,6 +198,17 @@ describe("the fleet-bump globs against the bump tool", () => {
     expect(notCandidates).toEqual([]);
   });
 
+  test("admit no nested variant of any glob: the depth restriction holds for every entry", async () => {
+    const globs: readonly string[] = await fleetBumpGlobs();
+    const nested: readonly string[] = globs.map(
+      (glob: string): string => `deep/dir/${glob.replaceAll("*", "fr")}`,
+    );
+    const admitted: readonly string[] = nested.filter((path: string): boolean =>
+      globs.some((glob: string): boolean => new Bun.Glob(glob).match(path)),
+    );
+    expect(admitted).toEqual([]);
+  });
+
   test("cover every pin surface the dry run measured", async () => {
     const globs: readonly string[] = await fleetBumpGlobs();
     const uncovered: readonly string[] = MEASURED_BUMP_PATHS.filter(
