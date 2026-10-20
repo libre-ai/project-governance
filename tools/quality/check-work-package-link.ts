@@ -618,6 +618,20 @@ function implicitClassOf(policy: WorkPackagePolicy, author: string | null): stri
   return null;
 }
 
+/** The refusal of the first glob of a `paths` rule outside the scope grammar, or null. */
+function unsupportedRuleGlob(cls: string, rule: ExemptRule): string | null {
+  if (!("paths" in rule)) {
+    return null;
+  }
+  for (const glob of rule.paths) {
+    const problem: string | null = scopeEntryProblem(glob);
+    if (problem !== null) {
+      return `exemption rule ${JSON.stringify(cls)} has an unsupported glob ${asciiQuoted(glob)}: ${problem}`;
+    }
+  }
+  return null;
+}
+
 /** What the judgement of a declared exemption examined and decided, for the volume. */
 interface ExemptionVolume {
   readonly filesExamined: number;
@@ -667,9 +681,18 @@ async function evaluateExemption(
       decision: `refused, an exemption cannot cover a guarded path: ${guarded.length} guarded path(s) touched`,
     };
   }
+  const rule: ExemptRule | undefined = ruleOf(policy, cls);
+  // The globs of a `paths` rule are data: they pass the grammar of a scope
+  // entry before they are matched, since `matchesScope` misreads what that
+  // grammar refuses (a `*` inside braces matches less than it says).
+  const unsupported: string | null = rule === undefined ? null : unsupportedRuleGlob(cls, rule);
+  if (unsupported !== null) {
+    report.check(item, false, unsupported);
+    return { filesExamined: paths.length, decision: "refused, the exemption rule is unsupported" };
+  }
   const verdict: { readonly ok: boolean; readonly note: string } = exemptionHolds(
     cls,
-    ruleOf(policy, cls),
+    rule,
     pr,
     paths,
   );

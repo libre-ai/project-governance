@@ -814,6 +814,51 @@ describe("evaluateWorkPackageLink", () => {
     expect(report.outcome).toBe("violations");
   });
 
+  // The `paths` of an exempt rule are data, and go through the same grammar as
+  // a scope entry before they are matched: inside braces `*` matches less than
+  // it says, so a rule written that way would hold for the wrong files.
+  const SCOPE_CHARACTER_SET = "[A-Za-z0-9._/@+=,{}*-]";
+  test.each([
+    [
+      "a * inside braces",
+      ["{docs/*,notes/*}.md"],
+      '"{docs/*,notes/*}.md": it has a "*" inside braces: list the alternatives as separate entries outside braces',
+    ],
+    ["a negation", ["!src/**"], `"!src/**": the character "!" is outside ${SCOPE_CHARACTER_SET}`],
+    ["a .. segment", ["docs/../src/**"], '"docs/../src/**": it has a ".." segment'],
+    ["an empty entry", [""], '"": the entry is empty'],
+    [
+      "a valid entry followed by an invalid one",
+      ["docs/**", "{a,b/*}"],
+      '"{a,b/*}": it has a "*" inside braces: list the alternatives as separate entries outside braces',
+    ],
+  ])("an exempt rule with %s is a named violation, its predicate never consulted", async (_label: string, paths: string[], cause: string) => {
+    const unsupported: WorkPackagePolicy = {
+      ...policy,
+      exempt: Object.assign(Object.create(null) as Record<string, ExemptRule>, {
+        "docs-only": { paths },
+      }),
+    };
+    const spy: Spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["docs/a.md"],
+    });
+    const report: GateReport = await evaluateWorkPackageLink(pr(), unsupported, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: docs-only: exemption rule "docs-only" has an unsupported glob ${cause}`,
+    ]);
+  });
+
+  test("the exempt rules of the policy in force are valid globs", async () => {
+    const spy: Spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
+      ok: true,
+      value: ["README.md", "docs/a.txt"],
+    });
+    const report: GateReport = await evaluateWorkPackageLink(pr(), policy, spy.ports);
+    expect(report.outcome).toBe("pass");
+  });
+
   test("a docs-only exemption on an empty diff is a violation", async () => {
     const spy = spyOn(withCommits(commit("c1", trailer("Exempt", "docs-only"))), {
       ok: true,
