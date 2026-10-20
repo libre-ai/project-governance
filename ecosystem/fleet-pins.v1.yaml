@@ -226,3 +226,14 @@ generations:
       organization-data-lifecycle, learning-session-facilitation and
       project-website (composition targets), and product-research (not a
       composition target).
+  - sha: b0a5ff0cb0278835c4f6f4bde0f34df8397cc4a3
+    added_on: 2026-10-20
+    note: >-
+      reusable-work-package-link.yml published (#123) and declarable for the
+      first time: the gate that links a pull request to a work package of an
+      approved PRD through a commit trailer, with its norm
+      (docs/specifications/WORK-PACKAGES.md) and the PRD reader. The
+      composition manifest is unchanged from generation R, so every composed
+      ref is the one R declared. libre-ai/ai-work-supervision is the first
+      consumer to wire it (step 3 of the process above, pilot of the
+      PRD-ticketing work).
