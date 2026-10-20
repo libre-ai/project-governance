@@ -28,6 +28,24 @@ exempt:
     paths:
       - "**/*.md"
       - "docs/**"
+  # A governance-generation bump moves pins and nothing else. The list is the
+  # set of files tools/fleet/bump-generation.ts can edit (isCandidatePath),
+  # at the depth where a bump was measured to edit them: nested files and
+  # Cargo.toml are left out, and so is AGENTS.md (read by agents as
+  # instructions, never edited by a measured bump): such a pull request
+  # declares a work package.
+  # The class proves where a change landed, not what it wrote (see
+  # docs/specifications/WORK-PACKAGES.md).
+  fleet-bump:
+    paths:
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - "package.json"
+      - "bun.lock"
+      - "project.v1.yaml"
+      - "toolchains/*.json"
+      - "README.md"
+      - "README.fr.md"
   revert:
     titlePrefix: "Revert "
 owners:
