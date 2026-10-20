@@ -230,7 +230,11 @@ function declarationOf(distinct: readonly Pair[]): Declaration {
     return invalid("no declaration trailer in the commits of the range");
   }
   if (distinct.length > 1) {
-    const named: string = distinct.map((p) => `${p.key}: ${JSON.stringify(p.value)}`).join(", ");
+    // At most twenty pairs named, the rest counted: every distinct value
+    // named made a message of hundreds of thousands of characters.
+    const named: string = boundedList(
+      distinct.map((p: Pair): string => `${p.key}: ${JSON.stringify(p.value)}`),
+    );
     return invalid(
       `${distinct.length} distinct declaration trailers in the range (${named}) — exactly one distinct value is allowed`,
     );

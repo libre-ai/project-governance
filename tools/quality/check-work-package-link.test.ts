@@ -119,6 +119,33 @@ describe("readDeclaration", () => {
     expect(reasonOf(declaration)).toContain('"libre-ai/x#1 WP-2"');
   });
 
+  // The refusal names at most twenty pairs and counts the rest: with 10 000
+  // distinct values, naming them all made a message of about 379 000 characters.
+  test.each([
+    [20, ""],
+    [21, ", and 1 more"],
+    [10_000, ", and 9980 more"],
+  ])("%p distinct values name at most twenty pairs, then count the rest", (count: number, rest: string) => {
+    const values: string[] = Array.from(
+      { length: count },
+      (_, index: number): string => `libre-ai/x#1 WP-${index + 1}`,
+    );
+    const declaration: Declaration = readDeclaration(
+      values.map(
+        (value: string, index: number): CommitDeclarations =>
+          commit(`c${index}`, trailer("Work-package", value)),
+      ),
+    );
+    const named: string = values
+      .slice(0, 20)
+      .map((value: string): string => `work-package: ${JSON.stringify(value)}`)
+      .join(", ");
+    expect(declaration).toEqual({
+      kind: "invalid",
+      reason: `${count} distinct declaration trailers in the range (${named}${rest}) — exactly one distinct value is allowed`,
+    });
+  });
+
   test("a Work-package and an Exempt are two distinct declarations", () => {
     const declaration = readDeclaration([
       commit("c1", trailer("Work-package", WP), trailer("Exempt", "revert")),
