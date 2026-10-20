@@ -655,9 +655,14 @@ describe("evaluateWorkPackageLink", () => {
     expect(report.outcome).toBe("violations");
   });
 
+  // Rewritten in wave G (G2): the implicit exemption now reads the diff once,
+  // since an exemption never covers a guarded path, implicit or not.
   test("zero declarations from the author of an author-based class is exempt (implicit)", async () => {
-    const spy = spyOn(withCommits(commit("c1"), commit("c2")));
-    const report = await evaluateWorkPackageLink(
+    const spy: Spy = spyOn(withCommits(commit("c1"), commit("c2")), {
+      ok: true,
+      value: ["package.json", "bun.lock"],
+    });
+    const report: GateReport = await evaluateWorkPackageLink(
       pr({ author: "dependabot[bot]" }),
       policy,
       spy.ports,
@@ -666,9 +671,9 @@ describe("evaluateWorkPackageLink", () => {
     expect(report.checks.map((check) => check.note).join("\n")).toContain(
       "exempt (implicit: dependabot)",
     );
-    expect(spy.diffCalls).toEqual([]);
+    expect(spy.diffCalls).toEqual([["a".repeat(40), "b".repeat(40)]]);
     expect(report.volumeSummary).toBe(
-      "2 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: exempt (implicit: dependabot); implicit exemption: yes (dependabot); 0 file(s) examined for an exemption",
+      "2 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: exempt (implicit: dependabot); implicit exemption: yes (dependabot); 2 file(s) examined for an exemption; exemption decision: no guarded path touched",
     );
   });
 
@@ -2608,7 +2613,7 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
 // ---------------------------------------------------------------------------
 // An exemption never covers a guarded path (I-17, norm "Readiness"): a pull
 // request that touches a guarded surface declares a work package and obtains
-// the owner `ready`. The implicit exemption by author reads no diff.
+// the owner `ready`. The implicit exemption by author reads the diff too.
 // ---------------------------------------------------------------------------
 
 describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path", () => {
@@ -2684,15 +2689,63 @@ describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path",
     expect(report.volumeSummary).toContain("22 guarded path(s) touched");
   });
 
-  test("the implicit exemption by author reads no diff, so no guarded path is checked", async () => {
-    const spy: Spy = spyOn(withCommits(commit("c1")), { ok: true, value: ["docs/adr/0001-x.md"] });
+  // Rewritten in wave G (G2): this test asserted that the implicit exemption
+  // read no diff, so a guarded path pushed on a bot's pull request passed.
+  async function judgeImplicit(
+    changed: Fact<readonly string[]>,
+  ): Promise<{ readonly report: GateReport; readonly diffCalls: number }> {
+    const spy: Spy = spyOn(withCommits(commit("c1")), changed);
     const report: GateReport = await evaluateWorkPackageLink(
       pr({ author: "dependabot[bot]" }),
       policy,
       spy.ports,
     );
-    expect(report.outcome).toBe("pass");
-    expect(spy.diffCalls).toEqual([]);
+    return { report, diffCalls: spy.diffCalls.length };
+  }
+
+  test.each([
+    ...GUARDED_PATHS,
+  ])("the implicit exemption by author touching %s is refused", async (path: string) => {
+    const { report, diffCalls } = await judgeImplicit({ ok: true, value: ["package.json", path] });
+    expect(report.violations).toEqual([`PR #7 — declaration: ${refusal(`"${path}"`)}`]);
+    expect(report.checks).toHaveLength(1);
+    expect(diffCalls).toBe(1);
+    expect(report.volumeSummary).toBe(
+      "1 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: none (implicit exemption dependabot refused); implicit exemption: yes (dependabot); 2 file(s) examined for an exemption; exemption decision: refused, an exemption cannot cover a guarded path: 1 guarded path(s) touched",
+    );
+  });
+
+  test("the implicit exemption on an empty diff is a violation", async () => {
+    const { report, diffCalls } = await judgeImplicit({ ok: true, value: [] });
+    expect(report.violations).toEqual([
+      "PR #7 — declaration: the diff holds no changed file: an implicit exemption covers a pull request that changes at least one file",
+    ]);
+    expect(diffCalls).toBe(1);
+    expect(report.volumeSummary).toContain("; exemption decision: the diff holds no changed file");
+  });
+
+  test("the implicit exemption on an unreadable diff is a violation", async () => {
+    const { report, diffCalls } = await judgeImplicit({ ok: false, reason: "git diff failed" });
+    expect(report.violations).toEqual([
+      "PR #7 — declaration: changed files unreadable (git diff failed)",
+    ]);
+    expect(diffCalls).toBe(1);
+    expect(report.volumeSummary).toContain(
+      "0 file(s) examined for an exemption; exemption decision: changed files unreadable",
+    );
+  });
+
+  test("the implicit exemption validates every path before the guarded paths", async () => {
+    const { report } = await judgeImplicit({
+      ok: true,
+      value: ["package.json", "docs/adr/../../x"],
+    });
+    expect(report.violations).toEqual([
+      'PR #7 — declaration: 1 of 2 changed file path(s) unreadable: "docs/adr/../../x" (it has a ".." segment)',
+    ]);
+    expect(report.volumeSummary).toContain(
+      "; exemption decision: 1 of 2 changed file path(s) unreadable",
+    );
   });
 });
 

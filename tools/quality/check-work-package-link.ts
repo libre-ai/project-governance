@@ -632,6 +632,27 @@ function unsupportedRuleGlob(cls: string, rule: ExemptRule): string | null {
   return null;
 }
 
+interface GuardedRefusal {
+  readonly note: string;
+  readonly decision: string;
+}
+
+/**
+ * The refusal of an exemption, explicit or implicit, whose diff touches a
+ * guarded path of I-17, or null when none is touched. One message for both
+ * paths, so the same defect reads the same way.
+ */
+function guardedPathRefusal(paths: readonly string[]): GuardedRefusal | null {
+  const guarded: readonly string[] = touchesGatedPaths(paths);
+  if (guarded.length === 0) {
+    return null;
+  }
+  return {
+    note: `an exemption cannot cover a guarded path (${boundedList(guarded.map(asciiQuoted))}): declare a Work-package and obtain the owner ready`,
+    decision: `refused, an exemption cannot cover a guarded path: ${guarded.length} guarded path(s) touched`,
+  };
+}
+
 /** What the judgement of a declared exemption examined and decided, for the volume. */
 interface ExemptionVolume {
   readonly filesExamined: number;
@@ -669,17 +690,10 @@ async function evaluateExemption(
     report.check(item, false, refusal.note);
     return { filesExamined: paths.length, decision: refusal.summary };
   }
-  const guarded: readonly string[] = touchesGatedPaths(paths);
-  if (guarded.length > 0) {
-    report.check(
-      item,
-      false,
-      `an exemption cannot cover a guarded path (${boundedList(guarded.map(asciiQuoted))}): declare a Work-package and obtain the owner ready`,
-    );
-    return {
-      filesExamined: paths.length,
-      decision: `refused, an exemption cannot cover a guarded path: ${guarded.length} guarded path(s) touched`,
-    };
+  const guarded: GuardedRefusal | null = guardedPathRefusal(paths);
+  if (guarded !== null) {
+    report.check(item, false, guarded.note);
+    return { filesExamined: paths.length, decision: guarded.decision };
   }
   const rule: ExemptRule | undefined = ruleOf(policy, cls);
   // The globs of a `paths` rule are data: they pass the grammar of a scope
@@ -1300,17 +1314,63 @@ interface Outcome {
   readonly resolution: string | null;
 }
 
-/** No declaration, and the author is the author of an exempt class: exempt, and the verdict says it is implicit. */
-function passImplicitly(report: GateReport, label: string, cls: string, pr: PrFacts): Outcome {
+/**
+ * No declaration, and the author is the author of an exempt class: exempt,
+ * and the verdict says it is implicit — provided the diff allows it.
+ *
+ * Why the diff is read: an exemption never covers a guarded path of I-17,
+ * and a person can push to a bot's pull request (the author of the pull
+ * request decides the class, not the author of each commit). The diff is read
+ * once, every path validated, and an empty or unreadable diff is a violation,
+ * as on every other path of the gate.
+ */
+async function judgeImplicitly(
+  report: GateReport,
+  label: string,
+  cls: string,
+  pr: PrFacts,
+  ports: LinkPorts,
+): Promise<Outcome> {
+  const item: string = `${label} — declaration`;
+  const refused = (filesExamined: number, note: string, decision: string): Outcome => {
+    report.check(item, false, note);
+    return {
+      read: `none (implicit exemption ${cls} refused)`,
+      filesExamined,
+      exemption: decision,
+      resolution: null,
+    };
+  };
+  const changed: Fact<readonly string[]> = await ports.changedFiles(pr.baseSha, pr.headSha);
+  if (!changed.ok) {
+    return refused(0, `changed files unreadable (${changed.reason})`, "changed files unreadable");
+  }
+  const paths: readonly string[] = changed.value;
+  if (paths.length === 0) {
+    return refused(
+      0,
+      "the diff holds no changed file: an implicit exemption covers a pull request that changes at least one file",
+      "the diff holds no changed file",
+    );
+  }
+  const unreadable: { readonly summary: string; readonly note: string } | null =
+    unreadablePaths(paths);
+  if (unreadable !== null) {
+    return refused(paths.length, unreadable.note, unreadable.summary);
+  }
+  const guarded: GuardedRefusal | null = guardedPathRefusal(paths);
+  if (guarded !== null) {
+    return refused(paths.length, guarded.note, guarded.decision);
+  }
   report.check(
-    `${label} — declaration`,
+    item,
     true,
     `exempt (implicit: ${cls}): no declaration trailer, and the author ${JSON.stringify(pr.author)} is the author of class ${JSON.stringify(cls)}`,
   );
   return {
     read: `exempt (implicit: ${cls})`,
-    filesExamined: 0,
-    exemption: null,
+    filesExamined: paths.length,
+    exemption: "no guarded path touched",
     resolution: null,
   };
 }
@@ -1391,7 +1451,7 @@ export async function evaluateWorkPackageLink(
   const outcome: Outcome =
     implicit === null
       ? await judgeDeclaration(report, label, declarationOf(pairs.distinct), pr, policy, ports)
-      : passImplicitly(report, label, implicit, pr);
+      : await judgeImplicitly(report, label, implicit, pr, ports);
 
   return report.volume(
     `${commits.value.length} commit(s) examined; ${pairs.seen} declaration trailer pair(s) seen, ` +

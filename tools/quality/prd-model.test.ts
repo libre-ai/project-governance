@@ -648,6 +648,7 @@ describe("the work-package norm", () => {
       "The globs of a `paths` predicate obey the grammar of a `Périmètre` entry",
       "It closes only on a line of zero to three spaces followed by a run of the same character at least as long as the opening run, and nothing after it but spaces or tabs",
       "A line indented by four or more spaces is not a fence, and its content counts.",
+      "reads the diff once, under the same rule: every path is validated, a guarded path is refused with the same message, and an empty or unreadable diff is a refusal.",
     ]) {
       expect(text).toContain(sentence);
     }
