@@ -29,12 +29,22 @@ name: reusable-work-package-link
 #     (build, install, test, a local action): the pull request is the input the
 #     gate judges, never the program that judges it.
 #
-# Where the gate comes from: the governance repository at tooling_ref, fetched
-# into $RUNNER_TEMP, outside the workspace of the pull request. Bun reads
+# Where the gate comes from, and where it runs: the governance repository at
+# tooling_ref is fetched into $RUNNER_TEMP/governance-tooling, outside the
+# workspace of the pull request, and the gate RUNS FROM THAT DIRECTORY. Bun reads
 # `bunfig.toml` (a `preload` entry executes code) and `.env` from its working
-# directory, and the working directory of the gate is the pull request
-# workspace — so Bun is told to read the configuration of the tooling and no
-# `.env` file.
+# directory, and in the workspace of the pull request both are written by its
+# author. Measured on the pinned Bun revision: from the workspace, a plain
+# `bun <script>` runs the author's preload; `--no-env-file` alone does not stop
+# it; Bun ignores an unknown flag silently and an empty `--config=` falls back
+# to the working-directory bunfig — so no flag is a reliable protection, and the
+# working directory is the protection. The gate does not need the workspace as
+# its working directory: it reads the pull request through the absolute
+# GITHUB_WORKSPACE only. `--no-env-file` stays as defence in depth.
+#
+# Every step is pinned to exactly these lines by the structure test, and no
+# `env:` or `defaults:` exists above the steps: a value declared at job or
+# workflow level would reach the gate without being seen.
 
 on:
   workflow_call:
@@ -64,10 +74,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
         env:
           TOOLING_REF: ${{ inputs.tooling_ref }}
         run: |
-          if ! printf '%s' "$TOOLING_REF" | grep -Eq '^[0-9a-f]{40}$'; then
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
             exit 1
           fi
@@ -77,8 +89,8 @@ jobs:
           git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
           git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
           test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
-          echo "TOOLING_DIR=$TOOLING_DIR" >> "$GITHUB_ENV"
       - name: Install archived Bun toolchain
+        shell: bash
         working-directory: ${{ runner.temp }}
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
@@ -89,11 +101,14 @@ jobs:
           unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
           echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
       - name: Verify the exact Bun revision
+        shell: bash
         working-directory: ${{ runner.temp }}
         run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       - name: Verify the work-package link
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          bun --config="$TOOLING_DIR/bunfig.toml" --no-env-file "$TOOLING_DIR/tools/quality/check-bun-minimum.ts"
-          bun --config="$TOOLING_DIR/bunfig.toml" --no-env-file "$TOOLING_DIR/tools/quality/check-work-package-link.ts"
+          bun --no-env-file tools/quality/check-bun-minimum.ts
+          bun --no-env-file tools/quality/check-work-package-link.ts

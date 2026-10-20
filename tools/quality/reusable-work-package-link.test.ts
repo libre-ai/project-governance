@@ -6,14 +6,17 @@ import { findUnreadableCharacter } from "./yaml-text-guard";
 //
 // What it proves, and what it cannot: the file parses, it is callable, it
 // grants the job the two permissions the gate needs and nothing else, it runs
-// only pinned actions, and no author-controlled value reaches a shell. A real
-// `workflow_call` from a consumer remains the only proof of the wiring, and
-// cannot be produced before this repository publishes the workflow.
+// only pinned actions, no author-controlled value reaches a shell, and every
+// step that decides something carries EXACTLY the lines reviewed (a substring
+// check passed six neutralisations, such as a `|| true` appended to a check).
+// A real `workflow_call` from a consumer remains the only proof of the wiring,
+// and cannot be produced before this repository publishes the workflow.
 //
 // The threat this guards is the one of a pull request gate: the pull request
 // is author-controlled input, so the gate must come from the governance
-// checkout at a pinned revision, never from the workspace of the pull
-// request, and nothing of the pull request may run before it.
+// checkout at a pinned revision, run from that trusted directory, and nothing
+// of the pull request may run before it. The gate reads the pull request only
+// through the absolute GITHUB_WORKSPACE, never through its working directory.
 
 const WORKFLOW_URL: URL = new URL(
   "../../.github/workflows/reusable-work-package-link.yml",
@@ -27,6 +30,7 @@ interface Step {
   readonly if?: string;
   readonly uses?: string;
   readonly run?: string;
+  readonly shell?: string;
   readonly with?: Record<string, unknown>;
   readonly env?: Record<string, unknown>;
   readonly "working-directory"?: string;
@@ -61,6 +65,10 @@ const EXPRESSION: string = ["$", "{{"].join("");
 /** `${{ <inner> }}` as GitHub reads it. */
 const expression = (inner: string): string => `${EXPRESSION} ${inner} }}`;
 
+/** The trusted directory the gate runs from: under the runner temporary directory, outside the workspace. */
+const TOOLING_WORKING_DIRECTORY: string = `${expression("runner.temp")}/governance-tooling`;
+const RUNNER_TEMP_DIRECTORY: string = expression("runner.temp");
+
 const jobs: readonly [string, Job][] = Object.entries(workflow.jobs ?? {});
 const job: Job = jobs[0]?.[1] ?? {};
 const steps: readonly Step[] = job.steps ?? [];
@@ -76,31 +84,37 @@ function triggerNames(on: unknown): string[] {
 const label = (step: Step, index: number): string =>
   `[${index}] ${step.name ?? step.uses ?? step.run?.split("\n")[0] ?? "unnamed"}`;
 
-/** The step without its `env` block: where a value may reach a shell, a flag or a log. */
+/** The step without some keys: where a value may reach a shell, a flag or a log. */
 const serializedWithout = (step: Step, omitted: readonly string[]): string =>
   JSON.stringify(
     Object.fromEntries(Object.entries(step).filter(([key]) => !omitted.includes(key))),
   );
 const withoutEnv = (step: Step): string => serializedWithout(step, ["env"]);
 
-/** A step that is not there is `null`: the assertions below name what is missing. */
-const findStep = (predicate: (step: Step) => boolean): Step | null => steps.find(predicate) ?? null;
-const gateStep: Step | null = findStep((step) =>
-  (step.run ?? "").includes("check-work-package-link.ts"),
-);
-const toolingStep: Step | null = findStep((step) => Object.hasOwn(step.env ?? {}, "TOOLING_REF"));
-// `git -C "$TOOLING_DIR" fetch ...`: the verbs are located by their surrounding spaces.
-const FETCH: string = " fetch ";
-const CHECKOUT: string = " checkout ";
-const bunInstallStep: Step | null = findStep((step) => (step.run ?? "").includes("sha256sum"));
-const bunRevisionStep: Step | null = findStep((step) =>
-  (step.run ?? "").includes("bun --revision"),
-);
-const checkoutStep: Step | null = findStep((step) =>
-  (step.uses ?? "").startsWith("actions/checkout@"),
-);
+/** The trimmed, non-empty lines of a `run:` body: what the shell is asked to do, line by line. */
+const linesOf = (step: Step | null): string[] =>
+  (step?.run ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
 
-const indexOfStep = (step: Step | null): number => (step === null ? -1 : steps.indexOf(step));
+/** The keys of a mapping, sorted; a value that is not a mapping has none. */
+const keysOf = (value: unknown): string[] =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? Object.keys(value).sort()
+    : [];
+
+// The steps are taken by POSITION, never by what they contain: a step located
+// by its content disappears from the assertions as soon as it is altered.
+const checkoutStep: Step | null = steps[0] ?? null;
+const toolingStep: Step | null = steps[1] ?? null;
+const bunInstallStep: Step | null = steps[2] ?? null;
+const bunRevisionStep: Step | null = steps[3] ?? null;
+const gateStep: Step | null = steps[4] ?? null;
+const runSteps: readonly (Step | null)[] = [toolingStep, bunInstallStep, bunRevisionStep, gateStep];
+
+/** Comments are not part of the workflow: a line comment is dropped before any text scan. */
+const uncommented: string = text.replace(/^\s*#.*$/gm, "");
 
 describe("the file is read as one document", () => {
   test("it holds no character that a line scan and the YAML parser read differently", () => {
@@ -200,6 +214,65 @@ describe("authority of the job", () => {
   });
 });
 
+// An environment variable or a default declared above the steps reaches every
+// step, the gate included, and none of the step-level assertions below sees it:
+// `BUN_OPTIONS=--preload=./evil.ts` at job level would run the author's file in
+// the gate, `defaults.run.working-directory` would move the gate into the
+// workspace of the pull request. The inventory of keys is therefore closed at
+// every level, so that an unforeseen key is a red test and not a silent input.
+describe("nothing is inherited by the steps", () => {
+  test("`env` and `defaults` are absent at the workflow level and at the job level", () => {
+    for (const key of ["env", "defaults"]) {
+      expect(Object.hasOwn(workflow, key), `workflow ${key}`).toBe(false);
+      expect(Object.hasOwn(job, key), `job ${key}`).toBe(false);
+    }
+  });
+
+  test("the workflow holds exactly the reviewed top-level keys", () => {
+    expect(keysOf(workflow)).toEqual(["jobs", "name", "on", "permissions"]);
+  });
+
+  test("the job holds exactly the reviewed keys", () => {
+    expect(keysOf(job)).toEqual(["name", "permissions", "runs-on", "steps", "timeout-minutes"]);
+  });
+
+  test("each step holds exactly the reviewed keys", () => {
+    expect(keysOf(checkoutStep)).toEqual(["uses", "with"]);
+    expect(keysOf(toolingStep)).toEqual(["env", "name", "run", "shell", "working-directory"]);
+    expect(keysOf(bunInstallStep)).toEqual(["env", "name", "run", "shell", "working-directory"]);
+    expect(keysOf(bunRevisionStep)).toEqual(["name", "run", "shell", "working-directory"]);
+    expect(keysOf(gateStep)).toEqual(["env", "name", "run", "shell", "working-directory"]);
+  });
+
+  test("the job has exactly five steps: checkout, tooling, Bun install, Bun revision, gate", () => {
+    expect(steps.length).toBe(5);
+  });
+
+  // Variables that change what a process loads or where it looks; the Bun
+  // archive variables are the two names of pr-door.yml and are allowed by name.
+  test("no step but the gate sets a loader, runtime or git variable, and none the token", () => {
+    const allowed: readonly string[] = ["TOOLING_REF", "BUN_ARCHIVE_URL", "BUN_ARCHIVE_SHA256"];
+    const risky: RegExp =
+      /^(BUN_|NODE_|GIT_|LD_|DYLD_|NPM_|XDG_|BASH_ENV$|ENV$|PATH$|HOME$|SHELL$|GITHUB_|RUNNER_)/;
+    steps.forEach((step, index) => {
+      for (const key of Object.keys(step.env ?? {})) {
+        if (step === gateStep) continue;
+        expect(allowed.includes(key) || !risky.test(key), `${label(step, index)} sets ${key}`).toBe(
+          true,
+        );
+      }
+    });
+  });
+
+  test("the env of every step is exactly the reviewed one", () => {
+    expect(Object.hasOwn(checkoutStep ?? {}, "env")).toBe(false);
+    expect(keysOf(toolingStep?.env)).toEqual(["TOOLING_REF"]);
+    expect(keysOf(bunInstallStep?.env)).toEqual(["BUN_ARCHIVE_SHA256", "BUN_ARCHIVE_URL"]);
+    expect(Object.hasOwn(bunRevisionStep ?? {}, "env")).toBe(false);
+    expect(keysOf(gateStep?.env)).toEqual(["GITHUB_TOKEN"]);
+  });
+});
+
 describe("pinned actions", () => {
   test("the job runs at least one action", () => {
     expect(scanUsesLines(text).length).toBeGreaterThan(0);
@@ -215,7 +288,8 @@ describe("pinned actions", () => {
     }
   });
 
-  test("the checkout is the very one of pr-door.yml", () => {
+  test("the only action is the checkout, and it is the very one of pr-door.yml", () => {
+    expect(scanUsesLines(text).length).toBe(1);
     const siblingCheckout: Step | null =
       Object.values(siblingWorkflow.jobs ?? {})
         .flatMap((siblingJob) => siblingJob.steps ?? [])
@@ -238,7 +312,7 @@ describe("no author-controlled value reaches a shell", () => {
   });
 
   // `working-directory` is the one other place an expression is tolerated, and
-  // only as the constant `${{ runner.temp }}` (asserted with the toolchain).
+  // only as a constant of the runner temporary directory (asserted per step).
   test("no expression sits outside `env:`, `with:`, `working-directory:` and the step name", () => {
     const loose: string[] = [];
     steps.forEach((step, index) => {
@@ -252,22 +326,18 @@ describe("no author-controlled value reaches a shell", () => {
     const carriers = steps.filter((step) =>
       Object.values(step.env ?? {}).some((value) => String(value).includes("inputs.tooling_ref")),
     );
-    expect(carriers.length).toBeGreaterThan(0);
+    expect(carriers).toEqual([toolingStep as Step]);
     for (const step of steps) {
       expect(withoutEnv(step)).not.toContain("inputs.tooling_ref");
     }
   });
 
   test("the event is not read from a `github.event` expression anywhere", () => {
-    expect(text.replace(/^\s*#.*$/gm, "")).not.toContain("github.event.");
+    expect(uncommented).not.toContain("github.event.");
   });
 });
 
 describe("the pull request checkout", () => {
-  test("it is the first step", () => {
-    expect(indexOfStep(checkoutStep)).toBe(0);
-  });
-
   // Hard prerequisite: the gate refuses any shallow repository, with the message
   // "the checkout is shallow ... (fetch-depth: 0)".
   test("it fetches the full history", () => {
@@ -286,42 +356,132 @@ describe("the pull request checkout", () => {
   });
 });
 
+// The steps that decide are asserted line by line, exactly. A neutralisation
+// (a `|| true`, a commented-out block, an unanchored pattern, an extra fetch
+// from another repository) changes the lines and turns the test red.
+describe("the steps that decide carry exactly the reviewed lines", () => {
+  const TOOLING_LINES: readonly string[] = [
+    'if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then',
+    'echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"',
+    "exit 1",
+    "fi",
+    'TOOLING_DIR="$RUNNER_TEMP/governance-tooling"',
+    'mkdir "$TOOLING_DIR"',
+    'git init --quiet "$TOOLING_DIR"',
+    'git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"',
+    'git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD',
+    'test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"',
+  ];
+  const INSTALL_LINES: readonly string[] = [
+    'curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"',
+    'echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict',
+    'unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"',
+    'echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"',
+  ];
+  const REVISION_LINES: readonly string[] = [`test "$(bun --revision)" = "${bunPolicy.revision}"`];
+  const GATE_LINES: readonly string[] = [
+    "bun --no-env-file tools/quality/check-bun-minimum.ts",
+    "bun --no-env-file tools/quality/check-work-package-link.ts",
+  ];
+
+  test("the tooling step", () => {
+    expect(linesOf(toolingStep)).toEqual([...TOOLING_LINES]);
+  });
+
+  test("the Bun install step", () => {
+    expect(linesOf(bunInstallStep)).toEqual([...INSTALL_LINES]);
+  });
+
+  test("the Bun revision step, against toolchains/bun.json", () => {
+    expect(linesOf(bunRevisionStep)).toEqual([...REVISION_LINES]);
+  });
+
+  test("the gate step", () => {
+    expect(linesOf(gateStep)).toEqual([...GATE_LINES]);
+  });
+
+  // The shell is fixed: `shell: bash` makes GitHub run `bash -eo pipefail`, so
+  // a failing command, or a failing stage of the `sha256sum` pipe, ends the step.
+  test("every step that runs a script says `shell: bash`", () => {
+    for (const step of runSteps) {
+      expect(step?.shell).toBe("bash");
+    }
+  });
+
+  // Defence beside the exact lines: nothing that swallows a failure or hides a
+  // line may appear in the bodies, whatever the exact lines become.
+  test("no body swallows a failure, chains commands or hides a line", () => {
+    for (const [index, step] of runSteps.entries()) {
+      const body: string = step?.run ?? "";
+      expect(body, `step ${index} holds an expression`).not.toContain(EXPRESSION);
+      expect(body, `step ${index} holds ||`).not.toContain("||");
+      expect(body, `step ${index} holds &&`).not.toContain("&&");
+      expect(body, `step ${index} holds #`).not.toContain("#");
+      expect(body, `step ${index} holds the word true`).not.toMatch(/\btrue\b/);
+      expect(body, `step ${index} holds set +e`).not.toMatch(/set \+e|exit 0/);
+      for (const line of linesOf(step)) {
+        // The single `;` of the reviewed `if ...; then` line is the only one.
+        if (line === TOOLING_LINES[0]) continue;
+        expect(line, `step ${index}: ${line}`).not.toContain(";");
+      }
+    }
+  });
+
+  test("no body writes the environment of later steps", () => {
+    for (const step of runSteps) {
+      expect(step?.run ?? "").not.toContain("GITHUB_ENV");
+    }
+  });
+});
+
+describe("the format check of tooling_ref works", () => {
+  // The reviewed lines are RUN: the block up to its `fi` is executed by bash on
+  // accepted and refused values. Nothing leaves the machine: it is only the check.
+  const block: string = (() => {
+    const lines: string[] = linesOf(toolingStep);
+    const end: number = lines.indexOf("fi");
+    return end < 0 ? "exit 99" : lines.slice(0, end + 1).join("\n");
+  })();
+
+  async function verdict(value: string): Promise<number> {
+    const process = Bun.spawn(["bash", "-c", block], {
+      env: { PATH: Bun.env.PATH ?? "/usr/bin:/bin", TOOLING_REF: value },
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    return await process.exited;
+  }
+
+  const SHA: string = "0123456789abcdef0123456789abcdef01234567";
+
+  test("a full lowercase commit passes", async () => {
+    expect(await verdict(SHA)).toBe(0);
+  });
+
+  test.each([
+    ["empty", ""],
+    ["39 characters", SHA.slice(1)],
+    ["41 characters", `${SHA}0`],
+    ["uppercase", SHA.toUpperCase()],
+    ["a branch name", "main"],
+    ["a trailing newline", `${SHA}\n`],
+    ["a valid first line and a second line", `${SHA}\nanything`],
+    ["a valid last line after another line", `anything\n${SHA}`],
+    ["a leading space", ` ${SHA}`],
+    ["a command suffix", `${SHA};id`],
+  ])("%s is refused", async (_name, value) => {
+    expect(await verdict(value)).not.toBe(0);
+  });
+});
+
 describe("the governance tooling", () => {
-  test("a step fetches it, and it exists", () => {
-    expect(toolingStep).not.toBeNull();
-  });
-
-  test("the fetch step reads tooling_ref from env and checks its format first", () => {
-    const run: string = toolingStep?.run ?? "";
+  test("it is fetched anonymously from the governance repository, into the runner temporary directory", () => {
+    expect(toolingStep?.["working-directory"]).toBe(RUNNER_TEMP_DIRECTORY);
     expect(toolingStep?.env?.TOOLING_REF).toBe(expression("inputs.tooling_ref"));
-    expect(run).toContain("[0-9a-f]{40}");
-    expect(run).toContain(FETCH);
-    expect(run.indexOf("[0-9a-f]{40}")).toBeLessThan(run.indexOf(FETCH));
-    // The refusal must stop the step, not merely print.
-    expect(run.slice(0, run.indexOf(FETCH))).toContain("exit 1");
-  });
-
-  test("the fetched revision is checked to be exactly tooling_ref", () => {
-    const run: string = toolingStep?.run ?? "";
-    expect(run).toContain("rev-parse HEAD");
-    expect(run).toContain(CHECKOUT);
-    expect(run.indexOf("rev-parse HEAD")).toBeGreaterThan(run.indexOf(CHECKOUT));
-    expect(run).toMatch(/test "\$\(git -C "\$TOOLING_DIR" rev-parse HEAD\)" = "\$TOOLING_REF"/);
-  });
-
-  // `actions/checkout` refuses a path outside the workspace, and a path inside
-  // it would put governance files into the tree being judged.
-  test("it lives under RUNNER_TEMP, outside the workspace of the pull request", () => {
-    const run: string = toolingStep?.run ?? "";
-    expect(run).toContain('TOOLING_DIR="$RUNNER_TEMP/');
-    expect(run).toContain('>> "$GITHUB_ENV"');
-    expect(run).not.toContain("GITHUB_WORKSPACE");
-    expect(run).not.toContain(".governance-tooling");
-  });
-
-  test("it is fetched anonymously from the governance repository", () => {
     const run: string = toolingStep?.run ?? "";
     expect(run).toContain("https://github.com/libre-ai/project-governance.git");
+    expect(run).toContain('TOOLING_DIR="$RUNNER_TEMP/governance-tooling"');
+    expect(run).not.toContain("GITHUB_WORKSPACE");
     expect(JSON.stringify(toolingStep?.env ?? {})).not.toMatch(/token|secret/i);
   });
 });
@@ -334,112 +494,88 @@ describe("the Bun toolchain", () => {
 
   test("the archive and its sha256 are those of pr-door.yml", () => {
     expect(typeof siblingInstall?.env?.BUN_ARCHIVE_URL).toBe("string");
-    expect(bunInstallStep).not.toBeNull();
     expect(bunInstallStep?.env?.BUN_ARCHIVE_URL).toBe(siblingInstall?.env?.BUN_ARCHIVE_URL);
     expect(bunInstallStep?.env?.BUN_ARCHIVE_SHA256).toBe(siblingInstall?.env?.BUN_ARCHIVE_SHA256);
     expect(String(bunInstallStep?.env?.BUN_ARCHIVE_SHA256)).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test("the archive is verified before it is unpacked, and Bun goes on PATH", () => {
-    const run: string = bunInstallStep?.run ?? "";
-    expect(run).toContain("sha256sum --check --strict");
-    expect(run.indexOf("sha256sum")).toBeLessThan(run.indexOf("unzip"));
-    expect(run).toContain('>> "$GITHUB_PATH"');
-  });
-
-  test("the exact revision of toolchains/bun.json is verified", () => {
-    expect(bunRevisionStep?.run).toContain(`test "$(bun --revision)" = "${bunPolicy.revision}"`);
   });
 
   // Bun reads `bunfig.toml` and `.env` from the working directory before it
   // runs a script. In the workspace of the pull request both are author
   // controlled: a `preload` entry executes the author's code before the gate.
   test("neither toolchain step runs in the workspace of the pull request", () => {
-    expect(bunInstallStep?.["working-directory"]).toBe(expression("runner.temp"));
-    expect(bunRevisionStep?.["working-directory"]).toBe(expression("runner.temp"));
+    expect(bunInstallStep?.["working-directory"]).toBe(RUNNER_TEMP_DIRECTORY);
+    expect(bunRevisionStep?.["working-directory"]).toBe(RUNNER_TEMP_DIRECTORY);
   });
 });
 
 describe("the gate", () => {
-  const run: string = gateStep?.run ?? "";
-  const bunLines: string[] = run.split("\n").filter((line) => line.trim().startsWith("bun "));
-
-  test("one step runs it", () => {
-    expect(gateStep).not.toBeNull();
-  });
-
   test("it is the last step", () => {
-    expect(indexOfStep(gateStep)).toBe(steps.length - 1);
+    expect(gateStep?.run).toContain("check-work-package-link.ts");
+    expect(steps.indexOf(gateStep as Step)).toBe(steps.length - 1);
   });
 
-  test("it runs the minimum-version check, then the gate, both from the tooling directory", () => {
-    expect(bunLines.length).toBe(2);
-    expect(bunLines[0]).toContain('"$TOOLING_DIR/tools/quality/check-bun-minimum.ts"');
-    expect(bunLines[1]).toContain('"$TOOLING_DIR/tools/quality/check-work-package-link.ts"');
+  // Measured on the pinned Bun revision: from the workspace of the pull request,
+  // `bun <script>` runs the author's `preload` and loads `.env`; `--no-env-file`
+  // alone does not stop the preload; an unknown flag is ignored silently and an
+  // empty `--config=` falls back to the cwd bunfig. No flag is a reliable
+  // protection, so the working directory is the trusted tooling directory. The
+  // gate reads the pull request through the absolute GITHUB_WORKSPACE only.
+  test("it runs from the trusted tooling directory, not from the workspace", () => {
+    expect(gateStep?.["working-directory"]).toBe(TOOLING_WORKING_DIRECTORY);
+    expect(TOOLING_WORKING_DIRECTORY).toBe(`${EXPRESSION} runner.temp }}/governance-tooling`);
   });
 
-  test("Bun is told to ignore the configuration and the .env files of the workspace", () => {
-    for (const line of bunLines) {
-      expect(line).toContain('--config="$TOOLING_DIR/bunfig.toml"');
-      expect(line).toContain("--no-env-file");
-    }
+  test("the working directory of the gate is where the tooling step put the tooling", () => {
+    expect(linesOf(toolingStep)).toContain('TOOLING_DIR="$RUNNER_TEMP/governance-tooling"');
   });
 
-  test("it never runs from the workspace of the pull request", () => {
-    expect(gateStep).not.toBeNull();
-    expect(Object.hasOwn(gateStep ?? {}, "working-directory")).toBe(false);
+  test("no step reads the workspace by path or runs a package manager", () => {
     for (const [index, step] of steps.entries()) {
       const body: string = step.run ?? "";
       expect(body, label(step, index)).not.toContain("GITHUB_WORKSPACE");
       expect(body, label(step, index)).not.toMatch(
         /bun run |bun install|bunx |npm |npx |yarn |pnpm /,
       );
-      expect(body, label(step, index)).not.toMatch(/(^|\s)\.\/|(^|\s)tools\//m);
+      expect(body, label(step, index)).not.toMatch(/(^|\s)\.\//m);
     }
-  });
-
-  test("no step but the checkout is placed before the tooling, and none runs workspace code", () => {
-    const toolingIndex: number = indexOfStep(toolingStep);
-    expect(toolingIndex).toBe(1);
-    const order: number[] = [bunInstallStep, bunRevisionStep, gateStep].map(indexOfStep);
-    expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(order[0]).toBeGreaterThan(toolingIndex);
-    // checkout, tooling, install, revision, gate: five steps and no other.
-    expect(steps.length).toBe(5);
   });
 });
 
 describe("the token", () => {
-  const TOKEN: RegExp = /github\.token|secrets\.|GITHUB_TOKEN/;
-
-  test("it appears under `env:` of the gate step only", () => {
+  // The token is written once in the whole file, under the `env:` of the gate
+  // step, which also makes a job-level or a workflow-level copy a red test.
+  test("it is written once, under `env:` of the gate step", () => {
     expect(gateStep?.env?.GITHUB_TOKEN).toBe(expression("github.token"));
+    expect(uncommented.match(/GITHUB_TOKEN/g)?.length).toBe(1);
+    expect(uncommented.match(/github\.token/g)?.length).toBe(1);
+    expect(uncommented).not.toMatch(/secrets\./);
+  });
+
+  test("it is in no other step", () => {
     for (const [index, step] of steps.entries()) {
       if (step === gateStep) continue;
-      expect(JSON.stringify(step), label(step, index)).not.toMatch(TOKEN);
+      expect(JSON.stringify(step), label(step, index)).not.toMatch(
+        /github\.token|secrets\.|GITHUB_TOKEN/,
+      );
     }
   });
 
   test("it is not in the script, the arguments or the name of any step", () => {
     for (const [index, step] of steps.entries()) {
-      expect(withoutEnv(step), label(step, index)).not.toMatch(TOKEN);
+      expect(withoutEnv(step), label(step, index)).not.toMatch(
+        /github\.token|secrets\.|GITHUB_TOKEN/,
+      );
     }
   });
 
-  test("the gate step has no other secret-bearing variable", () => {
+  test("the gate step has no other variable", () => {
     expect(Object.keys(gateStep?.env ?? {})).toEqual(["GITHUB_TOKEN"]);
   });
 
-  test("nothing echoes, traces or writes a variable of the environment", () => {
+  test("nothing echoes, traces or lists the environment", () => {
     for (const [index, step] of steps.entries()) {
       const body: string = step.run ?? "";
       expect(body, label(step, index)).not.toMatch(/\bset -[a-z]*x|\bprintenv\b|(^|\s)env(\s|$)/m);
-    }
-  });
-
-  test("the workflow file never writes the token into a file", () => {
-    for (const [index, step] of steps.entries()) {
-      expect(step.run ?? "", label(step, index)).not.toMatch(/GITHUB_TOKEN/);
     }
   });
 });
