@@ -4,9 +4,11 @@ import {
   atLeast,
   MATURITY_LADDER,
   type MaturityLevel,
+  type Parsed,
   parseCriteria,
   parseWorkPackages,
   readDocumentMaturity,
+  type WorkPackage,
 } from "./prd-model";
 
 const TABLE_HEADER =
@@ -187,6 +189,30 @@ describe("parseWorkPackages", () => {
     if (!result.ok) expect(result.reason).toContain("WP-1 (line 3)");
   });
 
+  // The id of a row has the grammar of the trailer that declares it
+  // (`WP-[1-9][0-9]{0,8}`): a row no trailer can name is refused at the row.
+  test.each([
+    "WP-01",
+    "WP-0",
+    "WP-1234567890",
+  ])("a row named %p, which no trailer can declare, is ok:false naming the row and line", (id: string) => {
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(
+      table(`| \`${id}\` | \`CA-3\` | \`a/**\` | \`bun test\` | \`two-way\` |`),
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: `work package ${id} (line 3): identifier must be WP- and a positive integer of at most nine digits without a leading zero`,
+    });
+  });
+
+  test("a row named with nine digits is accepted", () => {
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(
+      table("| `WP-123456789` | `CA-3` | `a/**` | `bun test` | `two-way` |"),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value[0]?.id).toBe("WP-123456789");
+  });
+
   test("a table inside a fenced block is ignored", () => {
     const fenced = [
       "```",
@@ -345,7 +371,7 @@ describe("the work-package norm", () => {
   // declared here only so that the norm's example cannot drift from it. A gate
   // that implements the grammar must accept and refuse exactly the same values.
   const WORK_PACKAGE_TRAILER: RegExp =
-    /^Work-package: ([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]*)$/;
+    /^Work-package: ([A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?)\/((?!\.{1,2}#)[A-Za-z0-9._-]{1,100})#([1-9][0-9]*) (WP-[1-9][0-9]{0,8})$/;
   const EXEMPT_TRAILER: RegExp = /^Exempt: ([a-z][a-z0-9-]*)$/;
 
   test("the trailer example holds two commits that declare one distinct value", async () => {
@@ -382,6 +408,7 @@ describe("the work-package norm", () => {
       "Work-package: libre-ai/ai-work-supervision#012 WP-1",
       "Work-package: libre-ai/ai-work-supervision#12 WP-01",
       "Work-package: libre-ai/ai-work-supervision#12 WP-0",
+      "Work-package: libre-ai/ai-work-supervision#12 WP-1234567890",
       "Work-package:  libre-ai/ai-work-supervision#12 WP-1",
       "Work-package: libre-ai/ai-work-supervision#12  WP-1",
       "Work-package: libre-ai/ai-work-supervision#12 WP-1 ",

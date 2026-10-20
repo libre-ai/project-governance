@@ -108,7 +108,9 @@ const EXPECTED_HEADER: readonly RegExp[] = [
   /^Porte\b/i,
 ];
 const RULE_CELL = /^:?-{3,}:?$/;
-const WP_ID = /^WP-\d+$/;
+// The grammar of the `WP-<k>` of the trailer (check-work-package-link.ts,
+// WP_SOURCE): a row the trailer cannot name could never be declared.
+const WP_ID: RegExp = /^WP-[1-9][0-9]{0,8}$/;
 const CA_ID = /^CA-\d+$/;
 
 // The table cells are split on `|`: a verification command containing a pipe
@@ -169,7 +171,9 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
     );
   }
   if (!WP_ID.test(id)) {
-    return fail(`work package ${label}: identifier must look like WP-<n>`);
+    return fail(
+      `work package ${label}: identifier must be WP- and a positive integer of at most nine digits without a leading zero`,
+    );
   }
   const criteria = splitList(cells[1] ?? "");
   if (criteria.length === 0) return fail(`work package ${label}: cites no criterion`);
