@@ -194,7 +194,7 @@ describe("criteria: every definition form is strict or refused", () => {
     ["a letter O for the digit", ["- CA-O x. Validation : y"], 1],
     ["a minus sign", [`- CA${char(0x2212)}9 x. Validation : y`], 1],
     ["a hyphen bullet", [`- CA${char(0x2043)}9 x. Validation : y`], 1],
-    ["a not sign", [`- CA${char(0x00ac)}9 x. Validation : y`], 1],
+    ["a macron", [`- CA${char(0x00af)}9 x. Validation : y`], 1],
     ["a cent sign for the C", [`- ${char(0x00a2)}A-9 x. Validation : y`], 1],
     ["an ordinal a for the A", [`- C${char(0x00aa)}-9 x. Validation : y`], 1],
     [
@@ -395,15 +395,25 @@ describe("work-package table: one strict header, rows in its block", () => {
 
   test.each([
     ["a letter l before the WP cell", "l WP | CA-n | Périmètre | Vérification | Porte |"],
-    [
-      "a bullet before the WP cell",
-      `${char(0x2022)} WP | CA-n | Périmètre | Vérification | Porte |`,
-    ],
-    [
-      "a broken bar before the WP cell",
-      `${char(0x00a6)} WP | CA-n | Périmètre | Vérification | Porte |`,
-    ],
+    ["a star before the WP cell", `${char(0x2605)} WP | CA-n | Périmètre | Vérification | Porte |`],
     ["a dotted number before the WP cell", "| 1.2 WP | CA-n | Périmètre | Vérification | Porte |"],
+    // Rule 4c: a letter read as a bar.
+    ["capital I for every bar", "I WP I CA-n I Périmètre I Vérification I Porte I"],
+    ["a letter l for every bar", "l WP l CA-n l Périmètre l Vérification l Porte l"],
+    ["a digit 1 for every bar", "1 WP 1 CA-n 1 Périmètre 1 Vérification 1 Porte 1"],
+    [
+      "an inverted exclamation mark for every bar",
+      `${char(0xa1)} WP ${char(0xa1)} CA-n ${char(0xa1)} Périmètre ${char(0xa1)} Vérification ${char(0xa1)} Porte ${char(0xa1)}`,
+    ],
+    [
+      "an i with grave for every bar",
+      `${char(0xec)} WP ${char(0xec)} CA-n ${char(0xec)} Périmètre ${char(0xec)} Vérification ${char(0xec)} Porte ${char(0xec)}`,
+    ],
+    [
+      "a superscript one for every bar",
+      `${char(0xb9)} WP ${char(0xb9)} CA-n ${char(0xb9)} Périmètre ${char(0xb9)} Vérification ${char(0xb9)} Porte ${char(0xb9)}`,
+    ],
+    ["bars mixed with letters", "| WP I CA-n l Périmètre 1 Vérification | Porte |"],
     [
       "a cell CA-n spelled with a minus",
       `| WP | CA${char(0x2212)}n | Périmètre | Vérification | Porte |`,
@@ -471,8 +481,16 @@ describe("work-package table: one strict header, rows in its block", () => {
     ["a non-breaking hyphen", `| WP${char(0x2011)}2 | CA-1 | ** | true | two-way |`],
     ["an en dash", `| WP${char(0x2013)}2 | CA-1 | ** | true | two-way |`],
     ["a minus sign", `| WP${char(0x2212)}2 | CA-1 | ** | true | two-way |`],
-    ["broken bars", `${char(0x00a6)} WP-2 ${char(0x00a6)} CA-1 ${char(0x00a6)}`],
-    ["double vertical lines", `${char(0x2016)} WP-2 ${char(0x2016)} CA-1 ${char(0x2016)}`],
+    // Rule 4c: a letter read as a bar, anywhere on the line.
+    ["capital I for the bars", "I WP-2 I CA-1 I docs/** I bun test I one-way I"],
+    ["a letter l for the bars", "l WP-2 l CA-1 l docs/** l bun test l one-way l"],
+    ["a digit 1 for the bars", "1 WP-2 1 CA-1 1 docs/** 1 bun test 1 one-way 1"],
+    ["a superscript one for the bars", `${char(0xb9)} WP-2 ${char(0xb9)} CA-1 ${char(0xb9)}`],
+    [
+      "no leading bar, letters as bars after the id",
+      "WP-2 I CA-1 I docs/** I bun test I one-way I",
+    ],
+    ["prose starting with the id and holding a lone l", "WP-2 livre l export"],
     ["two v for the W", "| VVP-2 | CA-1 | ** | true | two-way |"],
     ["a letter l for the digit", "| WP-l | CA-1 | ** | true | two-way |"],
     ["a capital O for the digit", "| WP-2O | CA-1 | ** | true | two-way |"],
@@ -480,6 +498,18 @@ describe("work-package table: one strict header, rows in its block", () => {
   ])("%s outside the block is refused", (_label: string, line: string) => {
     const markdown: string = [TABLE_HEADER, TABLE_RULE, ROW, "", line].join("\n");
     expect(refusalOf(parseWorkPackages(markdown))).toBe(ROW_OUTSIDE(5));
+  });
+
+  test("prose that starts with an id but holds no bar-like letter is not a row", () => {
+    const markdown: string = [
+      TABLE_HEADER,
+      TABLE_RULE,
+      ROW,
+      "",
+      "WP-1 livre l'export, puis WP-2 la vérification.",
+      "Le WP-1 livre l'export.",
+    ].join("\n");
+    expect(parseWorkPackages(markdown).ok).toBe(true);
   });
 
   test("T5 a separator row whose cell count differs from the header is refused", () => {
@@ -796,8 +826,23 @@ describe("maturity: every mention is a strict declaration", () => {
       MENTION(1),
     ],
     [
-      "I1 a euro sign for the e",
-      [`Maturité du docum${char(0x20ac)}nt : proposition`, "", "Maturité du document : décision"],
+      "N6 cl for the d",
+      ["Maturité clu document : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "N7 nn for the m",
+      ["Nnaturité du document : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "N7 nn for the m, after the strict line",
+      ["Maturité du document : décision", "", "Nnaturité du docunnent : proposition"],
+      MENTION(3),
+    ],
+    [
+      "a c and a one for the d",
+      ["Maturité c1u document : proposition", "", "Maturité du document : décision"],
       MENTION(1),
     ],
     [
@@ -847,7 +892,7 @@ describe("maturity: every mention is a strict declaration", () => {
     ["a no-break space between the words", `Maturité${char(0x00a0)}du document : décision`],
     ["a narrow no-break space before the colon", `Maturité du document${char(0x202f)}: décision`],
     ["a tab between the words", "Maturité\tdu document : décision"],
-    ["a bullet inside a word", `Matu${char(0x2022)}rité du document : décision`],
+    ["a star inside a word", `Matu${char(0x2605)}rité du document : décision`],
     ["a punctuation inside a word", "Matu.rité du document : décision"],
     ["an en dash for the colon", `Maturité du document ${char(0x2013)} décision`],
     ["an indent of four", "    Maturité du document : décision"],
@@ -968,7 +1013,7 @@ describe("the alphabet of a PRD", () => {
   });
 
   test("the variation selector 16 is accepted right after a symbol of the table, nowhere else", () => {
-    expect(readRawLines(`${char(0x26a0)}${char(0xfe0f)} attention`).ok).toBe(true);
+    expect(readRawLines(`${char(0x2713)}${char(0xfe0f)} fait`).ok).toBe(true);
     expect(readRawLines(`${char(0x1f7e2)}${char(0xfe0f)}`).ok).toBe(true);
     expect(refusalOf(readRawLines(`e${char(0xfe0f)}`))).toBe(OUTSIDE(1, 2, 0xfe0f, "Mn"));
     expect(refusalOf(readRawLines(`${char(0xfe0f)}`))).toBe(OUTSIDE(1, 1, 0xfe0f, "Mn"));
@@ -982,10 +1027,10 @@ describe("the alphabet of a PRD", () => {
 
   test("the Latin-1 letters, Œ œ Ÿ, the admitted punctuation, symbols and spaces are accepted", () => {
     const text: string = [
-      "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß",
-      "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ",
+      "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝß",
+      "àáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ",
       `${char(0x0152)}${char(0x0153)}${char(0x0178)}`,
-      "§ « » — – … → ≤ ≥ ≠ × ÷ ° € ™ ‖ ′ ∈ ⇒ ⚠️ ✅ ❌ ✓ 🔴 🟢 ¦ ¬ ± ¶ · ¿ ¡ № ∞ ≈ • ‘ ’ “ ” ‰",
+      "§ « » — – … → ≤ ≥ ≠ × ° ™ ′ ∈ ⇒ ✓️ ❌ ✓ 🔴 🟢 ¿ ¡ № ∞ ≈ ‘ ’ “ ” ‰ ○ ◦ ★ ◆ ▶ ¢ ¥ ª º ² ³ ¹ ¯ ´ ¸",
       `a${char(0x00a0)}b${char(0x2009)}c${char(0x202f)}d\te`,
       "a < b, R&D, Q&A, AT&T, a & b, &#, <3, < b, 1 << 2, &;",
     ].join("\n");
@@ -1032,6 +1077,212 @@ describe("the alphabet of a PRD", () => {
     }
   });
 
+  // Round 6: every entry removed from the table for an ambiguous appearance
+  // is refused by the alphabet.
+  test.each([
+    [0x2020, "Po"], // †
+    [0x2021, "Po"], // ‡
+    [0x2227, "Sm"], // ∧
+    [0x25b2, "So"], // ▲
+    [0x25bc, "So"], // ▼
+    [0x00b6, "Po"], // ¶
+    [0x00a4, "Sc"], // ¤
+    [0x20ac, "Sc"], // €
+    [0x00a3, "Sc"], // £
+    [0x00b7, "Po"], // ·
+    [0x00a9, "So"], // ©
+    [0x00ae, "So"], // ®
+    [0x00ac, "Sm"], // ¬
+    [0x00a6, "So"], // ¦
+    [0x2016, "Po"], // ‖
+    [0x2191, "Sm"], // ↑
+    [0x2193, "Sm"], // ↓
+    [0x2022, "Po"], // •
+    [0x25cf, "So"], // ●
+    [0x25a1, "So"], // □
+    [0x2610, "So"], // ☐
+    [0x2611, "So"], // ☑
+    [0x2612, "So"], // ☒
+    [0x25a0, "So"], // ■
+    [0x25aa, "So"], // ▪
+    [0x25ab, "So"], // ▫
+    [0x2705, "So"], // ✅
+    [0x26a0, "So"], // ⚠
+    [0x00a8, "Sk"], // ¨
+    [0x00bc, "No"], // ¼
+    [0x00bd, "No"], // ½
+    [0x00be, "No"], // ¾
+    [0x00f7, "Sm"], // ÷
+    [0x00b1, "Sm"], // ±
+    [0x00de, "Lu"], // Þ
+    [0x00fe, "Ll"], // þ
+    [0x00d0, "Lu"], // Ð
+    [0x00f0, "Ll"], // ð
+  ])("the code point %i, removed from the table, is refused", (codePoint: number, category: string) => {
+    expect(SKELETON.has(codePoint)).toBe(false);
+    expect(refusalOf(readRawLines(`x${char(codePoint)}y`))).toBe(
+      OUTSIDE(1, 2, codePoint, category),
+    );
+  });
+
+  // The table, entry by entry: no entry can change, appear or disappear
+  // without this test turning red.
+  test("the skeleton table is exactly the expected one, entry by entry", () => {
+    const NEUTRAL: string = char(0xb7);
+    const expected: readonly (readonly [number, string])[] = [
+      [0x00c0, "a"],
+      [0x00c1, "a"],
+      [0x00c2, "a"],
+      [0x00c3, "a"],
+      [0x00c4, "a"],
+      [0x00c5, "a"],
+      [0x00c6, "ae"],
+      [0x00c7, "c"],
+      [0x00c8, "e"],
+      [0x00c9, "e"],
+      [0x00ca, "e"],
+      [0x00cb, "e"],
+      [0x00cc, "i"],
+      [0x00cd, "i"],
+      [0x00ce, "i"],
+      [0x00cf, "i"],
+      [0x00d1, "n"],
+      [0x00d2, "o"],
+      [0x00d3, "o"],
+      [0x00d4, "o"],
+      [0x00d5, "o"],
+      [0x00d6, "o"],
+      [0x00d8, "o"],
+      [0x00d9, "u"],
+      [0x00da, "u"],
+      [0x00db, "u"],
+      [0x00dc, "u"],
+      [0x00dd, "y"],
+      [0x00df, "b"],
+      [0x00e0, "a"],
+      [0x00e1, "a"],
+      [0x00e2, "a"],
+      [0x00e3, "a"],
+      [0x00e4, "a"],
+      [0x00e5, "a"],
+      [0x00e6, "ae"],
+      [0x00e7, "c"],
+      [0x00e8, "e"],
+      [0x00e9, "e"],
+      [0x00ea, "e"],
+      [0x00eb, "e"],
+      [0x00ec, "i"],
+      [0x00ed, "i"],
+      [0x00ee, "i"],
+      [0x00ef, "i"],
+      [0x00f1, "n"],
+      [0x00f2, "o"],
+      [0x00f3, "o"],
+      [0x00f4, "o"],
+      [0x00f5, "o"],
+      [0x00f6, "o"],
+      [0x00f8, "o"],
+      [0x00f9, "u"],
+      [0x00fa, "u"],
+      [0x00fb, "u"],
+      [0x00fc, "u"],
+      [0x00fd, "y"],
+      [0x00ff, "y"],
+      [0x0152, "oe"],
+      [0x0153, "oe"],
+      [0x0178, "y"],
+      [0x00a0, " "],
+      [0x00a1, "i"],
+      [0x00a2, "c"],
+      [0x00a5, "y"],
+      [0x00a7, "s"],
+      [0x00aa, "a"],
+      [0x00ab, NEUTRAL],
+      [0x00af, "-"],
+      [0x00b0, "o"],
+      [0x00b2, "2"],
+      [0x00b3, "3"],
+      [0x00b4, "'"],
+      [0x00b8, ","],
+      [0x00b9, "1"],
+      [0x00ba, "o"],
+      [0x00bb, NEUTRAL],
+      [0x00bf, "?"],
+      [0x00d7, "x"],
+      [0x2009, " "],
+      [0x2010, "-"],
+      [0x2011, "-"],
+      [0x2012, "-"],
+      [0x2013, "-"],
+      [0x2014, "-"],
+      [0x2015, "-"],
+      [0x2018, "'"],
+      [0x2019, "'"],
+      [0x201a, ","],
+      [0x201c, '"'],
+      [0x201d, '"'],
+      [0x201e, '"'],
+      [0x2026, "."],
+      [0x202f, " "],
+      [0x2030, "%"],
+      [0x2032, "'"],
+      [0x2033, '"'],
+      [0x2039, NEUTRAL],
+      [0x203a, NEUTRAL],
+      [0x2043, "-"],
+      [0x2044, "/"],
+      [0x2116, "no"],
+      [0x2122, "tm"],
+      [0x2190, NEUTRAL],
+      [0x2192, NEUTRAL],
+      [0x2194, NEUTRAL],
+      [0x21d0, NEUTRAL],
+      [0x21d2, NEUTRAL],
+      [0x21d4, NEUTRAL],
+      [0x2208, "e"],
+      [0x2212, "-"],
+      [0x221e, "oo"],
+      [0x2228, "v"],
+      [0x2229, "n"],
+      [0x222a, "u"],
+      [0x2248, NEUTRAL],
+      [0x2260, NEUTRAL],
+      [0x2264, NEUTRAL],
+      [0x2265, NEUTRAL],
+      [0x2282, "c"],
+      [0x2286, "c"],
+      [0x22ef, "."],
+      [0x25b6, NEUTRAL],
+      [0x25c6, NEUTRAL],
+      [0x25cb, "o"],
+      [0x25e6, "o"],
+      [0x2605, NEUTRAL],
+      [0x2606, NEUTRAL],
+      [0x2713, "v"],
+      [0x2714, "v"],
+      [0x2717, "x"],
+      [0x2718, "x"],
+      [0x274c, "x"],
+      [0x1f534, "o"],
+      [0x1f535, "o"],
+      [0x1f7e0, "o"],
+      [0x1f7e1, "o"],
+      [0x1f7e2, "o"],
+    ];
+    expect(expected).toHaveLength(138);
+    expect(SKELETON.size).toBe(expected.length);
+    for (const [codePoint, skeleton] of expected) {
+      expect([point(codePoint), SKELETON.get(codePoint)]).toEqual([point(codePoint), skeleton]);
+    }
+    for (const codePoint of SKELETON.keys()) {
+      expect(
+        expected.some(
+          ([expectedPoint]: readonly [number, string]): boolean => expectedPoint === codePoint,
+        ),
+      ).toBe(true);
+    }
+  });
+
   test("the raw document is read once and shared by the three parsers", () => {
     const text: string = [
       "Maturité du document : décision",
@@ -1064,11 +1315,71 @@ describe("the alphabet of a PRD", () => {
       lines: [read.value.lines[0] ?? "", `${read.value.lines[1] ?? ""}${char(0x200b)}`, ""],
       structural: [...read.value.structural.slice(0, 1), "- ca-1 x", ""],
       detection: [...read.value.detection.slice(0, 1), "- ca-l x", ""],
+      joined: [null, null, null],
     };
     // The alphabet is not checked again on the lines…
     expect(readDocumentMaturity(forged)).toEqual({ ok: true, value: "décision" });
     // …and the detection form given, not the text, decides what is a form.
     expect(refusalOf(parseCriteria(forged))).toBe(CRITERION_FORM(2));
+  });
+});
+
+// Rule 4b: a non-ASCII space (no-break, thin, narrow no-break) inside a
+// declaration form is read twice, as a space and as nothing; a line whose
+// two readings disagree is refused.
+describe("a non-ASCII space inside a declaration form", () => {
+  const SPACE = (line: number): string =>
+    `line ${line}: a non-ASCII space inside a declaration form is not read`;
+  const ROW: string = "| `WP-1` | `CA-1` | `a/**` | `bun test` | `one-way` |";
+
+  test.each([
+    ["a thin space inside CA", `- C${char(0x2009)}A-1 One, no validation.`],
+    ["a no-break space inside CA", `- C${char(0x00a0)}A-1 One, no validation.`],
+    ["a narrow no-break space after the dash", `- CA-${char(0x202f)}1 One, no validation.`],
+    ["a thin space before the number, in a quote", `> C${char(0x2009)}A-1 again`],
+  ])("N9 a criterion spelled with %s is refused", (_label: string, line: string) => {
+    expect(refusalOf(parseCriteria(`${line}\n- CA-1 One. Validation : x\n`))).toBe(SPACE(1));
+  });
+
+  test.each([
+    ["a thin space inside the id", `| WP-${char(0x2009)}2 | CA-1 | docs/** | bun test | one-way |`],
+    ["a no-break space inside WP", `| W${char(0x00a0)}P-2 | CA-1 | docs/** | bun test | one-way |`],
+  ])("N4 a row spelled with %s is refused", (_label: string, line: string) => {
+    const markdown: string = [TABLE_HEADER, TABLE_RULE, ROW, "", line].join("\n");
+    expect(refusalOf(parseWorkPackages(markdown))).toBe(SPACE(5));
+  });
+
+  test.each([
+    ["a thin space inside CA-n", `| WP | C${char(0x2009)}A-n | Périmètre | Vérification | Porte |`],
+    [
+      "a narrow no-break space inside WP",
+      `| W${char(0x202f)}P | CA-n | Périmètre | Vérification | Porte |`,
+    ],
+  ])("N4 a header spelled with %s is refused", (_label: string, line: string) => {
+    const markdown: string = [line, TABLE_RULE, "| x | CA-1 | ** | true | two-way |"].join("\n");
+    expect(refusalOf(parseWorkPackages(markdown))).toBe(SPACE(1));
+  });
+
+  test("a non-ASCII space that changes nothing is read", () => {
+    // Between the words of prose, or around a cell of the strict table.
+    const markdown: string = [
+      `Le${char(0x00a0)}projet est en proposition${char(0x202f)}; voir la${char(0x2009)}PR.`,
+      TABLE_HEADER,
+      TABLE_RULE,
+      `|${char(0x00a0)}\`WP-1\`${char(0x00a0)}| \`CA-1\` | \`a/**\` | \`bun test\` | \`one-way\` |`,
+      "",
+      `- CA-1 One.${char(0x00a0)}Validation : x`,
+    ].join("\n");
+    expect(parseWorkPackages(markdown).ok).toBe(true);
+    expect(parseCriteria(markdown)).toEqual({
+      ok: true,
+      value: [{ id: "CA-1", line: 6, hasValidation: true }],
+    });
+    // In the label of the maturity line the letters are the same either way:
+    // the mention rule refuses it, not the space rule.
+    expect(refusalOf(readDocumentMaturity(`Maturité${char(0x00a0)}du document : décision`))).toBe(
+      MENTION(1),
+    );
   });
 });
 
@@ -1140,19 +1451,20 @@ describe("raw lines", () => {
     expect(structuralForm("  Matu**rité**  _du_\t`document` \\: x~~y~~")).toBe(
       " maturite du document : xy",
     );
-    expect(structuralForm(`WP${char(0x2011)}1${char(0x00a6)}CA${char(0x2212)}2 ÀÉŒß`)).toBe(
-      "wp-1|ca-2 aeoeb",
-    );
+    expect(structuralForm(`WP${char(0x2011)}1|CA${char(0x2212)}2 ÀÉŒß`)).toBe("wp-1|ca-2 aeoeb");
     expect(structuralForm(`a${char(0x00a0)}${char(0x2009)}${char(0x202f)}b`)).toBe("a b");
-    for (const dash of [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0x2043, 0x00ac]) {
+    expect(structuralForm(`a${char(0x00a0)}${char(0x2009)}${char(0x202f)}b`, true)).toBe("ab");
+    for (const dash of [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0x2043, 0x00af]) {
       expect(structuralForm(`CA${char(dash)}1`)).toBe("ca-1");
     }
-    for (const bar of [0x00a6, 0x2016]) {
-      expect(structuralForm(`a${char(bar)}b`)).toBe("a|b");
-    }
-    expect(structuralForm("€ © ® ° ¢ § ¡ ¿ ™ № ∞ … – • ⚠️ ✓ ✗ 🟢")).toBe(
-      `e c r o c s i ? tm no oo . - ${char(0xb7)} ${char(0xb7)} v x o`,
+    expect(structuralForm("° ¢ § ¡ ¿ ™ № ∞ … – ★ ✓️ ✗ 🟢")).toBe(
+      `o c s i ? tm no oo . - ${char(0xb7)} v x o`,
     );
+    // No admitted character has the skeleton `|` or `:`.
+    for (const skeleton of SKELETON.values()) {
+      expect(skeleton).not.toContain("|");
+      expect(skeleton).not.toContain(":");
+    }
     for (const [codePoint, skeleton] of SKELETON) {
       expect(structuralForm(String.fromCodePoint(codePoint))).toBe(skeleton.replace(/\s+/g, " "));
     }
@@ -1166,6 +1478,10 @@ describe("raw lines", () => {
     expect(detectionForm("d0cument VVP-1 CA-0 CA-l")).toBe("document wp-l ca-o ca-l");
     expect(detectionForm("| a |")).toBe("l a l");
     expect(detectionForm("rnvv")).toBe("mw");
+    // Round 6: cl as d, nn as m, b as 8, s as 5, the key word folded alike.
+    expect(detectionForm("clu c1u Nnaturité docunnent")).toBe("du du maturlte document");
+    expect(detectionForm("B b S s 8 5")).toBe("8 8 5 5 8 5");
+    expect(detectionForm("Maturité du document")).toBe("maturlte du document");
   });
 
   test("the reader stays linear: 200 000 mixed lines in under a second", () => {
@@ -1458,21 +1774,33 @@ describe("the work-package norm", () => {
   test("the norm states the skeleton table, the HTML rule, the forms, the refusals and the limits", async () => {
     const text: string = await readNorm();
     for (const sentence of [
-      "Every raw occurrence of a declaration form is either read as live or makes the document unreadable",
+      "Every raw occurrence of a declaration form, spelled with the characters of the skeleton table and the ASCII confusables listed below, is either read as live or makes the document unreadable",
       "A PRD therefore never quotes a declaration form, not even in a fence, an indented block or a list item: it paraphrases it.",
       "the invariant is held by enumerating what a document may contain, not by detecting what it must not",
       `a hand-written table of ${SKELETON.size} entries, each with its skeleton`,
+      "no entry has the skeleton `|` or `:`",
+      "Removed from the table because their appearance is ambiguous between two skeletons, hence refused:",
+      "`rn` and `nn` read as `m`, `cl` as `d`, `vv` as `w`, `0` as `o`, `1`, `i` and `|` as `l`, `b` as `8`, `s` as `5`",
+      "a line holding a no-break, thin or narrow no-break space is read twice, with that space as a space and as nothing",
+      "a letter standing alone between white space or at an end of the line that a person may read as a bar",
+      "Assumed limit: visual confusion. The reader makes a visual confusion harder, it does not make it impossible.",
+      "that list is not exhaustive",
+      "The control is an audit trail, not a security boundary",
+      "A `Validation :` clause inside a struck bold span (`~~**Validation :** x~~`) counts as the clause",
+      "every other space and separator (U+2000 to U+2008, U+200A, U+2028, U+2029, U+3000)",
+      "or with `I`, `l` or `1` for its bars is refused",
+      "Prose that starts with `WP-<n>` and holds a lone `l`, `I` or `1` somewhere is refused too",
+      "a label spelled with an unlisted ASCII confusable is a limit",
       "the variation selector U+FE0F directly after an entry of category So",
       "Everything else is refused naming the line, the column (counted in code points) and the code point with its Unicode category",
       "the format characters (Cf: U+00AD, U+200B to U+200F, U+2060, U+FEFF, the bidirectional controls, the zero-width joiner U+200D)",
-      "A test enumerates every code point from U+0080 to U+10FFFF and prints how many the reader admits: exactly the entries of the table.",
+      "A test enumerates every code point from U+0080 to U+10FFFF and prints how many the reader admits: exactly the entries of the table; another pins the table entry by entry.",
       "A PRD holds no HTML.",
       "`a < b`, `R&D`, `Q&A` and `a & b` are permitted",
       "A `<` immediately followed by a letter, `!`, `?` or `/`",
       "with or without its semicolon",
       "the only folding the parsers do, and it folds only characters the alphabet lets through",
       "The structural form of a line is its lower case, every non-ASCII character replaced by its skeleton",
-      "`rn` reads as `m`, `vv` as `w`, `0` as `o`, `1`, `i` and `|` as `l`",
       "never to accept anything and never for the `|` that separates the cells of a table",
       "The declaration itself is then read on the raw line, which MUST have the strict form, in ASCII where the form says so.",
       "The text of a file is read once",
@@ -1486,7 +1814,7 @@ describe("the work-package norm", () => {
       "Two spellings of one number (`CA-01` and `CA-1`) are one criterion",
       "after leading white space (spaces, tabs and the admitted no-break, thin and narrow no-break spaces)",
       "one cell's first word is `WP` (not `WP-<digit>`) and one cell's first word is `CA` (a word ends before a character that is not a letter, a digit or `_`)",
-      "Every line whose first token, on its detection form and after its leading markers (the markers of the criteria grammar), reads `WP-<n>`, and whose structural form holds a `|`, MUST be a row of the block of that table",
+      "Every line whose first token, on its detection form and after its leading markers (the markers of the criteria grammar), reads `WP-<n>`, and whose structural form holds a `|` or a lone bar-like letter, MUST be a row of the block of that table",
       "the volume line says `unreadable` for what was refused",
       "what the chain did not reach stays `not read`",
       "Faux refusals are accepted",
@@ -1529,6 +1857,15 @@ describe("the work-package norm", () => {
       "never `not read`",
       "as a word (a colon after the word",
       "once folded and after every leading character",
+      "Every raw occurrence of a declaration form is either read as live",
+      "the variation selector U+FE0F directly after a symbol of category So",
+      "`rn` reads as `m`, `vv` as `w`",
+      "Two limits the reader states",
+      "`¦` a bar",
+      "`€` an `e`",
+      "U+2000 to U+200A",
+      "with broken or double bars",
+      "a label spelled with a confusable (",
     ]) {
       expect(text).not.toContain(stale);
     }

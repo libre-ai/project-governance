@@ -73,6 +73,13 @@ export interface RawDocument {
   readonly lines: readonly string[];
   readonly structural: readonly string[];
   readonly detection: readonly string[];
+  /** For a line holding a non-ASCII space: its forms with that space read as nothing. */
+  readonly joined: readonly (Joined | null)[];
+}
+
+export interface Joined {
+  readonly structural: string;
+  readonly detection: string;
 }
 
 const fail = (reason: string): { readonly ok: false; readonly reason: string } => ({
@@ -120,7 +127,6 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x00cd, "i"], // Í
   [0x00ce, "i"], // Î
   [0x00cf, "i"], // Ï
-  [0x00d0, "d"], // Ð
   [0x00d1, "n"], // Ñ
   [0x00d2, "o"], // Ò
   [0x00d3, "o"], // Ó
@@ -133,7 +139,6 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x00db, "u"], // Û
   [0x00dc, "u"], // Ü
   [0x00dd, "y"], // Ý
-  [0x00de, "p"], // Þ
   [0x00df, "b"], // ß
   // Latin-1 letters, lower case (U+00E0–U+00FF except ÷ U+00F7).
   [0x00e0, "a"], // à
@@ -152,7 +157,6 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x00ed, "i"], // í
   [0x00ee, "i"], // î
   [0x00ef, "i"], // ï
-  [0x00f0, "d"], // ð
   [0x00f1, "n"], // ñ
   [0x00f2, "o"], // ò
   [0x00f3, "o"], // ó
@@ -165,48 +169,37 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x00fb, "u"], // û
   [0x00fc, "u"], // ü
   [0x00fd, "y"], // ý
-  [0x00fe, "p"], // þ
   [0x00ff, "y"], // ÿ
   // Latin Extended-A: the three French ligature and capital letters.
   [0x0152, "oe"], // Œ
   [0x0153, "oe"], // œ
   [0x0178, "y"], // Ÿ
-  // Latin-1 punctuation and symbols (U+00A0–U+00BF, × and ÷). Excluded on
-  // purpose: U+00AD soft hyphen (format character), U+00B5 micro sign (a
-  // Greek letter), both refused.
+  // Latin-1 punctuation and symbols. Excluded on purpose: U+00AD soft hyphen
+  // (format character), U+00B5 micro sign (a Greek letter), and every sign
+  // whose appearance is ambiguous between two skeletons: £ (l or e), ¤, ¦ (a
+  // bar or a colon), ¨ (a quote or nothing), © and ® (a letter or a circle),
+  // ¬ and ± (a dash or a plus), ¶, · (a dot or nothing), ¼ ½ ¾ (digits), ÷
+  // (a colon or a dash); Ð ð Þ þ (d or o, p or b) are not French letters.
   [0x00a0, " "], // no-break space
   [0x00a1, "i"], // ¡
   [0x00a2, "c"], // ¢
-  [0x00a3, "l"], // £
-  [0x00a4, NEUTRAL], // ¤
   [0x00a5, "y"], // ¥
-  [0x00a6, "|"], // ¦
   [0x00a7, "s"], // §
-  [0x00a8, NEUTRAL], // ¨
-  [0x00a9, "c"], // ©
   [0x00aa, "a"], // ª
   [0x00ab, NEUTRAL], // «
-  [0x00ac, "-"], // ¬
-  [0x00ae, "r"], // ®
   [0x00af, "-"], // ¯
   [0x00b0, "o"], // °
-  [0x00b1, "-"], // ±
   [0x00b2, "2"], // ²
   [0x00b3, "3"], // ³
   [0x00b4, "'"], // ´
-  [0x00b6, NEUTRAL], // ¶
-  [0x00b7, NEUTRAL], // ·
   [0x00b8, ","], // ¸
   [0x00b9, "1"], // ¹
   [0x00ba, "o"], // º
   [0x00bb, NEUTRAL], // »
-  [0x00bc, NEUTRAL], // ¼
-  [0x00bd, NEUTRAL], // ½
-  [0x00be, NEUTRAL], // ¾
   [0x00bf, "?"], // ¿
   [0x00d7, "x"], // ×
-  [0x00f7, NEUTRAL], // ÷
-  // General punctuation of French typography.
+  // General punctuation of French typography. Excluded: ‖ (bars or an H),
+  // † ‡ (a cross or a t), • (a dot or an o).
   [0x2009, " "], // thin space
   [0x2010, "-"], // ‐ hyphen
   [0x2011, "-"], // ‑ non-breaking hyphen
@@ -214,16 +207,12 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x2013, "-"], // – en dash
   [0x2014, "-"], // — em dash
   [0x2015, "-"], // ― horizontal bar
-  [0x2016, "|"], // ‖ double vertical line
   [0x2018, "'"], // ‘
   [0x2019, "'"], // ’
   [0x201a, ","], // ‚
   [0x201c, '"'], // “
   [0x201d, '"'], // ”
   [0x201e, '"'], // „
-  [0x2020, NEUTRAL], // †
-  [0x2021, NEUTRAL], // ‡
-  [0x2022, NEUTRAL], // •
   [0x2026, "."], // …
   [0x202f, " "], // narrow no-break space
   [0x2030, "%"], // ‰
@@ -233,15 +222,12 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x203a, NEUTRAL], // ›
   [0x2043, "-"], // ⁃ hyphen bullet
   [0x2044, "/"], // ⁄ fraction slash
-  // Letterlike symbols, currency, arrows and mathematical operators of
-  // technical prose.
-  [0x20ac, "e"], // €
+  // Letterlike symbols, arrows and mathematical operators of technical
+  // prose. Excluded: € (an e or a c), ↑ ↓ (a bar), ∧ (an A or a caret).
   [0x2116, "no"], // №
   [0x2122, "tm"], // ™
   [0x2190, NEUTRAL], // ←
-  [0x2191, NEUTRAL], // ↑
   [0x2192, NEUTRAL], // →
-  [0x2193, NEUTRAL], // ↓
   [0x2194, NEUTRAL], // ↔
   [0x21d0, NEUTRAL], // ⇐
   [0x21d2, NEUTRAL], // ⇒
@@ -249,7 +235,6 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x2208, "e"], // ∈
   [0x2212, "-"], // − minus sign
   [0x221e, "oo"], // ∞
-  [0x2227, NEUTRAL], // ∧
   [0x2228, "v"], // ∨
   [0x2229, "n"], // ∩
   [0x222a, "u"], // ∪
@@ -260,25 +245,15 @@ export const SKELETON: ReadonlyMap<number, string> = new Map<number, string>([
   [0x2282, "c"], // ⊂
   [0x2286, "c"], // ⊆
   [0x22ef, "."], // ⋯
-  // Geometric shapes, dingbats and the status emoji.
-  [0x25a0, NEUTRAL], // ■
-  [0x25a1, "o"], // □
-  [0x25aa, NEUTRAL], // ▪
-  [0x25ab, NEUTRAL], // ▫
-  [0x25b2, NEUTRAL], // ▲
+  // Geometric shapes, dingbats and the status emoji. Excluded: ■ ▪ ▫ (a dot
+  // or nothing), ▲ ▼ (an A or a V), □ ☐ ☑ ☒ (an o or a box), ● (an o or a
+  // dot), ⚠ (an A), ✅ (a v or a box).
   [0x25b6, NEUTRAL], // ▶
-  [0x25bc, NEUTRAL], // ▼
   [0x25c6, NEUTRAL], // ◆
   [0x25cb, "o"], // ○
-  [0x25cf, "o"], // ●
   [0x25e6, "o"], // ◦
   [0x2605, NEUTRAL], // ★
   [0x2606, NEUTRAL], // ☆
-  [0x2610, "o"], // ☐
-  [0x2611, "o"], // ☑
-  [0x2612, "o"], // ☒
-  [0x26a0, NEUTRAL], // ⚠
-  [0x2705, NEUTRAL], // ✅
   [0x2713, "v"], // ✓
   [0x2714, "v"], // ✔
   [0x2717, "x"], // ✗
@@ -412,13 +387,27 @@ function htmlMarkup(line: string): string | null {
  * and the `-` of an identifier are read on this form; the alphabet guarantees
  * that every character has a skeleton.
  */
-export function structuralForm(line: string): string {
+export function structuralForm(line: string, joinSpaces: boolean = false): string {
   return line
     .toLowerCase()
-    .replace(NON_ASCII, (char: string): string => SKELETON.get(char.codePointAt(0) ?? -1) ?? "")
+    .replace(NON_ASCII, (char: string): string => {
+      const skeleton: string = SKELETON.get(char.codePointAt(0) ?? -1) ?? "";
+      return joinSpaces && skeleton === " " ? "" : skeleton;
+    })
     .replace(/[*_~`\\]/g, "")
     .replace(/\s+/g, " ");
 }
+
+// The entries whose skeleton is a space: a no-break, thin or narrow no-break
+// space. Inside a declaration form a person may read them as nothing, so a
+// line holding one is read twice (rule 4b): with them as a space and with
+// them as nothing, and the two readings must agree.
+const NON_ASCII_SPACE: RegExp = new RegExp(
+  `[${[...SKELETON.entries()]
+    .filter(([, skeleton]: readonly [number, string]): boolean => skeleton === " ")
+    .map(([codePoint]: readonly [number, string]): string => String.fromCodePoint(codePoint))
+    .join("")}]`,
+);
 
 /**
  * The detection form: the structural form with the ASCII confusables of the
@@ -429,11 +418,22 @@ export function structuralForm(line: string): string {
  */
 export function detectionForm(line: string): string {
   return structuralForm(line)
-    .replace(/rn/g, "m")
-    .replace(/vv/g, "w")
     .replace(/0/g, "o")
-    .replace(/[1i|]/g, "l");
+    .replace(/[1i|]/g, "l")
+    .replace(/rn|nn/g, "m")
+    .replace(/cl/g, "d")
+    .replace(/vv/g, "w")
+    .replace(/b/g, "8")
+    .replace(/s/g, "5");
 }
+
+// Rule 4c: for a header or a row, a letter a person may read as the bar of a
+// table — on the structural form `i` (also ì í î ï ¡ I), `l` and `1` (also
+// ¹), standing alone between white space or at an end of the line — is read
+// as `|` in a second detection. Only to refuse: the `1` of `WP-1` or the `l`
+// of `l'export` stay what they are.
+const BAR_LIKE: RegExp = /(?<![^\s])[il1](?![^\s])/g;
+const withBars = (structural: string): string => structural.replace(BAR_LIKE, "|");
 
 /**
  * The lines of the text, each of CRLF, a lone CR and LF ending one line, so
@@ -445,6 +445,7 @@ export function readRawLines(markdown: string): Parsed<RawDocument> {
   const lines: readonly string[] = markdown.split(/\r\n?|\n/);
   const structural: string[] = [];
   const detection: string[] = [];
+  const joined: (Joined | null)[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line: string = lines[index] ?? "";
     const problem: string | null = outsideAlphabet(line) ?? htmlMarkup(line);
@@ -452,8 +453,34 @@ export function readRawLines(markdown: string): Parsed<RawDocument> {
     const form: string = structuralForm(line);
     structural.push(form);
     detection.push(detectionForm(form));
+    if (NON_ASCII_SPACE.test(line)) {
+      const joinedForm: string = structuralForm(line, true);
+      joined.push({ structural: joinedForm, detection: detectionForm(joinedForm) });
+    } else {
+      joined.push(null);
+    }
   }
-  return { ok: true, value: { lines, structural, detection } };
+  return { ok: true, value: { lines, structural, detection, joined } };
+}
+
+const SPACE_INSIDE = (lineNumber: number): string =>
+  `line ${lineNumber}: a non-ASCII space inside a declaration form is not read`;
+
+/**
+ * Rule 4b: on a line holding a non-ASCII space, a detection must conclude
+ * the same with the space read as a space and read as nothing; otherwise the
+ * line is refused. Returns the refusal, or null.
+ */
+function spaceDisagreement(
+  document: RawDocument,
+  index: number,
+  decide: (structural: string, detection: string) => boolean,
+): string | null {
+  const other: Joined | null = document.joined[index] ?? null;
+  if (other === null) return null;
+  const spaced: boolean = decide(document.structural[index] ?? "", document.detection[index] ?? "");
+  const asNothing: boolean = decide(other.structural, other.detection);
+  return spaced === asNothing ? null : SPACE_INSIDE(index + 1);
 }
 
 /** The document, read once: the text is read here, a document is returned as is. */
@@ -513,6 +540,12 @@ export function parseCriteria(input: string | RawDocument): Parsed<readonly Crit
     const lineNumber: number = index + 1;
     const match: RegExpExecArray | null = CRITERION_BULLET.exec(line);
     if (match === null) {
+      const space: string | null = spaceDisagreement(
+        read.value,
+        index,
+        (_structural: string, form: string): boolean => looksLikeCriterion(form),
+      );
+      if (space !== null) return fail(space);
       if (looksLikeCriterion(detection[index] ?? "")) {
         return fail(
           `line ${lineNumber}: a CA-<n> definition that is not a strict criterion bullet ("- CA-<n> …", at most three spaces of indentation) is not read`,
@@ -630,7 +663,7 @@ function isHeader(cells: readonly string[]): boolean {
  * `CA` cell: the cells are cut on the `|` of the structural form, their
  * words are read on the detection form after the leading markers.
  */
-function looksLikeHeader(structural: string): boolean {
+function headerCells(structural: string): boolean {
   if (!structural.includes("|")) return false;
   const cells: readonly string[] = structural
     .split("|")
@@ -641,9 +674,15 @@ function looksLikeHeader(structural: string): boolean {
   );
 }
 
-/** True when the line, as a person reads it, is a row starting with `WP-<n>`. */
+const looksLikeHeader = (structural: string): boolean =>
+  headerCells(structural) || headerCells(withBars(structural));
+
+/**
+ * True when the line, as a person reads it, is a row starting with `WP-<n>`:
+ * a bar, or a letter read as one (rule 4c), anywhere on the line.
+ */
 const looksLikeRow = (structural: string, detection: string): boolean =>
-  structural.includes("|") && ROW_FORM.test(afterMarkers(detection));
+  withBars(structural).includes("|") && ROW_FORM.test(afterMarkers(detection));
 
 function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPackage> {
   const id: string = unquote(cells[0] ?? "");
@@ -698,6 +737,11 @@ export function parseWorkPackages(input: string | RawDocument): Parsed<readonly 
     const cells: readonly string[] | null = splitRow(lines[index] ?? "");
     if (cells !== null && isHeader(cells)) {
       headers.push(index);
+    } else if (
+      spaceDisagreement(read.value, index, (form: string): boolean => looksLikeHeader(form)) !==
+      null
+    ) {
+      return fail(SPACE_INSIDE(index + 1));
     } else if (looksLikeHeader(structural[index] ?? "")) {
       return fail(
         `line ${index + 1}: a work-package table header that is not the exact header (\`| WP | CA-n | Périmètre | Vérification | Porte |\`, plain cells) is not read`,
@@ -747,6 +791,8 @@ export function parseWorkPackages(input: string | RawDocument): Parsed<readonly 
   }
   for (let index = 0; index < lines.length; index += 1) {
     if (index >= headerAt && index < end) continue;
+    const space: string | null = spaceDisagreement(read.value, index, looksLikeRow);
+    if (space !== null) return fail(space);
     if (looksLikeRow(structural[index] ?? "", detection[index] ?? "")) {
       return fail(
         `line ${index + 1}: a WP-<n> row outside the block of the work-package table is not read`,

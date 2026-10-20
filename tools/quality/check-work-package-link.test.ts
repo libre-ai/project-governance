@@ -1492,7 +1492,7 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     });
     const verdict: LinkVerdict = await judge(world);
     expect(verdict.violations).toEqual([
-      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 32, U+200B (Cf): outside the alphabet of a PRD (printable ASCII, the tab and the 176 code points of the skeleton table))`,
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 32, U+200B (Cf): outside the alphabet of a PRD (printable ASCII, the tab and the 138 code points of the skeleton table))`,
     ]);
     expect(verdict.volume).toContain("; maturity unreadable; work packages parsed: not read");
   });
@@ -1532,6 +1532,100 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     expect(verdict.volume).toContain(
       "; work packages parsed: 2; criteria parsed: unreadable; criteria cited: not read",
     );
+  });
+
+  // Round 6, end to end: a hidden one-way WP-3 table (letters for bars, a
+  // non-ASCII space inside an identifier) before the strict two-way table, and
+  // a contradicted maturity spelled with an ASCII confusable, are violations,
+  // never a pass with `ready: implicit`.
+  const HIDDEN = (table: readonly string[]): string =>
+    [
+      "# PRD",
+      "",
+      "Maturité du document : décision",
+      "",
+      "## Breakdown",
+      "",
+      ...table,
+      "",
+      "## Appendix",
+      "",
+      `${TABLE_HEADER}| \`WP-3\` | \`CA-1\` | \`src/**\` | \`bun test\` | \`two-way\` |`,
+    ].join("\n");
+  const TABLE_LIKE = (line: number): string =>
+    `${PRD_ITEM}: work-package table unreadable (line ${line}: a work-package table header that is not the exact header (\`| WP | CA-n | Périmètre | Vérification | Porte |\`, plain cells) is not read)`;
+  const SPACE_INSIDE = (line: number): string =>
+    `${PRD_ITEM}: work-package table unreadable (line ${line}: a non-ASCII space inside a declaration form is not read)`;
+  const MENTION_AT = (line: number): string =>
+    `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line ${line}: "Maturité du document" outside a strict declaration line (\`Maturité du document : <level>\`, at most three spaces of indentation, an optional bullet and bold) is not read)`;
+  const THIN: string = String.fromCodePoint(0x2009);
+
+  test.each([
+    [
+      "N1 capital I for the bars",
+      [
+        "I WP I CA-n I Périmètre I Vérification I Porte I",
+        "I --- I --- I --- I --- I --- I",
+        "I WP-3 I CA-1 I docs/** I bun test I one-way I",
+      ],
+      TABLE_LIKE(7),
+    ],
+    [
+      "N2 a letter l for the bars",
+      [
+        "l WP l CA-n l Périmètre l Vérification l Porte l",
+        "l --- l --- l --- l --- l --- l",
+        "l WP-3 l CA-1 l docs/** l bun test l one-way l",
+      ],
+      TABLE_LIKE(7),
+    ],
+    [
+      "N4 a thin space inside the identifiers",
+      [
+        `| WP | C${THIN}A-n | Périmètre | Vérification | Porte |`,
+        "| --- | --- | --- | --- | --- |",
+        `| WP-${THIN}3 | C${THIN}A-1 | docs/** | bun test | one-way |`,
+      ],
+      SPACE_INSIDE(7),
+    ],
+  ])("%s: the hidden one-way table is a violation", async (_label: string, table: readonly string[], violation: string) => {
+    const world: LinkWorld = linkWorld({ prd: { ok: true, value: HIDDEN(table) } });
+    const verdict: LinkVerdict = await judge(world);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([violation]);
+    expect(verdict.volume).toContain("; work packages parsed: unreadable;");
+    expect(verdict.volume).toContain("ready: not reached");
+  });
+
+  test.each([
+    ["N6 cl for the d", "Maturité clu document : proposition"],
+    ["N7 nn for the m", "Nnaturité du document : proposition"],
+    ["mode B, a zero for the o", "Maturité du d0cument : proposition"],
+  ])("%s before the strict line is a violation", async (_label: string, altered: string) => {
+    const prd: string = `# PRD\n\n${altered}\nMaturité du document : décision\n\n${TABLE_HEADER}| \`WP-3\` | \`CA-1\` | \`src/**\` | \`bun test\` | \`two-way\` |\n`;
+    const verdict: LinkVerdict = await judge(linkWorld({ prd: { ok: true, value: prd } }));
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([MENTION_AT(3)]);
+    expect(verdict.volume).toContain("; maturity unreadable;");
+  });
+
+  test("N8 a dagger for the t is a violation of the alphabet", async () => {
+    const prd: string = `# PRD\n\nMa${String.fromCodePoint(0x2020)}urité du document : proposition\nMaturité du document : décision\n\n${TABLE_HEADER}`;
+    const verdict: LinkVerdict = await judge(linkWorld({ prd: { ok: true, value: prd } }));
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 3, U+2020 (Po): outside the alphabet of a PRD (printable ASCII, the tab and the 138 code points of the skeleton table))`,
+    ]);
+  });
+
+  test("N9 a thin space inside a criterion of the specification is a violation", async () => {
+    const cahier: string = `- C${THIN}A-1 One, no validation.\n${CAHIER}`;
+    const verdict: LinkVerdict = await judge(linkWorld({ cahier: { ok: true, value: cahier } }));
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.violations).toEqual([
+      `${PRD_ITEM}: docs/cahier-des-charges.md unreadable as criteria (line 1: a non-ASCII space inside a declaration form is not read)`,
+    ]);
+    expect(verdict.volume).toContain("; criteria parsed: unreadable;");
   });
 
   test("a requirements specification holding HTML is unreadable as criteria, naming the line", async () => {
