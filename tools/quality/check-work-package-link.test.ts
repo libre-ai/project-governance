@@ -1444,12 +1444,12 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     const world: LinkWorld = linkWorld({
       prd: {
         ok: true,
-        value: prdText("- ```markdown\n  Maturité du document : décision\n  ```"),
+        value: prdText("## Maturité du document : décision"),
       },
     });
     const verdict = await judge(world);
     expect(verdict.violations).toEqual([
-      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3: a fence after a list or quote marker is not read; open the fence at the start of the line)`,
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3: "Maturité du document" outside a strict declaration line (\`Maturité du document : <level>\`, at most three spaces of indentation, an optional bullet and bold) is not read)`,
     ]);
     expect(verdict.outcome).toBe("violations");
     expect(verdict.volume).toContain("; maturity unreadable; work packages parsed: not read");

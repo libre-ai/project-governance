@@ -5,6 +5,16 @@
  * Every reader fails closed. A document that does not carry the structure
  * returns `ok: false` with a reason, never an empty success, so that a gate
  * built on top cannot confuse "nothing declared" with "could not read".
+ *
+ * The readers hold one invariant over the RAW text, with no Markdown
+ * semantics: every raw occurrence of a declaration form (a maturity line, a
+ * work-package header or row, a criterion definition) is either read as live
+ * or makes the document unreadable, with its line. Why raw: a reader that
+ * imitates a renderer (fences, comments, HTML blocks, indented code, list
+ * items) disagrees with it somewhere, and each disagreement lets a quoted
+ * example be read as live or hides a live line. The reviewer of a PRD reads
+ * the raw diff; so does the gate. A PRD therefore never quotes a declaration
+ * form: it paraphrases it.
  */
 export type MaturityLevel =
   | "exploration"
@@ -51,202 +61,167 @@ const fail = (reason: string): { readonly ok: false; readonly reason: string } =
   reason,
 });
 
-// 0-3 spaces, then a run of three or more backticks (whose info string holds
-// no backtick) or of three or more tildes. Four spaces make an indented line,
-// not a fence: the parsers read lines of text, so its keywords count.
-const BACKTICK_OPENER: RegExp = /^ {0,3}(`{3,})[^`]*$/;
-const TILDE_OPENER: RegExp = /^ {0,3}(~{3,}).*$/;
-const FENCE_CLOSER: RegExp = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
-const COMMENT_OPEN: string = "<!--";
-const COMMENT_CLOSE: string = "-->";
+// ---------------------------------------------------------------------------
+// Raw lines
+// ---------------------------------------------------------------------------
 
-// Constructions this reader does not model. Each one would make the reader
-// disagree with a Markdown renderer about where a fence or a comment starts or
-// ends, and so read a quoted example as live text (or hide a live line), so a
-// document holding one is refused instead of read.
-//
-// A run of three backticks or tildes right after one or more list or quote
-// markers: CommonMark opens a fence inside the item or the quote.
-const FENCE_AFTER_MARKER: RegExp = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]*)+(?:`{3}|~{3})/;
-// The complete empty comments of CommonMark: `<!-->` and `<!--->` end where
-// they start, whereas this reader would look for a later `-->`.
-const EMPTY_COMMENTS: readonly string[] = ["<!-->", "<!--->"];
-// A comment opener is read only at the start of a line, after at most three
-// spaces: elsewhere it may sit in a code span or an indented block, where a
-// renderer shows it as text.
-const COMMENT_START_LIMIT: number = 3;
-// Line terminators that a renderer or a regular expression could honour while
-// this reader, which splits on LF, CRLF and CR only, does not.
-// Built from code points so that the source holds no invisible character.
-const FOREIGN_LINE_BREAK: RegExp = new RegExp(`[${String.fromCodePoint(0x0085, 0x2028, 0x2029)}]`);
+// Characters a regular expression, an editor or a renderer may split or hide
+// differently from this reader, which ends lines on LF, CRLF and CR only:
+// the C0 controls other than the tab, U+0085, U+2028 and U+2029. Built from
+// code points so that the source holds no invisible character.
+const UNREADABLE: RegExp = new RegExp(
+  `[${String.fromCodePoint(0x00)}-${String.fromCodePoint(0x08)}${String.fromCodePoint(0x0b, 0x0c)}${String.fromCodePoint(0x0e)}-${String.fromCodePoint(0x1f)}${String.fromCodePoint(0x85, 0x2028, 0x2029)}]`,
+);
 
 function codePointOf(char: string): string {
   return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
-/** Why the reader refuses this line outside fences and comments, or null. */
-function refusedOpening(line: string, start: number): string | null {
-  const before: string = line.slice(0, start);
-  if (before.length > COMMENT_START_LIMIT || /[^ ]/.test(before)) {
-    return `"${COMMENT_OPEN}" that does not start the line (after at most three spaces) is not read; put the comment on its own line`;
+/**
+ * The lines of the text, each of CRLF, a lone CR and LF ending one line, so
+ * that a line number names a line of the original. Refused with its line: a
+ * character of `UNREADABLE`.
+ */
+export function readRawLines(markdown: string): Parsed<readonly string[]> {
+  const lines: readonly string[] = markdown.split(/\r\n?|\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const hit: RegExpExecArray | null = UNREADABLE.exec(lines[index] ?? "");
+    if (hit !== null) {
+      return fail(
+        `line ${index + 1}: the character ${codePointOf(hit[0])} is not read (a line separator or a control character)`,
+      );
+    }
   }
-  const rest: string = line.slice(start);
-  if (EMPTY_COMMENTS.some((empty: string): boolean => rest.startsWith(empty))) {
-    return `the complete empty comment "${rest.startsWith("<!--->") ? "<!--->" : "<!-->"}" is not read; write "<!-- -->"`;
+  return { ok: true, value: lines };
+}
+
+// ---------------------------------------------------------------------------
+// Detection form: what a line may say to a person, folded so that a spelling
+// cannot hide a declaration form from the detector. Detection only decides
+// that a line MUST be strict; reading is always done on the raw line.
+// ---------------------------------------------------------------------------
+
+const ENTITY: RegExp = /&(#[0-9]{1,8}|#[xX][0-9A-Fa-f]{1,7}|[A-Za-z][A-Za-z0-9]{0,31});/g;
+// `&eacute;`, `&Agrave;`, `&ccedil;`…: the base letter is enough, since the
+// accents are folded next.
+const LETTER_ENTITY: RegExp = /^([A-Za-z])(?:acute|grave|circ|uml|tilde|cedil|ring|slash)$/;
+const NAMED_ENTITIES: Readonly<Record<string, string>> = {
+  amp: "&",
+  apos: "'",
+  ast: "*",
+  bsol: "\\",
+  colon: ":",
+  dash: "-",
+  emsp: " ",
+  ensp: " ",
+  grave: "`",
+  gt: ">",
+  hyphen: "-",
+  lowbar: "_",
+  lt: "<",
+  minus: "-",
+  nbsp: " ",
+  num: "#",
+  quot: '"',
+  thinsp: " ",
+  verbar: "|",
+  vert: "|",
+};
+const TAG: RegExp = /<\/?[A-Za-z][^<>]*>/g;
+const PRINTABLE_ASCII: RegExp = /^[ -~\t]*$/;
+
+function decodeEntity(_whole: string, body: string): string {
+  if (body.startsWith("#")) {
+    const point: number =
+      body[1] === "x" || body[1] === "X"
+        ? Number.parseInt(body.slice(2), 16)
+        : Number.parseInt(body.slice(1), 10);
+    const valid: boolean = point <= 0x10ffff && (point < 0xd800 || point > 0xdfff);
+    return valid ? String.fromCodePoint(point) : "";
   }
-  return null;
-}
-
-interface OpenFence {
-  readonly char: string;
-  readonly length: number;
-}
-
-function fenceOpenedBy(line: string): OpenFence | null {
-  const match: RegExpExecArray | null = BACKTICK_OPENER.exec(line) ?? TILDE_OPENER.exec(line);
-  const run: string | undefined = match?.[1];
-  return run === undefined ? null : { char: run.charAt(0), length: run.length };
-}
-
-function closes(line: string, fence: OpenFence): boolean {
-  const run: string | undefined = FENCE_CLOSER.exec(line)?.[1];
-  return run !== undefined && run.charAt(0) === fence.char && run.length >= fence.length;
-}
-
-function blankOf(text: string): string {
-  return " ".repeat(text.length);
+  if (Object.hasOwn(NAMED_ENTITIES, body)) return NAMED_ENTITIES[body] ?? "";
+  // An unknown entity is removed: removal can only join the letters around
+  // it, so a declaration form spelled with it is still detected.
+  return LETTER_ENTITY.exec(body)?.[1] ?? "";
 }
 
 /**
- * The Markdown text with its fenced code blocks and its HTML comments replaced
- * by spaces, line ends normalised to `\n` (CRLF and a lone CR each end one
- * line). Every line keeps its number, so a reader of the result can name a
- * line of the original.
- *
- * Why its own reader: a PRD quotes examples of PRDs. A fence closed by any
- * line starting with three backticks, or a comment opened inside a fence,
- * would let such an example declare a maturity or a criterion.
- *
- * A fence opens on a line of 0-3 spaces and three or more backticks (the info
- * string holds no backtick) or tildes; it closes on a line of 0-3 spaces and
- * a run of the SAME character at least as long, followed only by spaces or
- * tabs. An unclosed fence runs to the end. Outside fences, `<!--` opens a
- * comment at the start of a line (after at most three spaces), `-->` ends it,
- * and an unterminated comment runs to the end.
- *
- * Refused, with the 1-based line of the original text (fail closed: the
- * reader cannot say where a renderer would put the fence or the comment):
- * U+0085, U+2028 or U+2029 anywhere; outside fences and comments, a run of
- * three backticks or tildes right after a list or quote marker, a `<!--`
- * elsewhere than at the start of a line, and the empty comments `<!-->` and
- * `<!--->`.
+ * The line as a person may read it, folded for detection: compatibility
+ * forms (NFKC), HTML entities decoded (an unknown one removed), HTML tags
+ * removed, accents and invisible format characters removed, `*`, `_`, a
+ * backtick and a backslash removed, lower case, runs of white space as one
+ * space.
  */
-export function blankFencesAndComments(markdown: string): Parsed<string> {
-  const lines: readonly string[] = markdown.replace(/\r\n?/g, "\n").split("\n");
-  const out: string[] = [];
-  let fence: OpenFence | null = null;
-  let inComment: boolean = false;
+export function detectionForm(line: string): string {
+  const folded: string = PRINTABLE_ASCII.test(line)
+    ? line.replace(ENTITY, decodeEntity).replace(TAG, "")
+    : line
+        .normalize("NFKC")
+        .replace(ENTITY, decodeEntity)
+        .normalize("NFKC")
+        .replace(TAG, "")
+        .normalize("NFD")
+        .replace(/[\p{M}\p{Cf}]/gu, "");
+  return folded
+    .replace(/[*_`\\]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+// ---------------------------------------------------------------------------
+// Criteria (rule 3)
+// ---------------------------------------------------------------------------
+
+const CRITERION_BULLET: RegExp = /^ {0,3}[-*+][ \t]+(?:\*\*)?(CA-\d+)\b/;
+const ANY_BULLET: RegExp = /^[ \t]*[-*+][ \t]+/;
+const VALIDATION_CLAUSE: RegExp = /Validation[ \t]*:/;
+// Indentation, list, quote and heading markers before a definition.
+const DEFINITION_PREFIX: RegExp = /^(?:[\s>#+-]|\d{1,9}[.)])+/;
+const CRITERION_FORM: RegExp = /^ca-\d+(?![\p{L}\p{N}])/u;
+
+/** True when the line, as a person reads it, starts by defining a `CA-<n>`. */
+function looksLikeCriterion(line: string): boolean {
+  return CRITERION_FORM.test(detectionForm(line).replace(DEFINITION_PREFIX, ""));
+}
+
+/**
+ * Read the `- CA-n … Validation : …` bullets. Every line that starts, after
+ * indentation, list, quote or heading markers and emphasis, with `CA-<n>` and
+ * a separator is a strict bullet (0-3 spaces, `-`, `*` or `+`, optional bold)
+ * or the document is refused. Line numbers are 1-based, of the original text.
+ */
+export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
+  const read: Parsed<readonly string[]> = readRawLines(markdown);
+  if (!read.ok) return read;
+  const lines: readonly string[] = read.value;
+  const criteria: Criterion[] = [];
+  const firstSeen: Map<string, number> = new Map<string, number>();
 
   for (let index = 0; index < lines.length; index += 1) {
     const line: string = lines[index] ?? "";
     const lineNumber: number = index + 1;
-    const foreign: RegExpExecArray | null = FOREIGN_LINE_BREAK.exec(line);
-    if (foreign !== null) {
-      return fail(
-        `line ${lineNumber}: the line separator ${codePointOf(foreign[0])} is not read; end the line with LF`,
-      );
-    }
-    if (fence !== null) {
-      if (closes(line, fence)) fence = null;
-      out.push(blankOf(line));
-      continue;
-    }
-    if (!inComment) {
-      const opened: OpenFence | null = fenceOpenedBy(line);
-      if (opened !== null) {
-        fence = opened;
-        out.push(blankOf(line));
-        continue;
-      }
-      if (FENCE_AFTER_MARKER.test(line)) {
+    const match: RegExpExecArray | null = CRITERION_BULLET.exec(line);
+    if (match === null) {
+      if (looksLikeCriterion(line)) {
         return fail(
-          `line ${lineNumber}: a fence after a list or quote marker is not read; open the fence at the start of the line`,
+          `line ${lineNumber}: a CA-<n> definition that is not a strict criterion bullet ("- CA-<n> …", at most three spaces of indentation) is not read`,
         );
       }
+      continue;
     }
-    let kept: string = "";
-    let rest: string = line;
-    while (rest !== "") {
-      if (inComment) {
-        const end: number = rest.indexOf(COMMENT_CLOSE);
-        if (end === -1) {
-          kept += blankOf(rest);
-          rest = "";
-        } else {
-          kept += blankOf(rest.slice(0, end + COMMENT_CLOSE.length));
-          rest = rest.slice(end + COMMENT_CLOSE.length);
-          inComment = false;
-          // CommonMark ends the comment block with the whole line holding
-          // `-->`: text after it is hidden when rendered, so it is not read.
-          if (/[^ \t]/.test(rest)) {
-            return fail(
-              `line ${lineNumber}: text after "${COMMENT_CLOSE}" on the same line is not read; end the comment at the end of its line`,
-            );
-          }
-        }
-      } else {
-        const start: number = rest.indexOf(COMMENT_OPEN);
-        if (start === -1) {
-          kept += rest;
-          rest = "";
-        } else {
-          const refusal: string | null = refusedOpening(line, line.length - rest.length + start);
-          if (refusal !== null) return fail(`line ${lineNumber}: ${refusal}`);
-          kept += rest.slice(0, start) + blankOf(COMMENT_OPEN);
-          rest = rest.slice(start + COMMENT_OPEN.length);
-          inComment = true;
-        }
-      }
-    }
-    out.push(kept);
-  }
-  return { ok: true, value: out.join("\n") };
-}
+    const id: string = match[1] ?? "";
 
-const CRITERION_BULLET = /^[ \t]*[-*+][ \t]+(?:\*\*)?(CA-\d+)\b/;
-const ANY_BULLET = /^[ \t]*[-*+][ \t]+/;
-const VALIDATION_CLAUSE = /Validation[ \t]*:/;
-
-/**
- * Read the `- CA-n … Validation : …` bullets. Line numbers are 1-based and
- * stay valid against the original text because `blankFencesAndComments`
- * blanks fenced blocks and HTML comments without removing their line ends.
- */
-export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
-  const text: Parsed<string> = blankFencesAndComments(markdown);
-  if (!text.ok) return text;
-  const lines: readonly string[] = text.value.split("\n");
-  const criteria: Criterion[] = [];
-  const firstSeen = new Map<string, number>();
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? "";
-    const match = CRITERION_BULLET.exec(line);
-    if (match === null) continue;
-    const id = match[1] ?? "";
-    const lineNumber = index + 1;
-
-    const earlier = firstSeen.get(id);
+    const earlier: number | undefined = firstSeen.get(id);
     if (earlier !== undefined) {
       return fail(`criterion ${id} is declared twice, at lines ${earlier} and ${lineNumber}`);
     }
     firstSeen.set(id, lineNumber);
 
     // A bullet may wrap: indented lines that do not open a new bullet belong to it.
-    let body = line;
-    let next = index + 1;
+    let body: string = line;
+    let next: number = index + 1;
     while (next < lines.length) {
-      const continuation = lines[next] ?? "";
+      const continuation: string = lines[next] ?? "";
       if (
         continuation.trim() === "" ||
         ANY_BULLET.test(continuation) ||
@@ -262,6 +237,10 @@ export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
   return { ok: true, value: criteria };
 }
 
+// ---------------------------------------------------------------------------
+// Work-package table (rule 2)
+// ---------------------------------------------------------------------------
+
 const EXPECTED_HEADER: readonly RegExp[] = [
   /^WP$/i,
   /^CA-n\b/i,
@@ -269,23 +248,21 @@ const EXPECTED_HEADER: readonly RegExp[] = [
   /^Vérification\b/i,
   /^Porte\b/i,
 ];
-const RULE_CELL = /^:?-{3,}:?$/;
-// Leading whitespace that reaches four columns: four spaces, or a tab after
-// at most three spaces.
-const INDENTED_BLOCK: RegExp = /^(?: {4}| {0,3}\t)/;
+// GFM: one or more dashes, with optional colons.
+const RULE_CELL: RegExp = /^:?-+:?$/;
 // The grammar of the `WP-<k>` of the trailer (check-work-package-link.ts,
 // WP_SOURCE): a row the trailer cannot name could never be declared.
 const WP_ID: RegExp = /^WP-[1-9][0-9]{0,8}$/;
-const CA_ID = /^CA-\d+$/;
+const CA_ID: RegExp = /^CA-\d+$/;
 
 // The table cells are split on `|`: a verification command containing a pipe
 // would shift the columns, which the cell-count check then reports as an error
 // instead of reading a wrong value.
 function splitRow(line: string): readonly string[] | null {
-  const trimmed = line.trim();
+  const trimmed: string = line.trim();
   if (!trimmed.startsWith("|")) return null;
-  const inner = trimmed.endsWith("|") ? trimmed.slice(1, -1) : trimmed.slice(1);
-  return inner.split("|").map((cell) => cell.trim());
+  const inner: string = trimmed.endsWith("|") ? trimmed.slice(1, -1) : trimmed.slice(1);
+  return inner.split("|").map((cell: string): string => cell.trim());
 }
 
 const unquote = (cell: string): string => cell.replace(/`/g, "").trim();
@@ -293,8 +270,8 @@ const unquote = (cell: string): string => cell.replace(/`/g, "").trim();
 const splitList = (cell: string): readonly string[] =>
   unquote(cell)
     .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item !== "");
+    .map((item: string): string => item.trim())
+    .filter((item: string): boolean => item !== "");
 
 /**
  * Split a scope cell on the commas outside `{}`: `src/{a,b}/**` is one glob.
@@ -302,8 +279,8 @@ const splitList = (cell: string): readonly string[] =>
  */
 function splitGlobs(cell: string): readonly string[] | null {
   const globs: string[] = [];
-  let depth = 0;
-  let current = "";
+  let depth: number = 0;
+  let current: string = "";
   for (const char of unquote(cell)) {
     if (char === "{") depth += 1;
     if (char === "}") depth -= 1;
@@ -317,19 +294,40 @@ function splitGlobs(cell: string): readonly string[] | null {
   }
   if (depth !== 0) return null;
   globs.push(current);
-  return globs.map((glob) => glob.trim()).filter((glob) => glob !== "");
+  return globs
+    .map((glob: string): string => glob.trim())
+    .filter((glob: string): boolean => glob !== "");
 }
 
 function isHeader(cells: readonly string[]): boolean {
   return (
     cells.length === EXPECTED_HEADER.length &&
-    EXPECTED_HEADER.every((pattern, position) => pattern.test(unquote(cells[position] ?? "")))
+    EXPECTED_HEADER.every((pattern: RegExp, position: number): boolean =>
+      pattern.test(unquote(cells[position] ?? "")),
+    )
   );
 }
 
+/** True when the line, as a person reads it, is a header with a `WP` and a `CA` cell. */
+function looksLikeHeader(line: string): boolean {
+  const form: string = detectionForm(line);
+  if (!form.includes("|")) return false;
+  const cells: readonly string[] = form.split("|").map((cell: string): string => cell.trim());
+  return (
+    cells.some((cell: string): boolean => /^wp\b/.test(cell) && !/^wp-?\d/.test(cell)) &&
+    cells.some((cell: string): boolean => /^ca\b/.test(cell))
+  );
+}
+
+/** True when the line, as a person reads it, is a row starting with `WP-<n>`. */
+function looksLikeRow(line: string): boolean {
+  const form: string = detectionForm(line);
+  return form.includes("|") && /^[\s|]*wp-\d/.test(form);
+}
+
 function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPackage> {
-  const id = unquote(cells[0] ?? "");
-  const label = id === "" ? `line ${lineNumber}` : `${id} (line ${lineNumber})`;
+  const id: string = unquote(cells[0] ?? "");
+  const label: string = id === "" ? `line ${lineNumber}` : `${id} (line ${lineNumber})`;
   if (cells.length !== EXPECTED_HEADER.length) {
     return fail(
       `work package ${label}: expected ${EXPECTED_HEADER.length} cells, found ${cells.length}`,
@@ -340,18 +338,20 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
       `work package ${label}: identifier must be WP- and a positive integer of at most nine digits without a leading zero`,
     );
   }
-  const criteria = splitList(cells[1] ?? "");
+  const criteria: readonly string[] = splitList(cells[1] ?? "");
   if (criteria.length === 0) return fail(`work package ${label}: cites no criterion`);
-  const badCriterion = criteria.find((criterion) => !CA_ID.test(criterion));
+  const badCriterion: string | undefined = criteria.find(
+    (criterion: string): boolean => !CA_ID.test(criterion),
+  );
   if (badCriterion !== undefined) {
     return fail(`work package ${label}: "${badCriterion}" is not a CA-<n> identifier`);
   }
-  const scope = splitGlobs(cells[2] ?? "");
+  const scope: readonly string[] | null = splitGlobs(cells[2] ?? "");
   if (scope === null) return fail(`work package ${label}: unbalanced braces in scope`);
   if (scope.length === 0) return fail(`work package ${label}: empty scope`);
-  const verify = unquote(cells[3] ?? "");
+  const verify: string = unquote(cells[3] ?? "");
   if (verify === "") return fail(`work package ${label}: empty verification command`);
-  const door = unquote(cells[4] ?? "");
+  const door: string = unquote(cells[4] ?? "");
   if (door !== "one-way" && door !== "two-way") {
     return fail(`work package ${label}: door "${door}" is neither one-way nor two-way`);
   }
@@ -363,27 +363,26 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
  * is not validated here: the gate checks the citation against the criteria
  * of the cited document.
  *
- * Why exactly one header: a PRD that quotes an example table (in an indented
- * block, say) would otherwise have the reader pick "the first", which may be
- * the example. Two headers are refused, never ranked.
+ * Refused, with the line: a line that looks like a header (a `WP` and a `CA`
+ * cell) but is not the exact header; more than one exact header; a separator
+ * row whose cell count is not that of the header; a line that starts with
+ * `WP-<n>` and holds a `|` outside the block of the table.
  */
 export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage[]> {
-  const text: Parsed<string> = blankFencesAndComments(markdown);
-  if (!text.ok) return text;
-  const lines: readonly string[] = text.value.split("\n");
+  const read: Parsed<readonly string[]> = readRawLines(markdown);
+  if (!read.ok) return read;
+  const lines: readonly string[] = read.value;
   const headers: number[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line: string = lines[index] ?? "";
     const cells: readonly string[] | null = splitRow(line);
-    if (cells === null || !isHeader(cells)) continue;
-    // An indented block renders as code: a header there is a quoted example
-    // for the reader of the PRD, so it is refused even when it is the only one.
-    if (INDENTED_BLOCK.test(line)) {
+    if (cells !== null && isHeader(cells)) {
+      headers.push(index);
+    } else if (looksLikeHeader(line)) {
       return fail(
-        `work-package table header at line ${index + 1} is indented by four spaces or a tab: an indented block renders as code, so it is not read`,
+        `line ${index + 1}: a work-package table header that is not the exact header (\`| WP | CA-n | Périmètre | Vérification | Porte |\`, plain cells) is not read`,
       );
     }
-    headers.push(index);
   }
   const headerAt: number | undefined = headers[0];
   if (headerAt === undefined) {
@@ -397,20 +396,27 @@ export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage
       `work-package table header at lines ${at}: a PRD holds exactly one work-package table`,
     );
   }
-  const rule = splitRow(lines[headerAt + 1] ?? "");
-  if (rule === null || rule.length === 0 || !rule.every((cell) => RULE_CELL.test(cell))) {
-    return fail(`work-package table at line ${headerAt + 1} has no separator row`);
+  const rule: readonly string[] | null = splitRow(lines[headerAt + 1] ?? "");
+  if (
+    rule === null ||
+    rule.length !== EXPECTED_HEADER.length ||
+    !rule.every((cell: string): boolean => RULE_CELL.test(cell))
+  ) {
+    return fail(
+      `work-package table at line ${headerAt + 1} has no separator row of ${EXPECTED_HEADER.length} cells`,
+    );
   }
 
   const packages: WorkPackage[] = [];
-  const firstSeen = new Map<string, number>();
-  for (let index = headerAt + 2; index < lines.length; index += 1) {
-    const cells = splitRow(lines[index] ?? "");
+  const firstSeen: Map<string, number> = new Map<string, number>();
+  let end: number = headerAt + 2;
+  for (; end < lines.length; end += 1) {
+    const cells: readonly string[] | null = splitRow(lines[end] ?? "");
     if (cells === null) break;
-    const lineNumber = index + 1;
-    const row = parseRow(cells, lineNumber);
+    const lineNumber: number = end + 1;
+    const row: Parsed<WorkPackage> = parseRow(cells, lineNumber);
     if (!row.ok) return row;
-    const earlier = firstSeen.get(row.value.id);
+    const earlier: number | undefined = firstSeen.get(row.value.id);
     if (earlier !== undefined) {
       return fail(
         `work package ${row.value.id} is declared twice, at lines ${earlier} and ${lineNumber}`,
@@ -419,21 +425,34 @@ export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage
     firstSeen.set(row.value.id, lineNumber);
     packages.push(row.value);
   }
+  for (let index = 0; index < lines.length; index += 1) {
+    if (index >= headerAt && index < end) continue;
+    if (looksLikeRow(lines[index] ?? "")) {
+      return fail(
+        `line ${index + 1}: a WP-<n> row outside the block of the work-package table is not read`,
+      );
+    }
+  }
   if (packages.length === 0) return fail("work-package table has a header but no row");
   return { ok: true, value: packages };
 }
 
+// ---------------------------------------------------------------------------
+// Document maturity (rule 1)
+// ---------------------------------------------------------------------------
+
 // Only the "du document" form counts: in the pilot PRD the bare `Maturité :`
 // qualifies the observed project, and the document itself is "a proposal".
-const DOCUMENT_MATURITY_LINE =
-  /^[ \t]*(?:[-*+][ \t]+)?(?:\*\*)?Maturité du document[ \t]*:(?:\*\*)?[ \t]*(.*)$/gim;
+const DOCUMENT_MATURITY_LINE: RegExp =
+  /^ {0,3}(?:[-*+][ \t]+)?(?:\*\*)?Maturité du document[ \t]*:(?:\*\*)?[ \t]*(.*)$/i;
+const MATURITY_MENTION: string = "maturitedudocument";
 
 const LEVELS_LONGEST_FIRST: readonly MaturityLevel[] = [...MATURITY_LADDER].sort(
-  (a, b) => b.length - a.length,
+  (a: MaturityLevel, b: MaturityLevel): number => b.length - a.length,
 );
 
 function levelOf(value: string): MaturityLevel | null {
-  const cleaned = value.normalize("NFC").replace(/[*`_]/g, "").trim().toLowerCase();
+  const cleaned: string = value.normalize("NFC").replace(/[*`_]/g, "").trim().toLowerCase();
   for (const level of LEVELS_LONGEST_FIRST) {
     if (!cleaned.startsWith(level)) continue;
     // Whole word only: "décisionnel" must not read as "décision".
@@ -443,19 +462,36 @@ function levelOf(value: string): MaturityLevel | null {
   return null;
 }
 
+/** How many times the line, as a person reads it, mentions "maturité du document". */
+function maturityMentions(line: string): number {
+  const letters: string = detectionForm(line).replace(/[^\p{L}\p{N}]/gu, "");
+  return letters.split(MATURITY_MENTION).length - 1;
+}
+
 /**
- * The level declared by the `Maturité du document :` line. `ok: true` with
- * null when the line is absent, unrecognised, or repeated with different
- * values (fail closed: an ambiguous document does not reach a maturity
- * threshold); `ok: false` when the document holds a construction the reader
- * refuses (see `blankFencesAndComments`).
+ * The level declared by the `Maturité du document :` line. Every line that
+ * mentions "maturité du document" (once folded by `detectionForm`) must be
+ * exactly one strict declaration line, or the document is refused with the
+ * line. `ok: true` with null when no strict line gives a level, or when the
+ * strict lines disagree (fail closed: an ambiguous document does not reach a
+ * maturity threshold).
  */
 export function readDocumentMaturity(markdown: string): Parsed<MaturityLevel | null> {
-  const text: Parsed<string> = blankFencesAndComments(markdown);
-  if (!text.ok) return text;
-  const levels: (MaturityLevel | null)[] = [...text.value.matchAll(DOCUMENT_MATURITY_LINE)].map(
-    (match: RegExpExecArray): MaturityLevel | null => levelOf(match[1] ?? ""),
-  );
+  const read: Parsed<readonly string[]> = readRawLines(markdown);
+  if (!read.ok) return read;
+  const levels: (MaturityLevel | null)[] = [];
+  for (let index = 0; index < read.value.length; index += 1) {
+    const line: string = read.value[index] ?? "";
+    const mentions: number = maturityMentions(line);
+    if (mentions === 0) continue;
+    const strict: RegExpExecArray | null = DOCUMENT_MATURITY_LINE.exec(line);
+    if (strict === null || mentions !== 1) {
+      return fail(
+        `line ${index + 1}: "Maturité du document" outside a strict declaration line (\`Maturité du document : <level>\`, at most three spaces of indentation, an optional bullet and bold) is not read`,
+      );
+    }
+    levels.push(levelOf(strict[1] ?? ""));
+  }
   const first: MaturityLevel | null | undefined = levels[0];
   if (first === undefined || first === null) return { ok: true, value: null };
   return {
@@ -466,8 +502,8 @@ export function readDocumentMaturity(markdown: string): Parsed<MaturityLevel | n
 
 /** True when `level` is at or above `floor` on the maturity ladder. */
 export function atLeast(level: MaturityLevel, floor: MaturityLevel): boolean {
-  const levelIndex = MATURITY_LADDER.indexOf(level);
-  const floorIndex = MATURITY_LADDER.indexOf(floor);
+  const levelIndex: number = MATURITY_LADDER.indexOf(level);
+  const floorIndex: number = MATURITY_LADDER.indexOf(floor);
   // indexOf answers -1 for a value off the ladder (a floor read from YAML or
   // JSON and cast): comparing it would pass every document, so fail closed.
   if (levelIndex === -1 || floorIndex === -1) return false;
