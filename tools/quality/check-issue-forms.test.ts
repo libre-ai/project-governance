@@ -1,0 +1,963 @@
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { runIssueFormCheck, validateIssueForm } from "./check-issue-forms";
+
+const KNOWN_LABELS: ReadonlySet<string> = new Set([
+  "kind:work-package",
+  "kind:decision-request",
+  "kind:idea",
+  "kind:question",
+  "ready",
+]);
+
+const WORK_PACKAGE = `name: Work package
+description: A work package of an approved product requirements document.
+title: "[Work package]: "
+labels:
+  - kind:work-package
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Scope and verification live in the PRD, not in this issue.
+  - type: input
+    id: prd-ref
+    attributes:
+      label: PRD-ref
+      description: "Form: <owner>/<repo>@<40 hex>:<path>"
+    validations:
+      required: true
+  - type: input
+    id: wp
+    attributes:
+      label: WP
+      description: "Row of the PRD table, for example WP-1."
+    validations:
+      required: true
+`;
+
+const DECISION_REQUEST = `name: Decision request
+description: A decision only the owner can take.
+title: "[Decision]: "
+labels:
+  - kind:decision-request
+body:
+  - type: markdown
+    attributes:
+      value: Only the owner answers.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+    validations:
+      required: true
+  - type: textarea
+    id: option-a
+    attributes:
+      label: Option A
+    validations:
+      required: true
+  - type: textarea
+    id: option-b
+    attributes:
+      label: Option B
+    validations:
+      required: true
+  - type: textarea
+    id: option-c
+    attributes:
+      label: Option C
+    validations:
+      required: false
+  - type: textarea
+    id: option-d
+    attributes:
+      label: Option D
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommendation
+`;
+
+const IDEA = `name: Idea
+description: A deferred idea.
+labels:
+  - kind:idea
+body:
+  - type: textarea
+    id: statement
+    attributes:
+      label: Statement
+    validations:
+      required: true
+  - type: textarea
+    id: why-deferred
+    attributes:
+      label: Why deferred
+    validations:
+      required: true
+`;
+
+const QUESTION = `name: Question
+description: An open question.
+labels:
+  - kind:question
+body:
+  - type: textarea
+    id: statement
+    attributes:
+      label: Statement
+    validations:
+      required: true
+  - type: input
+    id: document
+    attributes:
+      label: Document carrying the missing fact
+    validations:
+      required: true
+`;
+
+/** Replaces exactly one occurrence, so a mutant that no longer differs fails the suite. */
+function mutate(source: string, from: string, to: string): string {
+  const first = source.indexOf(from);
+  if (first === -1 || source.indexOf(from, first + 1) !== -1) {
+    throw new Error(`fixture mutation needs exactly one occurrence of: ${from}`);
+  }
+  return source.replace(from, to);
+}
+
+const mentions = (violations: readonly string[], needle: string): boolean =>
+  violations.some((violation) => violation.includes(needle));
+
+describe("validateIssueForm: valid forms", () => {
+  test("a valid work-package form has no violation", () => {
+    expect(validateIssueForm(WORK_PACKAGE, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("a valid decision-request form has no violation", () => {
+    expect(validateIssueForm(DECISION_REQUEST, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("a valid idea form has no violation", () => {
+    expect(validateIssueForm(IDEA, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("a valid question form has no violation", () => {
+    expect(validateIssueForm(QUESTION, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: work-package", () => {
+  test("work-package requires the PRD-ref and WP fields", () => {
+    const withoutWp = mutate(
+      WORK_PACKAGE,
+      `  - type: input
+    id: wp
+    attributes:
+      label: WP
+      description: "Row of the PRD table, for example WP-1."
+    validations:
+      required: true
+`,
+      "",
+    );
+    expect(mentions(validateIssueForm(withoutWp, KNOWN_LABELS), "WP")).toBe(true);
+
+    const withoutPrdRef = mutate(WORK_PACKAGE, "label: PRD-ref", "label: Reference");
+    const violations = validateIssueForm(withoutPrdRef, KNOWN_LABELS);
+    expect(mentions(violations, "PRD-ref")).toBe(true);
+    expect(mentions(violations, "Reference")).toBe(true);
+  });
+
+  test("a work-package field that is not required is a violation", () => {
+    const optional = mutate(
+      WORK_PACKAGE,
+      `      label: WP
+      description: "Row of the PRD table, for example WP-1."
+    validations:
+      required: true`,
+      `      label: WP
+      description: "Row of the PRD table, for example WP-1."
+    validations:
+      required: false`,
+    );
+    expect(mentions(validateIssueForm(optional, KNOWN_LABELS), "WP")).toBe(true);
+  });
+
+  test("a work-package field of another type is a violation", () => {
+    const wrongType = mutate(
+      WORK_PACKAGE,
+      `  - type: input
+    id: prd-ref`,
+      `  - type: textarea
+    id: prd-ref`,
+    );
+    expect(mentions(validateIssueForm(wrongType, KNOWN_LABELS), "PRD-ref")).toBe(true);
+  });
+
+  test("a work-package form carries no field besides PRD-ref and WP", () => {
+    const extra = `${WORK_PACKAGE}  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+`;
+    expect(mentions(validateIssueForm(extra, KNOWN_LABELS), "Scope")).toBe(true);
+  });
+});
+
+describe("validateIssueForm: decision-request", () => {
+  const optionBlock = (letter: string, required: boolean): string => `  - type: textarea
+    id: option-${letter.toLowerCase()}
+    attributes:
+      label: Option ${letter}
+    validations:
+      required: ${required}
+`;
+
+  test("decision-request needs 2 to 4 options", () => {
+    const oneOption = mutate(
+      mutate(DECISION_REQUEST, optionBlock("B", true), ""),
+      optionBlock("C", false),
+      "",
+    ).replace(/ {2}- type: textarea\n {4}id: option-d\n {4}attributes:\n {6}label: Option D\n/, "");
+    expect(mentions(validateIssueForm(oneOption, KNOWN_LABELS), "option")).toBe(true);
+
+    const fiveOptions = `${DECISION_REQUEST}${optionBlock("E", false)}`;
+    expect(mentions(validateIssueForm(fiveOptions, KNOWN_LABELS), "option")).toBe(true);
+  });
+
+  test("the first two options must be required", () => {
+    const optionalB = mutate(
+      DECISION_REQUEST,
+      `      label: Option B
+    validations:
+      required: true`,
+      `      label: Option B
+    validations:
+      required: false`,
+    );
+    expect(mentions(validateIssueForm(optionalB, KNOWN_LABELS), "Option B")).toBe(true);
+  });
+
+  test("the options after the second must be optional", () => {
+    const requiredC = mutate(
+      DECISION_REQUEST,
+      `      label: Option C
+    validations:
+      required: false`,
+      `      label: Option C
+    validations:
+      required: true`,
+    );
+    expect(mentions(validateIssueForm(requiredC, KNOWN_LABELS), "Option C")).toBe(true);
+  });
+
+  test("the Context field is required", () => {
+    const optionalContext = mutate(
+      DECISION_REQUEST,
+      `      label: Context
+    validations:
+      required: true`,
+      `      label: Context`,
+    );
+    expect(mentions(validateIssueForm(optionalContext, KNOWN_LABELS), "Context")).toBe(true);
+  });
+
+  test("a required Recommendation is a violation: it exists only when the author has one", () => {
+    const requiredRecommendation = mutate(
+      DECISION_REQUEST,
+      `      label: Recommendation
+`,
+      `      label: Recommendation
+    validations:
+      required: true
+`,
+    );
+    expect(
+      mentions(validateIssueForm(requiredRecommendation, KNOWN_LABELS), "Recommendation"),
+    ).toBe(true);
+  });
+});
+
+describe("validateIssueForm: idea and question", () => {
+  test("an idea without Why deferred is a violation", () => {
+    const missing = mutate(IDEA, "label: Why deferred", "label: Reason");
+    expect(mentions(validateIssueForm(missing, KNOWN_LABELS), "Why deferred")).toBe(true);
+  });
+
+  test("an optional idea Statement is a violation", () => {
+    const optional = mutate(
+      IDEA,
+      `      label: Statement
+    validations:
+      required: true`,
+      "      label: Statement",
+    );
+    expect(mentions(validateIssueForm(optional, KNOWN_LABELS), "Statement")).toBe(true);
+  });
+
+  test("a question must name the document carrying the missing fact", () => {
+    const missing = mutate(
+      QUESTION,
+      "label: Document carrying the missing fact",
+      "label: Document",
+    );
+    expect(
+      mentions(validateIssueForm(missing, KNOWN_LABELS), "Document carrying the missing fact"),
+    ).toBe(true);
+  });
+
+  test("the question document field is an input, not a textarea", () => {
+    const wrongType = mutate(
+      QUESTION,
+      `  - type: input
+    id: document`,
+      `  - type: textarea
+    id: document`,
+    );
+    expect(
+      mentions(validateIssueForm(wrongType, KNOWN_LABELS), "Document carrying the missing fact"),
+    ).toBe(true);
+  });
+});
+
+describe("validateIssueForm: labels and form kind", () => {
+  test("a label absent from knownLabels is a violation", () => {
+    const known = new Set([...KNOWN_LABELS].filter((label) => label !== "kind:idea"));
+    const violations = validateIssueForm(IDEA, known);
+    expect(mentions(violations, "kind:idea")).toBe(true);
+  });
+
+  test("a label other than the kind is checked against knownLabels too", () => {
+    const extra = mutate(IDEA, "  - kind:idea\n", "  - kind:idea\n  - urgent\n");
+    expect(mentions(validateIssueForm(extra, KNOWN_LABELS), "urgent")).toBe(true);
+  });
+
+  test("labels that are not a list of strings are a violation", () => {
+    expect(
+      validateIssueForm(mutate(IDEA, "labels:\n  - kind:idea", "labels: kind:idea"), KNOWN_LABELS),
+    ).not.toEqual([]);
+    expect(
+      validateIssueForm(mutate(IDEA, "labels:\n  - kind:idea", "labels:\n  - 3"), KNOWN_LABELS),
+    ).not.toEqual([]);
+    expect(
+      validateIssueForm(mutate(IDEA, "labels:\n  - kind:idea", "labels: []"), KNOWN_LABELS),
+    ).not.toEqual([]);
+  });
+
+  test("a form without labels cannot be identified and is a violation", () => {
+    const noLabels = mutate(IDEA, "labels:\n  - kind:idea\n", "");
+    expect(mentions(validateIssueForm(noLabels, KNOWN_LABELS), "labels")).toBe(true);
+  });
+
+  test("a form with two kind labels is ambiguous", () => {
+    const two = mutate(IDEA, "  - kind:idea\n", "  - kind:idea\n  - kind:question\n");
+    expect(mentions(validateIssueForm(two, KNOWN_LABELS), "kind")).toBe(true);
+  });
+
+  test("a form with no kind label is a violation", () => {
+    const none = mutate(IDEA, "  - kind:idea\n", "  - ready\n");
+    expect(mentions(validateIssueForm(none, KNOWN_LABELS), "kind")).toBe(true);
+  });
+
+  test("an unknown kind is a violation even when the label is known", () => {
+    const known = new Set([...KNOWN_LABELS, "kind:rumour"]);
+    const unknown = mutate(IDEA, "kind:idea", "kind:rumour");
+    expect(mentions(validateIssueForm(unknown, known), "kind:rumour")).toBe(true);
+  });
+
+  test("the kind comes from the labels, not from the file name or the title", () => {
+    const retitled = mutate(IDEA, "name: Idea", "name: Work package");
+    expect(validateIssueForm(retitled, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: structure", () => {
+  test("a field id used twice is a violation", () => {
+    const twice = mutate(IDEA, "id: why-deferred", "id: statement");
+    expect(mentions(validateIssueForm(twice, KNOWN_LABELS), "statement")).toBe(true);
+  });
+
+  test("two fields with the same label are a violation", () => {
+    const twice = mutate(IDEA, "label: Why deferred", "label: Statement");
+    expect(mentions(validateIssueForm(twice, KNOWN_LABELS), "Statement")).toBe(true);
+  });
+
+  test("invalid YAML is a violation", () => {
+    expect(validateIssueForm("name: [unclosed\n", KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("an empty document is a violation", () => {
+    expect(validateIssueForm("", KNOWN_LABELS)).not.toEqual([]);
+    expect(validateIssueForm("# only a comment\n", KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("a root that is not a mapping is a violation", () => {
+    expect(validateIssueForm("- a\n- b\n", KNOWN_LABELS)).not.toEqual([]);
+    expect(validateIssueForm("just a string\n", KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("an unknown root key is a violation", () => {
+    const unknown = mutate(IDEA, "name: Idea\n", "name: Idea\nsurprise: yes\n");
+    expect(mentions(validateIssueForm(unknown, KNOWN_LABELS), "surprise")).toBe(true);
+  });
+
+  test("a missing name or description is a violation", () => {
+    expect(
+      mentions(validateIssueForm(mutate(IDEA, "name: Idea\n", ""), KNOWN_LABELS), "name"),
+    ).toBe(true);
+    expect(
+      mentions(
+        validateIssueForm(mutate(IDEA, "description: A deferred idea.\n", ""), KNOWN_LABELS),
+        "description",
+      ),
+    ).toBe(true);
+  });
+
+  test("a title that is not a string is a violation", () => {
+    const numeric = mutate(IDEA, "name: Idea\n", "name: Idea\ntitle: 3\n");
+    expect(mentions(validateIssueForm(numeric, KNOWN_LABELS), "title")).toBe(true);
+  });
+
+  test("an absent body is a violation", () => {
+    const start = IDEA.indexOf("body:");
+    expect(mentions(validateIssueForm(IDEA.slice(0, start), KNOWN_LABELS), "body")).toBe(true);
+  });
+
+  test("an empty or non-list body is a violation", () => {
+    const start = IDEA.indexOf("body:");
+    expect(
+      mentions(validateIssueForm(`${IDEA.slice(0, start)}body: []\n`, KNOWN_LABELS), "body"),
+    ).toBe(true);
+    expect(
+      mentions(validateIssueForm(`${IDEA.slice(0, start)}body: text\n`, KNOWN_LABELS), "body"),
+    ).toBe(true);
+  });
+
+  test("a body element of an unknown type is a violation", () => {
+    const unknown = mutate(
+      IDEA,
+      "type: textarea\n    id: why-deferred",
+      "type: slider\n    id: why-deferred",
+    );
+    expect(mentions(validateIssueForm(unknown, KNOWN_LABELS), "slider")).toBe(true);
+  });
+
+  test("a body element that is not a mapping is a violation", () => {
+    const scalar = `${IDEA}  - just text\n`;
+    expect(validateIssueForm(scalar, KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("a fillable field without attributes.label is a violation", () => {
+    const unlabelled = mutate(IDEA, "      label: Why deferred\n", "      description: no label\n");
+    expect(mentions(validateIssueForm(unlabelled, KNOWN_LABELS), "label")).toBe(true);
+    const blank = mutate(IDEA, "label: Why deferred", 'label: "  "');
+    expect(mentions(validateIssueForm(blank, KNOWN_LABELS), "label")).toBe(true);
+  });
+
+  test("a markdown element without a value is a violation", () => {
+    const empty = mutate(
+      WORK_PACKAGE,
+      `    attributes:
+      value: |
+        Scope and verification live in the PRD, not in this issue.
+`,
+      "    attributes:\n      other: x\n",
+    );
+    expect(mentions(validateIssueForm(empty, KNOWN_LABELS), "markdown")).toBe(true);
+  });
+
+  test("validations.required that is not a boolean is a violation", () => {
+    const text = mutate(
+      IDEA,
+      `      label: Why deferred
+    validations:
+      required: true`,
+      `      label: Why deferred
+    validations:
+      required: "yes"`,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "required")).toBe(true);
+  });
+
+  test("an id that GitHub would refuse is a violation", () => {
+    const bad = mutate(IDEA, "id: why-deferred", 'id: "why deferred"');
+    expect(mentions(validateIssueForm(bad, KNOWN_LABELS), "id")).toBe(true);
+  });
+});
+
+describe("validateIssueForm: ambiguous YAML fails closed", () => {
+  test("a repeated key is a violation, not a silent last-wins", () => {
+    const repeated = mutate(IDEA, "name: Idea\n", "name: Idea\nname: Other\n");
+    expect(mentions(validateIssueForm(repeated, KNOWN_LABELS), "name")).toBe(true);
+  });
+
+  test("a repeated key inside a field is a violation", () => {
+    const repeated = mutate(
+      IDEA,
+      `      label: Why deferred
+    validations:
+      required: true`,
+      `      label: Why deferred
+    validations:
+      required: false
+      required: true`,
+    );
+    expect(mentions(validateIssueForm(repeated, KNOWN_LABELS), "required")).toBe(true);
+  });
+
+  test("the same key in two different list items is not a repeat", () => {
+    expect(validateIssueForm(IDEA, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("text inside a block scalar that looks like a key is not a repeat", () => {
+    const quoted = mutate(
+      WORK_PACKAGE,
+      "        Scope and verification live in the PRD, not in this issue.\n",
+      "        Door: one-way\n        Door: two-way\n",
+    );
+    expect(validateIssueForm(quoted, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("an alias is a violation", () => {
+    const aliased = mutate(
+      IDEA,
+      "      label: Why deferred\n",
+      "      label: &reason Why deferred\n",
+    );
+    expect(validateIssueForm(aliased, KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("a merge key is a violation", () => {
+    const merged = mutate(IDEA, "name: Idea\n", "name: Idea\n<<: {x: 1}\n");
+    expect(validateIssueForm(merged, KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  test("a flow mapping, whose repeated keys cannot be seen, is a violation", () => {
+    const flow = mutate(
+      IDEA,
+      "    attributes:\n      label: Why deferred",
+      "    attributes: {label: Why deferred}",
+    );
+    expect(validateIssueForm(flow, KNOWN_LABELS)).not.toEqual([]);
+  });
+
+  /** A work-package form whose two fields are written as the given body items. */
+  const workPackageWithItems = (first: string, second: string): string => `name: Work package
+description: A work package.
+labels:
+  - kind:work-package
+body:
+  ${first}
+  ${second}
+`;
+  const WP_FIELD =
+    "- {type: input, id: wp, attributes: {label: WP}, validations: {required: true}}";
+
+  test("a flow mapping as a list item with a repeated type is a violation", () => {
+    const text = workPackageWithItems(
+      "- {type: textarea, type: input, id: a, attributes: {label: PRD-ref}, validations: {required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping as a list item with a repeated required is a violation", () => {
+    const text = workPackageWithItems(
+      "- {type: input, id: a, attributes: {label: PRD-ref}, validations: {required: false, required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping as a list item is refused even without a repeat", () => {
+    const text = workPackageWithItems(
+      "- {type: input, id: a, attributes: {label: PRD-ref}, validations: {required: true}}",
+      WP_FIELD,
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping inside a flow sequence value is a violation", () => {
+    const text = mutate(IDEA, "name: Idea\n", "name: Idea\nextra: [{a: 1, a: 2}]\n");
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("a flow mapping behind a nested dash is a violation", () => {
+    const text = `${IDEA}  - - {a: 1}\n`;
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "nested")).toBe(true);
+  });
+
+  test("a flow sequence as a list item is a violation", () => {
+    const text = `${IDEA}  - [a, b]\n`;
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "flow")).toBe(true);
+  });
+
+  test("plain scalar items, block lists and a flow sequence of strings stay valid", () => {
+    expect(validateIssueForm(IDEA, KNOWN_LABELS)).toEqual([]);
+    const inline = mutate(IDEA, "labels:\n  - kind:idea", 'labels: ["kind:idea"]');
+    expect(validateIssueForm(inline, KNOWN_LABELS)).toEqual([]);
+    const plainItem = mutate(IDEA, "  - kind:idea\n", "  - kind:idea\n  - ready\n");
+    expect(validateIssueForm(plainItem, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: line whitelist", () => {
+  // Every probe below made the previous denylist scan return [] while Bun.YAML kept the last
+  // value of a repeated key; the whitelist must name each one.
+  const withName = (value: string): string => mutate(IDEA, "name: Idea\n", `${value}\n`);
+
+  test("a trailing comment after a quoted value does not blind the rest of the file", () => {
+    const text = `${withName('name: "Idea" # c')}body:\n  - type: markdown\n    attributes:\n      value: x\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "trailing comment")).toBe(true);
+    expect(mentions(violations, 'key "body"')).toBe(true);
+  });
+
+  test("a leading byte order mark is refused by name", () => {
+    const violations = validateIssueForm(
+      `${String.fromCodePoint(0xfeff)}${IDEA}labels:\n  - kind:idea\n`,
+      KNOWN_LABELS,
+    );
+    expect(mentions(violations, "U+FEFF")).toBe(true);
+  });
+
+  test("an anchor or a tag before a flow mapping is refused", () => {
+    const flow = "{type: input, type: textarea, id: a, attributes: {label: PRD-ref}}";
+    expect(mentions(validateIssueForm(`${IDEA}  - &a ${flow}\n`, KNOWN_LABELS), "anchor")).toBe(
+      true,
+    );
+    expect(mentions(validateIssueForm(`${IDEA}  - !!map ${flow}\n`, KNOWN_LABELS), "tag")).toBe(
+      true,
+    );
+    const continuation = `${IDEA}      v: &v {required: false, required: true}\n`;
+    expect(mentions(validateIssueForm(continuation, KNOWN_LABELS), "anchor")).toBe(true);
+  });
+
+  test("an escaped quoted key, a complex key and an anchored key are refused", () => {
+    const escaped = `${IDEA}      "requir\\x65d": false\n`;
+    expect(mentions(validateIssueForm(escaped, KNOWN_LABELS), "quoted key")).toBe(true);
+    const complex = `${IDEA}      ? required\n      : false\n`;
+    expect(mentions(validateIssueForm(complex, KNOWN_LABELS), "complex key")).toBe(true);
+    const anchored = `${IDEA}      &k required: false\n`;
+    expect(mentions(validateIssueForm(anchored, KNOWN_LABELS), "anchor")).toBe(true);
+  });
+
+  test("a block header with an indentation digit is refused and the repeat after it is seen", () => {
+    const text = `${IDEA}      note: |2-\n        x: 'open\n      required: false\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "block scalar header")).toBe(true);
+    expect(mentions(violations, 'key "required"')).toBe(true);
+  });
+
+  test("a doubled quote inside a single-quoted scalar is refused and the repeat after it is seen", () => {
+    const text = `${IDEA}      note: 'it''s'\n      required: false\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "quoted scalar")).toBe(true);
+    expect(mentions(violations, 'key "required"')).toBe(true);
+  });
+
+  test("a continuation line is refused as a multi-line scalar, not as a list item", () => {
+    const text = `${IDEA}      note: See the page\n        [link](https://example.org) for details\n`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "block scalar")).toBe(true);
+    expect(mentions(violations, "list item")).toBe(false);
+  });
+
+  test("a repeated key names the key and both lines", () => {
+    const violations = validateIssueForm(withName("name: Idea\nname: Other"), KNOWN_LABELS);
+    expect(mentions(violations, 'key "name" is repeated (first on line 1)')).toBe(true);
+  });
+
+  const REFUSED: readonly (readonly [string, string, string])[] = [
+    ["a tab", withName("name:\tIdea"), "U+0009"],
+    ["a lone carriage return", withName("name: Idea\rx"), "U+000D"],
+    ["a document start marker", `---\n${IDEA}`, "document marker"],
+    ["a document end marker", `${IDEA}...\n`, "document marker"],
+    ["U+2028", withName(`name: Id${String.fromCodePoint(0x2028)}ea`), "U+2028"],
+    ["U+2029", withName(`name: Id${String.fromCodePoint(0x2029)}ea`), "U+2029"],
+    ["U+0085", withName("name: Id\u0085ea"), "U+0085"],
+    ["a trailing comment on a plain value", withName("name: Idea # c"), "trailing comment"],
+    ["a value that is only a comment", withName("name: # c"), "trailing comment"],
+    [
+      "a trailing comment after a list token",
+      mutate(IDEA, "- kind:idea", "- kind:idea # c"),
+      "list item",
+    ],
+    ["a quoted key", withName('"name": Idea'), "quoted key"],
+    ["a single-quoted key", withName("'name': Idea"), "quoted key"],
+    ["an anchor", withName("name: &a Idea"), "anchor"],
+    ["an alias", withName("name: *a"), "alias"],
+    ["a tag", withName("name: !!str Idea"), "tag"],
+    ["a merge key", withName("<<: x"), "merge key"],
+    ["a flow mapping value", withName("name: {a: 1}"), "flow"],
+    ["a flow sequence value outside labels", withName("name: [a]"), "flow"],
+    [
+      "a flow sequence holding a mapping in labels",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels: [{a: 1}]"),
+      "flow",
+    ],
+    ["a keep-chomping block header", withName("name: |+"), "block scalar header"],
+    ["a folded keep-chomping block header", withName("name: >+"), "block scalar header"],
+    ["an escape in a double-quoted scalar", withName('name: "a\\nb"'), "quoted scalar"],
+    ["a multi-line double-quoted scalar", withName('name: "a\n  b"'), "quoted scalar"],
+    ["a multi-line plain scalar", withName("name: a\n  b"), "block scalar"],
+    ["a plain scalar holding a colon and a space", withName("name: a: b"), "mapping"],
+    ["a plain scalar ending with a colon", withName("name: a:"), "mapping"],
+    ["an uppercase key", withName("Name: Idea"), "lowercase"],
+    ["a key without a space after its colon", withName("name:Idea"), "block scalar"],
+    [
+      "an odd indentation",
+      mutate(IDEA, "    id: why-deferred", "   id: why-deferred"),
+      "indentation",
+    ],
+    [
+      "an over-indented key",
+      mutate(IDEA, "    id: why-deferred", "     id: why-deferred"),
+      "indentation",
+    ],
+    ["a nested list item", `${IDEA}  - - a\n`, "nested"],
+    ["an empty list item", `${IDEA}  -\n`, "list item"],
+    ["a list item with extra spaces", `${IDEA}  -  type: markdown\n`, "list item"],
+    [
+      "a list under a mapping key",
+      mutate(
+        IDEA,
+        "    attributes:\n      label: Statement",
+        "    attributes:\n      - label: Statement",
+      ),
+      "list item",
+    ],
+    [
+      "a list item at the indentation of its key",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels:\n- kind:idea"),
+      "list item",
+    ],
+    [
+      "a key where a list item is expected",
+      mutate(IDEA, "labels:\n  - kind:idea", "labels:\n  kind: idea"),
+      "list item",
+    ],
+  ];
+  for (const [name, text, cause] of REFUSED) {
+    test(`${name} is refused`, () => {
+      expect(mentions(validateIssueForm(text, KNOWN_LABELS), cause)).toBe(true);
+    });
+  }
+
+  test("block scalars with a header of | |- > >- hold free text, and an inline label list is read", () => {
+    const folded = mutate(
+      IDEA,
+      "      label: Why deferred\n",
+      "      label: Why deferred\n      description: >-\n        a: b\n        a: c\n\n        # not a comment\n",
+    );
+    expect(validateIssueForm(folded, KNOWN_LABELS)).toEqual([]);
+    const inline = mutate(IDEA, "labels:\n  - kind:idea", 'labels: [ "kind:idea" ,ready ]');
+    expect(validateIssueForm(inline, KNOWN_LABELS)).toEqual([]);
+    const comments = mutate(
+      IDEA,
+      "name: Idea\n",
+      "# a comment\nname: Idea\n\n    # an indented comment\n",
+    );
+    expect(validateIssueForm(comments, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("validateIssueForm: unreadable characters", () => {
+  // Bun.YAML stops reading at a NUL without saying so, while a line scanner reads on: the
+  // text after it looks like part of the form and is silently dropped by the parser.
+  const EXTRA_ELEMENT = `  - type: textarea
+    id: extra
+    attributes:
+      label: Extra field
+    validations:
+      required: true
+`;
+  const hiddenAfter = (character: string): string =>
+    `${IDEA.trimEnd()}${character}\n${EXTRA_ELEMENT}`;
+
+  test("probe N1: a NUL ending the last line hides a whole extra element", () => {
+    const violations = validateIssueForm(hiddenAfter("\u0000"), KNOWN_LABELS);
+    expect(mentions(violations, "U+0000")).toBe(true);
+  });
+
+  test("probe K6: a NUL hides options, a required Recommendation and a root key", () => {
+    const element = (id: string, label: string, required: boolean, tail = ""): string =>
+      `  - type: textarea
+    id: ${id}
+    attributes:
+      label: ${label}
+    validations:
+      required: ${required}${tail}
+`;
+    const text = `name: Decision request
+description: A decision.
+labels:
+  - kind:decision-request
+body:
+${element("context", "Context", true)}${element("option-a", "Option A", true)}${element("option-b", "Option B", true, "\u0000")}${element("option-c", "Option C", true)}${element("option-d", "Option D", true)}${element("option-e", "Option E", true)}${element("option-f", "Option F", true)}${element("recommendation", "Recommendation", true)}assignees: someone
+`;
+    const violations = validateIssueForm(text, KNOWN_LABELS);
+    expect(mentions(violations, "U+0000")).toBe(true);
+  });
+
+  const CONTROLS: readonly (readonly [string, string])[] = [
+    ["\u0001", "U+0001"],
+    ["\u0008", "U+0008"],
+    ["\u000B", "U+000B"],
+    ["\u000C", "U+000C"],
+    ["\u001B", "U+001B"],
+    ["\u001F", "U+001F"],
+    ["\u007F", "U+007F"],
+    ["\u0080", "U+0080"],
+    ["\u009F", "U+009F"],
+    [String.fromCodePoint(0xa0), "U+00A0"],
+    [String.fromCodePoint(0xfffe), "U+FFFE"],
+    [String.fromCodePoint(0xd800), "U+D800"],
+  ];
+  for (const [character, codePoint] of CONTROLS) {
+    test(`${codePoint} hiding an element is refused and named`, () => {
+      expect(mentions(validateIssueForm(hiddenAfter(character), KNOWN_LABELS), codePoint)).toBe(
+        true,
+      );
+    });
+  }
+
+  test("the violation names the line", () => {
+    const violations = validateIssueForm("name: Idea\r\nbody:\u0000\r\n", KNOWN_LABELS);
+    expect(violations).toEqual(["line 2: unreadable character U+0000"]);
+  });
+
+  test("CRLF line endings are accepted", () => {
+    expect(validateIssueForm(IDEA.replaceAll("\n", "\r\n"), KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("accented French text in a description is accepted", () => {
+    const accented = mutate(
+      IDEA,
+      "description: A deferred idea.",
+      "description: Une idée différée, « à revoir » — œuvre…",
+    );
+    expect(validateIssueForm(accented, KNOWN_LABELS)).toEqual([]);
+  });
+});
+
+describe("runIssueFormCheck", () => {
+  const roots: string[] = [];
+  afterAll(() => {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  });
+
+  function workspace(forms: Readonly<Record<string, string>>): {
+    readonly formsDir: string;
+    readonly labelsPath: string;
+  } {
+    const root = mkdtempSync(join(tmpdir(), "issue-forms-"));
+    roots.push(root);
+    const formsDir = join(root, "ISSUE_TEMPLATE");
+    mkdirSync(formsDir);
+    for (const [name, text] of Object.entries(forms)) writeFileSync(join(formsDir, name), text);
+    const labelsPath = join(root, "labels.yml");
+    writeFileSync(
+      labelsPath,
+      [...KNOWN_LABELS]
+        .map((name) => `- name: "${name}"\n  color: "0e8a16"\n  description: "A label."\n`)
+        .join("\n"),
+    );
+    return { formsDir, labelsPath };
+  }
+
+  async function run(
+    formsDir: string,
+    labelsPath: string,
+  ): Promise<{ readonly code: number; readonly output: string }> {
+    const lines: string[] = [];
+    const code = await runIssueFormCheck(["--forms", formsDir, "--labels", labelsPath], (line) =>
+      lines.push(line),
+    );
+    return { code, output: lines.join("\n") };
+  }
+
+  const ALL_FORMS = {
+    "work-package.yml": WORK_PACKAGE,
+    "decision-request.yml": DECISION_REQUEST,
+    "idea.yml": IDEA,
+    "question.yml": QUESTION,
+  };
+
+  test("four valid forms pass and the volume is printed", async () => {
+    const { formsDir, labelsPath } = workspace(ALL_FORMS);
+    const { code, output } = await run(formsDir, labelsPath);
+    expect(code).toBe(0);
+    expect(output).toContain("4 formulaires examinés, 0 violations");
+  });
+
+  test("a violation names the file and fails the run", async () => {
+    const { formsDir, labelsPath } = workspace({
+      ...ALL_FORMS,
+      "idea.yml": mutate(IDEA, "label: Why deferred", "label: Reason"),
+    });
+    const { code, output } = await run(formsDir, labelsPath);
+    expect(code).not.toBe(0);
+    expect(output).toContain("idea.yml");
+    // The renamed field is both a missing "Why deferred" and an unexpected "Reason".
+    expect(output).toContain("4 formulaires examinés, 2 violations");
+  });
+
+  test("an empty directory is not a success", async () => {
+    const { formsDir, labelsPath } = workspace({});
+    const { code, output } = await run(formsDir, labelsPath);
+    expect(code).not.toBe(0);
+    expect(output).toContain("0 formulaires examinés");
+  });
+
+  test("a directory holding only a config file is not a success", async () => {
+    const { formsDir, labelsPath } = workspace({ "config.yml": "blank_issues_enabled: false\n" });
+    const { code } = await run(formsDir, labelsPath);
+    expect(code).not.toBe(0);
+  });
+
+  test("config.yml is not a form: it is counted apart and never validated", async () => {
+    const { formsDir, labelsPath } = workspace({
+      ...ALL_FORMS,
+      "config.yml": "blank_issues_enabled: false\n",
+    });
+    const { code, output } = await run(formsDir, labelsPath);
+    expect(code).toBe(0);
+    expect(output).toContain("4 formulaires examinés, 0 violations");
+    expect(output).toContain("1 ignoré");
+  });
+
+  test("a missing forms directory fails", async () => {
+    const { formsDir, labelsPath } = workspace(ALL_FORMS);
+    const { code, output } = await run(`${formsDir}-absent`, labelsPath);
+    expect(code).not.toBe(0);
+    expect(output).toContain("cannot read");
+  });
+
+  test("a missing or invalid labels file fails", async () => {
+    const { formsDir, labelsPath } = workspace(ALL_FORMS);
+    expect((await run(formsDir, `${labelsPath}-absent`)).code).not.toBe(0);
+    writeFileSync(labelsPath, "not: a sequence\n");
+    expect((await run(formsDir, labelsPath)).code).not.toBe(0);
+  });
+
+  test("a missing option is a usage error", async () => {
+    const lines: string[] = [];
+    expect(await runIssueFormCheck(["--forms", "x"], (line) => lines.push(line))).toBe(2);
+    expect(await runIssueFormCheck([], (line) => lines.push(line))).toBe(2);
+    expect(await runIssueFormCheck(["--forms", "x", "--labels", "y", "--z"], () => {})).toBe(2);
+  });
+
+  test("an unparseable form is counted and reported, never skipped", async () => {
+    const { formsDir, labelsPath } = workspace(ALL_FORMS);
+    writeFileSync(join(formsDir, "broken.yml"), "name: [unclosed\n");
+    const { code, output } = await run(formsDir, labelsPath);
+    expect(code).not.toBe(0);
+    expect(output).toContain("broken.yml");
+    expect(output).toContain("5 formulaires examinés, 1 violation");
+  });
+});

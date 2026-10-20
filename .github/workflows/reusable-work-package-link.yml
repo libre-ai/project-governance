@@ -1,0 +1,119 @@
+name: reusable-work-package-link
+# Fleet gate template (design 2026-10-19 §6): every pull request names the
+# work package it implements, and the gate (tools/quality/check-work-package-link.ts)
+# resolves the chain issue -> approved PRD -> work package -> criteria -> scope.
+#
+# Consumed as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-work-package-link.yml@<sha>
+#   with:
+#     tooling_ref: <sha>
+# with tooling_ref pinned to the SAME sha. A gate evolution is a sha bump in
+# the consuming repository (the culture of the pin, as reusable-licensing.yml).
+#
+# The trigger belongs to the CALLER, and is exactly
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened]
+# Never `pull_request_target`: it would run this job with the secrets and the
+# write token of the base repository over a head its author controls. This file
+# therefore declares `workflow_call` and nothing else
+# (tools/quality/reusable-work-package-link.test.ts asserts it).
+#
+# Prerequisites on the caller, none of them optional:
+#   - the calling job must grant `issues: read` and `contents: read` (the called
+#     workflow cannot exceed the caller's grant; an under-granted caller makes
+#     the gate fail closed);
+#   - no `container:` on the calling job: the gate refuses a repository whose
+#     owner differs from the user running it, and `safe.directory` cannot be
+#     supplied inside a container;
+#   - the checkout below is `fetch-depth: 0`: the gate refuses every shallow
+#     repository ("the checkout is shallow ... (fetch-depth: 0)");
+#   - no step that executes code of the pull request runs before this job
+#     (build, install, test, a local action): the pull request is the input the
+#     gate judges, never the program that judges it.
+#
+# Where the gate comes from, and where it runs: the governance repository at
+# tooling_ref is fetched into $RUNNER_TEMP/governance-tooling, outside the
+# workspace of the pull request, and the gate RUNS FROM THAT DIRECTORY. Bun reads
+# `bunfig.toml` (a `preload` entry executes code) and `.env` from its working
+# directory, and in the workspace of the pull request both are written by its
+# author. Measured on the pinned Bun revision, from the workspace: a plain
+# `bun <script>` runs the author's preload; an unknown flag is ignored silently
+# (the preload still runs); an empty `--config=` falls back to the bunfig of the
+# working directory; `--no-env-file` alone does not stop the preload; a non-empty
+# `--config` does stop it. A protection that one mistyped or emptied flag
+# silently removes is not the one to rely on: the trusted working directory is
+# the protection, and it needs no flag. The gate does not need the workspace as
+# its working directory: it reads the pull request through the absolute
+# GITHUB_WORKSPACE only. `--no-env-file` stays as defence in depth.
+#
+# Every step is pinned to exactly these lines by the structure test, and no
+# `env:` or `defaults:` exists above the steps: a value declared at job or
+# workflow level would reach the gate without being seen.
+
+on:
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: >-
+          Full commit (40 lowercase hexadecimal characters) of
+          libre-ai/project-governance providing tools/quality
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+
+jobs:
+  work-package-link:
+    name: Work package link
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+        run: |
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          TOOLING_DIR="$RUNNER_TEMP/governance-tooling"
+          mkdir "$TOOLING_DIR"
+          git init --quiet "$TOOLING_DIR"
+          git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
+          git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
+      - name: Install archived Bun toolchain
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Verify the work-package link
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun --no-env-file tools/quality/check-bun-minimum.ts
+          bun --no-env-file tools/quality/check-work-package-link.ts
