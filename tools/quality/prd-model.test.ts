@@ -439,6 +439,38 @@ describe("the work-package norm", () => {
     expect(text).not.toContain("carries exactly one declaration line");
   });
 
+  // The opening paragraph lists the labelled examples a test reads: the list
+  // must be exactly the set of labelled fenced blocks of the norm.
+  test("the opening paragraph names exactly the labelled examples of the norm", async () => {
+    const text: string = await readNorm();
+    const labelled: string[] = [...text.matchAll(/^```[a-z]+ ([a-z-]+-example)$/gm)].map(
+      (match: RegExpMatchArray): string => match[1] as string,
+    );
+    const opening: string =
+      text.split("\n").find((line: string): boolean => line.startsWith("The grammars below")) ?? "";
+    const named: string[] = [...opening.matchAll(/`([a-z-]+-example)`/g)].map(
+      (match: RegExpMatchArray): string => match[1] as string,
+    );
+    expect(labelled.length).toBe(5);
+    expect([...named].sort()).toEqual([...labelled].sort());
+    expect(opening).toContain("The five labelled examples below are read by tests");
+  });
+
+  test("the norm states the limits of the grammar, the exemption and the reading", async () => {
+    const text: string = await readNorm();
+    for (const sentence of [
+      "a positive decimal integer of at most nine digits and no leading zero",
+      "Only these three exact forms are detected and flagged; an equivalent entry (for example `**/**`) is not.",
+      "The implicit exemption is decided by the author of the pull request, not by the author of each commit: a human who pushes to a bot's pull request keeps it (the limit of a shared identity).",
+      "The parsers read each file as lines of text; how the Markdown renders does not matter",
+      "a refusal that names them (at most twenty pairs, the rest counted as `and M more`)",
+      "The globs of a `paths` predicate obey the grammar of a `Périmètre` entry",
+    ]) {
+      expect(text).toContain(sentence);
+    }
+    expect(text).not.toContain("The three labelled examples");
+  });
+
   test("the norm covers the seven required subjects under stable headings", async () => {
     const text: string = await readNorm();
     const lines: string[] = text.split("\n");
