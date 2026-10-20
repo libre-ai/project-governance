@@ -96,8 +96,9 @@ export interface LinkPorts {
    * regular expression over the message: a `Work-package:` line outside the
    * trailer block is not a trailer. Keys are returned as written, values with
    * the surrounding whitespace trimmed by git. A range that cannot be read is
-   * `ok: false`, never an empty list, and so is a range a shallow checkout may
-   * have cut (a boundary commit of the shallow history inside the range).
+   * `ok: false`, never an empty list, and so is any range read in a shallow
+   * checkout (a shallow history can cut the range or widen it), or with grafts
+   * or replace refs in effect.
    */
   commitTrailers(baseSha: string, headSha: string): Promise<Fact<readonly CommitDeclarations[]>>;
   /**
@@ -107,7 +108,8 @@ export interface LinkPorts {
    * are returned exactly as git prints them: never quoted, never normalised.
    * An implementation, and any caller trusting one, must reject a path that
    * contains a `..` segment, starts with `./`, or starts with `/`, as an
-   * unreadable source rather than match it against a glob.
+   * unreadable source rather than match it against a glob. A diff read in a
+   * shallow checkout is `ok: false`: git may take another merge base there.
    */
   changedFiles(baseSha: string, headSha: string): Promise<Fact<readonly string[]>>;
 }

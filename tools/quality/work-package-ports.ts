@@ -1,6 +1,6 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import type {
   CommitDeclarations,
   Fact,
@@ -127,9 +127,9 @@ const decode: (bytes: Uint8Array) => string | null = decodeGitOutput;
 const UNIT_SEPARATOR = "\u001f";
 const NUL = "\u0000";
 
-/** The refusal of a range a shallow checkout may have cut (its boundary commits are inside it). */
-export const SHALLOW_CUT_REASON =
-  "the checkout is shallow and the range base..head may be cut: fetch with full history";
+/** The refusal of any shallow checkout (see `refuseShallow`). */
+const SHALLOW_REFUSAL: string =
+  "the checkout is shallow: base..head cannot be trusted; fetch with full history (fetch-depth: 0)";
 
 function commitProblem(label: string, sha: string): Failure | null {
   return FULL_COMMIT.test(sha)
@@ -187,6 +187,10 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       GIT_TERMINAL_PROMPT: "0",
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
+      // Grafts and replace refs rewrite the parents git sees: either can make
+      // a commit of the range a root and cut the range. Both are ignored.
+      GIT_GRAFT_FILE: "/dev/null",
+      GIT_NO_REPLACE_OBJECTS: "1",
     };
     if (ceiling !== null) {
       env.GIT_CEILING_DIRECTORIES = ceiling;
@@ -274,6 +278,10 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       if (!env.ok) {
         return env;
       }
+      const shallow: Failure | null = await refuseShallow(env.value);
+      if (shallow !== null) {
+        return shallow;
+      }
       const absent: Failure | null = await ensureCommits([baseSha, headSha], env.value);
       if (absent !== null) {
         return absent;
@@ -299,15 +307,7 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       if (text === null) {
         return fail(`the commits of ${baseSha}..${headSha} are not valid UTF-8`);
       }
-      const commits: Fact<readonly CommitDeclarations[]> = parseLogRecords(text);
-      if (!commits.ok) {
-        return commits;
-      }
-      const cut: Failure | null = await shallowCut(
-        commits.value.map((commit) => commit.sha),
-        env.value,
-      );
-      return cut ?? commits;
+      return parseLogRecords(text);
     });
   }
 
@@ -351,15 +351,16 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
   }
 
   /**
-   * A shallow checkout whose boundary commits (their parents are cut) fall
-   * inside the range may have lost the earlier commits of the range, and a
-   * declaration with them: refused, never read short. A boundary below `base`
-   * cuts nothing of the range.
+   * Any shallow checkout is refused, before any read of the range.
+   *
+   * Why all of them: a boundary above `base` can CUT `base..head` (earlier
+   * commits and their declarations lost), and once merges are in the history
+   * a boundary at or below `base` hides that some commits `head` reaches are
+   * in the history of `base`, which WIDENS the range (a declaration of the
+   * base branch then reads as the pull request's). Neither shape is visible
+   * from the range itself. The workflow fetches the full history.
    */
-  async function shallowCut(
-    range: readonly string[],
-    env: Record<string, string>,
-  ): Promise<Failure | null> {
+  async function refuseShallow(env: Record<string, string>): Promise<Failure | null> {
     const shallow = await git(["rev-parse", "--is-shallow-repository"], options.workspace, env);
     if (!succeeded(shallow)) {
       return gitFailure("whether the checkout is shallow is unreadable", shallow);
@@ -368,25 +369,9 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
     if (answer === "false\n") {
       return null;
     }
-    if (answer !== "true\n") {
-      return fail(`git answered ${JSON.stringify(answer)} to whether the checkout is shallow`);
-    }
-    const located = await git(["rev-parse", "--git-path", "shallow"], options.workspace, env);
-    const relative: string | null = succeeded(located) ? decode(located.stdout) : null;
-    if (relative === null) {
-      return fail("the list of shallow boundary commits cannot be located");
-    }
-    let boundary: string;
-    try {
-      boundary = await Bun.file(resolve(options.workspace, relative.replace(/\n$/, ""))).text();
-    } catch {
-      return fail("the list of shallow boundary commits is unreadable");
-    }
-    const boundaries: Set<string> = new Set(boundary.split("\n").filter((line) => line !== ""));
-    const inside: string[] = range.filter((sha) => boundaries.has(sha));
-    return inside.length === 0
-      ? null
-      : fail(`${SHALLOW_CUT_REASON} (boundary commit(s) inside the range: ${inside.join(", ")})`);
+    return answer === "true\n"
+      ? fail(SHALLOW_REFUSAL)
+      : fail(`git answered ${JSON.stringify(answer)} to whether the checkout is shallow`);
   }
 
   async function changedFiles(baseSha: string, headSha: string): Promise<Fact<readonly string[]>> {
@@ -401,6 +386,12 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
         return workspace;
       }
       const env: Record<string, string> = workspace.value;
+      // A widened shape can make git pick an older merge base, adding or
+      // dropping files: the same refusal as the trailers.
+      const shallow: Failure | null = await refuseShallow(env);
+      if (shallow !== null) {
+        return shallow;
+      }
       const absent: Failure | null = await ensureCommits([baseSha, headSha], env);
       if (absent !== null) {
         return absent;

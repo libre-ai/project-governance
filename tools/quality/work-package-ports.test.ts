@@ -10,7 +10,6 @@ import {
   type RealPortsOptions,
   type RunGit,
   realPorts,
-  SHALLOW_CUT_REASON,
   spawnGit,
 } from "./work-package-ports";
 
@@ -398,59 +397,135 @@ describe("isAncestorOfServedHead", () => {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// A shallow checkout (C1): the range must never be read short.
+// A shallow checkout (C1): ANY shallow repository is refused, before any read
+// of the range. A boundary at or below `base` can WIDEN `base..head` once
+// merges are in the history, and a boundary above it can cut it; neither is
+// visible from the range itself, so no shallow shape is trusted.
 // ---------------------------------------------------------------------------
 
-describe("commitTrailers in a shallow checkout", () => {
+const SHALLOW_REFUSAL =
+  "the checkout is shallow: base..head cannot be trusted; fetch with full history (fetch-depth: 0)";
+
+describe("a shallow checkout is refused by both ports", () => {
   const root: string = scratch("wp-shallow-");
   const origin: string = initRepository(join(root, "origin"), "main");
-  for (const index of [0, 1, 2, 3]) {
-    commitAll(origin, `m${index}`);
-  }
-  const base: string = git(origin, "rev-parse", "HEAD");
-  git(origin, "switch", "--quiet", "-c", "feature");
-  commitAll(origin, ["c1", "", "Work-package: libre-ai/gov#1 WP-1"].join("\n"));
-  commitAll(origin, "c2");
+  commitAll(origin, "R");
+  const a: string = commitAll(origin, "A");
+  // X is on main and carries a declaration of its own: a widened range of the
+  // pull request would pick it up.
+  const x: string = commitAll(origin, ["X", "", "Work-package: libre-ai/main#9 WP-9"].join("\n"));
+  git(origin, "switch", "--quiet", "-c", "feature", a);
+  commitAll(origin, "c1");
+  git(origin, "merge", "--quiet", "--no-ff", "-m", "merge X into the feature", x);
   const head: string = commitAll(
     origin,
-    ["c3", "", "Work-package: libre-ai/gov#1 WP-2"].join("\n"),
+    ["c2", "", "Work-package: libre-ai/gov#1 WP-1"].join("\n"),
   );
   git(origin, "switch", "--quiet", "main");
-  git(origin, "merge", "--quiet", "--no-ff", "-m", "merge", "feature");
+  const base: string = commitAll(origin, "B");
   git(origin, "branch", "merged");
+  git(origin, "switch", "--quiet", "merged");
+  git(origin, "merge", "--quiet", "--no-ff", "-m", "merge the feature", "feature");
+  git(origin, "switch", "--quiet", "main");
 
   const clone = (name: string, ...extra: string[]): string => {
     git(root, "clone", "--quiet", ...extra, `file://${origin}`, name);
     return join(root, name);
   };
-  const values = (commits: readonly CommitDeclarations[]): string[] =>
-    commits.flatMap((commit) => commit.trailers.map((trailer) => trailer.value));
 
-  test("a full clone reads the three commits of the range", async () => {
-    const commits = valueFrom(await portsFor(clone("full")).commitTrailers(base, head));
+  test("a full clone reads the true range in both ports", async () => {
+    const workspace: string = clone("full");
+    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
+    // c1, the merge of X, c2: X is in the history of base, so it is not in the range.
     expect(commits.length).toBe(3);
-    expect(values(commits)).toEqual(["libre-ai/gov#1 WP-1", "libre-ai/gov#1 WP-2"]);
+    expect(commits.flatMap((commit) => commit.trailers.map((t) => t.value))).toEqual([
+      "libre-ai/gov#1 WP-1",
+    ]);
+    valueFrom(await portsFor(workspace).changedFiles(base, head));
   });
 
-  test("a clone of depth 1 of head cuts the range: refused, never read short", async () => {
-    const workspace: string = clone("cut", "--depth=1", "--branch", "feature");
-    const reason: string = expectFailure(await portsFor(workspace).commitTrailers(base, head));
-    expect(reason).toContain(SHALLOW_CUT_REASON);
-    expect(reason).toContain(head);
-  });
-
-  test("a shallow boundary below base only cuts nothing of the range", async () => {
-    const workspace: string = clone("below", "--depth=5", "--branch", "feature");
+  test.each([
+    ["depth 1 of head", ["--depth=1", "--branch", "feature"]],
+    ["depth 2 of head", ["--depth=2", "--branch", "feature"]],
+    ["depth 1 of base, head fetched by sha", ["--depth=1", "--branch", "main"]],
+    ["a boundary below base on a branch that merged main", ["--depth=3", "--branch", "feature"]],
+    ["--shallow-exclude of main", ["--shallow-exclude=main", "--branch", "feature"]],
+    ["depth 1 of the merge ref", ["--depth=1", "--branch", "merged"]],
+  ])("%s is refused before any read of the range", async (name: string, extra: string[]) => {
+    const workspace: string = clone(`shallow${name.replace(/[^a-z0-9]+/g, "-")}`, ...extra);
     expect(git(workspace, "rev-parse", "--is-shallow-repository")).toBe("true");
-    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
-    expect(commits.length).toBe(3);
+    const recorder = recordingRun();
+    const ports: LinkPorts = portsFor(workspace, { run: recorder.run });
+    expect(expectFailure(await ports.commitTrailers(base, head))).toBe(SHALLOW_REFUSAL);
+    expect(expectFailure(await ports.changedFiles(base, head))).toBe(SHALLOW_REFUSAL);
+    const reads: GitInvocation[] = recorder.calls.filter(
+      (call) => call.args[0] === "log" || call.args[0] === "diff",
+    );
+    expect(reads).toEqual([]);
   });
 
-  test("a clone of depth 1 of the merge commit reads the whole range once both ends are fetched", async () => {
-    const workspace: string = clone("merge", "--depth=1", "--branch", "merged");
-    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
+  test.each([
+    ["yes", "yes\n"],
+    ["an empty answer", ""],
+    ["true without a line feed", "true"],
+    ["false without a line feed", "false"],
+  ])("an answer %s to --is-shallow-repository is refused by both ports", async (_label: string, answer: string) => {
+    const workspace: string = clone(`answer-${answer.trim() || "empty"}-${answer.length}`);
+    const run: RunGit = async (invocation: GitInvocation): Promise<GitResult> =>
+      invocation.args.includes("--is-shallow-repository")
+        ? { exitCode: 0, stdout: new TextEncoder().encode(answer), stderr: "" }
+        : spawnGit(invocation);
+    expectFailure(await portsFor(workspace, { run }).commitTrailers(base, head));
+    expectFailure(await portsFor(workspace, { run }).changedFiles(base, head));
+  });
+
+  test("a git failure on --is-shallow-repository is refused by both ports", async () => {
+    const workspace: string = clone("answer-failure");
+    const run: RunGit = async (invocation: GitInvocation): Promise<GitResult> =>
+      invocation.args.includes("--is-shallow-repository")
+        ? { exitCode: 128, stdout: new Uint8Array(), stderr: "fatal" }
+        : spawnGit(invocation);
+    expectFailure(await portsFor(workspace, { run }).commitTrailers(base, head));
+    expectFailure(await portsFor(workspace, { run }).changedFiles(base, head));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Grafts and replace refs rewrite the parents git sees: both are ignored, so
+// a commit made a root by either cannot cut the range.
+// ---------------------------------------------------------------------------
+
+describe("grafts and replace refs do not cut the history", () => {
+  const build = (name: string): { repo: string; base: string; c2: string; head: string } => {
+    const repo: string = initRepository(join(scratch(`wp-${name}-`), "work"), "main");
+    const base: string = commitAll(repo, "base");
+    writeAt(repo, "c1.txt", "1\n");
+    commitAll(repo, ["c1", "", "Work-package: libre-ai/gov#1 WP-1"].join("\n"));
+    writeAt(repo, "c2.txt", "2\n");
+    const c2: string = commitAll(repo, "c2");
+    writeAt(repo, "c3.txt", "3\n");
+    const head: string = commitAll(repo, "c3");
+    return { repo, base, c2, head };
+  };
+
+  test.each([
+    ["a graft file", "graft"],
+    ["a replace ref", "replace"],
+  ])("%s making a commit a root leaves the true history", async (_label: string, kind: string) => {
+    const { repo, base, c2, head } = build(kind);
+    if (kind === "graft") {
+      writeAt(repo, ".git/info/grafts", `${c2}\n`);
+    } else {
+      git(repo, "replace", "--graft", c2);
+    }
+    expect(git(repo, "rev-list", "--count", `${base}..${head}`)).toBe("2");
+    const commits = valueFrom(await portsFor(repo).commitTrailers(base, head));
     expect(commits.length).toBe(3);
-    expect(values(commits)).toEqual(["libre-ai/gov#1 WP-1", "libre-ai/gov#1 WP-2"]);
+    expect(valueFrom(await portsFor(repo).changedFiles(base, head))).toEqual([
+      "c1.txt",
+      "c2.txt",
+      "c3.txt",
+    ]);
   });
 });
 
@@ -501,6 +576,22 @@ describe("the bytes git prints are kept", () => {
     const commits = valueFrom(await portsFor(repo).commitTrailers(base, head));
     expect(commits[0]?.trailers).toEqual([
       { key: "Work-package", value: `${BOM}libre-ai/gov#1 WP-1` },
+    ]);
+  });
+
+  // The key of a git trailer never holds U+001F, the value may: the split is
+  // at the FIRST separator, and a later one stays in the value.
+  test("a trailer value holding U+001F keeps it", async () => {
+    const separator: string = String.fromCodePoint(0x1f);
+    const repo: string = initRepository(join(scratch("wp-us-trailer-"), "work"), "main");
+    const base: string = commitAll(repo, "base");
+    const head: string = commitAll(
+      repo,
+      ["s", "", `Work-package: libre-ai/gov#1${separator}WP-1`].join("\n"),
+    );
+    const commits = valueFrom(await portsFor(repo).commitTrailers(base, head));
+    expect(commits[0]?.trailers).toEqual([
+      { key: "Work-package", value: `libre-ai/gov#1${separator}WP-1` },
     ]);
   });
 });
@@ -586,9 +677,31 @@ describe("the workspace is the root of its repository", () => {
   const subdirectory: string = join(repo, "sub");
   mkdirSync(subdirectory);
 
+  // The ceiling alone answers this case: git stops at the parent of the
+  // workspace and finds no repository.
   test("a subdirectory of a repository is not read as that repository", async () => {
-    expectFailure(await portsFor(subdirectory).commitTrailers(base, head));
+    const trailers: string = expectFailure(await portsFor(subdirectory).commitTrailers(base, head));
+    expect(trailers).toContain(
+      `the workspace ${JSON.stringify(subdirectory)} is not a git repository`,
+    );
     expectFailure(await portsFor(subdirectory).changedFiles(base, head));
+  });
+
+  // GIT_CEILING_DIRECTORIES is a colon-separated list, so a parent whose path
+  // holds `:` is no ceiling: git walks up to the enclosing repository, and only
+  // the root check refuses it.
+  test("a subdirectory of a repository whose path holds a colon is refused by the root check", async () => {
+    const colonRepo: string = initRepository(join(scratch("wp-colon-"), "repo:with-colon"), "main");
+    const colonBase: string = commitAll(colonRepo, "base");
+    const colonHead: string = commitAll(colonRepo, "head");
+    const inside: string = join(colonRepo, "sub");
+    mkdirSync(inside);
+    const reason: string = expectFailure(
+      await portsFor(inside).commitTrailers(colonBase, colonHead),
+    );
+    expect(reason).toContain(
+      `the workspace ${JSON.stringify(inside)} is not the root of its repository`,
+    );
   });
 
   test("a relative workspace is refused", async () => {
@@ -694,9 +807,12 @@ describe("the token never reaches argv or a message", () => {
     }).isAncestorOfServedHead("libre-ai/product", FIRST);
     expect(recorder.calls.length).toBeGreaterThan(0);
     for (const call of recorder.calls) {
+      // Rewritten on purpose (fix round 2): grafts and replace refs are now off.
       expect(Object.keys(call.env).sort()).toEqual([
         "GIT_CONFIG_GLOBAL",
         "GIT_CONFIG_NOSYSTEM",
+        "GIT_GRAFT_FILE",
+        "GIT_NO_REPLACE_OBJECTS",
         "GIT_TERMINAL_PROMPT",
         "HOME",
         "PATH",
@@ -705,6 +821,8 @@ describe("the token never reaches argv or a message", () => {
       expect(call.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
       expect(call.env.GIT_CONFIG_NOSYSTEM).toBe("1");
       expect(call.env.GIT_TERMINAL_PROMPT).toBe("0");
+      expect(call.env.GIT_GRAFT_FILE).toBe("/dev/null");
+      expect(call.env.GIT_NO_REPLACE_OBJECTS).toBe("1");
     }
   });
 });
