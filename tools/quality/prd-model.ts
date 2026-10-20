@@ -10,11 +10,17 @@
  * semantics: every raw occurrence of a declaration form (a maturity line, a
  * work-package header or row, a criterion definition) is either read as live
  * or makes the document unreadable, with its line. Why raw: a reader that
- * imitates a renderer (fences, comments, HTML blocks, indented code, list
- * items) disagrees with it somewhere, and each disagreement lets a quoted
- * example be read as live or hides a live line. The reviewer of a PRD reads
- * the raw diff; so does the gate. A PRD therefore never quotes a declaration
- * form: it paraphrases it.
+ * imitates a renderer (fences, HTML blocks, indented code, list items)
+ * disagrees with it somewhere, and each disagreement lets a quoted example be
+ * read as live or hides a live line. The reviewer of a PRD reads the raw
+ * diff; so does the gate. A PRD therefore never quotes a declaration form.
+ *
+ * The invariant is held by enumerating what a document may contain, not by
+ * detecting what it must not (that class was open: entities, tags, comments,
+ * homoglyphs, format characters, non-ASCII dashes, each a spelling that hid a
+ * form from a detector). Rule 1 is a closed alphabet, checked on every
+ * character before anything is read; rule 2 refuses HTML; the detection fold
+ * of rule 3 then only has to fold what the alphabet lets through.
  */
 export type MaturityLevel =
   | "exploration"
@@ -62,140 +68,232 @@ const fail = (reason: string): { readonly ok: false; readonly reason: string } =
 });
 
 // ---------------------------------------------------------------------------
-// Raw lines
+// Rule 1: the alphabet of a PRD
 // ---------------------------------------------------------------------------
 
-// Characters a regular expression, an editor or a renderer may split or hide
-// differently from this reader, which ends lines on LF, CRLF and CR only:
-// the C0 controls other than the tab, U+0085, U+2028 and U+2029. Built from
-// code points so that the source holds no invisible character.
-const UNREADABLE: RegExp = new RegExp(
-  `[${String.fromCodePoint(0x00)}-${String.fromCodePoint(0x08)}${String.fromCodePoint(0x0b, 0x0c)}${String.fromCodePoint(0x0e)}-${String.fromCodePoint(0x1f)}${String.fromCodePoint(0x85, 0x2028, 0x2029)}]`,
+// What a line may hold: the tab, a space of category Zs, an ASCII digit, an
+// ASCII letter, a precomposed Latin-1 letter (U+00C0-U+00FF; × U+00D7 and ÷
+// U+00F7 are symbols, admitted as such), Œ œ Ÿ, and any punctuation or
+// symbol. Everything else is outside: format characters (Cf), combining marks
+// (M*), letters of other scripts or blocks (confusable with these), non-ASCII
+// digits, controls other than the tab (DEL and C1 included), separators Zl
+// and Zp, private use, surrogates and unassigned code points. The `g` flag
+// serves the one loop that skips the single admitted exception below. The
+// class is built from code points so that the source stays ASCII.
+const range = (from: number, to: number): string =>
+  `${String.fromCodePoint(from)}-${String.fromCodePoint(to)}`;
+const LATIN1_LETTERS: string = `${range(0xc0, 0xd6)}${range(0xd8, 0xf6)}${range(0xf8, 0xff)}${String.fromCodePoint(0x152, 0x153, 0x178)}`;
+const OUTSIDE_ALPHABET: RegExp = new RegExp(
+  `[^\\t0-9A-Za-z${LATIN1_LETTERS}\\p{Zs}\\p{P}\\p{S}]`,
+  "gu",
 );
+// The one exception: the variation selector 16 (Mn), which asks for the emoji
+// presentation of the symbol (So) it follows. Nowhere else.
+const VARIATION_SELECTOR_16: number = 0xfe0f;
+const SYMBOL_OTHER: RegExp = /^\p{So}$/u;
+// Opens a tag, a closing tag, a comment, a declaration, a CDATA section or a
+// processing instruction; or an entity, named or numeric, with or without
+// its semicolon (a browser decodes the legacy ones without it). `a < b` and
+// `R&D` do not match: a single letter after `&` is not an entity unless a
+// semicolon follows.
+const HTML_MARKUP: RegExp =
+  /<[A-Za-z!?/]|&(?:[A-Za-z](?:[A-Za-z0-9]+;?|;)|#(?:[0-9]+|[xX][0-9A-Fa-f]+);?)/;
+const CATEGORIES: readonly (readonly [string, RegExp])[] = [
+  ["Lu", /\p{Lu}/u],
+  ["Ll", /\p{Ll}/u],
+  ["Lt", /\p{Lt}/u],
+  ["Lm", /\p{Lm}/u],
+  ["Lo", /\p{Lo}/u],
+  ["Mn", /\p{Mn}/u],
+  ["Mc", /\p{Mc}/u],
+  ["Me", /\p{Me}/u],
+  ["Nd", /\p{Nd}/u],
+  ["Nl", /\p{Nl}/u],
+  ["No", /\p{No}/u],
+  ["Pc", /\p{Pc}/u],
+  ["Pd", /\p{Pd}/u],
+  ["Ps", /\p{Ps}/u],
+  ["Pe", /\p{Pe}/u],
+  ["Pi", /\p{Pi}/u],
+  ["Pf", /\p{Pf}/u],
+  ["Po", /\p{Po}/u],
+  ["Sm", /\p{Sm}/u],
+  ["Sc", /\p{Sc}/u],
+  ["Sk", /\p{Sk}/u],
+  ["So", /\p{So}/u],
+  ["Zs", /\p{Zs}/u],
+  ["Zl", /\p{Zl}/u],
+  ["Zp", /\p{Zp}/u],
+  ["Cc", /\p{Cc}/u],
+  ["Cf", /\p{Cf}/u],
+  ["Cs", /\p{Cs}/u],
+  ["Co", /\p{Co}/u],
+  ["Cn", /\p{Cn}/u],
+];
+
+function categoryOf(char: string): string {
+  return (
+    CATEGORIES.find(([, pattern]: readonly [string, RegExp]): boolean => pattern.test(char))?.[0] ??
+    "Cn"
+  );
+}
 
 function codePointOf(char: string): string {
   return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
 }
 
+/** 1-based column in code points of the UTF-16 index `index` of `line`. */
+function columnOf(line: string, index: number): number {
+  return [...line.slice(0, index)].length + 1;
+}
+
+const describe = (line: string, index: number, char: string): string =>
+  `column ${columnOf(line, index)}, ${codePointOf(char)} (${categoryOf(char)})`;
+
+/** The first character of the line outside the alphabet, or null. */
+function outsideAlphabet(line: string): string | null {
+  OUTSIDE_ALPHABET.lastIndex = 0;
+  let hit: RegExpExecArray | null = OUTSIDE_ALPHABET.exec(line);
+  while (hit !== null) {
+    const char: string = hit[0];
+    const previous: string | undefined = [
+      ...line.slice(Math.max(0, hit.index - 2), hit.index),
+    ].pop();
+    if (
+      char.codePointAt(0) === VARIATION_SELECTOR_16 &&
+      previous !== undefined &&
+      SYMBOL_OTHER.test(previous)
+    ) {
+      hit = OUTSIDE_ALPHABET.exec(line);
+      continue;
+    }
+    return `${describe(line, hit.index, char)}: outside the alphabet of a PRD (ASCII, the Latin-1 letters, punctuation, symbols, spaces and the tab)`;
+  }
+  return null;
+}
+
+/** The first character at which the line differs from its NFC form, or null. */
+function notNfc(line: string): string | null {
+  const composed: string = line.normalize("NFC");
+  if (composed === line) return null;
+  let index: number = 0;
+  while (index < line.length && line[index] === composed[index]) index += 1;
+  const char: string = String.fromCodePoint(line.codePointAt(index) ?? 0);
+  return `${describe(line, index, char)}: not in Unicode normalization form C`;
+}
+
+/** The first HTML construction of the line, or null. */
+function htmlMarkup(line: string): string | null {
+  const hit: RegExpExecArray | null = HTML_MARKUP.exec(line);
+  if (hit === null) return null;
+  return `column ${columnOf(line, hit.index)}: "${hit[0]}" opens HTML markup (a tag, a comment, a processing instruction or an entity), which a PRD never holds`;
+}
+
 /**
  * The lines of the text, each of CRLF, a lone CR and LF ending one line, so
- * that a line number names a line of the original. Refused with its line: a
- * character of `UNREADABLE`.
+ * that a line number names a line of the original. Refused with its line and
+ * column: a character outside the alphabet, a line not in NFC, an HTML
+ * construction. Nothing is read before this check holds on every line.
  */
 export function readRawLines(markdown: string): Parsed<readonly string[]> {
   const lines: readonly string[] = markdown.split(/\r\n?|\n/);
   for (let index = 0; index < lines.length; index += 1) {
-    const hit: RegExpExecArray | null = UNREADABLE.exec(lines[index] ?? "");
-    if (hit !== null) {
-      return fail(
-        `line ${index + 1}: the character ${codePointOf(hit[0])} is not read (a line separator or a control character)`,
-      );
-    }
+    const line: string = lines[index] ?? "";
+    const problem: string | null = outsideAlphabet(line) ?? notNfc(line) ?? htmlMarkup(line);
+    if (problem !== null) return fail(`line ${index + 1}, ${problem}`);
   }
   return { ok: true, value: lines };
 }
 
 // ---------------------------------------------------------------------------
-// Detection form: what a line may say to a person, folded so that a spelling
-// cannot hide a declaration form from the detector. Detection only decides
-// that a line MUST be strict; reading is always done on the raw line.
+// Rule 3, detection form: what a line may say to a person, folded so that a
+// spelling inside the alphabet cannot hide a declaration form from the
+// detector. Detection only decides that a line MUST be strict; reading is
+// always done on the raw line.
 // ---------------------------------------------------------------------------
 
-const ENTITY: RegExp = /&(#[0-9]{1,8}|#[xX][0-9A-Fa-f]{1,7}|[A-Za-z][A-Za-z0-9]{0,31});/g;
-// `&eacute;`, `&Agrave;`, `&ccedil;`…: the base letter is enough, since the
-// accents are folded next.
-const LETTER_ENTITY: RegExp = /^([A-Za-z])(?:acute|grave|circ|uml|tilde|cedil|ring|slash)$/;
-const NAMED_ENTITIES: Readonly<Record<string, string>> = {
-  amp: "&",
-  apos: "'",
-  ast: "*",
-  bsol: "\\",
-  colon: ":",
-  dash: "-",
-  emsp: " ",
-  ensp: " ",
-  grave: "`",
-  gt: ">",
-  hyphen: "-",
-  lowbar: "_",
-  lt: "<",
-  minus: "-",
-  nbsp: " ",
-  num: "#",
-  quot: '"',
-  thinsp: " ",
-  verbar: "|",
-  vert: "|",
+// Dashes read as `-`, colons as `:`, bars as `|`: the punctuation and symbols
+// of the alphabet that a person reads as the ASCII character of a form.
+const CONFUSABLE_PUNCTUATION: Readonly<Record<string, string>> = {
+  [String.fromCodePoint(0x2010)]: "-",
+  [String.fromCodePoint(0x2011)]: "-",
+  [String.fromCodePoint(0x2012)]: "-",
+  [String.fromCodePoint(0x2013)]: "-",
+  [String.fromCodePoint(0x2014)]: "-",
+  [String.fromCodePoint(0x2015)]: "-",
+  [String.fromCodePoint(0x2212)]: "-",
+  [String.fromCodePoint(0xfe63)]: "-",
+  [String.fromCodePoint(0xff0d)]: "-",
+  [String.fromCodePoint(0xff1a)]: ":",
+  [String.fromCodePoint(0x2236)]: ":",
+  [String.fromCodePoint(0xfe55)]: ":",
+  [String.fromCodePoint(0xa789)]: ":",
+  [String.fromCodePoint(0xff5c)]: "|",
+  [String.fromCodePoint(0x2223)]: "|",
+  [String.fromCodePoint(0xffe4)]: "|",
+  [String.fromCodePoint(0x00a6)]: "|",
 };
-const TAG: RegExp = /<\/?[A-Za-z][^<>]*>/g;
-const PRINTABLE_ASCII: RegExp = /^[ -~\t]*$/;
-
-function decodeEntity(_whole: string, body: string): string {
-  if (body.startsWith("#")) {
-    const point: number =
-      body[1] === "x" || body[1] === "X"
-        ? Number.parseInt(body.slice(2), 16)
-        : Number.parseInt(body.slice(1), 10);
-    const valid: boolean = point <= 0x10ffff && (point < 0xd800 || point > 0xdfff);
-    return valid ? String.fromCodePoint(point) : "";
-  }
-  if (Object.hasOwn(NAMED_ENTITIES, body)) return NAMED_ENTITIES[body] ?? "";
-  // An unknown entity is removed: removal can only join the letters around
-  // it, so a declaration form spelled with it is still detected.
-  return LETTER_ENTITY.exec(body)?.[1] ?? "";
-}
+const CONFUSABLE: RegExp = new RegExp(`[${Object.keys(CONFUSABLE_PUNCTUATION).join("")}]`, "g");
 
 /**
- * The line as a person may read it, folded for detection: compatibility
- * forms (NFKC), HTML entities decoded (an unknown one removed), HTML tags
- * removed, accents and invisible format characters removed, `*`, `_`, a
- * backtick and a backslash removed, lower case, runs of white space as one
- * space.
+ * The line as a person may read it, folded for detection: accents of the
+ * Latin-1 letters removed (NFD, then the combining marks, which the alphabet
+ * guarantees come only from that decomposition), `*`, `_`, `~`, a backtick
+ * and a backslash removed, confusable dashes, colons and bars read as `-`,
+ * `:` and `|`, lower case, runs of white space as one space.
  */
 export function detectionForm(line: string): string {
-  const folded: string = PRINTABLE_ASCII.test(line)
-    ? line.replace(ENTITY, decodeEntity).replace(TAG, "")
-    : line
-        .normalize("NFKC")
-        .replace(ENTITY, decodeEntity)
-        .normalize("NFKC")
-        .replace(TAG, "")
-        .normalize("NFD")
-        .replace(/[\p{M}\p{Cf}]/gu, "");
-  return folded
-    .replace(/[*_`\\]/g, "")
+  return line
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "")
+    .replace(/[*_~`\\]/g, "")
+    .replace(CONFUSABLE, (char: string): string => CONFUSABLE_PUNCTUATION[char] ?? char)
     .toLowerCase()
     .replace(/\s+/g, " ");
 }
 
+// Rule 4: on the folded line, every leading character that is neither a
+// letter nor a digit, an ordered-list number and a task-list box are
+// markers before a form; what follows is the first token read.
+// The box and the number come first: the generic alternative would otherwise
+// consume their `[` or stop at their digit.
+const LEADING_MARKERS: RegExp =
+  /^(?:\[[ x]\](?![\p{L}\p{N}])|\d{1,9}[.)](?![\p{L}\p{N}])|[^\p{L}\p{N}])*/u;
+
+const afterMarkers = (form: string): string => form.replace(LEADING_MARKERS, "");
+
 // ---------------------------------------------------------------------------
-// Criteria (rule 3)
+// Criteria (rule 3 of the model)
 // ---------------------------------------------------------------------------
 
-const CRITERION_BULLET: RegExp = /^ {0,3}[-*+][ \t]+(?:\*\*)?(CA-\d+)\b/;
+// Strict: 0-3 spaces, a bullet, optional bold, `CA-<digits>` and a boundary
+// that is neither a letter nor a digit (`CA-1é` is not CA-1).
+const CRITERION_BULLET: RegExp = /^ {0,3}[-*+][ \t]+(?:\*\*)?(CA-(\d+))(?![\p{L}\p{N}])/u;
 const ANY_BULLET: RegExp = /^[ \t]*[-*+][ \t]+/;
-const VALIDATION_CLAUSE: RegExp = /Validation[ \t]*:/;
-// Indentation, list, quote and heading markers before a definition.
-const DEFINITION_PREFIX: RegExp = /^(?:[\s>#+-]|\d{1,9}[.)])+/;
-const CRITERION_FORM: RegExp = /^ca-\d+(?![\p{L}\p{N}])/u;
+// The clause, as a word: `Invalidation :` is not it.
+const VALIDATION_CLAUSE: RegExp = /(?<![\p{L}\p{N}])Validation[ \t]*:/u;
+const CRITERION_FORM: RegExp = /^ca-\d/;
 
 /** True when the line, as a person reads it, starts by defining a `CA-<n>`. */
 function looksLikeCriterion(line: string): boolean {
-  return CRITERION_FORM.test(detectionForm(line).replace(DEFINITION_PREFIX, ""));
+  return CRITERION_FORM.test(afterMarkers(detectionForm(line)));
 }
 
+/** The number of a `CA-<digits>` without its leading zeros: `CA-01` is `CA-1`. */
+const numberKey = (digits: string): string => digits.replace(/^0+(?=\d)/, "");
+
 /**
- * Read the `- CA-n … Validation : …` bullets. Every line that starts, after
- * indentation, list, quote or heading markers and emphasis, with `CA-<n>` and
- * a separator is a strict bullet (0-3 spaces, `-`, `*` or `+`, optional bold)
- * or the document is refused. Line numbers are 1-based, of the original text.
+ * Read the `- CA-n … Validation : …` bullets. Every line that starts, once
+ * folded and after its leading markers, with `CA-<n>` is a strict bullet
+ * (0-3 spaces, `-`, `*` or `+`, optional bold) or the document is refused.
+ * Line numbers are 1-based, of the original text.
  */
 export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
   const read: Parsed<readonly string[]> = readRawLines(markdown);
   if (!read.ok) return read;
   const lines: readonly string[] = read.value;
   const criteria: Criterion[] = [];
-  const firstSeen: Map<string, number> = new Map<string, number>();
+  const firstSeen: Map<string, { readonly id: string; readonly line: number }> = new Map();
 
   for (let index = 0; index < lines.length; index += 1) {
     const line: string = lines[index] ?? "";
@@ -210,12 +308,17 @@ export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
       continue;
     }
     const id: string = match[1] ?? "";
+    const key: string = numberKey(match[2] ?? "");
 
-    const earlier: number | undefined = firstSeen.get(id);
+    const earlier: { readonly id: string; readonly line: number } | undefined = firstSeen.get(key);
     if (earlier !== undefined) {
-      return fail(`criterion ${id} is declared twice, at lines ${earlier} and ${lineNumber}`);
+      const spelling: string =
+        earlier.id === id ? "" : ` (${earlier.id} and ${id} name the same number)`;
+      return fail(
+        `criterion ${id} is declared twice, at lines ${earlier.line} and ${lineNumber}${spelling}`,
+      );
     }
-    firstSeen.set(id, lineNumber);
+    firstSeen.set(key, { id, line: lineNumber });
 
     // A bullet may wrap: indented lines that do not open a new bullet belong to it.
     let body: string = line;
@@ -238,7 +341,7 @@ export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Work-package table (rule 2)
+// Work-package table (rule 2 of the model)
 // ---------------------------------------------------------------------------
 
 const EXPECTED_HEADER: readonly RegExp[] = [
@@ -254,6 +357,7 @@ const RULE_CELL: RegExp = /^:?-+:?$/;
 // WP_SOURCE): a row the trailer cannot name could never be declared.
 const WP_ID: RegExp = /^WP-[1-9][0-9]{0,8}$/;
 const CA_ID: RegExp = /^CA-\d+$/;
+const ROW_FORM: RegExp = /^wp-\d/;
 
 // The table cells are split on `|`: a verification command containing a pipe
 // would shift the columns, which the cell-count check then reports as an error
@@ -322,7 +426,7 @@ function looksLikeHeader(line: string): boolean {
 /** True when the line, as a person reads it, is a row starting with `WP-<n>`. */
 function looksLikeRow(line: string): boolean {
   const form: string = detectionForm(line);
-  return form.includes("|") && /^[\s|]*wp-\d/.test(form);
+  return form.includes("|") && ROW_FORM.test(afterMarkers(form));
 }
 
 function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPackage> {
@@ -365,8 +469,9 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
  *
  * Refused, with the line: a line that looks like a header (a `WP` and a `CA`
  * cell) but is not the exact header; more than one exact header; a separator
- * row whose cell count is not that of the header; a line that starts with
- * `WP-<n>` and holds a `|` outside the block of the table.
+ * row whose cell count is not that of the header; a line whose first token,
+ * once folded and after its leading markers, is `WP-<n>` and which holds a
+ * `|`, outside the block of the table.
  */
 export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage[]> {
   const read: Parsed<readonly string[]> = readRawLines(markdown);
@@ -438,7 +543,7 @@ export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage
 }
 
 // ---------------------------------------------------------------------------
-// Document maturity (rule 1)
+// Document maturity (rule 1 of the model)
 // ---------------------------------------------------------------------------
 
 // Only the "du document" form counts: in the pilot PRD the bare `Maturité :`
@@ -446,43 +551,63 @@ export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage
 const DOCUMENT_MATURITY_LINE: RegExp =
   /^ {0,3}(?:[-*+][ \t]+)?(?:\*\*)?Maturité du document[ \t]*:(?:\*\*)?[ \t]*(.*)$/i;
 const MATURITY_MENTION: string = "maturitedudocument";
+// Rule 5: after the level, only the end of the line, a space, a tab or an
+// ASCII punctuation; `décisionnel`, `décisioné` and `décision–x` give none.
+const ASCII_BOUNDARY: RegExp = /^(?:$|[ \t!-/:-@[-`{-~])/;
 
 const LEVELS_LONGEST_FIRST: readonly MaturityLevel[] = [...MATURITY_LADDER].sort(
   (a: MaturityLevel, b: MaturityLevel): number => b.length - a.length,
 );
 
 function levelOf(value: string): MaturityLevel | null {
-  const cleaned: string = value.normalize("NFC").replace(/[*`_]/g, "").trim().toLowerCase();
+  const cleaned: string = value.replace(/[*`_]/g, "").trim().toLowerCase();
   for (const level of LEVELS_LONGEST_FIRST) {
     if (!cleaned.startsWith(level)) continue;
-    // Whole word only: "décisionnel" must not read as "décision".
-    if (/^\p{L}/u.test(cleaned.slice(level.length))) continue;
+    if (!ASCII_BOUNDARY.test(cleaned.slice(level.length))) continue;
     return level;
   }
   return null;
 }
 
-/** How many times the line, as a person reads it, mentions "maturité du document". */
-function maturityMentions(line: string): number {
-  const letters: string = detectionForm(line).replace(/[^\p{L}\p{N}]/gu, "");
+/** The letters and digits of the line, as a person reads it: the carrier of a mention. */
+function lettersOf(line: string): string {
+  return detectionForm(line).replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+/** How many times the letters mention "maturité du document". */
+function mentionsIn(letters: string): number {
   return letters.split(MATURITY_MENTION).length - 1;
 }
+
+// A mention split by a hard line end: an occurrence inside the join of two
+// consecutive lines that neither holds alone. The window of 17 letters on
+// each side cannot hold an 18-letter occurrence on one side only.
+const WINDOW: number = MATURITY_MENTION.length - 1;
 
 /**
  * The level declared by the `Maturité du document :` line. Every line that
  * mentions "maturité du document" (once folded by `detectionForm`) must be
  * exactly one strict declaration line, or the document is refused with the
- * line. `ok: true` with null when no strict line gives a level, or when the
- * strict lines disagree (fail closed: an ambiguous document does not reach a
- * maturity threshold).
+ * line; a mention split across two lines is refused naming both. `ok: true`
+ * with null when no strict line gives a level, or when the strict lines
+ * disagree (fail closed: an ambiguous document does not reach a maturity
+ * threshold).
  */
 export function readDocumentMaturity(markdown: string): Parsed<MaturityLevel | null> {
   const read: Parsed<readonly string[]> = readRawLines(markdown);
   if (!read.ok) return read;
   const levels: (MaturityLevel | null)[] = [];
+  let previousLetters: string = "";
   for (let index = 0; index < read.value.length; index += 1) {
     const line: string = read.value[index] ?? "";
-    const mentions: number = maturityMentions(line);
+    const letters: string = lettersOf(line);
+    if (index > 0 && mentionsIn(previousLetters.slice(-WINDOW) + letters.slice(0, WINDOW)) > 0) {
+      return fail(
+        `lines ${index} and ${index + 1}: "Maturité du document" split across a line end is not read`,
+      );
+    }
+    previousLetters = letters;
+    const mentions: number = mentionsIn(letters);
     if (mentions === 0) continue;
     const strict: RegExpExecArray | null = DOCUMENT_MATURITY_LINE.exec(line);
     if (strict === null || mentions !== 1) {

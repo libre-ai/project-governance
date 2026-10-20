@@ -936,6 +936,7 @@ function findWorkPackage(
 ): WorkPackage | null {
   const table: Parsed<readonly WorkPackage[]> = parseWorkPackages(prd);
   if (!table.ok) {
+    resolution.volume.workPackages = "unreadable";
     resolution.report.check(item, false, `work-package table unreadable (${table.reason})`);
     return null;
   }
@@ -967,6 +968,7 @@ function checkCitedCriteria(
 ): boolean {
   const parsed: Parsed<readonly Criterion[]> = parseCriteria(requirements);
   if (!parsed.ok) {
+    resolution.volume.criteria = "unreadable";
     resolution.report.check(
       item,
       false,

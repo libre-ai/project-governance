@@ -1257,11 +1257,13 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
   const ISSUE_ITEM = `PR #7 — issue ${PRD_REPO}#12`;
   const PRD_ITEM = `PR #7 — PRD ${PRD_REPO}@${PRD_SHA}`;
 
-  async function judge(world: LinkWorld): Promise<{
+  interface LinkVerdict {
     readonly outcome: string;
     readonly violations: readonly string[];
     readonly volume: string | null;
-  }> {
+  }
+
+  async function judge(world: LinkWorld): Promise<LinkVerdict> {
     const report = await evaluateWorkPackageLink(pr(), policy, world.ports);
     return { outcome: report.outcome, violations: report.violations, volume: report.volumeSummary };
   }
@@ -1471,9 +1473,28 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     const world: LinkWorld = linkWorld({
       prd: { ok: true, value: "Maturité du document : décision\n\nNo table here.\n" },
     });
-    expect((await judge(world)).violations).toEqual([
+    const verdict: LinkVerdict = await judge(world);
+    expect(verdict.violations).toEqual([
       `${PRD_ITEM}: work-package table unreadable (work-package table not found (expected header: WP | CA-n | Périmètre | Vérification | Porte))`,
     ]);
+    // Rule 6: a refused table is `unreadable` in the volume, never `not read`.
+    expect(verdict.volume).toContain(
+      "; maturity décision; work packages parsed: unreadable; criteria parsed: not read",
+    );
+  });
+
+  test("a PRD outside the alphabet is unreadable, naming the line, column and code point", async () => {
+    const world: LinkWorld = linkWorld({
+      prd: {
+        ok: true,
+        value: prdText(`Maturité du document : décision${String.fromCodePoint(0x200b)}`),
+      },
+    });
+    const verdict: LinkVerdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 32, U+200B (Cf): outside the alphabet of a PRD (ASCII, the Latin-1 letters, punctuation, symbols, spaces and the tab))`,
+    ]);
+    expect(verdict.volume).toContain("; maturity unreadable; work packages parsed: not read");
   });
 
   test("a work package absent from the table is a violation naming the rows", async () => {
@@ -1503,9 +1524,25 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     const world: LinkWorld = linkWorld({
       cahier: { ok: true, value: `${CAHIER}- CA-1 Again. Validation : x\n` },
     });
-    expect((await judge(world)).violations).toEqual([
+    const verdict: LinkVerdict = await judge(world);
+    expect(verdict.violations).toEqual([
       `${PRD_ITEM}: docs/cahier-des-charges.md unreadable as criteria (criterion CA-1 is declared twice, at lines 1 and 4)`,
     ]);
+    // Rule 6: refused criteria are `unreadable` in the volume, never `not read`.
+    expect(verdict.volume).toContain(
+      "; work packages parsed: 2; criteria parsed: unreadable; criteria cited: not read",
+    );
+  });
+
+  test("a requirements specification holding HTML is unreadable as criteria, naming the line", async () => {
+    const world: LinkWorld = linkWorld({
+      cahier: { ok: true, value: `${CAHIER}<!-- - CA-3 hidden. Validation : x -->\n` },
+    });
+    const verdict: LinkVerdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${PRD_ITEM}: docs/cahier-des-charges.md unreadable as criteria (line 4, column 1: "<!" opens HTML markup (a tag, a comment, a processing instruction or an entity), which a PRD never holds)`,
+    ]);
+    expect(verdict.volume).toContain("; criteria parsed: unreadable;");
   });
 
   test("a cited criterion without a Validation clause is a violation naming it", async () => {
