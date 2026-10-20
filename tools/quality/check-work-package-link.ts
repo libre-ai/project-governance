@@ -96,7 +96,8 @@ export interface LinkPorts {
    * regular expression over the message: a `Work-package:` line outside the
    * trailer block is not a trailer. Keys are returned as written, values with
    * the surrounding whitespace trimmed by git. A range that cannot be read is
-   * `ok: false`, never an empty list.
+   * `ok: false`, never an empty list, and so is a range a shallow checkout may
+   * have cut (a boundary commit of the shallow history inside the range).
    */
   commitTrailers(baseSha: string, headSha: string): Promise<Fact<readonly CommitDeclarations[]>>;
   /**

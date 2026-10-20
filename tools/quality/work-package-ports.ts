@@ -1,6 +1,6 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import type {
   CommitDeclarations,
   Fact,
@@ -108,15 +108,28 @@ const fail = (reason: string): Failure => ({ ok: false, reason });
 
 const asciiLower = (text: string): string => text.replace(/[A-Z]/g, (c) => c.toLowerCase());
 
-const decoder: TextDecoder = new TextDecoder("utf-8", { fatal: true });
+// `ignoreBOM: true`: the default decoder REMOVES a leading U+FEFF, so the first
+// path of a diff, the first byte of a blob or of a trailer would reach the gate
+// as a text other than the one git printed. Every byte is kept.
+const decoder: TextDecoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
-function decode(bytes: Uint8Array): string | null {
+/** git output as text, byte for byte, or null when it is not valid UTF-8. */
+export function decodeGitOutput(bytes: Uint8Array): string | null {
   try {
     return decoder.decode(bytes);
   } catch {
     return null;
   }
 }
+
+const decode: (bytes: Uint8Array) => string | null = decodeGitOutput;
+
+const UNIT_SEPARATOR = "\u001f";
+const NUL = "\u0000";
+
+/** The refusal of a range a shallow checkout may have cut (its boundary commits are inside it). */
+export const SHALLOW_CUT_REASON =
+  "the checkout is shallow and the range base..head may be cut: fetch with full history";
 
 function commitProblem(label: string, sha: string): Failure | null {
   return FULL_COMMIT.test(sha)
@@ -163,7 +176,11 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
     return clean;
   }
 
-  function gitEnv(home: string, authenticated: boolean): Record<string, string> {
+  function gitEnv(
+    home: string,
+    authenticated: boolean,
+    ceiling: string | null = null,
+  ): Record<string, string> {
     const env: Record<string, string> = {
       PATH: path,
       HOME: home,
@@ -171,6 +188,9 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
     };
+    if (ceiling !== null) {
+      env.GIT_CEILING_DIRECTORIES = ceiling;
+    }
     if (authenticated && basicCredential !== null) {
       env.GIT_CONFIG_COUNT = "1";
       env.GIT_CONFIG_KEY_0 = `http.${serverUrl}/.extraheader`;
@@ -250,74 +270,123 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       return invalid;
     }
     return withScratch(async (home: string): Promise<Fact<readonly CommitDeclarations[]>> => {
-      const env: Record<string, string> = gitEnv(home, false);
-      const absent: Failure | null = await ensureCommits([baseSha, headSha], env);
+      const env: Fact<Record<string, string>> = await workspaceEnv(home);
+      if (!env.ok) {
+        return env;
+      }
+      const absent: Failure | null = await ensureCommits([baseSha, headSha], env.value);
       if (absent !== null) {
         return absent;
       }
-      const listed = await git(
-        ["rev-list", "--reverse", `${baseSha}..${headSha}`],
+      // ONE walk of the range, the trailers parsed by git itself: one record
+      // per commit, terminated by NUL (a commit message cannot carry one).
+      const logged = await git(
+        [
+          "log",
+          "-z",
+          "--reverse",
+          "--no-decorate",
+          `--format=%H%x1f%(trailers:only,unfold,key_value_separator=%x1f)`,
+          `${baseSha}..${headSha}`,
+        ],
         options.workspace,
-        env,
+        env.value,
       );
-      if (!succeeded(listed)) {
-        return gitFailure(`the commits of ${baseSha}..${headSha} are unreadable`, listed);
+      if (!succeeded(logged)) {
+        return gitFailure(`the commits of ${baseSha}..${headSha} are unreadable`, logged);
       }
-      const shas: string[] = (decode(listed.stdout) ?? "").split("\n").filter((l) => l !== "");
-      const commits: CommitDeclarations[] = [];
-      for (const sha of shas) {
-        if (!FULL_COMMIT.test(sha)) {
-          return fail(`git listed ${JSON.stringify(sha)}, which is not a full commit`);
-        }
-        const trailers: Fact<readonly Trailer[]> = await trailersOf(sha, env);
-        if (!trailers.ok) {
-          return trailers;
-        }
-        commits.push({ sha, trailers: trailers.value });
+      const text: string | null = decode(logged.stdout);
+      if (text === null) {
+        return fail(`the commits of ${baseSha}..${headSha} are not valid UTF-8`);
       }
-      return { ok: true, value: commits };
+      const commits: Fact<readonly CommitDeclarations[]> = parseLogRecords(text);
+      if (!commits.ok) {
+        return commits;
+      }
+      const cut: Failure | null = await shallowCut(
+        commits.value.map((commit) => commit.sha),
+        env.value,
+      );
+      return cut ?? commits;
     });
   }
 
   /**
-   * The trailers git parses from one commit. Unfolded, a trailer is one line,
-   * and its key (letters, digits and hyphens for git) never holds the unit
-   * separator, so the first U+001F of a line splits key from value exactly.
+   * The checkout as a git repository, and the environment to read it with.
+   *
+   * Why: git walks UP from a directory that is not a repository root and reads
+   * the enclosing repository, which is not the checkout of the pull request.
+   * The workspace must be absolute, discovery stops at its parent
+   * (`GIT_CEILING_DIRECTORIES`), and git must name the workspace itself as the
+   * top of the work tree.
    */
-  async function trailersOf(
-    sha: string,
+  async function workspaceEnv(home: string): Promise<Fact<Record<string, string>>> {
+    const workspace: string = options.workspace;
+    if (!isAbsolute(workspace)) {
+      return fail(`the workspace ${JSON.stringify(workspace)} is not an absolute path`);
+    }
+    let real: string;
+    try {
+      real = await realpath(workspace);
+    } catch {
+      return fail(`the workspace ${JSON.stringify(workspace)} does not exist`);
+    }
+    const env: Record<string, string> = gitEnv(home, false, dirname(real));
+    const top = await git(["rev-parse", "--show-toplevel"], workspace, env);
+    if (!succeeded(top)) {
+      return gitFailure(`the workspace ${JSON.stringify(workspace)} is not a git repository`, top);
+    }
+    const decoded: string | null = decode(top.stdout);
+    if (decoded === null) {
+      return fail("the top of the workspace repository is not valid UTF-8");
+    }
+    const printed: string = decoded.replace(/\n$/, "");
+    const printedReal: string | null = await realpath(printed).catch((): null => null);
+    if (printedReal !== real) {
+      return fail(
+        `the workspace ${JSON.stringify(workspace)} is not the root of its repository (git names ${JSON.stringify(printed)})`,
+      );
+    }
+    return { ok: true, value: env };
+  }
+
+  /**
+   * A shallow checkout whose boundary commits (their parents are cut) fall
+   * inside the range may have lost the earlier commits of the range, and a
+   * declaration with them: refused, never read short. A boundary below `base`
+   * cuts nothing of the range.
+   */
+  async function shallowCut(
+    range: readonly string[],
     env: Record<string, string>,
-  ): Promise<Fact<readonly Trailer[]>> {
-    const shown = await git(
-      [
-        "log",
-        "-1",
-        "--no-decorate",
-        "--format=%(trailers:only,unfold,key_value_separator=%x1f)",
-        sha,
-      ],
-      options.workspace,
-      env,
-    );
-    if (!succeeded(shown)) {
-      return gitFailure(`the trailers of ${sha} are unreadable`, shown);
+  ): Promise<Failure | null> {
+    const shallow = await git(["rev-parse", "--is-shallow-repository"], options.workspace, env);
+    if (!succeeded(shallow)) {
+      return gitFailure("whether the checkout is shallow is unreadable", shallow);
     }
-    const text: string | null = decode(shown.stdout);
-    if (text === null) {
-      return fail(`the trailers of ${sha} are not valid UTF-8`);
+    const answer: string | null = decode(shallow.stdout);
+    if (answer === "false\n") {
+      return null;
     }
-    const trailers: Trailer[] = [];
-    for (const line of text.split("\n")) {
-      if (line === "") {
-        continue;
-      }
-      const separator: number = line.indexOf("\u001f");
-      if (separator === -1) {
-        return fail(`git printed a trailer line of ${sha} without a key: ${JSON.stringify(line)}`);
-      }
-      trailers.push({ key: line.slice(0, separator), value: line.slice(separator + 1) });
+    if (answer !== "true\n") {
+      return fail(`git answered ${JSON.stringify(answer)} to whether the checkout is shallow`);
     }
-    return { ok: true, value: trailers };
+    const located = await git(["rev-parse", "--git-path", "shallow"], options.workspace, env);
+    const relative: string | null = succeeded(located) ? decode(located.stdout) : null;
+    if (relative === null) {
+      return fail("the list of shallow boundary commits cannot be located");
+    }
+    let boundary: string;
+    try {
+      boundary = await Bun.file(resolve(options.workspace, relative.replace(/\n$/, ""))).text();
+    } catch {
+      return fail("the list of shallow boundary commits is unreadable");
+    }
+    const boundaries: Set<string> = new Set(boundary.split("\n").filter((line) => line !== ""));
+    const inside: string[] = range.filter((sha) => boundaries.has(sha));
+    return inside.length === 0
+      ? null
+      : fail(`${SHALLOW_CUT_REASON} (boundary commit(s) inside the range: ${inside.join(", ")})`);
   }
 
   async function changedFiles(baseSha: string, headSha: string): Promise<Fact<readonly string[]>> {
@@ -327,7 +396,11 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       return invalid;
     }
     return withScratch(async (home: string): Promise<Fact<readonly string[]>> => {
-      const env: Record<string, string> = gitEnv(home, false);
+      const workspace: Fact<Record<string, string>> = await workspaceEnv(home);
+      if (!workspace.ok) {
+        return workspace;
+      }
+      const env: Record<string, string> = workspace.value;
       const absent: Failure | null = await ensureCommits([baseSha, headSha], env);
       if (absent !== null) {
         return absent;
@@ -391,11 +464,19 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       return fail(`path ${JSON.stringify(file)} is not one of ${JSON.stringify(READABLE_PATHS)}`);
     }
     return withScratch(async (home: string): Promise<Fact<string>> => {
+      // The checkout is only a shortcut: when it is not a usable repository
+      // root, or lacks the commit, the remote is read instead.
       if (isPullRequestRepository(repo)) {
-        const env: Record<string, string> = gitEnv(home, false);
-        const present = await git(["cat-file", "-e", `${sha}^{commit}`], options.workspace, env);
-        if (succeeded(present)) {
-          return readBlob(options.workspace, env, repo, sha, file);
+        const local: Fact<Record<string, string>> = await workspaceEnv(home);
+        if (local.ok) {
+          const present = await git(
+            ["cat-file", "-e", `${sha}^{commit}`],
+            options.workspace,
+            local.value,
+          );
+          if (succeeded(present)) {
+            return readBlob(options.workspace, local.value, repo, sha, file);
+          }
         }
       }
       const env: Record<string, string> = gitEnv(home, true);
@@ -427,8 +508,12 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       if (!succeeded(listed)) {
         return gitFailure(`the served branch of ${repo} is unreadable`, listed);
       }
+      const advertised: string | null = decode(listed.stdout);
+      if (advertised === null) {
+        return fail(`the references ${repo} advertises are not valid UTF-8`);
+      }
       const branches: string[] = [];
-      for (const line of (decode(listed.stdout) ?? "").split("\n")) {
+      for (const line of advertised.split("\n")) {
         const match: RegExpExecArray | null = SYMREF_LINE.exec(line);
         if (match !== null) {
           branches.push(match[1] as string);
@@ -527,6 +612,43 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
   return { readIssue, readFileAt, isAncestorOfServedHead, commitTrailers, changedFiles };
 }
 
+/**
+ * The records of `git log -z --format=%H%x1f%(trailers:only,unfold,key_value_separator=%x1f)`.
+ *
+ * Each record is the full commit, U+001F, then one line per trailer (unfolded,
+ * a trailer is one line), and is terminated by NUL. A git key holds only
+ * letters, digits and hyphens, so the first U+001F of a line splits key from
+ * value exactly; a value may hold a later U+001F, it stays in the value.
+ */
+function parseLogRecords(text: string): Fact<readonly CommitDeclarations[]> {
+  if (text === "") {
+    return { ok: true, value: [] };
+  }
+  if (!text.endsWith(NUL)) {
+    return fail("the list of commits is truncated: its last record has no NUL terminator");
+  }
+  const commits: CommitDeclarations[] = [];
+  for (const record of text.slice(0, -1).split(NUL)) {
+    const sha: string = record.slice(0, 40);
+    if (!FULL_COMMIT.test(sha) || record.charAt(40) !== UNIT_SEPARATOR) {
+      return fail(`git printed a commit record that does not start with a full commit and U+001F`);
+    }
+    const trailers: Trailer[] = [];
+    for (const line of record.slice(41).split("\n")) {
+      if (line === "") {
+        continue;
+      }
+      const separator: number = line.indexOf(UNIT_SEPARATOR);
+      if (separator === -1) {
+        return fail(`git printed a trailer line of ${sha} without a key: ${JSON.stringify(line)}`);
+      }
+      trailers.push({ key: line.slice(0, separator), value: line.slice(separator + 1) });
+    }
+    commits.push({ sha, trailers });
+  }
+  return { ok: true, value: commits };
+}
+
 // ---------------------------------------------------------------------------
 // The issue: one GraphQL query, its values as variables, never interpolated.
 // ---------------------------------------------------------------------------
@@ -540,8 +662,8 @@ const ISSUE_QUERY = `query WorkPackageIssue($owner: String!, $name: String!, $nu
       timelineItems(itemTypes: [LABELED_EVENT, UNLABELED_EVENT], first: 100) {
         nodes {
           __typename
-          ... on LabeledEvent { createdAt label { name } actor { login } }
-          ... on UnlabeledEvent { createdAt label { name } actor { login } }
+          ... on LabeledEvent { createdAt label { name } actor { __typename login } }
+          ... on UnlabeledEvent { createdAt label { name } actor { __typename login } }
         }
         pageInfo { hasNextPage }
       }
@@ -601,13 +723,23 @@ function readLabelEvent(node: unknown): Fact<LabelEvent> {
     return fail("a label event names no label");
   }
   // A deleted account leaves a null actor: kept null, never a default login.
+  // Only a `User` is an actor whose login can be an owner's: a `Bot` (a GitHub
+  // App can take its owner's name, and its GraphQL login has no `[bot]`
+  // suffix) or a `Mannequin` with the same login is an unknown actor, and so is
+  // an actor whose type is not given. The gate then sees a `ready` label
+  // without an actor and refuses the read as inconsistent.
   let actor: string | null = null;
   if (node.actor !== null) {
-    const login: unknown = isRecord(node.actor) ? node.actor.login : undefined;
-    if (typeof login !== "string") {
-      return fail("a label event has an actor without a login");
+    if (!isRecord(node.actor)) {
+      return fail("a label event has an actor that is not an object");
     }
-    actor = login;
+    if (node.actor.__typename === "User") {
+      const login: unknown = node.actor.login;
+      if (typeof login !== "string") {
+        return fail("a label event has a User actor without a login");
+      }
+      actor = login;
+    }
   }
   return {
     ok: true,
@@ -678,14 +810,21 @@ function readIssuePayload(payload: unknown): Fact<IssueRead> {
     }
     events.push(event.value);
   }
-  const ready: LabelEvent | null = holdingReadyEvent(events);
+  // The contract: no actor when the issue does not carry `ready` now, whatever
+  // the timeline holds.
+  const carriesReady: boolean = labels.some((name) => asciiLower(name) === READY_LABEL);
+  const ready: LabelEvent | null = carriesReady ? holdingReadyEvent(events) : null;
   let bodyEditedAfterReady = false;
   if (issue.lastEditedAt !== null) {
     const edited: Fact<number> = readTimestamp(issue.lastEditedAt, "the last edit of the body");
     if (!edited.ok) {
       return edited;
     }
-    bodyEditedAfterReady = ready !== null && edited.value > ready.at;
+    // `>=`, failing closed: timestamps have a one-second precision, and an
+    // issue author can edit the body without write access, so an edit in the
+    // same second as the label is counted as after it. The cost: an edit in
+    // the same second just BEFORE the label also cancels the ready.
+    bodyEditedAfterReady = ready !== null && edited.value >= ready.at;
   }
   return {
     ok: true,

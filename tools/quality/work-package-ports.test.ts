@@ -1,14 +1,16 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { CommitDeclarations, Fact, IssueRead, LinkPorts } from "./check-work-package-link";
 import {
+  decodeGitOutput,
   type GitInvocation,
   type GitResult,
   type RealPortsOptions,
   type RunGit,
   realPorts,
+  SHALLOW_CUT_REASON,
   spawnGit,
 } from "./work-package-ports";
 
@@ -395,6 +397,245 @@ describe("isAncestorOfServedHead", () => {
 // The token and the environment of git
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// A shallow checkout (C1): the range must never be read short.
+// ---------------------------------------------------------------------------
+
+describe("commitTrailers in a shallow checkout", () => {
+  const root: string = scratch("wp-shallow-");
+  const origin: string = initRepository(join(root, "origin"), "main");
+  for (const index of [0, 1, 2, 3]) {
+    commitAll(origin, `m${index}`);
+  }
+  const base: string = git(origin, "rev-parse", "HEAD");
+  git(origin, "switch", "--quiet", "-c", "feature");
+  commitAll(origin, ["c1", "", "Work-package: libre-ai/gov#1 WP-1"].join("\n"));
+  commitAll(origin, "c2");
+  const head: string = commitAll(
+    origin,
+    ["c3", "", "Work-package: libre-ai/gov#1 WP-2"].join("\n"),
+  );
+  git(origin, "switch", "--quiet", "main");
+  git(origin, "merge", "--quiet", "--no-ff", "-m", "merge", "feature");
+  git(origin, "branch", "merged");
+
+  const clone = (name: string, ...extra: string[]): string => {
+    git(root, "clone", "--quiet", ...extra, `file://${origin}`, name);
+    return join(root, name);
+  };
+  const values = (commits: readonly CommitDeclarations[]): string[] =>
+    commits.flatMap((commit) => commit.trailers.map((trailer) => trailer.value));
+
+  test("a full clone reads the three commits of the range", async () => {
+    const commits = valueFrom(await portsFor(clone("full")).commitTrailers(base, head));
+    expect(commits.length).toBe(3);
+    expect(values(commits)).toEqual(["libre-ai/gov#1 WP-1", "libre-ai/gov#1 WP-2"]);
+  });
+
+  test("a clone of depth 1 of head cuts the range: refused, never read short", async () => {
+    const workspace: string = clone("cut", "--depth=1", "--branch", "feature");
+    const reason: string = expectFailure(await portsFor(workspace).commitTrailers(base, head));
+    expect(reason).toContain(SHALLOW_CUT_REASON);
+    expect(reason).toContain(head);
+  });
+
+  test("a shallow boundary below base only cuts nothing of the range", async () => {
+    const workspace: string = clone("below", "--depth=5", "--branch", "feature");
+    expect(git(workspace, "rev-parse", "--is-shallow-repository")).toBe("true");
+    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
+    expect(commits.length).toBe(3);
+  });
+
+  test("a clone of depth 1 of the merge commit reads the whole range once both ends are fetched", async () => {
+    const workspace: string = clone("merge", "--depth=1", "--branch", "merged");
+    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
+    expect(commits.length).toBe(3);
+    expect(values(commits)).toEqual(["libre-ai/gov#1 WP-1", "libre-ai/gov#1 WP-2"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The bytes git prints are kept (C2), failures are failures (I2, b), and the
+// workspace is the repository root (c).
+// ---------------------------------------------------------------------------
+
+const BOM: string = String.fromCodePoint(0xfeff);
+
+describe("the bytes git prints are kept", () => {
+  test("the decoder keeps a leading byte order mark", () => {
+    const bytes = new Uint8Array([0xef, 0xbb, 0xbf, 0x64, 0x6f, 0x63, 0x73]);
+    expect(decodeGitOutput(bytes)).toBe(`${BOM}docs`);
+  });
+
+  test("a changed path that starts with a byte order mark comes back with it", async () => {
+    const repo: string = initRepository(join(scratch("wp-bom-path-"), "work"), "main");
+    const base: string = commitAll(repo, "base");
+    const name = `${BOM}notes.md`;
+    try {
+      writeAt(repo, name, "x\n");
+    } catch (error) {
+      console.log(`skipped: the filesystem refuses a name starting with U+FEFF (${String(error)})`);
+      return;
+    }
+    const head: string = commitAll(repo, "a path with a byte order mark");
+    expect(valueFrom(await portsFor(repo).changedFiles(base, head))).toEqual([name]);
+  });
+
+  test("a blob that starts with a byte order mark comes back with it", async () => {
+    const repo: string = initRepository(join(scratch("wp-bom-blob-"), "work"), "main");
+    writeAt(repo, "docs/prd.md", `${BOM}# PRD\n`);
+    const sha: string = commitAll(repo, "prd");
+    const ports: LinkPorts = portsFor(repo, { prRepo: "libre-ai/work" });
+    expect(valueFrom(await ports.readFileAt("libre-ai/work", sha, "docs/prd.md"))).toBe(
+      `${BOM}# PRD\n`,
+    );
+  });
+
+  test("a trailer value that starts with a byte order mark keeps it", async () => {
+    const repo: string = initRepository(join(scratch("wp-bom-trailer-"), "work"), "main");
+    const base: string = commitAll(repo, "base");
+    const head: string = commitAll(
+      repo,
+      ["s", "", `Work-package: ${BOM}libre-ai/gov#1 WP-1`].join("\n"),
+    );
+    const commits = valueFrom(await portsFor(repo).commitTrailers(base, head));
+    expect(commits[0]?.trailers).toEqual([
+      { key: "Work-package", value: `${BOM}libre-ai/gov#1 WP-1` },
+    ]);
+  });
+});
+
+describe("a failure is never read as a value", () => {
+  const repo: string = initRepository(join(scratch("wp-fail-"), "work"), "main");
+  writeAt(repo, "shared.txt", "root\n");
+  const rootCommit: string = commitAll(repo, "root");
+  git(repo, "switch", "--quiet", "-c", "pr");
+  writeAt(repo, "pr.txt", "pr\n");
+  const head: string = commitAll(repo, "the pull request changes pr.txt");
+  git(repo, "switch", "--quiet", "main");
+  writeAt(repo, "main-only.txt", "main\n");
+  const base: string = commitAll(repo, "the base branch moves on");
+
+  const failingOn =
+    (command: string, answer: GitResult): RunGit =>
+    async (invocation: GitInvocation): Promise<GitResult> =>
+      invocation.args[0] === command ? answer : spawnGit(invocation);
+
+  test("a diff git fails to compute is a failure, never an empty list", async () => {
+    const run: RunGit = failingOn("diff", {
+      exitCode: 128,
+      stdout: new Uint8Array(),
+      stderr: "boom",
+    });
+    expectFailure(await portsFor(repo, { run }).changedFiles(rootCommit, head));
+  });
+
+  test("the diff is taken from the merge base: a file only the base branch changed is not listed", async () => {
+    expect(valueFrom(await portsFor(repo).changedFiles(base, head))).toEqual(["pr.txt"]);
+  });
+
+  test("undecodable log output is a named failure, never an empty range", async () => {
+    const run: RunGit = failingOn("log", {
+      exitCode: 0,
+      stdout: new Uint8Array([0xff, 0xfe]),
+      stderr: "",
+    });
+    const reason: string = expectFailure(
+      await portsFor(repo, { run }).commitTrailers(rootCommit, head),
+    );
+    expect(reason).toContain("not valid UTF-8");
+  });
+
+  test("undecodable ls-remote output is a named failure", async () => {
+    const run: RunGit = failingOn("ls-remote", {
+      exitCode: 0,
+      stdout: new Uint8Array([0xff, 0xfe]),
+      stderr: "",
+    });
+    const reason: string = expectFailure(
+      await remotePorts({ run }).isAncestorOfServedHead("libre-ai/product", FIRST),
+    );
+    expect(reason).toContain("not valid UTF-8");
+  });
+});
+
+describe("temporary directories are removed", () => {
+  test("after remote reads that succeed and that fail, no directory git ran in is left", async () => {
+    const recorder = recordingRun();
+    const ports: LinkPorts = remotePorts({ run: recorder.run });
+    valueFrom(await ports.readFileAt("libre-ai/product", FIRST, "docs/prd.md"));
+    expectFailure(await ports.readFileAt("libre-ai/product", ZERO_SHA, "docs/prd.md"));
+    valueFrom(await ports.isAncestorOfServedHead("libre-ai/product", FIRST));
+    expectFailure(await ports.isAncestorOfServedHead("libre-ai/product", ZERO_SHA));
+    const bares: string[] = recorder.calls
+      .filter((call) => call.args[0] === "init")
+      .map((call) => call.args[call.args.length - 1] as string);
+    expect(bares.length).toBe(4);
+    const homes: string[] = [...new Set(recorder.calls.map((call) => call.env.HOME as string))];
+    expect(homes.length).toBe(4);
+    for (const directory of [...bares, ...homes]) {
+      expect(existsSync(directory)).toBe(false);
+    }
+  });
+});
+
+describe("the workspace is the root of its repository", () => {
+  const repo: string = initRepository(join(scratch("wp-root-"), "work"), "main");
+  const base: string = commitAll(repo, "base");
+  const head: string = commitAll(repo, "head");
+  const subdirectory: string = join(repo, "sub");
+  mkdirSync(subdirectory);
+
+  test("a subdirectory of a repository is not read as that repository", async () => {
+    expectFailure(await portsFor(subdirectory).commitTrailers(base, head));
+    expectFailure(await portsFor(subdirectory).changedFiles(base, head));
+  });
+
+  test("a relative workspace is refused", async () => {
+    const reason: string = expectFailure(await portsFor("work").commitTrailers(base, head));
+    expect(reason).toContain("absolute");
+  });
+
+  test("the root itself is read", async () => {
+    expect(valueFrom(await portsFor(repo).commitTrailers(base, head)).length).toBe(1);
+  });
+});
+
+describe("one walk of the range", () => {
+  test("300 commits are read with ONE git log call", async () => {
+    const repo: string = initRepository(join(scratch("wp-many-"), "work"), "main");
+    const stream: string[] = [];
+    for (let mark = 1; mark <= 300; mark += 1) {
+      const message = `c${mark}\n\nWork-package: libre-ai/gov#1 WP-1\n`;
+      stream.push(
+        "commit refs/heads/main",
+        `mark :${mark}`,
+        "committer Fixture <fixture@example.invalid> 1700000000 +0000",
+        `data ${Buffer.byteLength(message)}`,
+        message,
+      );
+      if (mark > 1) {
+        stream.push(`from :${mark - 1}`);
+      }
+      stream.push("");
+    }
+    const imported = Bun.spawnSync(["git", "fast-import", "--quiet"], {
+      cwd: repo,
+      env: FIXTURE_ENV,
+      stdin: Buffer.from(stream.join("\n")),
+    });
+    expect(imported.exitCode).toBe(0);
+    const base: string = git(repo, "rev-parse", "main~299");
+    const head: string = git(repo, "rev-parse", "main");
+    const recorder = recordingRun();
+    const commits = valueFrom(
+      await portsFor(repo, { run: recorder.run }).commitTrailers(base, head),
+    );
+    expect(commits.length).toBe(299);
+    expect(recorder.calls.filter((call) => call.args[0] === "log").length).toBe(1);
+  });
+});
+
 describe("the token never reaches argv or a message", () => {
   // Not shaped like a real credential, so the secret scan has nothing to flag.
   const TOKEN = "fake-token-for-the-port-tests-1";
@@ -481,6 +722,8 @@ interface TimelineEvent {
   readonly label: string;
   readonly actor: string | null;
   readonly at: string;
+  /** The GraphQL type of the actor; `null` leaves `__typename` out. Default: `User`. */
+  readonly actorType?: string | null;
 }
 
 interface IssueShape {
@@ -508,7 +751,12 @@ function graphqlIssue(shape: IssueShape): unknown {
               __typename: event.kind,
               createdAt: event.at,
               label: { name: event.label },
-              actor: event.actor === null ? null : { login: event.actor },
+              actor:
+                event.actor === null
+                  ? null
+                  : event.actorType === null
+                    ? { login: event.actor }
+                    : { __typename: event.actorType ?? "User", login: event.actor },
             })),
             pageInfo: { hasNextPage: shape.timelineHasNextPage ?? false },
           },
@@ -546,11 +794,17 @@ async function readShape(shape: IssueShape): Promise<IssueRead> {
   return valueFrom(await issuePorts(() => json(graphqlIssue(shape))).readIssue("libre-ai/gov", 7));
 }
 
-const labeled = (actor: string | null, at: string, label = "ready"): TimelineEvent => ({
+const labeled = (
+  actor: string | null,
+  at: string,
+  label = "ready",
+  actorType: string | null = "User",
+): TimelineEvent => ({
   kind: "LabeledEvent",
   label,
   actor,
   at,
+  actorType,
 });
 const unlabeled = (actor: string | null, at: string, label = "ready"): TimelineEvent => ({
   kind: "UnlabeledEvent",
@@ -633,6 +887,56 @@ describe("readIssue", () => {
       (await readShape({ labels: ["ready"], events, lastEditedAt: "2026-10-19T09:59:59Z" }))
         .bodyEditedAfterReady,
     ).toBe(false);
+  });
+
+  // One-second precision, failing closed: an edit in the SAME second as the
+  // label counts as after it (an issue author can edit without write access).
+  test("an edit in the same second as the ready label cancels it", async () => {
+    const read: IssueRead = await readShape({
+      labels: ["ready"],
+      lastEditedAt: "2026-10-19T10:00:00Z",
+      events: [labeled(OWNER, "2026-10-19T10:00:00Z")],
+    });
+    expect(read.bodyEditedAfterReady).toBe(true);
+  });
+
+  test("a ready actor typed User gives its login", async () => {
+    const read: IssueRead = await readShape({
+      labels: ["ready"],
+      events: [labeled(OWNER, "2026-10-19T10:00:00Z", "ready", "User")],
+    });
+    expect(read.readyLabeledBy).toBe(OWNER);
+  });
+
+  test.each([
+    ["a Bot", "Bot"],
+    ["a Mannequin", "Mannequin"],
+    ["an actor without __typename", null],
+  ])("%s carrying the owner's login is an unknown actor; the label stays", async (_label: string, actorType:
+    | string
+    | null) => {
+    const read: IssueRead = await readShape({
+      labels: ["ready"],
+      events: [labeled(OWNER, "2026-10-19T10:00:00Z", "ready", actorType)],
+    });
+    expect(read.readyLabeledBy).toBeNull();
+    expect(read.labels).toEqual(["ready"]);
+  });
+
+  test("the timeline holds ready but the issue no longer carries it: no actor", async () => {
+    const read: IssueRead = await readShape({
+      labels: ["kind:work-package"],
+      lastEditedAt: "2026-10-19T11:00:00Z",
+      events: [labeled(OWNER, "2026-10-19T10:00:00Z")],
+    });
+    expect(read).toMatchObject({ readyLabeledBy: null, bodyEditedAfterReady: false });
+  });
+
+  test("the query asks for the type of every label actor", async () => {
+    const captured: Captured[] = [];
+    await issuePorts(() => json(graphqlIssue({})), captured).readIssue("libre-ai/gov", 7);
+    const sent = JSON.parse(String(captured[0]?.init.body)) as { query: string };
+    expect(sent.query.match(/actor \{ __typename login \}/g)?.length).toBe(2);
   });
 
   test("setting the label again restarts the comparison from the new event", async () => {
