@@ -462,13 +462,14 @@ function documentOf(input: string | RawDocument): Parsed<RawDocument> {
 }
 
 // Rule 4: on the detection form, the markers before a form are every
-// character that is neither a letter nor a digit, a numbering token (digits
-// or one letter, dotted or not, with an optional `.` or `)`, as `1.`, `1)`,
-// `1.2`, `a)`, `iv.`) and a task-list box. What follows is the first token.
-// The box and the numbering come first: the generic alternative would
-// otherwise consume their `[` or stop at their digit.
+// character that is neither a letter nor a digit, and a numbering token
+// (digits, one letter or a roman numeral, with an optional `.` or `)`, read
+// before a character that is neither a letter nor a digit). Repeated, that
+// covers `1.`, `1)`, `1.2`, `a)`, `iv.` and a task-list box `[ ]` or `[x]`.
+// What follows is the first token. The numbering comes first: the generic
+// alternative would otherwise stop at its digit.
 const LEADING_MARKERS: RegExp =
-  /^(?:\[[ x]\](?![a-z0-9])|(?:[0-9lo]{1,9}(?:[.)][0-9lo]{1,9})*|[a-z]|[ivxl]{1,4})[.)]?(?=[^a-z0-9]|$)|[^a-z0-9])*/;
+  /^(?:(?:[0-9lo]{1,9}|[a-z]|[ivxl]{1,4})[.)]?(?=[^a-z0-9]|$)|[^a-z0-9])*/;
 
 const afterMarkers = (form: string): string => form.replace(LEADING_MARKERS, "");
 

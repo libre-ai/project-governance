@@ -1051,6 +1051,25 @@ describe("the alphabet of a PRD", () => {
     expect(parseCriteria(read.value)).toEqual(parseCriteria(text));
     expect(maturityOf(read.value)).toBe("décision");
   });
+
+  // The parsers trust a document: its lines were read by `readRawLines`, and
+  // its forms are the ones they read. A document whose forms disagree with
+  // its lines (built here by hand, never by the reader) shows that nothing
+  // is read a second time from the text.
+  test("a document given to a parser is not read again from its text", () => {
+    const read: Parsed<RawDocument> = readRawLines("Maturité du document : décision\n- x\n");
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    const forged: RawDocument = {
+      lines: [read.value.lines[0] ?? "", `${read.value.lines[1] ?? ""}${char(0x200b)}`, ""],
+      structural: [...read.value.structural.slice(0, 1), "- ca-1 x", ""],
+      detection: [...read.value.detection.slice(0, 1), "- ca-l x", ""],
+    };
+    // The alphabet is not checked again on the lines…
+    expect(readDocumentMaturity(forged)).toEqual({ ok: true, value: "décision" });
+    // …and the detection form given, not the text, decides what is a form.
+    expect(refusalOf(parseCriteria(forged))).toBe(CRITERION_FORM(2));
+  });
 });
 
 // Rule 2: a PRD holds no HTML. A `<` that opens a tag, a comment, a
@@ -1461,7 +1480,7 @@ describe("the work-package norm", () => {
       "A mention split across the lines of a paragraph (a run of consecutive non-empty lines, however many) is refused naming its first and last line.",
       "then a level of the ladder followed by the end of the line, a space, a tab, `.`, `,`, `;`, `:` or `)`",
       "Every line whose first token, on its detection form and after its leading markers, reads `CA-<n>` MUST be a strict criterion bullet",
-      "a numbering token (digits or one letter, dotted or not, with or without a `.` or `)`: `1.`, `1)`, `1.2`, `a)`, `iv.`)",
+      "a numbering token (digits, one letter or a roman numeral, with or without a `.` or `)`, before a character that is neither a letter nor a digit), repeated: `1.`, `1)`, `1.2`, `a)`, `iv.` and a task-list box `[ ]` or `[x]` are markers",
       "The clause starts a word: only white space, `.`, `,`, `;`, `(`, `*`, `_` or a backtick may precede it",
       "a table row that starts with a `CA-<n>` is refused",
       "Two spellings of one number (`CA-01` and `CA-1`) are one criterion",
