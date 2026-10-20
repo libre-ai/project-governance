@@ -679,6 +679,11 @@ describe("maturity: every mention is a strict declaration", () => {
     ["a backslash", "Maturit\\é du document : décision"],
     ["a zero-width space", `Matu${char(0x200b)}rité du document : décision`],
     ["fullwidth letters", `${char(0xff2d)}aturité du document : décision`],
+    // NFKC before decoding: a fullwidth `&` only forms an entity once folded.
+    [
+      "an entity with a fullwidth ampersand",
+      `Maturit${char(0xff06)}eacute; du document : décision`,
+    ],
     ["a tag inside", "Maturité <span>du</span> document : décision"],
     ["an indent of four", "    Maturité du document : décision"],
     ["a tab indent", "\tMaturité du document : décision"],
