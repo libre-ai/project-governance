@@ -1002,6 +1002,7 @@ describe("the work-package norm", () => {
     for (const sentence of [
       "The gate judges one pull request per run and prints the volume it examined on one line",
       "the suite holds no mutant of the gate.",
+      "Each following line whose first character, after leading spaces and tabs, is `|` is a row",
       "a backtick written in it is lost, not refused.",
       "coexists with the `WP-<k>` grammar and does not concern it.",
       "The work package is judged at the commit the issue cites, not at the latest PRD.",
