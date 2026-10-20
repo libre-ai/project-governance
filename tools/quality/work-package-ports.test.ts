@@ -595,6 +595,22 @@ describe("readIssue", () => {
     expect(read.readyLabeledBy).toBe(OTHER);
   });
 
+  // Two labeled events with no unlabeled between them (the label set again
+  // under another case, or recorded twice): only the LAST one holds, so the
+  // owner's earlier event cannot vouch for a later one by someone else.
+  test("ready labeled twice in a row: the actor and the date of the LAST labeled event", async () => {
+    const read: IssueRead = await readShape({
+      labels: ["ready"],
+      lastEditedAt: "2026-10-19T11:00:00Z",
+      events: [
+        labeled(OWNER, "2026-10-19T10:00:00Z"),
+        labeled(OTHER, "2026-10-19T12:00:00Z", "Ready"),
+      ],
+    });
+    expect(read.readyLabeledBy).toBe(OTHER);
+    expect(read.bodyEditedAfterReady).toBe(false);
+  });
+
   test("the label name compares ASCII case-insensitively; other labels are ignored", async () => {
     const read: IssueRead = await readShape({
       labels: ["Ready"],
