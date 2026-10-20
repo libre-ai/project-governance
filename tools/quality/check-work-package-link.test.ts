@@ -1492,7 +1492,7 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
     });
     const verdict: LinkVerdict = await judge(world);
     expect(verdict.violations).toEqual([
-      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 32, U+200B (Cf): outside the alphabet of a PRD (ASCII, the Latin-1 letters, punctuation, symbols, spaces and the tab))`,
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3, column 32, U+200B (Cf): outside the alphabet of a PRD (printable ASCII, the tab and the 176 code points of the skeleton table))`,
     ]);
     expect(verdict.volume).toContain("; maturity unreadable; work packages parsed: not read");
   });

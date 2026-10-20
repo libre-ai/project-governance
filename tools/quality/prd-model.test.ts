@@ -1,15 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import {
+  admitsCodePoint,
   atLeast,
+  type Criterion,
   detectionForm,
   MATURITY_LADDER,
   type MaturityLevel,
   type Parsed,
   parseCriteria,
   parseWorkPackages,
+  type RawDocument,
   readDocumentMaturity,
   readRawLines,
+  SKELETON,
+  structuralForm,
   type WorkPackage,
 } from "./prd-model";
 
@@ -23,7 +28,7 @@ function table(...rows: string[]): string {
 }
 
 // The level a readable document declares; a refusal here is a test failure.
-function maturityOf(markdown: string): MaturityLevel | null {
+function maturityOf(markdown: string | RawDocument): MaturityLevel | null {
   const read: Parsed<MaturityLevel | null> = readDocumentMaturity(markdown);
   if (!read.ok) throw new Error(`unexpected refusal: ${read.reason}`);
   return read.value;
@@ -41,15 +46,13 @@ const point = (codePoint: number): string =>
 
 // The refusal messages of the alphabet (rule 1) and of the HTML rule (rule 2).
 const OUTSIDE = (line: number, column: number, codePoint: number, category: string): string =>
-  `line ${line}, column ${column}, ${point(codePoint)} (${category}): outside the alphabet of a PRD (ASCII, the Latin-1 letters, punctuation, symbols, spaces and the tab)`;
-const NOT_NFC = (line: number, column: number, codePoint: number, category: string): string =>
-  `line ${line}, column ${column}, ${point(codePoint)} (${category}): not in Unicode normalization form C`;
+  `line ${line}, column ${column}, ${point(codePoint)} (${category}): outside the alphabet of a PRD (printable ASCII, the tab and the ${SKELETON.size} code points of the skeleton table)`;
 const HTML = (line: number, column: number, snippet: string): string =>
   `line ${line}, column ${column}: "${snippet}" opens HTML markup (a tag, a comment, a processing instruction or an entity), which a PRD never holds`;
 const MENTION = (line: number): string =>
   `line ${line}: "Maturité du document" outside a strict declaration line (\`Maturité du document : <level>\`, at most three spaces of indentation, an optional bullet and bold) is not read`;
-const SPLIT_MENTION = (line: number): string =>
-  `lines ${line} and ${line + 1}: "Maturité du document" split across a line end is not read`;
+const SPLIT_MENTION = (first: number, last: number = first + 1): string =>
+  `lines ${first} to ${last}: "Maturité du document" split across a line end is not read`;
 const CRITERION_FORM = (line: number): string =>
   `line ${line}: a CA-<n> definition that is not a strict criterion bullet ("- CA-<n> …", at most three spaces of indentation) is not read`;
 const ROW_OUTSIDE = (line: number): string =>
@@ -89,13 +92,22 @@ describe("parseCriteria", () => {
     });
   });
 
-  test("a word that merely ends with Validation is not the clause", () => {
-    expect(parseCriteria("- CA-1 x. Invalidation : aucune\n- CA-2 y. InValidation : z\n")).toEqual({
+  // The clause starts a word: nothing but white space, `.`, `,`, `;`, `(`, `*`,
+  // `_` or a backtick may precede it.
+  test.each([
+    ["a word that merely ends with Validation", "- CA-1 x. Invalidation : aucune", false],
+    ["a capital inside the word", "- CA-1 x. InValidation : z", false],
+    ["a hyphenated word", "- CA-1 x. Non-Validation : aucune", false],
+    ["a struck clause", "- CA-1 x. ~~Validation : bun test~~", false],
+    ["a slash before it", "- CA-1 x. Pré/Validation : y", false],
+    ["a bold clause", "- CA-1 x. **Validation :** y", true],
+    ["a clause in parentheses", "- CA-1 x (Validation : y)", true],
+    ["a clause after a comma", "- CA-1 x,Validation : y", true],
+    ["a clause after a code span", "- CA-1 `x` Validation : y", true],
+  ])("%s", (_label: string, line: string, hasValidation: boolean) => {
+    expect(parseCriteria(`${line}\n`)).toEqual({
       ok: true,
-      value: [
-        { id: "CA-1", line: 1, hasValidation: false },
-        { id: "CA-2", line: 2, hasValidation: false },
-      ],
+      value: [{ id: "CA-1", line: 1, hasValidation }],
     });
   });
 
@@ -170,9 +182,26 @@ describe("criteria: every definition form is strict or refused", () => {
     ["an en dash", [`- CA${char(0x2013)}9 x. Validation : y`], 1],
     ["a non-breaking hyphen", [`- CA${char(0x2011)}9 x. Validation : y`], 1],
     ["a minus sign", [`- CA${char(0x2212)}9 x. Validation : y`], 1],
-    ["a fullwidth hyphen", [`- CA${char(0xff0d)}9 x. Validation : y`], 1],
     ["a letter glued to the number", ["- CA-9é x. Validation : y"], 1],
     ["a second definition in a quote", ["- CA-1 a. Validation : x", "> - CA-1 again"], 2],
+    ["a dotted section number", ["1.2 CA-9 x. Validation : y"], 1],
+    ["a lettered item", ["a) CA-9 x. Validation : y"], 1],
+    ["a roman item", ["iv. CA-9 x. Validation : y"], 1],
+    ["a date before it", ["2026-10-20 CA-9 x"], 1],
+    ["a letter l for the digit", ["- CA-l x. Validation : y"], 1],
+    ["a capital I for the digit", ["- CA-I x. Validation : y"], 1],
+    ["a bar for the digit", ["- CA-| x. Validation : y"], 1],
+    ["a letter O for the digit", ["- CA-O x. Validation : y"], 1],
+    ["a minus sign", [`- CA${char(0x2212)}9 x. Validation : y`], 1],
+    ["a hyphen bullet", [`- CA${char(0x2043)}9 x. Validation : y`], 1],
+    ["a not sign", [`- CA${char(0x00ac)}9 x. Validation : y`], 1],
+    ["a cent sign for the C", [`- ${char(0x00a2)}A-9 x. Validation : y`], 1],
+    ["an ordinal a for the A", [`- C${char(0x00aa)}-9 x. Validation : y`], 1],
+    [
+      "a second definition spelled with a minus",
+      ["- CA-1 a. Validation : x", `- CA${char(0x2212)}1 again`],
+      2,
+    ],
   ])("%s is refused with its line", (_label: string, lines: string[], at: number) => {
     expect(refusalOf(parseCriteria(lines.join("\n")))).toBe(CRITERION_FORM(at));
   });
@@ -364,6 +393,26 @@ describe("work-package table: one strict header, rows in its block", () => {
     expect(refusalOf(parseWorkPackages(markdown))).toBe(HEADER_LIKE(7));
   });
 
+  test.each([
+    ["a letter l before the WP cell", "l WP | CA-n | Périmètre | Vérification | Porte |"],
+    [
+      "a bullet before the WP cell",
+      `${char(0x2022)} WP | CA-n | Périmètre | Vérification | Porte |`,
+    ],
+    [
+      "a broken bar before the WP cell",
+      `${char(0x00a6)} WP | CA-n | Périmètre | Vérification | Porte |`,
+    ],
+    ["a dotted number before the WP cell", "| 1.2 WP | CA-n | Périmètre | Vérification | Porte |"],
+    [
+      "a cell CA-n spelled with a minus",
+      `| WP | CA${char(0x2212)}n | Périmètre | Vérification | Porte |`,
+    ],
+  ])("a header-like line with %s is refused", (_label: string, line: string) => {
+    const markdown: string = [line, TABLE_RULE, "| x | CA-1 | ** | true | two-way |"].join("\n");
+    expect(refusalOf(parseWorkPackages(markdown))).toBe(HEADER_LIKE(1));
+  });
+
   test("T2 a bold header is refused", () => {
     const markdown: string = [
       "| **WP** | **CA-n** | **Périmètre** | **Vérification** | **Porte** |",
@@ -421,7 +470,12 @@ describe("work-package table: one strict header, rows in its block", () => {
     ["a bold id", "| **WP-2** | CA-1 | ** | true | two-way |"],
     ["a non-breaking hyphen", `| WP${char(0x2011)}2 | CA-1 | ** | true | two-way |`],
     ["an en dash", `| WP${char(0x2013)}2 | CA-1 | ** | true | two-way |`],
-    ["fullwidth pipes", `${char(0xff5c)} WP-2 ${char(0xff5c)} CA-1 ${char(0xff5c)}`],
+    ["a minus sign", `| WP${char(0x2212)}2 | CA-1 | ** | true | two-way |`],
+    ["broken bars", `${char(0x00a6)} WP-2 ${char(0x00a6)} CA-1 ${char(0x00a6)}`],
+    ["double vertical lines", `${char(0x2016)} WP-2 ${char(0x2016)} CA-1 ${char(0x2016)}`],
+    ["two v for the W", "| VVP-2 | CA-1 | ** | true | two-way |"],
+    ["a letter l for the digit", "| WP-l | CA-1 | ** | true | two-way |"],
+    ["a capital O for the digit", "| WP-2O | CA-1 | ** | true | two-way |"],
     ["an indented row", "    | WP-2 | CA-1 | ** | true | two-way |"],
   ])("%s outside the block is refused", (_label: string, line: string) => {
     const markdown: string = [TABLE_HEADER, TABLE_RULE, ROW, "", line].join("\n");
@@ -538,10 +592,16 @@ describe("readDocumentMaturity", () => {
     ["the end of the line", "décision", "décision"],
     ["a space", "décision (arbitrage)", "décision"],
     ["a tab", "décision\tx", "décision"],
-    ["an ASCII full stop", "décision.", "décision"],
-    ["an ASCII hyphen", "décision-nelle", "décision"],
-    ["an ASCII question mark", "décision? non : exploration", "décision"],
+    ["a full stop", "décision.", "décision"],
+    ["a comma", "décision, arbitrée", "décision"],
+    ["a semicolon", "décision; voir PR", "décision"],
+    ["a colon", "décision: voir PR", "décision"],
+    ["a closing parenthesis", "décision)", "décision"],
     ["a trailing bold marker", "décision**", "décision"],
+    ["a hyphen: décision-rejetée", "décision-rejetée", null],
+    ["a slash", "décision/exploration", null],
+    ["a question mark", "décision? non : exploration", null],
+    ["an opening parenthesis glued", "décision(x)", null],
     ["a letter: décisionnel", "décisionnel", null],
     ["an accented letter glued", "décisioné", null],
     ["an en dash glued", `décision${char(0x2013)} x`, null],
@@ -681,6 +741,86 @@ describe("maturity: every mention is a strict declaration", () => {
       SPLIT_MENTION(1),
     ],
     [
+      "I1 the label over three lines",
+      ["Maturité", "du", "document : proposition", "", "Maturité du document : décision"],
+      SPLIT_MENTION(1, 3),
+    ],
+    [
+      "I1 the label over four lines",
+      ["x Maturité", "du", "docu", "ment : proposition"],
+      SPLIT_MENTION(1, 4),
+    ],
+    [
+      "I1 rn for m, before a strict line",
+      ["Maturité du docurnent : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 rn for m, after a strict line",
+      ["Maturité du document : décision", "", "Maturité du docurnent : proposition"],
+      MENTION(3),
+    ],
+    [
+      "I1 a zero for the o",
+      ["Maturité du d0cument : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a cent sign for the c",
+      [`Maturité du do${char(0x00a2)}ument : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 an inverted exclamation mark for the i",
+      [`Matur${char(0x00a1)}té du document : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a bar for the i",
+      ["Matur|té du document : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a one for the i",
+      ["Matur1té du document : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a letter l for the i",
+      ["Maturlté du document : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a Latin-1 letter in the label",
+      ["Mäturité dû döcument : proposition", "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a euro sign for the e",
+      [`Maturité du docum${char(0x20ac)}nt : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a degree sign for the o",
+      [`Maturité du d${char(0x00b0)}cument : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 an element-of sign for the e",
+      [`Maturit${char(0x2208)} du document : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a white circle for the o",
+      [`Maturité du d${char(0x25cb)}cument : proposition`, "", "Maturité du document : décision"],
+      MENTION(1),
+    ],
+    [
+      "I1 a section sign for the s, in prose",
+      [`Maturité du document : décision`, "", `La maturité du document e§t faible`],
+      MENTION(3),
+    ],
+    [
       "H29 a setext heading is a strict line, in disagreement with the other",
       ["Maturité du document : proposition", "===", "", "Maturité du document : décision"],
       null,
@@ -704,12 +844,12 @@ describe("maturity: every mention is a strict declaration", () => {
     ["underscore emphasis", "_Maturité du document_ : décision"],
     ["strikethrough", "~~Maturité du document~~ : décision"],
     ["a code span", "`Maturité du document` : décision"],
-    ["a fullwidth colon", `Maturité du document ${char(0xff1a)} décision`],
-    ["a ratio colon", `Maturité du document ${char(0x2236)} décision`],
     ["a no-break space between the words", `Maturité${char(0x00a0)}du document : décision`],
+    ["a narrow no-break space before the colon", `Maturité du document${char(0x202f)}: décision`],
     ["a tab between the words", "Maturité\tdu document : décision"],
-    ["a braille blank inside a word", `Matu${char(0x2800)}rité du document : décision`],
+    ["a bullet inside a word", `Matu${char(0x2022)}rité du document : décision`],
     ["a punctuation inside a word", "Matu.rité du document : décision"],
+    ["an en dash for the colon", `Maturité du document ${char(0x2013)} décision`],
     ["an indent of four", "    Maturité du document : décision"],
     ["a tab indent", "\tMaturité du document : décision"],
     ["a quote", "> Maturité du document : décision"],
@@ -726,19 +866,23 @@ describe("maturity: every mention is a strict declaration", () => {
     expect(readDocumentMaturity(`# PRD\n${line}`)).toEqual({ ok: false, reason: MENTION(2) });
   });
 
-  test("a mention split across a line end names both lines, and only a real split is one", () => {
+  test("a mention split across a line end names its lines, and only a real split is one", () => {
     expect(refusalOf(readDocumentMaturity("# PRD\nx Maturité du\n  document : x\n"))).toBe(
       SPLIT_MENTION(2),
     );
     // A strict line followed by a line that starts with "document" is no split.
     expect(maturityOf("Maturité du document : décision\ndocument suivant\n")).toBe("décision");
+    // A blank line ends a paragraph: the join stops there.
+    expect(
+      maturityOf("Maturité du\n\ndocument : proposition\nMaturité du document : décision"),
+    ).toBe("décision");
   });
 });
 
-// Rule 1: the alphabet of a PRD is closed. Every character of the document is
-// the tab, a line end, a space (Zs), an ASCII digit, an ASCII or Latin-1
-// letter, a punctuation or a symbol; the text is in NFC. Anything else is
-// refused naming the line, the column and the code point.
+// Rule 1: the alphabet of a PRD is the skeleton table. Every character of the
+// document is the tab, a line end, a printable ASCII character or a key of
+// SKELETON. Anything else is refused naming the line, the column and the code
+// point; nothing is admitted without a declared skeleton.
 describe("the alphabet of a PRD", () => {
   const STRICT: string = "Maturité du document : décision";
 
@@ -762,7 +906,6 @@ describe("the alphabet of a PRD", () => {
     ["a fullwidth capital M", 0xff2d, "Lu"],
     ["a micro sign", 0x00b5, "Ll"],
     ["a modifier letter small r", 0x02b3, "Lm"],
-    ["a feminine ordinal indicator", 0x00aa, "Lo"],
     ["a Latin small letter n with grave", 0x01f9, "Ll"],
     ["a fullwidth digit one", 0xff11, "Nd"],
     ["an Arabic-Indic digit one", 0x0661, "Nd"],
@@ -776,9 +919,29 @@ describe("the alphabet of a PRD", () => {
     ["a next line", 0x0085, "Cc"],
     ["a line separator", 0x2028, "Zl"],
     ["a paragraph separator", 0x2029, "Zp"],
+    ["an en quad", 0x2000, "Zs"],
+    ["an ideographic space", 0x3000, "Zs"],
+    ["an Ogham space mark", 0x1680, "Zs"],
+    ["a Greek varia", 0x1fef, "Sk"],
     ["a private-use character", 0xe000, "Co"],
     ["an unassigned code point", 0x0378, "Cn"],
     ["a lone surrogate", 0xd800, "Cs"],
+    ["a box-drawing vertical line", 0x2502, "So"],
+    ["a box-drawing double vertical line", 0x2551, "So"],
+    ["a divides sign", 0x2223, "Sm"],
+    ["a fullwidth vertical line", 0xff5c, "Sm"],
+    ["a fullwidth colon", 0xff1a, "Po"],
+    ["a ratio colon", 0x2236, "Sm"],
+    ["a horizontal line extension", 0x23af, "Sm"],
+    ["a modifier letter minus sign", 0x02d7, "Sk"],
+    ["a fullwidth hyphen-minus", 0xff0d, "Pd"],
+    ["a cedi sign", 0x20b5, "Sc"],
+    ["an estimated symbol", 0x212e, "So"],
+    ["a ring operator", 0x2218, "Sm"],
+    ["a partial differential", 0x2202, "Sm"],
+    ["a braille blank", 0x2800, "So"],
+    ["a rocket", 0x1f680, "So"],
+    ["a square root", 0x221a, "Sm"],
   ])("%s is refused with its line, column and category, by every reader", (_label: string, codePoint: number, category: string) => {
     const markdown: string = [STRICT, `x${char(codePoint)}y`].join("\r\n");
     const expected: string = OUTSIDE(2, 2, codePoint, category);
@@ -793,7 +956,7 @@ describe("the alphabet of a PRD", () => {
   });
 
   test("the column counts code points, not UTF-16 units", () => {
-    const line: string = `${char(0x1f600)}é${char(0x200b)}`;
+    const line: string = `${char(0x1f534)}é${char(0x200b)}`;
     expect(refusalOf(readRawLines(line))).toBe(OUTSIDE(1, 3, 0x200b, "Cf"));
   });
 
@@ -804,35 +967,89 @@ describe("the alphabet of a PRD", () => {
     expect(refusalOf(readRawLines(markdown))).toBe(OUTSIDE(2, 2, 0x0430, "Ll"));
   });
 
-  test.each([
-    ["an en quad", 0x2000, "Zs"],
-    ["a Greek varia", 0x1fef, "Sk"],
-  ])("%s, which is not in NFC, is refused", (_label: string, codePoint: number, category: string) => {
-    expect(refusalOf(readRawLines(`ab${char(codePoint)}c`))).toBe(
-      NOT_NFC(1, 3, codePoint, category),
-    );
-  });
-
-  test("the variation selector 16 is accepted right after a symbol, nowhere else", () => {
+  test("the variation selector 16 is accepted right after a symbol of the table, nowhere else", () => {
     expect(readRawLines(`${char(0x26a0)}${char(0xfe0f)} attention`).ok).toBe(true);
+    expect(readRawLines(`${char(0x1f7e2)}${char(0xfe0f)}`).ok).toBe(true);
     expect(refusalOf(readRawLines(`e${char(0xfe0f)}`))).toBe(OUTSIDE(1, 2, 0xfe0f, "Mn"));
     expect(refusalOf(readRawLines(`${char(0xfe0f)}`))).toBe(OUTSIDE(1, 1, 0xfe0f, "Mn"));
+    expect(refusalOf(readRawLines(`${char(0x2013)}${char(0xfe0f)}`))).toBe(
+      OUTSIDE(1, 2, 0xfe0f, "Mn"),
+    );
     expect(refusalOf(readRawLines(`1${char(0xfe0f)}${char(0x20e3)}`))).toBe(
       OUTSIDE(1, 2, 0xfe0f, "Mn"),
     );
   });
 
-  test("the Latin-1 letters, Œ œ Ÿ, punctuation, symbols, spaces and the tab are accepted", () => {
+  test("the Latin-1 letters, Œ œ Ÿ, the admitted punctuation, symbols and spaces are accepted", () => {
     const text: string = [
       "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß",
       "àáâãäåæçèéêëìíîïðñòóôõöøùúûüýþÿ",
       `${char(0x0152)}${char(0x0153)}${char(0x0178)}`,
-      "§ « » — – … → ≤ ≥ ≠ × ÷ ° € ™ ‖ ′ ∈ ⇒ ⚠️ ✅ 🚀 ¦ ¬ ± ¶ · ¿ ¡",
-      `a${char(0x00a0)}b${char(0x3000)}c${char(0x1680)}d\te`,
+      "§ « » — – … → ≤ ≥ ≠ × ÷ ° € ™ ‖ ′ ∈ ⇒ ⚠️ ✅ ❌ ✓ 🔴 🟢 ¦ ¬ ± ¶ · ¿ ¡ № ∞ ≈ • ‘ ’ “ ” ‰",
+      `a${char(0x00a0)}b${char(0x2009)}c${char(0x202f)}d\te`,
       "a < b, R&D, Q&A, AT&T, a & b, &#, <3, < b, 1 << 2, &;",
     ].join("\n");
     expect(readRawLines(text).ok).toBe(true);
     expect(maturityOf(`${text}\n${STRICT}`)).toBe("décision");
+  });
+
+  // Totality: admitted = printable ASCII ∪ keys of SKELETON, and nothing
+  // else in the whole code space; every key has a skeleton that is itself
+  // readable by the detector (ASCII, or the neutral separator).
+  test("the alphabet is total: printable ASCII and the table, nothing else, with the counts printed", () => {
+    let admitted: number = 0;
+    let admittedOutsideTable: number = 0;
+    for (let codePoint = 0x80; codePoint <= 0x10ffff; codePoint += 1) {
+      if (admitsCodePoint(codePoint)) {
+        admitted += 1;
+        if (!SKELETON.has(codePoint)) admittedOutsideTable += 1;
+      }
+    }
+    console.log(
+      `alphabet: ${admitted} non-ASCII code point(s) admitted of ${0x10ffff - 0x7f} examined; table size ${SKELETON.size}; admitted outside the table: ${admittedOutsideTable}`,
+    );
+    expect(admitted).toBe(SKELETON.size);
+    expect(admittedOutsideTable).toBe(0);
+    expect(SKELETON.size).toBeLessThan(200);
+    for (let codePoint = 0x00; codePoint <= 0x7f; codePoint += 1) {
+      const printable: boolean = codePoint === 0x09 || (codePoint >= 0x20 && codePoint <= 0x7e);
+      expect(admitsCodePoint(codePoint)).toBe(printable);
+    }
+    for (const [codePoint, skeleton] of SKELETON) {
+      const char: string = String.fromCodePoint(codePoint);
+      expect(codePoint).toBeGreaterThan(0x7f);
+      expect(readRawLines(char).ok).toBe(true);
+      expect(char.normalize("NFC")).toBe(char);
+      expect(/^(?:[ !-~]+|·)$/.test(skeleton)).toBe(true);
+      expect(skeleton).toBe(skeleton.toLowerCase());
+    }
+    expect(SKELETON.has(0xfe0f)).toBe(false);
+    // The reader and the predicate agree on every code point below U+3000.
+    for (let codePoint = 0x80; codePoint < 0x3000; codePoint += 1) {
+      if (codePoint >= 0xd800 && codePoint <= 0xdfff) continue;
+      if (codePoint === 0xfe0f) continue;
+      expect(readRawLines(String.fromCodePoint(codePoint)).ok).toBe(SKELETON.has(codePoint));
+    }
+  });
+
+  test("the raw document is read once and shared by the three parsers", () => {
+    const text: string = [
+      "Maturité du document : décision",
+      "",
+      TABLE_HEADER,
+      TABLE_RULE,
+      "| `WP-1` | `CA-1` | `a/**` | `bun test` | `one-way` |",
+      "",
+      "- CA-1 x. Validation : y",
+    ].join("\n");
+    const read: Parsed<RawDocument> = readRawLines(text);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.value.lines).toHaveLength(7);
+    expect(readDocumentMaturity(read.value)).toEqual(readDocumentMaturity(text));
+    expect(parseWorkPackages(read.value)).toEqual(parseWorkPackages(text));
+    expect(parseCriteria(read.value)).toEqual(parseCriteria(text));
+    expect(maturityOf(read.value)).toBe("décision");
   });
 });
 
@@ -878,7 +1095,9 @@ describe("no HTML in a PRD", () => {
 
 describe("raw lines", () => {
   test("CRLF, a lone CR and LF each end one line, and the numbers follow the original", () => {
-    expect(readRawLines("a\r\nb\rc\nd")).toEqual({ ok: true, value: ["a", "b", "c", "d"] });
+    const read: Parsed<RawDocument> = readRawLines("a\r\nb\rc\nd");
+    expect(read.ok).toBe(true);
+    if (read.ok) expect(read.value.lines).toEqual(["a", "b", "c", "d"]);
     const mixed: string = "# Cahier\r\nx\ry\n- CA-1 Real. Validation : a";
     expect(parseCriteria(mixed)).toEqual({
       ok: true,
@@ -895,24 +1114,39 @@ describe("raw lines", () => {
     expect(maturityOf(`x\ty${nbsp}z\nMaturité du document : décision`)).toBe("décision");
   });
 
-  // Rule 3: the detection form folds only what the alphabet lets through.
-  test("the detection form folds case, accents, emphasis, backslashes, spaces, dashes, colons and pipes", () => {
-    expect(detectionForm("  Matu**rité**  _du_\t`document` \\: x~~y~~")).toBe(
+  // Rule 3: the structural form is lower case, the skeleton of every non-ASCII
+  // character, emphasis removed, white space folded; the detection form adds
+  // the ASCII confusability fold used to find key words.
+  test("the structural form applies the skeleton table, emphasis and white space", () => {
+    expect(structuralForm("  Matu**rité**  _du_\t`document` \\: x~~y~~")).toBe(
       " maturite du document : xy",
     );
-    expect(
-      detectionForm(`WP${char(0x2011)}1${char(0xff5c)}CA${char(0x2212)}2 ${char(0xff1a)} ÀÉŒß`),
-    ).toBe("wp-1|ca-2 : aeœß");
-    expect(detectionForm(`a${char(0x00a0)}${char(0x3000)}b`)).toBe("a b");
-    for (const dash of [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0xfe63, 0xff0d]) {
-      expect(detectionForm(`CA${char(dash)}1`)).toBe("ca-1");
+    expect(structuralForm(`WP${char(0x2011)}1${char(0x00a6)}CA${char(0x2212)}2 ÀÉŒß`)).toBe(
+      "wp-1|ca-2 aeoeb",
+    );
+    expect(structuralForm(`a${char(0x00a0)}${char(0x2009)}${char(0x202f)}b`)).toBe("a b");
+    for (const dash of [0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212, 0x2043, 0x00ac]) {
+      expect(structuralForm(`CA${char(dash)}1`)).toBe("ca-1");
     }
-    for (const colon of [0xff1a, 0x2236, 0xfe55, 0xa789]) {
-      expect(detectionForm(`a${char(colon)}b`)).toBe("a:b");
+    for (const bar of [0x00a6, 0x2016]) {
+      expect(structuralForm(`a${char(bar)}b`)).toBe("a|b");
     }
-    for (const pipe of [0xff5c, 0x2223, 0xffe4, 0x00a6]) {
-      expect(detectionForm(`a${char(pipe)}b`)).toBe("a|b");
+    expect(structuralForm("€ © ® ° ¢ § ¡ ¿ ™ № ∞ … – • ⚠️ ✓ ✗ 🟢")).toBe(
+      `e c r o c s i ? tm no oo . - ${char(0xb7)} ${char(0xb7)} v x o`,
+    );
+    for (const [codePoint, skeleton] of SKELETON) {
+      expect(structuralForm(String.fromCodePoint(codePoint))).toBe(skeleton.replace(/\s+/g, " "));
     }
+  });
+
+  test("the detection form folds the ASCII confusables of the key words", () => {
+    expect(detectionForm("Maturité du docurnent")).toBe("maturlte du document");
+    expect(detectionForm("Matur|té Matur1té Maturlté Maturité")).toBe(
+      "maturlte maturlte maturlte maturlte",
+    );
+    expect(detectionForm("d0cument VVP-1 CA-0 CA-l")).toBe("document wp-l ca-o ca-l");
+    expect(detectionForm("| a |")).toBe("l a l");
+    expect(detectionForm("rnvv")).toBe("mw");
   });
 
   test("the reader stays linear: 200 000 mixed lines in under a second", () => {
@@ -932,8 +1166,11 @@ describe("raw lines", () => {
     for (let index = 0; index < 20_000; index += 1) lines.push(...block);
     const markdown: string = lines.join("\n");
     const started: number = performance.now();
-    const maturity: Parsed<MaturityLevel | null> = readDocumentMaturity(markdown);
-    const tableRead: Parsed<readonly WorkPackage[]> = parseWorkPackages(markdown);
+    const read: Parsed<RawDocument> = readRawLines(markdown);
+    if (!read.ok) throw new Error(read.reason);
+    const maturity: Parsed<MaturityLevel | null> = readDocumentMaturity(read.value);
+    const tableRead: Parsed<readonly WorkPackage[]> = parseWorkPackages(read.value);
+    const criteria: Parsed<readonly Criterion[]> = parseCriteria(read.value);
     const elapsed: number = performance.now() - started;
     expect(maturity).toEqual({ ok: true, value: null });
     expect(tableRead).toEqual({
@@ -941,7 +1178,9 @@ describe("raw lines", () => {
       reason:
         "work-package table not found (expected header: WP | CA-n | Périmètre | Vérification | Porte)",
     });
+    expect(criteria.ok).toBe(false);
     expect(lines.length).toBe(200_000);
+    console.log(`one read and three parsers over 200 000 lines: ${elapsed.toFixed(1)} ms`);
     expect(elapsed).toBeLessThan(1000);
   });
 });
@@ -1175,7 +1414,7 @@ describe("the work-package norm", () => {
     for (const sentence of [
       "The gate judges one pull request per run and prints the volume it examined on one line",
       "the suite holds no mutant of the gate.",
-      "Each following line whose first character, after leading spaces and tabs, is `|` is a row",
+      "is `|` is a row; a closing `|` is optional.",
       "a backtick written in it is lost, not refused.",
       "coexists with the `WP-<k>` grammar and does not concern it.",
       "The work package is judged at the commit the issue cites, not at the latest PRD.",
@@ -1194,37 +1433,46 @@ describe("the work-package norm", () => {
     }
   });
 
-  // Wave H4: the norm enumerates what a PRD may contain (the alphabet, no
-  // HTML), states the fold and the refusals, and no longer describes a reader
-  // that decodes, strips or detects an open class of spellings.
-  test("the norm states the alphabet, the HTML rule, the fold and the refusals", async () => {
+  // Wave H5: the norm states the alphabet as the skeleton table, the HTML
+  // rule, the two skeleton forms, the refusals, the limits, and no longer
+  // holds a sentence that promised more than the reader does.
+  test("the norm states the skeleton table, the HTML rule, the forms, the refusals and the limits", async () => {
     const text: string = await readNorm();
     for (const sentence of [
       "Every raw occurrence of a declaration form is either read as live or makes the document unreadable",
       "A PRD therefore never quotes a declaration form, not even in a fence, an indented block or a list item: it paraphrases it.",
       "the invariant is held by enumerating what a document may contain, not by detecting what it must not",
-      "the tab; a line end (LF, CR LF or a lone CR); a space of category Zs (the no-break space included); an ASCII digit; an ASCII letter; a precomposed Latin-1 letter (`À` to `ÿ`) and `Œ`, `œ`, `Ÿ`; any punctuation (P*) and any symbol (S*).",
-      "the variation selector U+FE0F directly after a symbol of category So",
+      `a hand-written table of ${SKELETON.size} entries, each with its skeleton`,
+      "the variation selector U+FE0F directly after an entry of category So",
       "Everything else is refused naming the line, the column (counted in code points) and the code point with its Unicode category",
       "the format characters (Cf: U+00AD, U+200B to U+200F, U+2060, U+FEFF, the bidirectional controls, the zero-width joiner U+200D)",
-      "The text MUST be in Unicode normalization form C",
+      "A test enumerates every code point from U+0080 to U+10FFFF and prints how many the reader admits: exactly the entries of the table.",
       "A PRD holds no HTML.",
       "`a < b`, `R&D`, `Q&A` and `a & b` are permitted",
       "A `<` immediately followed by a letter, `!`, `?` or `/`",
       "with or without its semicolon",
       "the only folding the parsers do, and it folds only characters the alphabet lets through",
-      "the accents of the Latin-1 letters are removed",
-      "the dashes `‐ ‑ ‒ – — ― − ﹣ －` are read as `-`, the colons `： ∶ ﹕ ꞉` as `:` and the bars `｜ ∣ ￤ ¦` as `|`",
+      "The structural form of a line is its lower case, every non-ASCII character replaced by its skeleton",
+      "`rn` reads as `m`, `vv` as `w`, `0` as `o`, `1`, `i` and `|` as `l`",
+      "never to accept anything and never for the `|` that separates the cells of a table",
       "The declaration itself is then read on the raw line, which MUST have the strict form, in ASCII where the form says so.",
-      "Every line that mentions `maturité du document`, once folded, MUST be exactly one strict declaration line",
-      "two consecutive lines whose join mentions it while neither does alone are refused naming both lines",
-      "then a level of the ladder followed by the end of the line, a space, a tab or an ASCII punctuation",
-      "Every line whose first letters and digits, once folded and after every leading character that is neither a letter nor a digit (an ordered-list number and a task-list box included), read `CA-<digits>` MUST be a strict criterion bullet",
+      "The text of a file is read once",
+      "Every line whose detection form mentions `maturité du document` MUST be exactly one strict declaration line",
+      "A mention split across the lines of a paragraph (a run of consecutive non-empty lines, however many) is refused naming its first and last line.",
+      "then a level of the ladder followed by the end of the line, a space, a tab, `.`, `,`, `;`, `:` or `)`",
+      "Every line whose first token, on its detection form and after its leading markers, reads `CA-<n>` MUST be a strict criterion bullet",
+      "a numbering token (digits or one letter, dotted or not, with or without a `.` or `)`: `1.`, `1)`, `1.2`, `a)`, `iv.`)",
+      "The clause starts a word: only white space, `.`, `,`, `;`, `(`, `*`, `_` or a backtick may precede it",
       "a table row that starts with a `CA-<n>` is refused",
       "Two spellings of one number (`CA-01` and `CA-1`) are one criterion",
-      "Every line whose first letters and digits, once folded and after every leading character that is neither a letter nor a digit, read `WP-<digits>`, and which holds a `|`, MUST be a row of the block of that table",
-      "the volume line then says `unreadable` for the work packages or the criteria",
+      "after leading white space (spaces, tabs and the admitted no-break, thin and narrow no-break spaces)",
+      "one cell's first word is `WP` (not `WP-<digit>`) and one cell's first word is `CA` (a word ends before a character that is not a letter, a digit or `_`)",
+      "Every line whose first token, on its detection form and after its leading markers (the markers of the criteria grammar), reads `WP-<n>`, and whose structural form holds a `|`, MUST be a row of the block of that table",
+      "the volume line says `unreadable` for what was refused",
+      "what the chain did not reach stays `not read`",
       "Faux refusals are accepted",
+      "a paraphrase (`Maturité de ce document`, `maturité du PRD`) is prose, neither read nor refused",
+      "a level hidden by the length of its line (three hundred spaces before it) is read all the same",
     ]) {
       expect(text).toContain(sentence);
     }
@@ -1249,6 +1497,19 @@ describe("the work-package norm", () => {
       "Fenced code blocks and HTML comments are not read",
       "since a renderer",
       "Only the first table with this header is read.",
+      "any punctuation (P*) and any symbol (S*)",
+      "a space of category Zs",
+      "Unicode normalization form C",
+      "the accents of the Latin-1 letters are removed",
+      "the colons `",
+      "fullwidth bars",
+      "or an ASCII punctuation",
+      "two consecutive lines whose join",
+      "after leading spaces and tabs",
+      "a cell beginning with `CA`",
+      "never `not read`",
+      "as a word (a colon after the word",
+      "once folded and after every leading character",
     ]) {
       expect(text).not.toContain(stale);
     }

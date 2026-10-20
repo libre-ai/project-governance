@@ -7,7 +7,9 @@ import {
   type Parsed,
   parseCriteria,
   parseWorkPackages,
+  type RawDocument,
   readDocumentMaturity,
+  readRawLines,
   type WorkPackage,
 } from "./prd-model";
 import {
@@ -892,11 +894,26 @@ async function readAtCitedCommit(
   return file.value;
 }
 
+/**
+ * Step 5b: the PRD text read once in the alphabet of a PRD; the maturity and
+ * the table are then read on that one reading. Unreadable is a violation
+ * naming the line and the column, and the maturity is `unreadable`.
+ */
+function readPrd(resolution: Resolution, item: string, text: string): RawDocument | null {
+  const read: Parsed<RawDocument> = readRawLines(text);
+  if (!read.ok) {
+    resolution.volume.maturity = "unreadable";
+    resolution.report.check(item, false, `${PRD_PATH} unreadable as a PRD (${read.reason})`);
+    return null;
+  }
+  return read.value;
+}
+
 /** Step 6: the PRD declares a maturity at least equal to the policy's threshold. */
 function checkApproved(
   resolution: Resolution,
   item: string,
-  prd: string,
+  prd: RawDocument,
   floor: MaturityLevel,
 ): boolean {
   const read: Parsed<MaturityLevel | null> = readDocumentMaturity(prd);
@@ -931,7 +948,7 @@ function checkApproved(
 function findWorkPackage(
   resolution: Resolution,
   item: string,
-  prd: string,
+  prd: RawDocument,
   wp: string,
 ): WorkPackage | null {
   const table: Parsed<readonly WorkPackage[]> = parseWorkPackages(prd);
@@ -1257,8 +1274,8 @@ async function verifyChain(
   if (!(await checkServed(resolution, item, prdRef, ports))) {
     return;
   }
-  const prd: string | null = await readAtCitedCommit(resolution, item, prdRef, PRD_PATH, ports);
-  if (prd === null) {
+  const prdText: string | null = await readAtCitedCommit(resolution, item, prdRef, PRD_PATH, ports);
+  if (prdText === null) {
     return;
   }
   const requirements: string | null = await readAtCitedCommit(
@@ -1269,6 +1286,10 @@ async function verifyChain(
     ports,
   );
   if (requirements === null) {
+    return;
+  }
+  const prd: RawDocument | null = readPrd(resolution, item, prdText);
+  if (prd === null) {
     return;
   }
   if (!checkApproved(resolution, item, prd, policy.approvedFrom)) {
