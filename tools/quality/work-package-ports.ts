@@ -188,8 +188,12 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       GIT_CONFIG_NOSYSTEM: "1",
       GIT_CONFIG_GLOBAL: "/dev/null",
       // Grafts and replace refs rewrite the parents git sees: either can make
-      // a commit of the range a root and cut the range. Both are ignored.
-      GIT_GRAFT_FILE: "/dev/null",
+      // a commit of the range a root and cut the range. Both are ignored. The
+      // graft file is a path that does not exist (under the fresh HOME):
+      // pointed at an existing file such as /dev/null, git prints a
+      // deprecation hint of several lines on every invocation, which fills the
+      // bounded stderr excerpt of a failure and hides its real cause.
+      GIT_GRAFT_FILE: join(home, "no-grafts"),
       GIT_NO_REPLACE_OBJECTS: "1",
     };
     if (ceiling !== null) {
@@ -233,9 +237,14 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
   const urlOf = (repo: string): string => `${serverUrl}/${repo}.git`;
 
   /**
-   * Make sure the checkout holds both commits of the range. A shallow checkout
-   * misses the base: a targeted fetch from `origin` brings both, with the
-   * credential the checkout persisted (never the token in an argument).
+   * Make sure the checkout holds both commits of the range, with a targeted
+   * fetch from `origin` for a missing one (never the token in an argument).
+   *
+   * The workflow checks out with `fetch-depth: 0` and `persist-credentials:
+   * false`: both commits are then already present, so this fetch is not
+   * reached there, and it would carry no credential if it were (a private
+   * repository would answer it with a named failure, never a pass). A shallow
+   * checkout never gets here: it is refused before (see `refuseShallow`).
    */
   async function ensureCommits(
     shas: readonly string[],
@@ -288,12 +297,16 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       }
       // ONE walk of the range, the trailers parsed by git itself: one record
       // per commit, terminated by NUL (a commit message cannot carry one).
-      const logged = await git(
+      const logged: GitResult | Failure = await git(
         [
           "log",
           "-z",
           "--reverse",
           "--no-decorate",
+          // Inert for this format today; defence in depth against a textconv
+          // filter or an external diff program a configuration could name.
+          "--no-textconv",
+          "--no-ext-diff",
           `--format=%H%x1f%(trailers:only,unfold,key_value_separator=%x1f)`,
           `${baseSha}..${headSha}`,
         ],
@@ -398,9 +411,18 @@ export function realPorts(options: RealPortsOptions): LinkPorts {
       }
       // `--no-renames`: both sides of a rename are listed, so a source moved
       // into a documentation path is still seen at its source path. `-z`: the
-      // paths are raw, never quoted, each terminated by NUL.
-      const diff = await git(
-        ["diff", "--name-only", "--no-renames", "-z", `${baseSha}...${headSha}`],
+      // paths are raw, never quoted, each terminated by NUL. `--no-textconv`
+      // and `--no-ext-diff`: inert for `--name-only` today, defence in depth.
+      const diff: GitResult | Failure = await git(
+        [
+          "diff",
+          "--name-only",
+          "--no-renames",
+          "--no-textconv",
+          "--no-ext-diff",
+          "-z",
+          `${baseSha}...${headSha}`,
+        ],
         options.workspace,
         env,
       );

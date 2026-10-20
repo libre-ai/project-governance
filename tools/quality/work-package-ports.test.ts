@@ -409,20 +409,26 @@ const SHALLOW_REFUSAL =
 describe("a shallow checkout is refused by both ports", () => {
   const root: string = scratch("wp-shallow-");
   const origin: string = initRepository(join(root, "origin"), "main");
-  commitAll(origin, "R");
-  const a: string = commitAll(origin, "A");
+  // Every commit of the scenario adds a file of its own (merges excepted), so
+  // a diff taken from a wrong merge base lists a wrong set of files.
+  const commitFile = (file: string, message: string): string => {
+    writeAt(origin, file, `${file}\n`);
+    return commitAll(origin, message);
+  };
+  commitFile("r.txt", "R");
+  const a: string = commitFile("a.txt", "A");
   // X is on main and carries a declaration of its own: a widened range of the
   // pull request would pick it up.
-  const x: string = commitAll(origin, ["X", "", "Work-package: libre-ai/main#9 WP-9"].join("\n"));
+  const x: string = commitFile("x.txt", ["X", "", "Work-package: libre-ai/main#9 WP-9"].join("\n"));
   git(origin, "switch", "--quiet", "-c", "feature", a);
-  commitAll(origin, "c1");
+  commitFile("c1.txt", "c1");
   git(origin, "merge", "--quiet", "--no-ff", "-m", "merge X into the feature", x);
-  const head: string = commitAll(
-    origin,
+  const head: string = commitFile(
+    "c2.txt",
     ["c2", "", "Work-package: libre-ai/gov#1 WP-1"].join("\n"),
   );
   git(origin, "switch", "--quiet", "main");
-  const base: string = commitAll(origin, "B");
+  const base: string = commitFile("b.txt", "B");
   git(origin, "branch", "merged");
   git(origin, "switch", "--quiet", "merged");
   git(origin, "merge", "--quiet", "--no-ff", "-m", "merge the feature", "feature");
@@ -435,31 +441,68 @@ describe("a shallow checkout is refused by both ports", () => {
 
   test("a full clone reads the true range in both ports", async () => {
     const workspace: string = clone("full");
-    const commits = valueFrom(await portsFor(workspace).commitTrailers(base, head));
+    const commits: readonly CommitDeclarations[] = valueFrom(
+      await portsFor(workspace).commitTrailers(base, head),
+    );
     // c1, the merge of X, c2: X is in the history of base, so it is not in the range.
     expect(commits.length).toBe(3);
     expect(commits.flatMap((commit) => commit.trailers.map((t) => t.value))).toEqual([
       "libre-ai/gov#1 WP-1",
     ]);
-    valueFrom(await portsFor(workspace).changedFiles(base, head));
+    // From the merge base X: the files of c1 and c2, not x.txt (brought by the
+    // merge of X, already in the base) nor b.txt (only on the base branch).
+    expect(valueFrom(await portsFor(workspace).changedFiles(base, head))).toEqual([
+      "c1.txt",
+      "c2.txt",
+    ]);
   });
 
+  // The pull_request_target shape: the base branch cloned at depth 1, then the
+  // head fetched by its commit, without a depth, so its whole history (the
+  // merge of main included) is present while the checkout stays shallow.
+  const depthOneOfBaseThenHeadBySha = (name: string): string => {
+    const workspace: string = clone(name, "--depth=1", "--branch", "main");
+    git(workspace, "fetch", "--quiet", "origin", head);
+    expect(git(workspace, "cat-file", "-t", head)).toBe("commit");
+    expect(git(workspace, "cat-file", "-t", x)).toBe("commit");
+    return workspace;
+  };
+
   test.each([
-    ["depth 1 of head", ["--depth=1", "--branch", "feature"]],
-    ["depth 2 of head", ["--depth=2", "--branch", "feature"]],
-    ["depth 1 of base, head fetched by sha", ["--depth=1", "--branch", "main"]],
-    ["a boundary below base on a branch that merged main", ["--depth=3", "--branch", "feature"]],
-    ["--shallow-exclude of main", ["--shallow-exclude=main", "--branch", "feature"]],
-    ["depth 1 of the merge ref", ["--depth=1", "--branch", "merged"]],
-  ])("%s is refused before any read of the range", async (name: string, extra: string[]) => {
-    const workspace: string = clone(`shallow${name.replace(/[^a-z0-9]+/g, "-")}`, ...extra);
+    ["depth 1 of head", (name: string): string => clone(name, "--depth=1", "--branch", "feature")],
+    ["depth 2 of head", (name: string): string => clone(name, "--depth=2", "--branch", "feature")],
+    ["depth 1 of base, head fetched by sha", depthOneOfBaseThenHeadBySha],
+    [
+      "a boundary below base on a branch that merged main",
+      (name: string): string => clone(name, "--depth=3", "--branch", "feature"),
+    ],
+    [
+      "--shallow-exclude of main",
+      (name: string): string => clone(name, "--shallow-exclude=main", "--branch", "feature"),
+    ],
+    [
+      "depth 1 of the merge ref",
+      (name: string): string => clone(name, "--depth=1", "--branch", "merged"),
+    ],
+  ])("%s is refused before any read of the range", async (name: string, build: (
+    name: string,
+  ) => string) => {
+    const workspace: string = build(`shallow${name.replace(/[^a-z0-9]+/g, "-")}`);
     expect(git(workspace, "rev-parse", "--is-shallow-repository")).toBe("true");
-    const recorder = recordingRun();
+    const recorder: { readonly run: RunGit; readonly calls: GitInvocation[] } = recordingRun();
     const ports: LinkPorts = portsFor(workspace, { run: recorder.run });
     expect(expectFailure(await ports.commitTrailers(base, head))).toBe(SHALLOW_REFUSAL);
     expect(expectFailure(await ports.changedFiles(base, head))).toBe(SHALLOW_REFUSAL);
-    const reads: GitInvocation[] = recorder.calls.filter(
-      (call) => call.args[0] === "log" || call.args[0] === "diff",
+    // EVERY invocation is recorded: for each port, the root check, then the
+    // shallow question, and nothing else. No fetch, no cat-file, no log and
+    // no diff happens before the refusal.
+    const probe: string[][] = [
+      ["rev-parse", "--show-toplevel"],
+      ["rev-parse", "--is-shallow-repository"],
+    ];
+    expect(recorder.calls.map((call) => [...call.args])).toEqual([...probe, ...probe]);
+    const reads: GitInvocation[] = recorder.calls.filter((call) =>
+      ["fetch", "cat-file", "log", "diff"].includes(call.args[0] as string),
     );
     expect(reads).toEqual([]);
   });
@@ -635,6 +678,60 @@ describe("a failure is never read as a value", () => {
       await portsFor(repo, { run }).commitTrailers(rootCommit, head),
     );
     expect(reason).toContain("not valid UTF-8");
+  });
+
+  // The graft file is pointed at a path that does not exist: git ignores the
+  // grafts without printing its deprecation hint, which would otherwise fill
+  // the bounded excerpt of stderr and hide the real cause of a failure. The
+  // cause is recognised by the unknown commit git names in it, which holds in
+  // every locale git may print its messages in.
+  test("a git failure gives its real cause, not a deprecation hint, in both ports", async () => {
+    const present: RunGit = async (invocation: GitInvocation): Promise<GitResult> =>
+      invocation.args[0] === "cat-file"
+        ? { exitCode: 0, stdout: new Uint8Array(), stderr: "" }
+        : spawnGit(invocation);
+    const excerptOf = (reason: string): string => reason.slice(reason.indexOf('("'));
+    const trailers: string = expectFailure(
+      await portsFor(repo, { run: present }).commitTrailers(ZERO_SHA, head),
+    );
+    expect(excerptOf(trailers)).toContain(ZERO_SHA);
+    const files: string = expectFailure(
+      await portsFor(repo, { run: present }).changedFiles(ZERO_SHA, head),
+    );
+    expect(excerptOf(files)).toContain(ZERO_SHA);
+  });
+
+  // Defence in depth: neither command may run a textconv filter or an
+  // external diff program that a repository configuration could name.
+  test("log and diff are run with textconv and external diff disabled", async () => {
+    const recorder: { readonly run: RunGit; readonly calls: GitInvocation[] } = recordingRun();
+    const ports: LinkPorts = portsFor(repo, { run: recorder.run });
+    valueFrom(await ports.commitTrailers(base, head));
+    valueFrom(await ports.changedFiles(base, head));
+    const reads: (readonly string[])[] = recorder.calls
+      .filter((call) => call.args[0] === "log" || call.args[0] === "diff")
+      .map((call) => call.args);
+    expect(reads).toEqual([
+      [
+        "log",
+        "-z",
+        "--reverse",
+        "--no-decorate",
+        "--no-textconv",
+        "--no-ext-diff",
+        "--format=%H%x1f%(trailers:only,unfold,key_value_separator=%x1f)",
+        `${base}..${head}`,
+      ],
+      [
+        "diff",
+        "--name-only",
+        "--no-renames",
+        "--no-textconv",
+        "--no-ext-diff",
+        "-z",
+        `${base}...${head}`,
+      ],
+    ]);
   });
 
   test("undecodable ls-remote output is a named failure", async () => {
@@ -821,7 +918,9 @@ describe("the token never reaches argv or a message", () => {
       expect(call.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
       expect(call.env.GIT_CONFIG_NOSYSTEM).toBe("1");
       expect(call.env.GIT_TERMINAL_PROMPT).toBe("0");
-      expect(call.env.GIT_GRAFT_FILE).toBe("/dev/null");
+      // A path that does not exist under the temporary HOME: no graft is read,
+      // and git prints no deprecation hint (it does for an existing file).
+      expect(call.env.GIT_GRAFT_FILE).toBe(join(call.env.HOME as string, "no-grafts"));
       expect(call.env.GIT_NO_REPLACE_OBJECTS).toBe("1");
     }
   });
