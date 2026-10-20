@@ -20,6 +20,9 @@ name: reusable-work-package-link
 # (tools/quality/reusable-work-package-link.test.ts asserts it).
 #
 # Prerequisites on the caller, none of them optional:
+#   - the calling job must grant `issues: read` and `contents: read` (the called
+#     workflow cannot exceed the caller's grant; an under-granted caller makes
+#     the gate fail closed);
 #   - no `container:` on the calling job: the gate refuses a repository whose
 #     owner differs from the user running it, and `safe.directory` cannot be
 #     supplied inside a container;
@@ -34,11 +37,13 @@ name: reusable-work-package-link
 # workspace of the pull request, and the gate RUNS FROM THAT DIRECTORY. Bun reads
 # `bunfig.toml` (a `preload` entry executes code) and `.env` from its working
 # directory, and in the workspace of the pull request both are written by its
-# author. Measured on the pinned Bun revision: from the workspace, a plain
-# `bun <script>` runs the author's preload; `--no-env-file` alone does not stop
-# it; Bun ignores an unknown flag silently and an empty `--config=` falls back
-# to the working-directory bunfig — so no flag is a reliable protection, and the
-# working directory is the protection. The gate does not need the workspace as
+# author. Measured on the pinned Bun revision, from the workspace: a plain
+# `bun <script>` runs the author's preload; an unknown flag is ignored silently
+# (the preload still runs); an empty `--config=` falls back to the bunfig of the
+# working directory; `--no-env-file` alone does not stop the preload; a non-empty
+# `--config` does stop it. A protection that one mistyped or emptied flag
+# silently removes is not the one to rely on: the trusted working directory is
+# the protection, and it needs no flag. The gate does not need the workspace as
 # its working directory: it reads the pull request through the absolute
 # GITHUB_WORKSPACE only. `--no-env-file` stays as defence in depth.
 #

@@ -37,6 +37,7 @@ interface Step {
   readonly "continue-on-error"?: unknown;
 }
 interface Job {
+  readonly name?: unknown;
   readonly "runs-on"?: unknown;
   readonly "timeout-minutes"?: unknown;
   readonly permissions?: unknown;
@@ -45,6 +46,7 @@ interface Job {
   readonly steps?: readonly Step[];
 }
 interface Workflow {
+  readonly name?: unknown;
   readonly on?: unknown;
   readonly permissions?: unknown;
   readonly container?: unknown;
@@ -165,6 +167,51 @@ describe("trigger and input", () => {
 
   test("the workflow declares exactly one job", () => {
     expect(jobs.length).toBe(1);
+  });
+});
+
+// The name of the job is the name of the check that the rulesets of the
+// consuming repositories REQUIRE: renaming it leaves a required check that no
+// run ever reports, so every pull request waits forever. Both names are
+// pinned by exact equality; a change is a reviewed edit of this test and of
+// every ruleset that requires the check.
+describe("the names a ruleset requires", () => {
+  test("the workflow is named reusable-work-package-link", () => {
+    expect(workflow.name).toBe("reusable-work-package-link");
+  });
+
+  test("the only job is work-package-link, named Work package link", () => {
+    expect(jobs.map(([id]: [string, Job]): string => id)).toEqual(["work-package-link"]);
+    expect(job.name).toBe("Work package link");
+  });
+});
+
+// The header is the contract read by the author of a calling workflow: it
+// states the grant the caller owes, and what was measured about Bun's flags
+// rather than a general claim.
+describe("the header states the caller's prerequisites as measured", () => {
+  const header: string = text
+    .split("\n")
+    .filter((line: string): boolean => line.startsWith("#"))
+    .map((line: string): string => line.replace(/^#\s*/, ""))
+    .join(" ");
+
+  test("it says the calling job must grant issues: read and contents: read", () => {
+    expect(header).toContain(
+      "the calling job must grant `issues: read` and `contents: read` (the called workflow cannot exceed the caller's grant; an under-granted caller makes the gate fail closed)",
+    );
+  });
+
+  test("it states the measured behaviour of each flag, and no general claim", () => {
+    expect(header).not.toContain("no flag is a reliable protection");
+    for (const measured of [
+      "an unknown flag is ignored silently",
+      "an empty `--config=` falls back to the bunfig of the working directory",
+      "`--no-env-file` alone does not stop the preload",
+      "a non-empty `--config` does stop it",
+    ]) {
+      expect(header).toContain(measured);
+    }
   });
 });
 
