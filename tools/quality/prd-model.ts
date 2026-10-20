@@ -6,8 +6,6 @@
  * returns `ok: false` with a reason, never an empty success, so that a gate
  * built on top cannot confuse "nothing declared" with "could not read".
  */
-import { stripNonDeclarations } from "./check-pr-door";
-
 export type MaturityLevel =
   | "exploration"
   | "hypothèse"
@@ -53,17 +51,113 @@ const fail = (reason: string): { readonly ok: false; readonly reason: string } =
   reason,
 });
 
+// 0-3 spaces, then a run of three or more backticks (whose info string holds
+// no backtick) or of three or more tildes. Four spaces make an indented line,
+// not a fence: the parsers read lines of text, so its keywords count.
+const BACKTICK_OPENER: RegExp = /^ {0,3}(`{3,})[^`]*$/;
+const TILDE_OPENER: RegExp = /^ {0,3}(~{3,}).*$/;
+const FENCE_CLOSER: RegExp = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+const COMMENT_OPEN: string = "<!--";
+const COMMENT_CLOSE: string = "-->";
+
+interface OpenFence {
+  readonly char: string;
+  readonly length: number;
+}
+
+function fenceOpenedBy(line: string): OpenFence | null {
+  const match: RegExpExecArray | null = BACKTICK_OPENER.exec(line) ?? TILDE_OPENER.exec(line);
+  const run: string | undefined = match?.[1];
+  return run === undefined ? null : { char: run.charAt(0), length: run.length };
+}
+
+function closes(line: string, fence: OpenFence): boolean {
+  const run: string | undefined = FENCE_CLOSER.exec(line)?.[1];
+  return run !== undefined && run.charAt(0) === fence.char && run.length >= fence.length;
+}
+
+function blankOf(text: string): string {
+  return " ".repeat(text.length);
+}
+
+/**
+ * The Markdown text with its fenced code blocks and its HTML comments replaced
+ * by spaces, line ends normalised to `\n` (CRLF and a lone CR each end one
+ * line). Every line keeps its number, so a reader of the result can name a
+ * line of the original.
+ *
+ * Why its own reader: a PRD quotes examples of PRDs. A fence closed by any
+ * line starting with three backticks, or a comment opened inside a fence,
+ * would let such an example declare a maturity or a criterion.
+ *
+ * A fence opens on a line of 0-3 spaces and three or more backticks (the info
+ * string holds no backtick) or tildes; it closes on a line of 0-3 spaces and
+ * a run of the SAME character at least as long, followed only by spaces or
+ * tabs. An unclosed fence runs to the end. Outside fences, `<!--` opens a
+ * comment anywhere in a line, `-->` ends it, and an unterminated comment runs
+ * to the end.
+ */
+export function blankFencesAndComments(markdown: string): string {
+  const lines: readonly string[] = markdown.replace(/\r\n?/g, "\n").split("\n");
+  const out: string[] = [];
+  let fence: OpenFence | null = null;
+  let inComment: boolean = false;
+
+  for (const line of lines) {
+    if (fence !== null) {
+      if (closes(line, fence)) fence = null;
+      out.push(blankOf(line));
+      continue;
+    }
+    if (!inComment) {
+      const opened: OpenFence | null = fenceOpenedBy(line);
+      if (opened !== null) {
+        fence = opened;
+        out.push(blankOf(line));
+        continue;
+      }
+    }
+    let kept: string = "";
+    let rest: string = line;
+    while (rest !== "") {
+      if (inComment) {
+        const end: number = rest.indexOf(COMMENT_CLOSE);
+        if (end === -1) {
+          kept += blankOf(rest);
+          rest = "";
+        } else {
+          kept += blankOf(rest.slice(0, end + COMMENT_CLOSE.length));
+          rest = rest.slice(end + COMMENT_CLOSE.length);
+          inComment = false;
+        }
+      } else {
+        const start: number = rest.indexOf(COMMENT_OPEN);
+        if (start === -1) {
+          kept += rest;
+          rest = "";
+        } else {
+          kept += rest.slice(0, start) + blankOf(COMMENT_OPEN);
+          rest = rest.slice(start + COMMENT_OPEN.length);
+          inComment = true;
+        }
+      }
+    }
+    out.push(kept);
+  }
+  return out.join("\n");
+}
+
 const CRITERION_BULLET = /^[ \t]*[-*+][ \t]+(?:\*\*)?(CA-\d+)\b/;
 const ANY_BULLET = /^[ \t]*[-*+][ \t]+/;
 const VALIDATION_CLAUSE = /Validation[ \t]*:/;
 
 /**
  * Read the `- CA-n … Validation : …` bullets. Line numbers are 1-based and
- * stay valid against the original text because `stripNonDeclarations` blanks
- * fenced blocks and HTML comments without removing their newlines.
+ * stay valid against the original text because `blankFencesAndComments`
+ * blanks fenced blocks and HTML comments without removing their line ends.
  */
 export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
-  const lines = stripNonDeclarations(markdown).text.split("\n");
+  const lines: readonly string[] = blankFencesAndComments(markdown).split("\n");
   const criteria: Criterion[] = [];
   const firstSeen = new Map<string, number>();
 
@@ -199,7 +293,7 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
  * of the cited document.
  */
 export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage[]> {
-  const lines = stripNonDeclarations(markdown).text.split("\n");
+  const lines: readonly string[] = blankFencesAndComments(markdown).split("\n");
   const headerAt = lines.findIndex((line) => {
     const cells = splitRow(line);
     return cells !== null && isHeader(cells);
@@ -261,7 +355,7 @@ function levelOf(value: string): MaturityLevel | null {
  * closed: an ambiguous document does not reach a maturity threshold).
  */
 export function readDocumentMaturity(markdown: string): MaturityLevel | null {
-  const { text } = stripNonDeclarations(markdown);
+  const text: string = blankFencesAndComments(markdown);
   const levels = [...text.matchAll(DOCUMENT_MATURITY_LINE)].map((match) => levelOf(match[1] ?? ""));
   const first = levels[0];
   if (first === undefined || first === null) return null;

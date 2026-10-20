@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import {
   atLeast,
+  blankFencesAndComments,
   MATURITY_LADDER,
   type MaturityLevel,
   type Parsed,
@@ -258,6 +259,186 @@ describe("readDocumentMaturity", () => {
   });
 });
 
+// A fence opens on 0-3 spaces and three or more backticks (an info string
+// without a backtick) or tildes; it closes only on a line of the SAME
+// character, at least as long, followed by nothing but spaces or tabs.
+// A reader that closes on any line starting with three backticks lets an
+// example inside a PRD declare a maturity or a criterion (wave G, G1).
+describe("fenced blocks and HTML comments, as the readers see them", () => {
+  const FOUR: string = "````";
+  const THREE: string = "```";
+
+  test("(a) an info-string line inside a fence does not close it", () => {
+    const markdown: string = [
+      "# PRD",
+      `${THREE}markdown`,
+      `${THREE}js`,
+      "Maturité du document : décision",
+      THREE,
+      "Maturité du document : proposition",
+      "",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("proposition");
+  });
+
+  test("(b) a three-backtick line inside a four-backtick fence does not close it", () => {
+    const markdown: string = [
+      "# PRD",
+      `${FOUR}markdown`,
+      THREE,
+      "Maturité du document : décision",
+      FOUR,
+      "Maturité du document : proposition",
+      "",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("proposition");
+  });
+
+  test("(c) a criterion inside a four-backtick fence holding a three-backtick fence is not declared", () => {
+    const markdown: string = [
+      "- CA-1 Real. Validation : a",
+      `${FOUR}markdown`,
+      THREE,
+      "- CA-2 Phantom. Validation : b",
+      THREE,
+      FOUR,
+      "- CA-3 Real too. Validation : c",
+    ].join("\n");
+    expect(parseCriteria(markdown)).toEqual({
+      ok: true,
+      value: [
+        { id: "CA-1", line: 1, hasValidation: true },
+        { id: "CA-3", line: 7, hasValidation: true },
+      ],
+    });
+  });
+
+  test("a closing line that carries an info string does not close the fence", () => {
+    const markdown: string = [
+      THREE,
+      `${THREE}text`,
+      "Maturité du document : décision",
+      `${THREE}   `,
+      "Maturité du document : proposition",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("proposition");
+  });
+
+  test("a tilde fence is not closed by backticks", () => {
+    const markdown: string = [
+      "~~~",
+      THREE,
+      "Maturité du document : décision",
+      "~~~",
+      "Maturité du document : proposition",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("proposition");
+  });
+
+  test("an unclosed fence hides everything to the end, so the maturity is absent", () => {
+    const markdown: string = ["# PRD", THREE, "Maturité du document : décision", ""].join("\n");
+    expect(readDocumentMaturity(markdown)).toBeNull();
+  });
+
+  test("a line indented by four spaces is not a fence: its keywords count", () => {
+    const markdown: string = [
+      `    ${THREE}`,
+      "Maturité du document : décision",
+      `    ${THREE}`,
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("décision");
+  });
+
+  test("a comment opener inside a fence opens no comment", () => {
+    const markdown: string = [THREE, "<!--", THREE, "Maturité du document : décision", ""].join(
+      "\n",
+    );
+    expect(readDocumentMaturity(markdown)).toBe("décision");
+  });
+
+  test("a comment on several lines hides them, and the text after its end on the same line counts", () => {
+    const markdown: string = [
+      "- CA-1 Real. Validation : a",
+      "<!-- start",
+      "- CA-2 Hidden. Validation : b",
+      "end --> - CA-3 After the comment. Validation : c",
+      "Maturité du document : <!-- not this --> décision",
+    ].join("\n");
+    expect(parseCriteria(markdown)).toEqual({
+      ok: true,
+      value: [
+        { id: "CA-1", line: 1, hasValidation: true },
+        { id: "CA-3", line: 4, hasValidation: true },
+      ],
+    });
+    expect(readDocumentMaturity(markdown)).toBe("décision");
+  });
+
+  test("an unterminated comment hides everything to the end", () => {
+    expect(readDocumentMaturity("<!-- open\nMaturité du document : décision\n")).toBeNull();
+  });
+
+  test("CRLF and a lone CR keep the line numbers", () => {
+    const crlf: string = ["# Cahier", THREE, "- CA-9 x", THREE, "- CA-1 Real. Validation : a"].join(
+      "\r\n",
+    );
+    expect(parseCriteria(crlf)).toEqual({
+      ok: true,
+      value: [{ id: "CA-1", line: 5, hasValidation: true }],
+    });
+    const cr: string = ["# Cahier", THREE, "- CA-9 x", THREE, "- CA-1 Real. Validation : a"].join(
+      "\r",
+    );
+    expect(parseCriteria(cr)).toEqual({
+      ok: true,
+      value: [{ id: "CA-1", line: 5, hasValidation: true }],
+    });
+  });
+
+  test("blankFencesAndComments keeps every line, normalises line ends and blanks with spaces", () => {
+    const source: string = ["keep <!-- x --> this", "~~~~", "~~~", "hidden", "~~~~ ", "after"].join(
+      "\r\n",
+    );
+    expect(blankFencesAndComments(source)).toBe(
+      ["keep            this", "    ", "   ", "      ", "     ", "after"].join("\n"),
+    );
+    expect(blankFencesAndComments("a\rb\r\nc\n").split("\n")).toEqual(["a", "b", "c", ""]);
+  });
+
+  test("a fence opener needs 0-3 spaces and at least three backticks or tildes", () => {
+    expect(blankFencesAndComments("   ```\nx\n```")).toBe("      \n \n   ");
+    expect(blankFencesAndComments("``\nx")).toBe("``\nx");
+    expect(blankFencesAndComments("``` a`b\nx")).toBe("``` a`b\nx");
+    expect(blankFencesAndComments("~~~ a`b\nx")).toBe("       \n ");
+  });
+
+  test("a PRD with an ordinary code block reads its maturity, table and criteria", () => {
+    const markdown: string = [
+      "# PRD",
+      "",
+      "Maturité du document : décision",
+      "",
+      "- CA-1 The daemon refuses an unsigned call. Validation : cargo test",
+      "",
+      `${THREE}sh`,
+      "cargo test -p daemon",
+      THREE,
+      "",
+      table("| `WP-1` | `CA-1` | `crates/**` | `cargo test` | `two-way` |"),
+      "",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toBe("décision");
+    expect(parseCriteria(markdown)).toEqual({
+      ok: true,
+      value: [{ id: "CA-1", line: 5, hasValidation: true }],
+    });
+    const packages: Parsed<readonly WorkPackage[]> = parseWorkPackages(markdown);
+    expect(packages.ok).toBe(true);
+    if (packages.ok)
+      expect(packages.value.map((row: WorkPackage): string => row.id)).toEqual(["WP-1"]);
+  });
+});
+
 describe("atLeast", () => {
   test("compares along the ladder", () => {
     expect(atLeast("prototype", "décision")).toBe(true);
@@ -465,6 +646,8 @@ describe("the work-package norm", () => {
       "The parsers read each file as lines of text; how the Markdown renders does not matter",
       "a refusal that names them (at most twenty pairs, the rest counted as `and M more`)",
       "The globs of a `paths` predicate obey the grammar of a `Périmètre` entry",
+      "It closes only on a line of zero to three spaces followed by a run of the same character at least as long as the opening run, and nothing after it but spaces or tabs",
+      "A line indented by four or more spaces is not a fence, and its content counts.",
     ]) {
       expect(text).toContain(sentence);
     }

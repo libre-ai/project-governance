@@ -27,7 +27,7 @@ A criterion is one bullet of `docs/cahier-des-charges.md`:
 - The bullet MUST contain the clause `Validation :` (a colon after the word, optional spaces before it) naming how the criterion is verified. The clause MAY be on an indented continuation line of the same bullet. The parser reads a criterion without it and reports that it has no validation; it does not refuse the document. A work package MUST NOT cite a criterion that has no `Validation :` clause; the gate refuses it.
 - A `CA-n` MUST be declared once per document. A second declaration makes the document unreadable.
 - Numbers are local to a repository. Outside it a criterion is cited by its qualified reference `<owner>/<repo>@<40 hex>:<path>#CA-<n>`; the commit digest is the only integrity mechanism, no second hash is added.
-- Fenced code blocks and HTML comments are not read: a criterion inside one does not exist.
+- Fenced code blocks and HTML comments are not read: a criterion inside one does not exist. A fence opens on a line of zero to three spaces followed by three or more backticks (whose info string holds no backtick) or three or more tildes. It closes only on a line of zero to three spaces followed by a run of the same character at least as long as the opening run, and nothing after it but spaces or tabs: a line such as ```` ```js ```` inside a fence, or three backticks inside a fence of four, does not close it. A fence that is never closed runs to the end of the document. Outside fences, `<!--` opens a comment anywhere in a line, the next `-->` ends it (on the same line or a later one), and a comment that is never ended runs to the end of the document; `<!--` inside a fence opens nothing. A line indented by four or more spaces is not a fence, and its content counts. Line ends may be LF, CRLF or a lone CR; the parsers keep the line numbers of the original text.
 - A table row or a heading is not a criterion. A specification that uses them is migrated to bullets.
 
 ```markdown criteria-example
@@ -71,7 +71,7 @@ Maturité du document : décision
 
 - The line starts (after an optional list bullet and bold markers) with `Maturité du document`, then a colon, then a level of the ladder, optionally followed by a remark that starts after a non-letter (`décision (arbitrage cited in the pull request)`). Case is ignored; the level MUST be written with its accents.
 - The line `Maturité :` without `du document` qualifies the observed project, not the document, and is ignored.
-- A line inside a fenced block or an HTML comment is ignored. An absent line, an unknown level, a word that merely begins with a level (`décisionnel`), or several lines that disagree, give no maturity; a document with no maturity is not approved.
+- A line inside a fenced block or an HTML comment, as delimited in "Criteria grammar", is ignored; an example of a PRD quoted in a fence therefore declares nothing, even when it contains its own fences. An absent line, an unknown level, a word that merely begins with a level (`décisionnel`), or several lines that disagree, give no maturity; a document with no maturity is not approved.
 
 Ladder: `exploration`, `hypothèse`, `proposition`, `décision`, `prototype`, `mise en service`, `industrialisation`, `standardisation`.
 
