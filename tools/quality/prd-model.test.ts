@@ -20,6 +20,20 @@ function table(...rows: string[]): string {
   return [TABLE_HEADER, TABLE_RULE, ...rows].join("\n");
 }
 
+// The level a readable document declares; a refusal here is a test failure.
+function maturityOf(markdown: string): MaturityLevel | null {
+  const read: Parsed<MaturityLevel | null> = readDocumentMaturity(markdown);
+  if (!read.ok) throw new Error(`unexpected refusal: ${read.reason}`);
+  return read.value;
+}
+
+// The text a readable document gives the parsers; a refusal here is a test failure.
+function blanked(markdown: string): string {
+  const read: Parsed<string> = blankFencesAndComments(markdown);
+  if (!read.ok) throw new Error(`unexpected refusal: ${read.reason}`);
+  return read.value;
+}
+
 describe("parseCriteria", () => {
   test('reads "- CA-1 … Validation : …" bullets', () => {
     const result = parseCriteria(
@@ -226,36 +240,41 @@ describe("parseWorkPackages", () => {
 
 describe("readDocumentMaturity", () => {
   test('reads only "Maturité du document :" and ignores "Maturité :"', () => {
-    const markdown = ["Maturité : prototype", "Maturité du document : proposition", ""].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("proposition");
+    const markdown: string = [
+      "Maturité : prototype",
+      "Maturité du document : proposition",
+      "",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown)).toEqual({ ok: true, value: "proposition" });
   });
 
-  test('"Maturité :" alone yields null (pilot PRD case)', () => {
-    expect(readDocumentMaturity("Maturité : industrialisation\n")).toBeNull();
+  test('"Maturité :" alone yields no level (pilot PRD case)', () => {
+    expect(readDocumentMaturity("Maturité : industrialisation\n")).toEqual({
+      ok: true,
+      value: null,
+    });
   });
 
   test("tolerates bullets, bold markers and a trailing remark", () => {
-    expect(
-      readDocumentMaturity("- **Maturité du document :** décision (arbitrage du 2026-10-19)\n"),
-    ).toBe("décision");
-  });
-
-  test("prefers the longest level name", () => {
-    expect(readDocumentMaturity("Maturité du document : mise en service\n")).toBe(
-      "mise en service",
+    expect(maturityOf("- **Maturité du document :** décision (arbitrage du 2026-10-19)\n")).toBe(
+      "décision",
     );
   });
 
-  test("an unknown level, or two lines that disagree, yield null", () => {
-    expect(readDocumentMaturity("Maturité du document : excellente\n")).toBeNull();
+  test("prefers the longest level name", () => {
+    expect(maturityOf("Maturité du document : mise en service\n")).toBe("mise en service");
+  });
+
+  test("an unknown level, or two lines that disagree, yield no level", () => {
+    expect(maturityOf("Maturité du document : excellente\n")).toBeNull();
     expect(
-      readDocumentMaturity("Maturité du document : décision\nMaturité du document : prototype\n"),
+      maturityOf("Maturité du document : décision\nMaturité du document : prototype\n"),
     ).toBeNull();
   });
 
   test("a declaration inside a fenced block or an HTML comment is ignored", () => {
-    expect(readDocumentMaturity("```\nMaturité du document : décision\n```\n")).toBeNull();
-    expect(readDocumentMaturity("<!-- Maturité du document : décision -->\n")).toBeNull();
+    expect(maturityOf("```\nMaturité du document : décision\n```\n")).toBeNull();
+    expect(maturityOf("<!-- Maturité du document : décision -->\n")).toBeNull();
   });
 });
 
@@ -278,7 +297,7 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       "Maturité du document : proposition",
       "",
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("proposition");
+    expect(maturityOf(markdown)).toBe("proposition");
   });
 
   test("(b) a three-backtick line inside a four-backtick fence does not close it", () => {
@@ -291,7 +310,7 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       "Maturité du document : proposition",
       "",
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("proposition");
+    expect(maturityOf(markdown)).toBe("proposition");
   });
 
   test("(c) a criterion inside a four-backtick fence holding a three-backtick fence is not declared", () => {
@@ -321,7 +340,7 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       `${THREE}   `,
       "Maturité du document : proposition",
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("proposition");
+    expect(maturityOf(markdown)).toBe("proposition");
   });
 
   test("a tilde fence is not closed by backticks", () => {
@@ -332,12 +351,12 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       "~~~",
       "Maturité du document : proposition",
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("proposition");
+    expect(maturityOf(markdown)).toBe("proposition");
   });
 
   test("an unclosed fence hides everything to the end, so the maturity is absent", () => {
     const markdown: string = ["# PRD", THREE, "Maturité du document : décision", ""].join("\n");
-    expect(readDocumentMaturity(markdown)).toBeNull();
+    expect(maturityOf(markdown)).toBeNull();
   });
 
   test("a line indented by four spaces is not a fence: its keywords count", () => {
@@ -346,14 +365,14 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       "Maturité du document : décision",
       `    ${THREE}`,
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("décision");
+    expect(maturityOf(markdown)).toBe("décision");
   });
 
   test("a comment opener inside a fence opens no comment", () => {
     const markdown: string = [THREE, "<!--", THREE, "Maturité du document : décision", ""].join(
       "\n",
     );
-    expect(readDocumentMaturity(markdown)).toBe("décision");
+    expect(maturityOf(markdown)).toBe("décision");
   });
 
   test("a comment on several lines hides them, and the text after its end on the same line counts", () => {
@@ -362,7 +381,8 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       "<!-- start",
       "- CA-2 Hidden. Validation : b",
       "end --> - CA-3 After the comment. Validation : c",
-      "Maturité du document : <!-- not this --> décision",
+      "<!-- not this --> Maturité du document : décision",
+      "Maturité du document : décision",
     ].join("\n");
     expect(parseCriteria(markdown)).toEqual({
       ok: true,
@@ -371,11 +391,39 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
         { id: "CA-3", line: 4, hasValidation: true },
       ],
     });
-    expect(readDocumentMaturity(markdown)).toBe("décision");
+    expect(maturityOf(markdown)).toBe("décision");
   });
 
   test("an unterminated comment hides everything to the end", () => {
-    expect(readDocumentMaturity("<!-- open\nMaturité du document : décision\n")).toBeNull();
+    expect(maturityOf("<!-- open\nMaturité du document : décision\n")).toBeNull();
+  });
+
+  // Mutant X3: a closer indented by four spaces or a tab is not a closer.
+  test("a fence is not closed by a run indented by four spaces or a tab", () => {
+    for (const indent of ["    ", "\t", "  \t"]) {
+      const markdown: string = [
+        THREE,
+        `${indent}${THREE}`,
+        "Maturité du document : décision",
+        THREE,
+        "Maturité du document : proposition",
+      ].join("\n");
+      expect(maturityOf(markdown)).toBe("proposition");
+    }
+  });
+
+  // Mutant X4: inside an open comment a fence line opens no fence, so the
+  // comment's `-->` ends it and the text after it counts.
+  test("a fence line inside an open comment opens no fence", () => {
+    const markdown: string = [
+      "<!--",
+      THREE,
+      "-->",
+      "Maturité du document : décision",
+      THREE,
+      "Maturité du document : proposition",
+    ].join("\n");
+    expect(maturityOf(markdown)).toBe("décision");
   });
 
   test("CRLF and a lone CR keep the line numbers", () => {
@@ -396,20 +444,21 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
   });
 
   test("blankFencesAndComments keeps every line, normalises line ends and blanks with spaces", () => {
-    const source: string = ["keep <!-- x --> this", "~~~~", "~~~", "hidden", "~~~~ ", "after"].join(
+    const source: string = ["<!-- x --> keep", "~~~~", "~~~", "hidden", "~~~~ ", "after"].join(
       "\r\n",
     );
-    expect(blankFencesAndComments(source)).toBe(
-      ["keep            this", "    ", "   ", "      ", "     ", "after"].join("\n"),
-    );
-    expect(blankFencesAndComments("a\rb\r\nc\n").split("\n")).toEqual(["a", "b", "c", ""]);
+    expect(blankFencesAndComments(source)).toEqual({
+      ok: true,
+      value: ["           keep", "    ", "   ", "      ", "     ", "after"].join("\n"),
+    });
+    expect(blanked("a\rb\r\nc\n").split("\n")).toEqual(["a", "b", "c", ""]);
   });
 
   test("a fence opener needs 0-3 spaces and at least three backticks or tildes", () => {
-    expect(blankFencesAndComments("   ```\nx\n```")).toBe("      \n \n   ");
-    expect(blankFencesAndComments("``\nx")).toBe("``\nx");
-    expect(blankFencesAndComments("``` a`b\nx")).toBe("``` a`b\nx");
-    expect(blankFencesAndComments("~~~ a`b\nx")).toBe("       \n ");
+    expect(blanked("   ```\nx\n```")).toBe("      \n \n   ");
+    expect(blanked("``\nx")).toBe("``\nx");
+    expect(blanked("``` a`b\nx")).toBe("``` a`b\nx");
+    expect(blanked("~~~ a`b\nx")).toBe("       \n ");
   });
 
   test("a PRD with an ordinary code block reads its maturity, table and criteria", () => {
@@ -427,7 +476,7 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
       table("| `WP-1` | `CA-1` | `crates/**` | `cargo test` | `two-way` |"),
       "",
     ].join("\n");
-    expect(readDocumentMaturity(markdown)).toBe("décision");
+    expect(maturityOf(markdown)).toBe("décision");
     expect(parseCriteria(markdown)).toEqual({
       ok: true,
       value: [{ id: "CA-1", line: 5, hasValidation: true }],
@@ -436,6 +485,250 @@ describe("fenced blocks and HTML comments, as the readers see them", () => {
     expect(packages.ok).toBe(true);
     if (packages.ok)
       expect(packages.value.map((row: WorkPackage): string => row.id)).toEqual(["WP-1"]);
+  });
+});
+
+// Wave H (C1, C1 bis, Important): a construction the reader does not model
+// would make it read a quoted example as live, so the document is refused,
+// with the line, by the common entry point of the three parsers. Never a
+// level, an empty list or a table read from the wrong place.
+describe("constructions the reader refuses", () => {
+  const THREE: string = "```";
+  const FOUR: string = "````";
+  const REAL_TABLE: string = table("| `WP-1` | `CA-1` | `a/**` | `bun test` | `one-way` |");
+
+  function expectRefused(markdown: string, line: number, cause: string): void {
+    const results: readonly Parsed<unknown>[] = [
+      blankFencesAndComments(markdown),
+      readDocumentMaturity(markdown),
+      parseCriteria(markdown),
+      parseWorkPackages(markdown),
+    ];
+    for (const result of results) {
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toContain(`line ${line}`);
+        expect(result.reason).toContain(cause);
+      }
+    }
+  }
+
+  const FENCE_AFTER_MARKER: string = "a fence after a list or quote marker";
+
+  test.each([
+    ["a bullet", `- ${THREE}markdown`],
+    ["a star bullet", `* ${THREE}`],
+    ["an ordered item", `2. ${FOUR}`],
+    ["an ordered item with a parenthesis", `1) ${THREE}`],
+    ["a quote", `> ${THREE}`],
+    ["a quote without a space", `>${THREE}`],
+    ["a quote holding a bullet", `> - ${THREE}`],
+    ["a tilde run after a bullet", "- ~~~"],
+    ["an indented bullet", `   - ${THREE}`],
+  ])("(C1 a) %s that opens a fence is refused", (_label: string, opener: string) => {
+    const markdown: string = [
+      "# PRD",
+      opener,
+      "  Maturité du document : décision",
+      `  ${THREE}`,
+      "Maturité du document : proposition",
+    ].join("\n");
+    expectRefused(markdown, 2, FENCE_AFTER_MARKER);
+  });
+
+  test("(C1 a) the attack of the review: an example in a list item hid the real line", () => {
+    const markdown: string = [
+      "# PRD",
+      `- ${THREE}markdown`,
+      "  Maturité du document : décision",
+      `  ${THREE}`,
+      "Maturité du document : proposition",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown).ok).toBe(false);
+  });
+
+  test("a bullet whose text merely holds backticks later is not a fence", () => {
+    expect(maturityOf("- run ``` here\nMaturité du document : décision")).toBe("décision");
+    expect(maturityOf("-```\nMaturité du document : décision")).toBe("décision");
+  });
+
+  test("a fence after a marker inside a fence or a comment is content, not refused", () => {
+    expect(
+      maturityOf([THREE, `- ${THREE}`, THREE, "Maturité du document : décision"].join("\n")),
+    ).toBe("décision");
+    expect(
+      maturityOf(["<!--", `> ${THREE}`, "-->", "Maturité du document : décision"].join("\n")),
+    ).toBe("décision");
+  });
+
+  const COMMENT_NOT_AT_START: string = '"<!--" that does not start the line';
+
+  test.each([
+    ["a code span", "Use `<!--` to hide a line."],
+    ["a block indented by four spaces", "    <!--"],
+    ["a tab before it", "\t<!--"],
+    ["prose before it", "Maturité du document : <!-- x --> décision"],
+    ["a quote", "> <!--"],
+    ["a second comment after a closed one", "<!-- a --> b <!-- c -->"],
+  ])("(C1 b) %s opening a comment is refused", (_label: string, line: string) => {
+    const markdown: string = [
+      "# PRD",
+      line,
+      "Maturité du document : proposition",
+      "and `-->` ends it.",
+    ].join("\n");
+    expectRefused(markdown, 2, COMMENT_NOT_AT_START);
+  });
+
+  test("(C1 b) the attack of the review: a code span hid the real line", () => {
+    const markdown: string = [
+      "Use `<!--` to open a comment.",
+      "Maturité du document : proposition",
+      "and `-->` to end it.",
+      "Maturité du document : décision",
+    ].join("\n");
+    expect(readDocumentMaturity(markdown).ok).toBe(false);
+  });
+
+  test("a comment opener after at most three spaces is read as before", () => {
+    expect(maturityOf("   <!-- x -->\nMaturité du document : décision")).toBe("décision");
+  });
+
+  test("a comment opener inside an open comment opens nothing more and is not refused", () => {
+    expect(maturityOf("<!-- a\nquote `<!--` here\n-->\nMaturité du document : décision")).toBe(
+      "décision",
+    );
+  });
+
+  test.each([
+    "<!-->",
+    "<!--->",
+    "  <!--> trailing",
+    "<!--->-->",
+  ])("(C1 c) the complete comment %p is refused", (opener: string) => {
+    const markdown: string = [
+      opener,
+      "Maturité du document : proposition",
+      "-->",
+      "Maturité du document : décision",
+    ].join("\n");
+    expectRefused(markdown, 1, "complete empty comment");
+  });
+
+  test.each([
+    ["U+2028", String.fromCodePoint(0x2028)],
+    ["U+2029", String.fromCodePoint(0x2029)],
+    ["U+0085", String.fromCodePoint(0x0085)],
+  ])("(Important) a document holding %s is refused with its line", (code: string, char: string) => {
+    const markdown: string = [
+      "Maturité du document : proposition",
+      `The reader reads${char}Maturité du document : décision`,
+    ].join("\r\n");
+    expectRefused(markdown, 2, code);
+  });
+
+  test("(Important) a line separator after the real line no longer forges the level", () => {
+    const separator: string = String.fromCodePoint(0x2028);
+    expect(
+      readDocumentMaturity(`Prose that reads${separator}Maturité du document : décision`).ok,
+    ).toBe(false);
+  });
+
+  test("a no-break space is still accepted", () => {
+    const nbsp: string = String.fromCodePoint(0x00a0);
+    expect(maturityOf(`${nbsp}${THREE}\nMaturité du document : décision\n${nbsp}${THREE}`)).toBe(
+      "décision",
+    );
+  });
+
+  test("(C1 bis) two work-package table headers are refused, naming both lines", () => {
+    const markdown: string = [
+      "# PRD",
+      "",
+      "    | WP | CA-n | Périmètre | Vérification | Porte |",
+      "    | --- | --- | --- | --- | --- |",
+      "    | `WP-1` | `CA-1` | `**` | `true` | `two-way` |",
+      "",
+      REAL_TABLE,
+    ].join("\n");
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(markdown);
+    expect(result).toEqual({
+      ok: false,
+      reason:
+        "work-package table header at lines 3 and 7: a PRD holds exactly one work-package table",
+    });
+  });
+
+  test("(C1 bis) the same header twice, even with an identical table, is refused", () => {
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(
+      [REAL_TABLE, "", REAL_TABLE].join("\n"),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  test("(C1 bis) a header quoted in a fence is not a second header", () => {
+    const markdown: string = [THREE, REAL_TABLE, THREE, "", REAL_TABLE].join("\n");
+    const result: Parsed<readonly WorkPackage[]> = parseWorkPackages(markdown);
+    expect(result.ok).toBe(true);
+  });
+
+  test("the reader stays linear: 200 000 mixed lines in under a second", () => {
+    const block: readonly string[] = [
+      "<!-- a",
+      "b -->",
+      THREE,
+      "x",
+      THREE,
+      "- CA-1 a. Validation : b",
+      "text `code` more",
+      "~~~~",
+      "~~~~",
+      "Maturité du document : décision",
+    ];
+    const lines: string[] = [];
+    for (let index = 0; index < 20_000; index += 1) lines.push(...block);
+    const markdown: string = lines.join("\n");
+    const started: number = performance.now();
+    const read: Parsed<string> = blankFencesAndComments(markdown);
+    const elapsed: number = performance.now() - started;
+    expect(read.ok).toBe(true);
+    expect(lines.length).toBe(200_000);
+    expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+// The attacks of the earlier reviews that the reader already resisted: they
+// must stay green after the refusals above.
+describe("attacks that stay read correctly", () => {
+  const THREE: string = "```";
+  test("a closer followed by a tab closes", () => {
+    expect(
+      maturityOf(
+        `${THREE}\nMaturité du document : décision\n${THREE}\t\nMaturité du document : proposition`,
+      ),
+    ).toBe("proposition");
+  });
+  test("a longer closing run closes", () => {
+    expect(
+      maturityOf(
+        `${THREE}\nMaturité du document : décision\n\`\`\`\`\`\nMaturité du document : proposition`,
+      ),
+    ).toBe("proposition");
+  });
+  test("a lone --> opens nothing and hides nothing", () => {
+    expect(maturityOf("-->\nMaturité du document : décision")).toBe("décision");
+  });
+  test("mixed CRLF, CR and LF keep the line numbers", () => {
+    const mixed: string = `# Cahier\r\n${THREE}\r- CA-9 x\n${THREE}\r\n- CA-1 Real. Validation : a`;
+    expect(parseCriteria(mixed)).toEqual({
+      ok: true,
+      value: [{ id: "CA-1", line: 5, hasValidation: true }],
+    });
+  });
+  test("a refusal names the line of the original text under CRLF and CR", () => {
+    const result: Parsed<string> = blankFencesAndComments("a\r\nb\rc\n- ```");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toContain("line 4");
   });
 });
 
@@ -519,7 +812,7 @@ describe("the work-package norm", () => {
 
   test("the maturity example reads as the level it shows", async () => {
     const norm: string = await readNorm();
-    expect(readDocumentMaturity(exampleOf(norm, "maturity-example"))).toBe("décision");
+    expect(maturityOf(exampleOf(norm, "maturity-example"))).toBe("décision");
   });
 
   // Pins the header sentence of the norm: the WP cell is exact, the four others
@@ -676,6 +969,29 @@ describe("the work-package norm", () => {
       "Each following line that starts with `|` is a row.",
       "or a backtick (backticks are stripped)",
       "The `Door:` line is the only declaration still read from the description",
+    ]) {
+      expect(text).not.toContain(stale);
+    }
+  });
+
+  // Wave H (C1, C1 bis, Important): the norm lists what the reader refuses and
+  // the one-header rule, and no longer says that the first table wins.
+  test("the norm states the refused constructions and the one-header rule", async () => {
+    const text: string = await readNorm();
+    for (const sentence of [
+      "A construction the parsers do not model is refused, never read:",
+      "a run of three or more backticks or tildes right after a list marker (`-`, `*`, `+`, `1.`, `1)`) or a quote marker (`>`)",
+      "a `<!--` anywhere but at the start of a line after at most three spaces (in a code span, an indented block, a quote or after text)",
+      "the complete empty comments `<!-->` and `<!--->`",
+      "the characters U+0085, U+2028 and U+2029, anywhere in the file",
+      "Outside fences, `<!--` opens a comment only at the start of a line, after at most three spaces",
+      "More than one line that reads as this header, outside fences and comments, makes the document unreadable, naming the lines: the parser never picks one of them.",
+    ]) {
+      expect(text).toContain(sentence);
+    }
+    for (const stale of [
+      "Only the first table with this header is read.",
+      "`<!--` opens a comment anywhere in a line",
     ]) {
       expect(text).not.toContain(stale);
     }

@@ -871,9 +871,31 @@ describe("evaluateWorkPackageLink", () => {
     });
     const report = await evaluateWorkPackageLink(pr(), policy, spy.ports);
     expect(report.outcome).toBe("violations");
+    // Wave H: the empty diff is refused before any predicate, for every class.
     expect(report.violations).toEqual([
-      'PR #7 — Exempt: docs-only: no changed file: an empty diff is not a documentation-only change (class "docs-only")',
+      "PR #7 — Exempt: docs-only: the diff holds no changed file: an exemption covers a pull request that changes at least one file",
     ]);
+    expect(spy.diffCalls).toHaveLength(1);
+  });
+
+  // Wave H: an empty diff is a violation on every exemption path, explicit
+  // or implicit, whatever the predicate of the class.
+  test.each([
+    ["dependabot", { author: "dependabot[bot]" }],
+    ["revert", { title: 'Revert "x"' }],
+  ])("an explicit %s exemption on an empty diff is a violation, its predicate never consulted", async (cls: string, facts: Partial<PrFacts>) => {
+    const spy: Spy = spyOn(withCommits(commit("c1", trailer("Exempt", cls))), {
+      ok: true,
+      value: [],
+    });
+    const report: GateReport = await evaluateWorkPackageLink(pr(facts), policy, spy.ports);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      `PR #7 — Exempt: ${cls}: the diff holds no changed file: an exemption covers a pull request that changes at least one file`,
+    ]);
+    expect(report.volumeSummary).toContain(
+      "0 file(s) examined for an exemption; exemption decision: the diff holds no changed file",
+    );
     expect(spy.diffCalls).toHaveLength(1);
   });
 
@@ -1414,6 +1436,23 @@ describe("evaluateWorkPackageLink — resolution of a link", () => {
       `${PRD_ITEM}: no \`Maturité du document :\` line gives a level (absent, unknown or contradictory): the PRD is not approved (threshold: décision)`,
     ]);
     expect(verdict.volume).toContain("; maturity none;");
+  });
+
+  // Wave H (C1): a PRD the reader refuses is unreadable, named with its line,
+  // never a document without a maturity and never one read at a wrong level.
+  test("a PRD holding a construction the reader refuses is a violation naming the line", async () => {
+    const world: LinkWorld = linkWorld({
+      prd: {
+        ok: true,
+        value: prdText("- ```markdown\n  Maturité du document : décision\n  ```"),
+      },
+    });
+    const verdict = await judge(world);
+    expect(verdict.violations).toEqual([
+      `${PRD_ITEM}: docs/prd.md unreadable as a PRD (line 3: a fence after a list or quote marker is not read; open the fence at the start of the line)`,
+    ]);
+    expect(verdict.outcome).toBe("violations");
+    expect(verdict.volume).toContain("; maturity unreadable; work packages parsed: not read");
   });
 
   test("the threshold is the policy's, not a constant", async () => {
@@ -2711,7 +2750,7 @@ describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path",
     expect(report.checks).toHaveLength(1);
     expect(diffCalls).toBe(1);
     expect(report.volumeSummary).toBe(
-      "1 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: none (implicit exemption dependabot refused); implicit exemption: yes (dependabot); 2 file(s) examined for an exemption; exemption decision: refused, an exemption cannot cover a guarded path: 1 guarded path(s) touched",
+      "1 commit(s) examined; 0 declaration trailer pair(s) seen, 0 distinct; declaration read: none (implicit exemption dependabot refused); implicit exemption: yes (dependabot), refused; 2 file(s) examined for an exemption; exemption decision: refused, an exemption cannot cover a guarded path: 1 guarded path(s) touched",
     );
   });
 
@@ -2722,6 +2761,7 @@ describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path",
     ]);
     expect(diffCalls).toBe(1);
     expect(report.volumeSummary).toContain("; exemption decision: the diff holds no changed file");
+    expect(report.volumeSummary).toContain("; implicit exemption: yes (dependabot), refused;");
   });
 
   test("the implicit exemption on an unreadable diff is a violation", async () => {
@@ -2729,6 +2769,7 @@ describe("evaluateWorkPackageLink — an exemption cannot cover a guarded path",
     expect(report.violations).toEqual([
       "PR #7 — declaration: changed files unreadable (git diff failed)",
     ]);
+    expect(report.volumeSummary).toContain("; implicit exemption: yes (dependabot), refused;");
     expect(diffCalls).toBe(1);
     expect(report.volumeSummary).toContain(
       "0 file(s) examined for an exemption; exemption decision: changed files unreadable",

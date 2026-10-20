@@ -685,7 +685,18 @@ async function evaluateExemption(
     return { filesExamined: 0, decision: "changed files unreadable" };
   }
   const paths: readonly string[] = changed.value;
-  const refusal = unreadablePaths(paths);
+  // Same rule as the implicit exemption: nothing changed is covered by no
+  // class, whatever its predicate (an author or a title says nothing of a diff).
+  if (paths.length === 0) {
+    report.check(
+      item,
+      false,
+      "the diff holds no changed file: an exemption covers a pull request that changes at least one file",
+    );
+    return { filesExamined: 0, decision: "the diff holds no changed file" };
+  }
+  const refusal: { readonly summary: string; readonly note: string } | null =
+    unreadablePaths(paths);
   if (refusal !== null) {
     report.check(item, false, refusal.note);
     return { filesExamined: paths.length, decision: refusal.summary };
@@ -888,7 +899,13 @@ function checkApproved(
   prd: string,
   floor: MaturityLevel,
 ): boolean {
-  const level: MaturityLevel | null = readDocumentMaturity(prd);
+  const read: Parsed<MaturityLevel | null> = readDocumentMaturity(prd);
+  if (!read.ok) {
+    resolution.volume.maturity = "unreadable";
+    resolution.report.check(item, false, `${PRD_PATH} unreadable as a PRD (${read.reason})`);
+    return false;
+  }
+  const level: MaturityLevel | null = read.value;
   if (level === null) {
     resolution.volume.maturity = "none";
     resolution.report.check(
@@ -1312,6 +1329,8 @@ interface Outcome {
   readonly exemption: string | null;
   /** The volume of the resolution of a link, or null on any other path. */
   readonly resolution: string | null;
+  /** True when an implicit exemption applied and was refused by the diff. */
+  readonly implicitRefused: boolean;
 }
 
 /**
@@ -1339,6 +1358,7 @@ async function judgeImplicitly(
       filesExamined,
       exemption: decision,
       resolution: null,
+      implicitRefused: true,
     };
   };
   const changed: Fact<readonly string[]> = await ports.changedFiles(pr.baseSha, pr.headSha);
@@ -1372,6 +1392,7 @@ async function judgeImplicitly(
     filesExamined: paths.length,
     exemption: "no guarded path touched",
     resolution: null,
+    implicitRefused: false,
   };
 }
 
@@ -1386,7 +1407,13 @@ async function judgeDeclaration(
 ): Promise<Outcome> {
   if (declaration.kind === "invalid") {
     report.check(`${label} — declaration`, false, declaration.reason);
-    return { read: "none (invalid)", filesExamined: 0, exemption: null, resolution: null };
+    return {
+      read: "none (invalid)",
+      filesExamined: 0,
+      exemption: null,
+      resolution: null,
+      implicitRefused: false,
+    };
   }
   if (declaration.kind === "exempt") {
     const judged: ExemptionVolume = await evaluateExemption(
@@ -1402,12 +1429,13 @@ async function judgeDeclaration(
       filesExamined: judged.filesExamined,
       exemption: judged.decision,
       resolution: null,
+      implicitRefused: false,
     };
   }
   const read: string = `Work-package: ${declaration.repo}#${declaration.issue} ${declaration.wp}`;
   report.check(`${label} — declaration`, true, read);
   const resolution: string = await resolveLink(report, label, pr, declaration, policy, ports);
-  return { read, filesExamined: 0, exemption: null, resolution };
+  return { read, filesExamined: 0, exemption: null, resolution, implicitRefused: false };
 }
 
 /**
@@ -1456,7 +1484,7 @@ export async function evaluateWorkPackageLink(
   return report.volume(
     `${commits.value.length} commit(s) examined; ${pairs.seen} declaration trailer pair(s) seen, ` +
       `${pairs.distinct.length} distinct; declaration read: ${outcome.read}; ` +
-      `implicit exemption: ${implicit === null ? "no" : `yes (${implicit})`}; ` +
+      `implicit exemption: ${implicit === null ? "no" : `yes (${implicit})${outcome.implicitRefused ? ", refused" : ""}`}; ` +
       `${outcome.filesExamined} file(s) examined for an exemption` +
       (outcome.exemption === null ? "" : `; exemption decision: ${outcome.exemption}`) +
       (outcome.resolution === null ? "" : `; resolution: ${outcome.resolution}`),

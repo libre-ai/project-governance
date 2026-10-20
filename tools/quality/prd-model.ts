@@ -60,6 +60,43 @@ const FENCE_CLOSER: RegExp = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 const COMMENT_OPEN: string = "<!--";
 const COMMENT_CLOSE: string = "-->";
 
+// Constructions this reader does not model. Each one would make the reader
+// disagree with a Markdown renderer about where a fence or a comment starts or
+// ends, and so read a quoted example as live text (or hide a live line), so a
+// document holding one is refused instead of read.
+//
+// A run of three backticks or tildes right after one or more list or quote
+// markers: CommonMark opens a fence inside the item or the quote.
+const FENCE_AFTER_MARKER: RegExp = /^[ \t]*(?:(?:[-*+]|\d{1,9}[.)])[ \t]+|>[ \t]*)+(?:`{3}|~{3})/;
+// The complete empty comments of CommonMark: `<!-->` and `<!--->` end where
+// they start, whereas this reader would look for a later `-->`.
+const EMPTY_COMMENTS: readonly string[] = ["<!-->", "<!--->"];
+// A comment opener is read only at the start of a line, after at most three
+// spaces: elsewhere it may sit in a code span or an indented block, where a
+// renderer shows it as text.
+const COMMENT_START_LIMIT: number = 3;
+// Line terminators that a renderer or a regular expression could honour while
+// this reader, which splits on LF, CRLF and CR only, does not.
+// Built from code points so that the source holds no invisible character.
+const FOREIGN_LINE_BREAK: RegExp = new RegExp(`[${String.fromCodePoint(0x0085, 0x2028, 0x2029)}]`);
+
+function codePointOf(char: string): string {
+  return `U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}`;
+}
+
+/** Why the reader refuses this line outside fences and comments, or null. */
+function refusedOpening(line: string, start: number): string | null {
+  const before: string = line.slice(0, start);
+  if (before.length > COMMENT_START_LIMIT || /[^ ]/.test(before)) {
+    return `"${COMMENT_OPEN}" that does not start the line (after at most three spaces) is not read; put the comment on its own line`;
+  }
+  const rest: string = line.slice(start);
+  if (EMPTY_COMMENTS.some((empty: string): boolean => rest.startsWith(empty))) {
+    return `the complete empty comment "${rest.startsWith("<!--->") ? "<!--->" : "<!-->"}" is not read; write "<!-- -->"`;
+  }
+  return null;
+}
+
 interface OpenFence {
   readonly char: string;
   readonly length: number;
@@ -94,16 +131,31 @@ function blankOf(text: string): string {
  * string holds no backtick) or tildes; it closes on a line of 0-3 spaces and
  * a run of the SAME character at least as long, followed only by spaces or
  * tabs. An unclosed fence runs to the end. Outside fences, `<!--` opens a
- * comment anywhere in a line, `-->` ends it, and an unterminated comment runs
- * to the end.
+ * comment at the start of a line (after at most three spaces), `-->` ends it,
+ * and an unterminated comment runs to the end.
+ *
+ * Refused, with the 1-based line of the original text (fail closed: the
+ * reader cannot say where a renderer would put the fence or the comment):
+ * U+0085, U+2028 or U+2029 anywhere; outside fences and comments, a run of
+ * three backticks or tildes right after a list or quote marker, a `<!--`
+ * elsewhere than at the start of a line, and the empty comments `<!-->` and
+ * `<!--->`.
  */
-export function blankFencesAndComments(markdown: string): string {
+export function blankFencesAndComments(markdown: string): Parsed<string> {
   const lines: readonly string[] = markdown.replace(/\r\n?/g, "\n").split("\n");
   const out: string[] = [];
   let fence: OpenFence | null = null;
   let inComment: boolean = false;
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line: string = lines[index] ?? "";
+    const lineNumber: number = index + 1;
+    const foreign: RegExpExecArray | null = FOREIGN_LINE_BREAK.exec(line);
+    if (foreign !== null) {
+      return fail(
+        `line ${lineNumber}: the line separator ${codePointOf(foreign[0])} is not read; end the line with LF`,
+      );
+    }
     if (fence !== null) {
       if (closes(line, fence)) fence = null;
       out.push(blankOf(line));
@@ -115,6 +167,11 @@ export function blankFencesAndComments(markdown: string): string {
         fence = opened;
         out.push(blankOf(line));
         continue;
+      }
+      if (FENCE_AFTER_MARKER.test(line)) {
+        return fail(
+          `line ${lineNumber}: a fence after a list or quote marker is not read; open the fence at the start of the line`,
+        );
       }
     }
     let kept: string = "";
@@ -136,6 +193,8 @@ export function blankFencesAndComments(markdown: string): string {
           kept += rest;
           rest = "";
         } else {
+          const refusal: string | null = refusedOpening(line, line.length - rest.length + start);
+          if (refusal !== null) return fail(`line ${lineNumber}: ${refusal}`);
           kept += rest.slice(0, start) + blankOf(COMMENT_OPEN);
           rest = rest.slice(start + COMMENT_OPEN.length);
           inComment = true;
@@ -144,7 +203,7 @@ export function blankFencesAndComments(markdown: string): string {
     }
     out.push(kept);
   }
-  return out.join("\n");
+  return { ok: true, value: out.join("\n") };
 }
 
 const CRITERION_BULLET = /^[ \t]*[-*+][ \t]+(?:\*\*)?(CA-\d+)\b/;
@@ -157,7 +216,9 @@ const VALIDATION_CLAUSE = /Validation[ \t]*:/;
  * blanks fenced blocks and HTML comments without removing their line ends.
  */
 export function parseCriteria(markdown: string): Parsed<readonly Criterion[]> {
-  const lines: readonly string[] = blankFencesAndComments(markdown).split("\n");
+  const text: Parsed<string> = blankFencesAndComments(markdown);
+  if (!text.ok) return text;
+  const lines: readonly string[] = text.value.split("\n");
   const criteria: Criterion[] = [];
   const firstSeen = new Map<string, number>();
 
@@ -291,16 +352,30 @@ function parseRow(cells: readonly string[], lineNumber: number): Parsed<WorkPack
  * Read the `WP | CA-n | Périmètre | Vérification | Porte` table. Citing a CA
  * is not validated here: the gate checks the citation against the criteria
  * of the cited document.
+ *
+ * Why exactly one header: a PRD that quotes an example table (in an indented
+ * block, say) would otherwise have the reader pick "the first", which may be
+ * the example. Two headers are refused, never ranked.
  */
 export function parseWorkPackages(markdown: string): Parsed<readonly WorkPackage[]> {
-  const lines: readonly string[] = blankFencesAndComments(markdown).split("\n");
-  const headerAt = lines.findIndex((line) => {
-    const cells = splitRow(line);
-    return cells !== null && isHeader(cells);
-  });
-  if (headerAt === -1) {
+  const text: Parsed<string> = blankFencesAndComments(markdown);
+  if (!text.ok) return text;
+  const lines: readonly string[] = text.value.split("\n");
+  const headers: number[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const cells: readonly string[] | null = splitRow(lines[index] ?? "");
+    if (cells !== null && isHeader(cells)) headers.push(index);
+  }
+  const headerAt: number | undefined = headers[0];
+  if (headerAt === undefined) {
     return fail(
       "work-package table not found (expected header: WP | CA-n | Périmètre | Vérification | Porte)",
+    );
+  }
+  if (headers.length > 1) {
+    const at: string = headers.map((index: number): string => String(index + 1)).join(" and ");
+    return fail(
+      `work-package table header at lines ${at}: a PRD holds exactly one work-package table`,
     );
   }
   const rule = splitRow(lines[headerAt + 1] ?? "");
@@ -350,16 +425,24 @@ function levelOf(value: string): MaturityLevel | null {
 }
 
 /**
- * The level declared by the `Maturité du document :` line, or null when the
- * line is absent, unrecognised, or repeated with different values (fail
- * closed: an ambiguous document does not reach a maturity threshold).
+ * The level declared by the `Maturité du document :` line. `ok: true` with
+ * null when the line is absent, unrecognised, or repeated with different
+ * values (fail closed: an ambiguous document does not reach a maturity
+ * threshold); `ok: false` when the document holds a construction the reader
+ * refuses (see `blankFencesAndComments`).
  */
-export function readDocumentMaturity(markdown: string): MaturityLevel | null {
-  const text: string = blankFencesAndComments(markdown);
-  const levels = [...text.matchAll(DOCUMENT_MATURITY_LINE)].map((match) => levelOf(match[1] ?? ""));
-  const first = levels[0];
-  if (first === undefined || first === null) return null;
-  return levels.every((level) => level === first) ? first : null;
+export function readDocumentMaturity(markdown: string): Parsed<MaturityLevel | null> {
+  const text: Parsed<string> = blankFencesAndComments(markdown);
+  if (!text.ok) return text;
+  const levels: (MaturityLevel | null)[] = [...text.value.matchAll(DOCUMENT_MATURITY_LINE)].map(
+    (match: RegExpExecArray): MaturityLevel | null => levelOf(match[1] ?? ""),
+  );
+  const first: MaturityLevel | null | undefined = levels[0];
+  if (first === undefined || first === null) return { ok: true, value: null };
+  return {
+    ok: true,
+    value: levels.every((level: MaturityLevel | null): boolean => level === first) ? first : null,
+  };
 }
 
 /** True when `level` is at or above `floor` on the maturity ladder. */
