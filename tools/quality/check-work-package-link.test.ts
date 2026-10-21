@@ -2639,7 +2639,21 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
   // The two halves are tested apart (the port maps a non-User actor to null,
   // the gate refuses a label with no actor). This holds their composition: the
   // issue is read by the real port through a fake fetch, then judged by the gate.
-  async function issueLabeledBy(actorType: string, login: string): Promise<IssueRead> {
+  interface LabelStep {
+    readonly kind: "LabeledEvent" | "UnlabeledEvent";
+    readonly actorType: string;
+    readonly login: string;
+    readonly at: string;
+  }
+
+  // The fake answers as GitHub would: with the actor type only if the query asks for it.
+  const ACTOR_FIELDS = "actor { __typename login }";
+
+  const T1 = "2026-10-19T10:00:00Z";
+  const T2 = "2026-10-19T11:00:00Z";
+  const T3 = "2026-10-19T12:00:00Z";
+
+  async function issueWithSteps(steps: readonly LabelStep[]): Promise<IssueRead> {
     const answer: unknown = {
       data: {
         repository: {
@@ -2651,25 +2665,29 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
               pageInfo: { hasNextPage: false },
             },
             timelineItems: {
-              nodes: [
-                {
-                  __typename: "LabeledEvent",
-                  createdAt: "2026-10-19T10:00:00Z",
-                  label: { name: "ready" },
-                  actor: { __typename: actorType, login },
-                },
-              ],
+              nodes: steps.map((step: LabelStep): unknown => ({
+                __typename: step.kind,
+                createdAt: step.at,
+                label: { name: "ready" },
+                actor: { __typename: step.actorType, login: step.login },
+              })),
               pageInfo: { hasNextPage: false },
             },
           },
         },
       },
     };
-    const fetchStub = (async (): Promise<Response> =>
-      new Response(JSON.stringify(answer), {
+    const fetchStub = (async (_input: unknown, init?: RequestInit): Promise<Response> => {
+      const sent = JSON.parse(String(init?.body)) as { query: string };
+      // One for LabeledEvent, one for UnlabeledEvent.
+      if (sent.query.split(ACTOR_FIELDS).length - 1 !== 2) {
+        throw new Error(`the issue query no longer asks for ${ACTOR_FIELDS} on both events`);
+      }
+      return new Response(JSON.stringify(answer), {
         status: 200,
         headers: { "content-type": "application/json" },
-      })) as unknown as typeof fetch;
+      });
+    }) as unknown as typeof fetch;
     const ports: LinkPorts = realPorts({
       token: "fake-token-for-the-composition-test",
       workspace: "/nonexistent-workspace",
@@ -2683,11 +2701,47 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
     return read.value;
   }
 
+  const issueLabeledBy = (actorType: string, login: string): Promise<IssueRead> =>
+    issueWithSteps([{ kind: "LabeledEvent", actorType, login, at: T1 }]);
+
   test("a ready label set by a User owner, read by the real port, holds", async () => {
     const verdict: ReadyVerdict = await judge(
       readyWorld({ issue: await issueLabeledBy("User", "constantin-jais") }),
     );
+    // Judged, not skipped: the gate states that it required and held the ready.
     expect(verdict.violations).toEqual([]);
+    expect(verdict.outcome).toBe("pass");
+    expect(verdict.volume).toContain("ready: explicit required");
+    expect(verdict.volume).toContain("held");
+  });
+
+  test("the owner labels, then a Bot unlabels and labels again: the Bot is the last labeler, refused", async () => {
+    const verdict: ReadyVerdict = await judge(
+      readyWorld({
+        issue: await issueWithSteps([
+          { kind: "LabeledEvent", actorType: "User", login: "constantin-jais", at: T1 },
+          { kind: "UnlabeledEvent", actorType: "Bot", login: "libre-ai-agent", at: T2 },
+          { kind: "LabeledEvent", actorType: "Bot", login: "libre-ai-agent", at: T3 },
+        ]),
+      }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is present but its actor is null`,
+    ]);
+  });
+
+  test("a Bot labels, then the owner unlabels and labels again: the owner is the last labeler, holds", async () => {
+    const verdict: ReadyVerdict = await judge(
+      readyWorld({
+        issue: await issueWithSteps([
+          { kind: "LabeledEvent", actorType: "Bot", login: "libre-ai-agent", at: T1 },
+          { kind: "UnlabeledEvent", actorType: "User", login: "constantin-jais", at: T2 },
+          { kind: "LabeledEvent", actorType: "User", login: "constantin-jais", at: T3 },
+        ]),
+      }),
+    );
+    expect(verdict.violations).toEqual([]);
+    expect(verdict.volume).toContain("held");
   });
 
   test("a ready label set by a Bot that carries the owner's login, read by the real port, is refused", async () => {
