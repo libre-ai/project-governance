@@ -39,6 +39,9 @@ import {
   hasUsableGraphQLData,
   RETRY_DELAYS_MS,
 } from "../../ecosystem/github-fleet";
+import { matchesScope } from "../quality/check-work-package-link";
+import type { Parsed } from "../quality/prd-model";
+import { loadWorkPackagePolicy, type WorkPackagePolicy } from "../quality/work-package-policy";
 import {
   AUTHORITY,
   citedPaths,
@@ -434,7 +437,37 @@ export function commitMessage(plan: RepositoryPlan): { title: string; body: stri
   };
 }
 
-type Identity = { readonly name: string; readonly email: string };
+type Identity = BumpData["identity"];
+
+/** The class `EXEMPT_TRAILER` declares, as the policy names it. */
+export const EXEMPT_CLASS: string = EXEMPT_TRAILER.slice("Exempt: ".length);
+
+/**
+ * The globs of the declared class in the work-package policy. A policy without
+ * the class, or with a class that is not a `paths` rule, is a failure and never
+ * "no limit": the commit declares a class the gate would then refuse.
+ */
+export function declaredClassGlobs(policy: WorkPackagePolicy): Parsed<readonly string[]> {
+  const rule = Object.hasOwn(policy.exempt, EXEMPT_CLASS) ? policy.exempt[EXEMPT_CLASS] : undefined;
+  if (rule === undefined) {
+    return { ok: false, reason: `the policy lists no exempt class "${EXEMPT_CLASS}"` };
+  }
+  if (!("paths" in rule)) {
+    return { ok: false, reason: `the exempt class "${EXEMPT_CLASS}" is not a paths rule` };
+  }
+  return { ok: true, value: rule.paths };
+}
+
+/** The edited files the class does not cover: the gate would refuse the declaration. */
+export function editsOutsideClass(paths: readonly string[], globs: readonly string[]): string[] {
+  return paths.filter((path) => !globs.some((glob) => matchesScope(glob, path)));
+}
+
+/** The commit body without its declaration line: the description plays no role in the gate. */
+export function prDescription(body: string): string {
+  const cut = body.lastIndexOf("\n\n");
+  return cut !== -1 && body.slice(cut + 2) === EXEMPT_TRAILER ? body.slice(0, cut) : body;
+}
 
 /** The git arguments of the bump commit: the identity of the data file, signed off. */
 export function commitArgs(identity: Identity, title: string, body: string): readonly string[] {
@@ -458,17 +491,19 @@ export function commitArgs(identity: Identity, title: string, body: string): rea
  * refuses a sign-off that is not the last line; the work-package gate reads the
  * declaration from the trailer block, which is the last paragraph.
  */
-export function messageProblem(message: string, identity: Identity): string | null {
+export function messageProblem(
+  message: string,
+  trailers: readonly string[],
+  identity: Identity,
+): string | null {
   const lines = message.trimEnd().split("\n");
   const expected = `Signed-off-by: ${identity.name} <${identity.email}>`;
   if (lines[lines.length - 1] !== expected) {
     return "the sign-off is not the last line of the commit message";
   }
-  const block: string[] = [];
-  for (let index = lines.length - 1; index >= 0 && lines[index] !== ""; index -= 1) {
-    block.unshift(lines[index] as string);
-  }
-  const declared = block.filter((line) => line.startsWith("Exempt:"));
+  // `trailers` come from git (`%(trailers:only,unfold)`), the instrument the gate
+  // reads with: git keys are case-insensitive, so `exempt:` counts as a declaration.
+  const declared = trailers.filter((line) => line.toLowerCase().startsWith("exempt:"));
   if (declared.length !== 1 || declared[0] !== EXEMPT_TRAILER) {
     return `the trailer block of the commit message does not carry exactly one "${EXEMPT_TRAILER}" declaration`;
   }
@@ -609,6 +644,7 @@ async function applyRepository(
   target: BumpTarget,
   context: PlanContext,
   data: BumpData,
+  classGlobs: readonly string[],
   token: string,
 ): Promise<ApplyOutcome> {
   const env = { BUMP_TOKEN: token };
@@ -672,6 +708,17 @@ async function applyRepository(
         `the clone of ${served} and the GraphQL read disagree (${replanned.status}: ${replanned.refusals.join("; ") || "different edit set"}) — nothing written`,
       );
     }
+    // The commit declares the class; the gate refuses a declaration whose diff
+    // leaves the class. Say so here, before anything is written, not in the consumer's CI.
+    const outside = editsOutsideClass(
+      replanned.edits.map((edit) => edit.path),
+      classGlobs,
+    );
+    if (outside.length > 0) {
+      return fail(
+        `the edit set leaves the ${EXEMPT_CLASS} class (${outside.join(", ")}): open this bump by hand with a work package — nothing written`,
+      );
+    }
     for (const edit of replanned.edits) writeFileSync(join(directory, edit.path), edit.after);
     const { title, body } = commitMessage(replanned);
     const steps: (readonly string[])[] = [
@@ -685,6 +732,9 @@ async function applyRepository(
     }
     const problem = messageProblem(
       git(["log", "-1", "--format=%B"], directory).stdout,
+      git(["log", "-1", "--format=%(trailers:only,unfold)"], directory)
+        .stdout.split("\n")
+        .filter((line) => line !== ""),
       data.identity,
     );
     if (problem !== null) return fail(problem);
@@ -715,7 +765,10 @@ async function applyRepository(
         "--body-file",
         "-",
       ],
-      { env: { GH_TOKEN: token }, stdin: `${body}\n\n${renderPlanDetail(replanned).join("\n")}\n` },
+      {
+        env: { GH_TOKEN: token },
+        stdin: `${prDescription(body)}\n\n${renderPlanDetail(replanned).join("\n")}\n`,
+      },
     );
     if (pr.code !== 0)
       return fail(`pushed ${branch}, but the pull request was not opened: ${pr.stderr.trim()}`);
@@ -740,6 +793,13 @@ if (import.meta.main) {
   const data = parseBumpData(
     await Bun.file(new URL("tools/fleet/bump-generation.v1.yaml", root)).text(),
   );
+  // The class the bump commits declare, read from the policy the gate reads.
+  const policy = loadWorkPackagePolicy(
+    await Bun.file(new URL("ecosystem/work-package-policy.v1.yaml", root)).text(),
+  );
+  const classGlobs: Parsed<readonly string[]> = policy.ok
+    ? declaredClassGlobs(policy.value)
+    : { ok: false, reason: `the work-package policy cannot be read: ${policy.reason}` };
   const target = options.to ?? (generations[generations.length - 1] as string);
   const declared = generations.includes(target);
 
@@ -848,6 +908,25 @@ if (import.meta.main) {
     say("No pin surface was observed on any target — the tool lost its inputs.");
     failed = true;
   }
+  if (!classGlobs.ok) {
+    say(`The ${EXEMPT_CLASS} class cannot be read — ${classGlobs.reason}.`);
+    failed = true;
+  } else {
+    const bumps = plans.filter((plan) => plan.status === "bump");
+    const leaving = bumps.filter(
+      (plan) =>
+        editsOutsideClass(
+          plan.edits.map((edit) => edit.path),
+          classGlobs.value,
+        ).length > 0,
+    );
+    say(
+      `${EXEMPT_CLASS} class: ${bumps.length - leaving.length} of ${bumps.length} bump plan(s) stay inside it` +
+        (leaving.length === 0
+          ? "."
+          : `; ${leaving.length} leave it and need a work package: ${leaving.map((plan) => plan.repository).join(", ")}.`),
+    );
+  }
 
   if (options.apply) {
     const token = process.env[data.tokenSecret] ?? "";
@@ -856,6 +935,9 @@ if (import.meta.main) {
       failed = true;
     } else if (!declared) {
       say(`apply refused: ${short(target)} is not a declared generation`);
+      failed = true;
+    } else if (!classGlobs.ok) {
+      say(`apply refused: ${classGlobs.reason}`);
       failed = true;
     } else {
       // Declared is not coherent: the register only says the sha exists.
@@ -874,6 +956,7 @@ if (import.meta.main) {
             selection.targets.find((t) => t.repository === plan.repository) as BumpTarget,
             context,
             data,
+            classGlobs.value,
             token,
           ),
       });

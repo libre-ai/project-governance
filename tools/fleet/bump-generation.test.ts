@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { loadWorkPackagePolicy, type WorkPackagePolicy } from "../quality/work-package-policy";
 import {
   buildAuthorityQuery,
   buildSourcesQuery,
@@ -9,12 +10,15 @@ import {
   coherenceSpawner,
   commitArgs,
   commitMessage,
+  declaredClassGlobs,
   EXEMPT_TRAILER,
+  editsOutsideClass,
   isCandidatePath,
   messageProblem,
   parseBumpData,
   parseOptions,
   parseSourcesResponse,
+  prDescription,
   ROOT_SURFACES,
   renderPlanTable,
   replayCoherence,
@@ -221,25 +225,41 @@ describe("the commit message the gate and signalement read", () => {
   const signOff: string = `Signed-off-by: ${identity.name} <${identity.email}>`;
   const message = (...paragraphs: string[]): string => `${paragraphs.join("\n\n")}\n`;
 
+  // The trailers are the ones git parsed from the message (the gate's instrument),
+  // passed in: this check does not parse a trailer block of its own.
   test("a message with the declaration and the sign-off in one trailer block is accepted", () => {
     expect(
-      messageProblem(message("title", "body", `${EXEMPT_TRAILER}\n${signOff}`), identity),
+      messageProblem(
+        message("title", "body", `${EXEMPT_TRAILER}\n${signOff}`),
+        [EXEMPT_TRAILER, signOff],
+        identity,
+      ),
     ).toBe(null);
   });
 
   test("a missing declaration is refused", () => {
-    expect(messageProblem(message("title", "body", signOff), identity)).toContain("Exempt");
+    expect(messageProblem(message("title", "body", signOff), [signOff], identity)).toContain(
+      "Exempt",
+    );
   });
 
-  test("a declaration in the free body, outside the trailer block, is refused", () => {
+  test("a declaration git does not read as a trailer is refused", () => {
     expect(
-      messageProblem(message("title", EXEMPT_TRAILER, "closing prose", signOff), identity),
+      messageProblem(
+        message("title", EXEMPT_TRAILER, "closing prose", signOff),
+        [signOff],
+        identity,
+      ),
     ).toContain("Exempt");
   });
 
   test("a sign-off that is not the last line is refused", () => {
     expect(
-      messageProblem(message("title", `${EXEMPT_TRAILER}\n${signOff}\nCo-thing: x`), identity),
+      messageProblem(
+        message("title", `${EXEMPT_TRAILER}\n${signOff}\nCo-thing: x`),
+        [EXEMPT_TRAILER, signOff, "Co-thing: x"],
+        identity,
+      ),
     ).toContain("sign-off");
   });
 
@@ -247,19 +267,52 @@ describe("the commit message the gate and signalement read", () => {
     expect(
       messageProblem(
         message("title", `${EXEMPT_TRAILER}\nExempt: docs-only\n${signOff}`),
+        [EXEMPT_TRAILER, "Exempt: docs-only", signOff],
         identity,
       ),
     ).toContain("Exempt");
   });
 
-  test("a real git commit built from the same arguments passes the same check", () => {
+  test("a second declaration under another letter case is refused: git keys are case-insensitive", () => {
+    expect(
+      messageProblem(
+        message("title", `${EXEMPT_TRAILER}\nexempt: docs-only\n${signOff}`),
+        [EXEMPT_TRAILER, "exempt: docs-only", signOff],
+        identity,
+      ),
+    ).toContain("Exempt");
+  });
+
+  const PLAN: RepositoryPlan = {
+    repository: "libre-ai/x",
+    status: "bump",
+    from: M,
+    to: P,
+    sites: [],
+    edits: [{ path: "ci.yml", before: "", after: "", sites: 1 }],
+    left: [],
+    refusals: [],
+    notes: [],
+  };
+
+  /**
+   * Commit the bump message in a scratch repository whose git configuration is
+   * `config` (an empty one by default), and read back what the production check
+   * reads: the message and the trailers git parsed from it.
+   */
+  function commitInScratch(config: string | null = null): {
+    readonly written: string;
+    readonly trailers: string[];
+  } {
     const directory: string = mkdtempSync(join(tmpdir(), "bump-commit-"));
     try {
-      // Nothing inherited: a global or system config must not change what git writes.
+      const configPath: string = join(directory, "gitconfig");
+      writeFileSync(configPath, config ?? "");
+      // Nothing inherited but the configuration under test.
       const environment: Record<string, string> = {
         PATH: process.env.PATH ?? "",
         HOME: directory,
-        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_GLOBAL: configPath,
         GIT_CONFIG_NOSYSTEM: "1",
       };
       const run = (argv: readonly string[]): string => {
@@ -272,33 +325,118 @@ describe("the commit message the gate and signalement read", () => {
       run(["init", "--quiet"]);
       writeFileSync(join(directory, "ci.yml"), "uses: x\n");
       run(["add", "--", "ci.yml"]);
-      const { title, body } = commitMessage({
-        repository: "libre-ai/x",
-        status: "bump",
-        from: M,
-        to: P,
-        sites: [],
-        edits: [{ path: "ci.yml", before: "", after: "", sites: 1 }],
-        left: [],
-        refusals: [],
-        notes: [],
-      });
+      const { title, body } = commitMessage(PLAN);
       run([...commitArgs(identity, title, body)]);
-      const written: string = run(["log", "-1", "--format=%B"]);
-      expect(messageProblem(written, identity)).toBe(null);
-      // The gate reads the trailer block through git, not through a pattern.
-      const trailers: string[] = Bun.spawnSync(["git", "interpret-trailers", "--parse"], {
-        cwd: directory,
-        env: environment,
-        stdin: new TextEncoder().encode(written),
-      })
-        .stdout.toString()
-        .split("\n")
-        .filter((line: string): boolean => line !== "");
-      expect(trailers).toEqual([EXEMPT_TRAILER, signOff]);
+      return {
+        written: run(["log", "-1", "--format=%B"]),
+        trailers: run(["log", "-1", "--format=%(trailers:only,unfold)"])
+          .split("\n")
+          .filter((line: string): boolean => line !== ""),
+      };
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  }
+
+  test("a real git commit built from the same arguments passes the same check", () => {
+    const { written, trailers } = commitInScratch();
+    expect(trailers).toEqual([EXEMPT_TRAILER, signOff]);
+    expect(messageProblem(written, trailers, identity)).toBe(null);
+  });
+
+  test("a commit-msg hook that rewrites the message after the sign-off is caught", () => {
+    // A global hooks directory is part of the environment the clone inherits.
+    const hooks: string = mkdtempSync(join(tmpdir(), "bump-hooks-"));
+    try {
+      const hook: string = join(hooks, "commit-msg");
+      writeFileSync(hook, '#!/bin/sh\nprintf "Reviewed-by: someone\\n" >> "$1"\n', { mode: 0o755 });
+      const { written, trailers } = commitInScratch(`[core]\n\thooksPath = ${hooks}\n`);
+      expect(written.trimEnd().split("\n").pop()).toBe("Reviewed-by: someone");
+      expect(messageProblem(written, trailers, identity)).toContain("sign-off");
+    } finally {
+      rmSync(hooks, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the bump tool and the class it declares", () => {
+  const policyText: string = readFileSync(
+    join(import.meta.dir, "..", "..", "ecosystem", "work-package-policy.v1.yaml"),
+    "utf8",
+  );
+  const plan: RepositoryPlan = {
+    repository: "libre-ai/x",
+    status: "bump",
+    from: M,
+    to: P,
+    sites: [],
+    edits: [{ path: "ci.yml", before: "", after: "", sites: 1 }],
+    left: [],
+    refusals: [],
+    notes: [],
+  };
+
+  function shippedPolicy(): WorkPackagePolicy {
+    const loaded = loadWorkPackagePolicy(policyText);
+    if (!loaded.ok) {
+      throw new Error(`the shipped policy must load: ${loaded.reason}`);
+    }
+    return loaded.value;
+  }
+
+  const policyWith = (exempt: WorkPackagePolicy["exempt"]): WorkPackagePolicy => ({
+    ...shippedPolicy(),
+    exempt,
+  });
+
+  test("the globs of the declared class are read from the shipped policy", () => {
+    const globs = declaredClassGlobs(shippedPolicy());
+    expect(globs.ok).toBe(true);
+    expect(globs.ok && globs.value).toContain("project.v1.yaml");
+  });
+
+  test("a policy without the declared class is refused, not read as no limit", () => {
+    const globs = declaredClassGlobs(policyWith({}));
+    expect(globs.ok).toBe(false);
+    expect(!globs.ok && globs.reason).toContain("fleet-bump");
+  });
+
+  test("a declared class that is not a paths rule is refused", () => {
+    const globs = declaredClassGlobs(policyWith({ "fleet-bump": { author: "someone" } }));
+    expect(globs.ok).toBe(false);
+    expect(!globs.ok && globs.reason).toContain("paths");
+  });
+
+  test("an edit set inside the class reports nothing", () => {
+    const globs: readonly string[] = ["project.v1.yaml", ".github/workflows/*.yml"];
+    expect(editsOutsideClass([".github/workflows/ci.yml", "project.v1.yaml"], globs)).toEqual([]);
+  });
+
+  test("an edit set that leaves the class names the files outside", () => {
+    const globs = declaredClassGlobs(shippedPolicy());
+    expect(globs.ok).toBe(true);
+    expect(
+      editsOutsideClass(
+        ["project.v1.yaml", "Cargo.toml", "packages/a/package.json"],
+        globs.ok ? globs.value : [],
+      ),
+    ).toEqual(["Cargo.toml", "packages/a/package.json"]);
+  });
+
+  test("an empty list of globs admits nothing", () => {
+    expect(editsOutsideClass(["project.v1.yaml"], [])).toEqual(["project.v1.yaml"]);
+  });
+
+  test("the pull request description does not repeat the declaration line", () => {
+    const { body } = commitMessage(plan);
+    expect(body).toContain(EXEMPT_TRAILER);
+    const description: string = prDescription(body);
+    expect(description).not.toContain(EXEMPT_TRAILER);
+    expect(description).toContain("Move every");
+  });
+
+  test("a body that carries no declaration is left as it is", () => {
+    expect(prDescription("first\n\nsecond")).toBe("first\n\nsecond");
   });
 });
 
