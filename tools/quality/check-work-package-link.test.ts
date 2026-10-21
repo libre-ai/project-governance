@@ -2640,7 +2640,7 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
   // the gate refuses a label with no actor). This holds their composition: the
   // issue is read by the real port through a fake fetch, then judged by the gate.
   async function issueLabeledBy(actorType: string, login: string): Promise<IssueRead> {
-    const answer = {
+    const answer: unknown = {
       data: {
         repository: {
           issue: {
@@ -2676,7 +2676,7 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
       fetch: fetchStub,
       env: { PATH: "" },
     });
-    const read = await ports.readIssue("libre-ai/product-research", 12);
+    const read: Fact<IssueRead> = await ports.readIssue("libre-ai/product-research", 12);
     if (!read.ok) {
       throw new Error(`the stubbed issue must be readable: ${read.reason}`);
     }
@@ -2684,14 +2684,14 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
   }
 
   test("a ready label set by a User owner, read by the real port, holds", async () => {
-    const verdict = await judge(
+    const verdict: ReadyVerdict = await judge(
       readyWorld({ issue: await issueLabeledBy("User", "constantin-jais") }),
     );
     expect(verdict.violations).toEqual([]);
   });
 
   test("a ready label set by a Bot that carries the owner's login, read by the real port, is refused", async () => {
-    const verdict = await judge(
+    const verdict: ReadyVerdict = await judge(
       readyWorld({ issue: await issueLabeledBy("Bot", "constantin-jais") }),
     );
     expect(verdict.violations).toEqual([
@@ -2700,7 +2700,7 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
   });
 
   test("a ready label set by a Bot under its own login, read by the real port, is refused", async () => {
-    const verdict = await judge(
+    const verdict: ReadyVerdict = await judge(
       readyWorld({ issue: await issueLabeledBy("Bot", "libre-ai-agent") }),
     );
     expect(verdict.violations).toEqual([
