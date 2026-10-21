@@ -408,6 +408,14 @@ export function isCandidatePath(path: string, card: string): boolean {
   return path === "Cargo.toml" || /^toolchains\/[^/]+\.json$/.test(path);
 }
 
+/**
+ * The work-package gate admits a pull request that moves pins only through a
+ * declaration, never implicitly (docs/specifications/WORK-PACKAGES.md). The
+ * line is the last paragraph of the body, so that `git commit -s` appends the
+ * sign-off to the same trailer block and the sign-off stays the last line.
+ */
+export const EXEMPT_TRAILER = "Exempt: fleet-bump";
+
 export function commitMessage(plan: RepositoryPlan): { title: string; body: string } {
   const paths = plan.edits.map((edit) => edit.path).join(" ");
   return {
@@ -420,8 +428,51 @@ export function commitMessage(plan: RepositoryPlan): { title: string; body: stri
       "",
       `Opened by ${AUTHORITY} tools/fleet/bump-generation.ts. The merge stays with`,
       "this repository's required checks and a reviewer.",
+      "",
+      EXEMPT_TRAILER,
     ].join("\n"),
   };
+}
+
+type Identity = { readonly name: string; readonly email: string };
+
+/** The git arguments of the bump commit: the identity of the data file, signed off. */
+export function commitArgs(identity: Identity, title: string, body: string): readonly string[] {
+  return [
+    "-c",
+    `user.name=${identity.name}`,
+    "-c",
+    `user.email=${identity.email}`,
+    "commit",
+    "--quiet",
+    "-s",
+    "-m",
+    title,
+    "-m",
+    body,
+  ];
+}
+
+/**
+ * Why a written commit message would be refused downstream, or null. signalement
+ * refuses a sign-off that is not the last line; the work-package gate reads the
+ * declaration from the trailer block, which is the last paragraph.
+ */
+export function messageProblem(message: string, identity: Identity): string | null {
+  const lines = message.trimEnd().split("\n");
+  const expected = `Signed-off-by: ${identity.name} <${identity.email}>`;
+  if (lines[lines.length - 1] !== expected) {
+    return "the sign-off is not the last line of the commit message";
+  }
+  const block: string[] = [];
+  for (let index = lines.length - 1; index >= 0 && lines[index] !== ""; index -= 1) {
+    block.unshift(lines[index] as string);
+  }
+  const declared = block.filter((line) => line.startsWith("Exempt:"));
+  if (declared.length !== 1 || declared[0] !== EXEMPT_TRAILER) {
+    return `the trailer block of the commit message does not carry exactly one "${EXEMPT_TRAILER}" declaration`;
+  }
+  return null;
 }
 
 // --- generation coherence -----------------------------------------------------
@@ -626,29 +677,17 @@ async function applyRepository(
     const steps: (readonly string[])[] = [
       ["checkout", "--quiet", "-b", branch],
       ["add", "--", ...replanned.edits.map((edit) => edit.path)],
-      [
-        "-c",
-        `user.name=${data.identity.name}`,
-        "-c",
-        `user.email=${data.identity.email}`,
-        "commit",
-        "--quiet",
-        "-s",
-        "-m",
-        title,
-        "-m",
-        body,
-      ],
+      commitArgs(data.identity, title, body),
     ];
     for (const step of steps) {
       const result = git(step, directory);
       if (result.code !== 0) return fail(`git ${step[0]} failed: ${result.stderr.trim()}`);
     }
-    // signalement refuses a sign-off that is not the last line.
-    const message = git(["log", "-1", "--format=%B"], directory).stdout.trimEnd().split("\n");
-    const expected = `Signed-off-by: ${data.identity.name} <${data.identity.email}>`;
-    if (message[message.length - 1] !== expected)
-      return fail("the sign-off is not the last line of the commit message");
+    const problem = messageProblem(
+      git(["log", "-1", "--format=%B"], directory).stdout,
+      data.identity,
+    );
+    if (problem !== null) return fail(problem);
     const changed = git(["diff", "--name-only", "HEAD~1", "HEAD"], directory)
       .stdout.trim()
       .split("\n")
