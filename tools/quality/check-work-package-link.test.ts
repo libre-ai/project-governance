@@ -23,6 +23,7 @@ import {
 import type { GateOutcome, GateReport } from "./gate-report";
 import type { Parsed } from "./prd-model";
 import type { ExemptRule, WorkPackagePolicy } from "./work-package-policy";
+import { realPorts } from "./work-package-ports";
 
 const NO_BREAK_SPACE = String.fromCodePoint(0xa0);
 const KELVIN_SIGN = String.fromCodePoint(0x212a);
@@ -2632,6 +2633,78 @@ describe("evaluateWorkPackageLink — explicit ready", () => {
     );
     expect(verdict.violations).toEqual([
       `${READY_ITEM}: bodyEditedAfterReady is ${shown}, not the boolean false: the issue read cannot show the body unedited since the ready`,
+    ]);
+  });
+
+  // The two halves are tested apart (the port maps a non-User actor to null,
+  // the gate refuses a label with no actor). This holds their composition: the
+  // issue is read by the real port through a fake fetch, then judged by the gate.
+  async function issueLabeledBy(actorType: string, login: string): Promise<IssueRead> {
+    const answer = {
+      data: {
+        repository: {
+          issue: {
+            body: issueBody(),
+            lastEditedAt: null,
+            labels: {
+              nodes: [{ name: "kind:work-package" }, { name: "ready" }],
+              pageInfo: { hasNextPage: false },
+            },
+            timelineItems: {
+              nodes: [
+                {
+                  __typename: "LabeledEvent",
+                  createdAt: "2026-10-19T10:00:00Z",
+                  label: { name: "ready" },
+                  actor: { __typename: actorType, login },
+                },
+              ],
+              pageInfo: { hasNextPage: false },
+            },
+          },
+        },
+      },
+    };
+    const fetchStub = (async (): Promise<Response> =>
+      new Response(JSON.stringify(answer), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as unknown as typeof fetch;
+    const ports: LinkPorts = realPorts({
+      token: "fake-token-for-the-composition-test",
+      workspace: "/nonexistent-workspace",
+      fetch: fetchStub,
+      env: { PATH: "" },
+    });
+    const read = await ports.readIssue("libre-ai/product-research", 12);
+    if (!read.ok) {
+      throw new Error(`the stubbed issue must be readable: ${read.reason}`);
+    }
+    return read.value;
+  }
+
+  test("a ready label set by a User owner, read by the real port, holds", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: await issueLabeledBy("User", "constantin-jais") }),
+    );
+    expect(verdict.violations).toEqual([]);
+  });
+
+  test("a ready label set by a Bot that carries the owner's login, read by the real port, is refused", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: await issueLabeledBy("Bot", "constantin-jais") }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is present but its actor is null`,
+    ]);
+  });
+
+  test("a ready label set by a Bot under its own login, read by the real port, is refused", async () => {
+    const verdict = await judge(
+      readyWorld({ issue: await issueLabeledBy("Bot", "libre-ai-agent") }),
+    );
+    expect(verdict.violations).toEqual([
+      `${READY_ITEM}: inconsistent issue read: the "ready" label is present but its actor is null`,
     ]);
   });
 
