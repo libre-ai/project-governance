@@ -41,7 +41,10 @@ For each repository planned as `bump`, `--apply` clones the served branch,
 re-plans on the clone (a second instrument, and a full-tree count of the old
 generation), refuses when the two plans disagree, commits on `work/bump-<gen8>`
 with `-s` and the identity of `bump-generation.v1.yaml` (sign-off as the last
-line), pushes without force and opens the pull request. It never merges: each
+line), pushes without force and opens the pull request. The commit message ends with
+the declaration `Exempt: fleet-bump` in the same trailer block as the sign-off, which
+the work-package link gate reads; the tool re-reads the written message and refuses
+the repository when the sign-off is not the last line or the declaration is missing. It never merges: each
 consumer's required checks and a reviewer do. A branch that already exists is
 left as is. It refuses a target that `fleet-pins.v1.yaml` does not declare.
 

@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildAuthorityQuery,
   buildSourcesQuery,
   coherenceEnvironment,
   coherenceSpawner,
+  commitArgs,
   commitMessage,
+  EXEMPT_TRAILER,
   isCandidatePath,
+  messageProblem,
   parseBumpData,
   parseOptions,
   parseSourcesResponse,
@@ -196,12 +200,105 @@ describe("apply helpers", () => {
     expect(body).not.toContain("Signed-off-by");
   });
 
+  test("the commit message ends with the fleet-bump declaration as its own paragraph", () => {
+    const { body } = commitMessage(plan);
+    const paragraphs: string[] = body.split("\n\n");
+    expect(paragraphs[paragraphs.length - 1]).toBe(EXEMPT_TRAILER);
+    expect(EXEMPT_TRAILER).toBe("Exempt: fleet-bump");
+  });
+
   test("the plan table has one row per repository", () => {
     expect(renderPlanTable([plan])).toEqual([
       "| Repository | From | Files | Sites | Would change | Left | Verdict |",
       "| --- | --- | ---: | ---: | ---: | ---: | --- |",
       "| libre-ai/x | 7c2238d6 | 1 | 1 | 1 | 0 | bump |",
     ]);
+  });
+});
+
+describe("the commit message the gate and signalement read", () => {
+  const identity: { readonly name: string; readonly email: string } = parseBumpData(DATA).identity;
+  const signOff: string = `Signed-off-by: ${identity.name} <${identity.email}>`;
+  const message = (...paragraphs: string[]): string => `${paragraphs.join("\n\n")}\n`;
+
+  test("a message with the declaration and the sign-off in one trailer block is accepted", () => {
+    expect(
+      messageProblem(message("title", "body", `${EXEMPT_TRAILER}\n${signOff}`), identity),
+    ).toBe(null);
+  });
+
+  test("a missing declaration is refused", () => {
+    expect(messageProblem(message("title", "body", signOff), identity)).toContain("Exempt");
+  });
+
+  test("a declaration in the free body, outside the trailer block, is refused", () => {
+    expect(
+      messageProblem(message("title", EXEMPT_TRAILER, "closing prose", signOff), identity),
+    ).toContain("Exempt");
+  });
+
+  test("a sign-off that is not the last line is refused", () => {
+    expect(
+      messageProblem(message("title", `${EXEMPT_TRAILER}\n${signOff}\nCo-thing: x`), identity),
+    ).toContain("sign-off");
+  });
+
+  test("a second, different declaration is refused", () => {
+    expect(
+      messageProblem(
+        message("title", `${EXEMPT_TRAILER}\nExempt: docs-only\n${signOff}`),
+        identity,
+      ),
+    ).toContain("Exempt");
+  });
+
+  test("a real git commit built from the same arguments passes the same check", () => {
+    const directory: string = mkdtempSync(join(tmpdir(), "bump-commit-"));
+    try {
+      // Nothing inherited: a global or system config must not change what git writes.
+      const environment: Record<string, string> = {
+        PATH: process.env.PATH ?? "",
+        HOME: directory,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+      };
+      const run = (argv: readonly string[]): string => {
+        const result = Bun.spawnSync(["git", ...argv], { cwd: directory, env: environment });
+        if (result.exitCode !== 0) {
+          throw new Error(`git ${argv[0]} failed: ${result.stderr.toString()}`);
+        }
+        return result.stdout.toString();
+      };
+      run(["init", "--quiet"]);
+      writeFileSync(join(directory, "ci.yml"), "uses: x\n");
+      run(["add", "--", "ci.yml"]);
+      const { title, body } = commitMessage({
+        repository: "libre-ai/x",
+        status: "bump",
+        from: M,
+        to: P,
+        sites: [],
+        edits: [{ path: "ci.yml", before: "", after: "", sites: 1 }],
+        left: [],
+        refusals: [],
+        notes: [],
+      });
+      run([...commitArgs(identity, title, body)]);
+      const written: string = run(["log", "-1", "--format=%B"]);
+      expect(messageProblem(written, identity)).toBe(null);
+      // The gate reads the trailer block through git, not through a pattern.
+      const trailers: string[] = Bun.spawnSync(["git", "interpret-trailers", "--parse"], {
+        cwd: directory,
+        env: environment,
+        stdin: new TextEncoder().encode(written),
+      })
+        .stdout.toString()
+        .split("\n")
+        .filter((line: string): boolean => line !== "");
+      expect(trailers).toEqual([EXEMPT_TRAILER, signOff]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 
