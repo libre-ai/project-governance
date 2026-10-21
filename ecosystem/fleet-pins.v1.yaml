@@ -237,3 +237,13 @@ generations:
       ref is the one R declared. libre-ai/ai-work-supervision is the first
       consumer to wire it (step 3 of the process above, pilot of the
       PRD-ticketing work).
+  - sha: 1cebcb498e3f27cb7cabbc45104593adb5a8e8eb
+    added_on: 2026-10-21
+    note: >-
+      The work-package policy lists the exemption class fleet-bump (#125) and
+      the bump tool declares it, checks its edit set against it and reads the
+      written commit through git (#126, #128). The composition manifest and
+      reusable-work-package-link.yml are unchanged from b0a5ff0c, so every
+      composed ref is the one R declared. A consumer that adopts this
+      generation can move its pins in a pull request that declares
+      `Exempt: fleet-bump` and touches only pin surfaces.
