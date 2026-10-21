@@ -237,3 +237,24 @@ generations:
       ref is the one R declared. libre-ai/ai-work-supervision is the first
       consumer to wire it (step 3 of the process above, pilot of the
       PRD-ticketing work).
+  - sha: 1cebcb498e3f27cb7cabbc45104593adb5a8e8eb
+    added_on: 2026-10-21
+    note: >-
+      The work-package policy lists the exemption class fleet-bump (#125) and
+      the bump tool declares it, checks its edit set against it and reads the
+      written commit through git (#126, #128); #127 adds tests only. The
+      composition manifest and reusable-work-package-link.yml are unchanged
+      from b0a5ff0c (`git diff b0a5ff0c 1cebcb49 --
+      .github/composition/manifest.json
+      .github/workflows/reusable-work-package-link.yml` is empty), so every
+      composed ref is the one R declared. Generation coherence at 1cebcb49:
+      16 declared, 15 verified, 0 failed, 1 not applicable
+      (database-policy-inspector), 20 gate roots replayed, 20 passed.
+      The trailer `Exempt: fleet-bump` only matters to a repository that
+      wires reusable-work-package-link.yml (today ai-work-supervision, on
+      b0a5ff0c); for the others it is inert. Grace window: 17 consumers are
+      still on R (0db2e10e) and ai-work-supervision on b0a5ff0c, so R is now
+      exactly two generations behind. Every consumer still on R must move
+      before another generation is declared, or the next declaration turns the
+      pins gate red on all of them. Merging this entry runs fleet-bump.yml;
+      with no FLEET_BUMP_TOKEN secret (none is set) it plans only.
