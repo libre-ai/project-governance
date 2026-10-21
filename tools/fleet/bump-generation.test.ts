@@ -6,24 +6,27 @@ import { loadWorkPackagePolicy, type WorkPackagePolicy } from "../quality/work-p
 import {
   buildAuthorityQuery,
   buildSourcesQuery,
+  classProblem,
+  classSummary,
   coherenceEnvironment,
   coherenceSpawner,
   commitArgs,
   commitMessage,
   declaredClassGlobs,
+  EXEMPT_CLASS,
   EXEMPT_TRAILER,
-  editsOutsideClass,
   isCandidatePath,
   messageProblem,
   parseBumpData,
   parseOptions,
   parseSourcesResponse,
-  prDescription,
   ROOT_SURFACES,
   renderPlanTable,
   replayCoherence,
   runApply,
   selectTargets,
+  splitWrittenMessage,
+  WRITTEN_MESSAGE_FORMAT,
 } from "./bump-generation";
 import type { RepositoryPlan } from "./bump-plan";
 
@@ -327,12 +330,12 @@ describe("the commit message the gate and signalement read", () => {
       run(["add", "--", "ci.yml"]);
       const { title, body } = commitMessage(PLAN);
       run([...commitArgs(identity, title, body)]);
-      return {
-        written: run(["log", "-1", "--format=%B"]),
-        trailers: run(["log", "-1", "--format=%(trailers:only,unfold)"])
-          .split("\n")
-          .filter((line: string): boolean => line !== ""),
-      };
+      // The one read the production check makes.
+      const read = splitWrittenMessage(run(["log", "-1", `--format=${WRITTEN_MESSAGE_FORMAT}`]));
+      if (read === null) {
+        throw new Error("git did not write the separator of the written message format");
+      }
+      return { written: read.message, trailers: [...read.trailers] };
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -407,36 +410,98 @@ describe("the bump tool and the class it declares", () => {
     expect(!globs.ok && globs.reason).toContain("paths");
   });
 
-  test("an edit set inside the class reports nothing", () => {
-    const globs: readonly string[] = ["project.v1.yaml", ".github/workflows/*.yml"];
-    expect(editsOutsideClass([".github/workflows/ci.yml", "project.v1.yaml"], globs)).toEqual([]);
+  test("a class that lists no glob is refused", () => {
+    const globs = declaredClassGlobs(policyWith({ "fleet-bump": { paths: [] } }));
+    expect(globs.ok).toBe(false);
+    expect(!globs.ok && globs.reason).toContain("no glob");
+  });
+
+  test("the declared class name is the one the declaration carries", () => {
+    expect(EXEMPT_CLASS).toBe("fleet-bump");
+    expect(EXEMPT_TRAILER).toBe(`Exempt: ${EXEMPT_CLASS}`);
+  });
+
+  const GLOBS: readonly string[] = ["project.v1.yaml", ".github/workflows/*.yml"];
+
+  test("an edit set inside the class has no problem", () => {
+    expect(classProblem([".github/workflows/ci.yml", "project.v1.yaml"], GLOBS)).toBe(null);
   });
 
   test("an edit set that leaves the class names the files outside", () => {
-    const globs = declaredClassGlobs(shippedPolicy());
-    expect(globs.ok).toBe(true);
-    expect(
-      editsOutsideClass(
-        ["project.v1.yaml", "Cargo.toml", "packages/a/package.json"],
-        globs.ok ? globs.value : [],
-      ),
-    ).toEqual(["Cargo.toml", "packages/a/package.json"]);
+    const problem = classProblem(
+      ["project.v1.yaml", "Cargo.toml", "packages/a/package.json"],
+      [...GLOBS],
+    );
+    expect(problem).toContain("Cargo.toml");
+    expect(problem).toContain("packages/a/package.json");
+    expect(problem).not.toContain('"project.v1.yaml"');
   });
 
   test("an empty list of globs admits nothing", () => {
-    expect(editsOutsideClass(["project.v1.yaml"], [])).toEqual(["project.v1.yaml"]);
+    expect(classProblem(["project.v1.yaml"], [])).toContain("project.v1.yaml");
   });
 
-  test("the pull request description does not repeat the declaration line", () => {
-    const { body } = commitMessage(plan);
-    expect(body).toContain(EXEMPT_TRAILER);
-    const description: string = prDescription(body);
+  test("an empty edit set is a problem: the gate refuses an empty diff for every class", () => {
+    expect(classProblem([], GLOBS)).toContain("empty");
+  });
+
+  test("a glob the gate cannot match with certainty is a problem, whatever the edit set", () => {
+    expect(classProblem(["project.v1.yaml"], ["{project.v1.yaml,x/*}"])).toContain(
+      "unsupported glob",
+    );
+  });
+
+  test("a path the gate reads as unreadable is a problem", () => {
+    expect(classProblem(["../project.v1.yaml"], ["**"])).toContain("unreadable");
+  });
+
+  test("a guarded path is a problem even inside a glob: an exemption never covers one", () => {
+    expect(classProblem(["docs/adr/0001-x.md"], ["docs/**"])).toContain("guarded");
+  });
+
+  test("the commit message keeps its description apart from the declaration", () => {
+    const { body, description } = commitMessage(plan);
     expect(description).not.toContain(EXEMPT_TRAILER);
     expect(description).toContain("Move every");
+    expect(body).toBe(`${description}\n\n${EXEMPT_TRAILER}`);
   });
 
-  test("a body that carries no declaration is left as it is", () => {
-    expect(prDescription("first\n\nsecond")).toBe("first\n\nsecond");
+  test("the summary counts the plans inside the class and names those that leave it", () => {
+    const edits = (path: string): RepositoryPlan => ({
+      ...plan,
+      repository: `libre-ai/${path}`,
+      edits: [{ path, before: "", after: "", sites: 1 }],
+    });
+    const inside = classSummary([edits("project.v1.yaml")], GLOBS);
+    expect(inside).toEqual({
+      line: "fleet-bump class: 1 of 1 bump plan(s) stay inside it.",
+      leaving: [],
+    });
+    const mixed = classSummary([edits("project.v1.yaml"), edits("Cargo.toml")], GLOBS);
+    expect(mixed.leaving).toEqual(["libre-ai/Cargo.toml"]);
+    expect(mixed.line).toBe(
+      "fleet-bump class: 1 of 2 bump plan(s) stay inside it; 1 leave it and need a work package: libre-ai/Cargo.toml.",
+    );
+  });
+
+  test("the summary ignores plans that are not bumps", () => {
+    const upToDate: RepositoryPlan = { ...plan, status: "up-to-date", edits: [] };
+    expect(classSummary([upToDate], GLOBS).line).toBe(
+      "fleet-bump class: 0 of 0 bump plan(s) stay inside it.",
+    );
+  });
+});
+
+describe("the message written by git", () => {
+  test("is split into the message and the trailers git parsed", () => {
+    expect(splitWrittenMessage("title\n\nExempt: fleet-bump\n\0Exempt: fleet-bump\n")).toEqual({
+      message: "title\n\nExempt: fleet-bump\n",
+      trailers: ["Exempt: fleet-bump"],
+    });
+  });
+
+  test("with no separator is unreadable, never an empty list of trailers", () => {
+    expect(splitWrittenMessage("title\n\nExempt: fleet-bump\n")).toBe(null);
   });
 });
 

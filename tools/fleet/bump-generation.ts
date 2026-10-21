@@ -39,7 +39,12 @@ import {
   hasUsableGraphQLData,
   RETRY_DELAYS_MS,
 } from "../../ecosystem/github-fleet";
-import { matchesScope } from "../quality/check-work-package-link";
+import { touchesGatedPaths } from "../quality/check-review-evidence";
+import {
+  changedPathProblem,
+  matchesScope,
+  scopeEntryProblem,
+} from "../quality/check-work-package-link";
 import type { Parsed } from "../quality/prd-model";
 import { loadWorkPackagePolicy, type WorkPackagePolicy } from "../quality/work-package-policy";
 import {
@@ -417,30 +422,36 @@ export function isCandidatePath(path: string, card: string): boolean {
  * line is the last paragraph of the body, so that `git commit -s` appends the
  * sign-off to the same trailer block and the sign-off stays the last line.
  */
-export const EXEMPT_TRAILER = "Exempt: fleet-bump";
+export const EXEMPT_CLASS = "fleet-bump";
+export const EXEMPT_TRAILER = `Exempt: ${EXEMPT_CLASS}`;
 
-export function commitMessage(plan: RepositoryPlan): { title: string; body: string } {
+/**
+ * `description` is what a reader sees (the pull request text); `body` is the
+ * description plus the declaration, the last paragraph of the commit message.
+ */
+export function commitMessage(plan: RepositoryPlan): {
+  title: string;
+  description: string;
+  body: string;
+} {
   const paths = plan.edits.map((edit) => edit.path).join(" ");
+  const description = [
+    `Move every ${AUTHORITY} pin surface of this repository from generation`,
+    `${short(plan.from)} to ${plan.to}, declared in ecosystem/fleet-pins.v1.yaml.`,
+    "",
+    `Surfaces: ${paths}`,
+    "",
+    `Opened by ${AUTHORITY} tools/fleet/bump-generation.ts. The merge stays with`,
+    "this repository's required checks and a reviewer.",
+  ].join("\n");
   return {
     title: `chore(pins): move governance pins to generation ${short(plan.to)}`,
-    body: [
-      `Move every ${AUTHORITY} pin surface of this repository from generation`,
-      `${short(plan.from)} to ${plan.to}, declared in ecosystem/fleet-pins.v1.yaml.`,
-      "",
-      `Surfaces: ${paths}`,
-      "",
-      `Opened by ${AUTHORITY} tools/fleet/bump-generation.ts. The merge stays with`,
-      "this repository's required checks and a reviewer.",
-      "",
-      EXEMPT_TRAILER,
-    ].join("\n"),
+    description,
+    body: `${description}\n\n${EXEMPT_TRAILER}`,
   };
 }
 
 type Identity = BumpData["identity"];
-
-/** The class `EXEMPT_TRAILER` declares, as the policy names it. */
-export const EXEMPT_CLASS: string = EXEMPT_TRAILER.slice("Exempt: ".length);
 
 /**
  * The globs of the declared class in the work-package policy. A policy without
@@ -455,18 +466,89 @@ export function declaredClassGlobs(policy: WorkPackagePolicy): Parsed<readonly s
   if (!("paths" in rule)) {
     return { ok: false, reason: `the exempt class "${EXEMPT_CLASS}" is not a paths rule` };
   }
+  if (rule.paths.length === 0) {
+    return { ok: false, reason: `the exempt class "${EXEMPT_CLASS}" lists no glob` };
+  }
   return { ok: true, value: rule.paths };
 }
 
-/** The edited files the class does not cover: the gate would refuse the declaration. */
-export function editsOutsideClass(paths: readonly string[], globs: readonly string[]): string[] {
-  return paths.filter((path) => !globs.some((glob) => matchesScope(glob, path)));
+/**
+ * Why the gate would refuse the declaration for this edit set, or null. Every
+ * step is the gate's own primitive, in its order (`evaluateExemption`): an empty
+ * diff, a glob outside the scope grammar, a path it reads as unreadable, a
+ * guarded path, then the files outside the class. The tool says so before it
+ * writes anything, not in the consumer's CI.
+ */
+export function classProblem(paths: readonly string[], globs: readonly string[]): string | null {
+  if (paths.length === 0) {
+    return "the edit set is empty: the gate refuses an empty diff for every class";
+  }
+  for (const glob of globs) {
+    const problem = scopeEntryProblem(glob);
+    if (problem !== null) {
+      return `unsupported glob ${JSON.stringify(glob)} in the class: ${problem}`;
+    }
+  }
+  const unreadable = paths.filter((path) => changedPathProblem(path) !== null);
+  if (unreadable.length > 0) {
+    return `${unreadable.length} edited path(s) unreadable to the gate: ${unreadable.map((path) => JSON.stringify(path)).join(", ")}`;
+  }
+  const guarded = touchesGatedPaths(paths);
+  if (guarded.length > 0) {
+    return `an exemption cannot cover a guarded path: ${guarded.join(", ")}`;
+  }
+  const outside = paths.filter((path) => !globs.some((glob) => matchesScope(glob, path)));
+  if (outside.length > 0) {
+    return `${outside.length} of ${paths.length} edited file(s) outside the class: ${outside.map((path) => JSON.stringify(path)).join(", ")}`;
+  }
+  return null;
 }
 
-/** The commit body without its declaration line: the description plays no role in the gate. */
-export function prDescription(body: string): string {
-  const cut = body.lastIndexOf("\n\n");
-  return cut !== -1 && body.slice(cut + 2) === EXEMPT_TRAILER ? body.slice(0, cut) : body;
+/** The dry-run line on the class, and the repositories whose bump leaves it. */
+export function classSummary(
+  plans: readonly RepositoryPlan[],
+  globs: readonly string[],
+): { readonly line: string; readonly leaving: string[] } {
+  const bumps = plans.filter((plan) => plan.status === "bump");
+  const leaving = bumps
+    .filter(
+      (plan) =>
+        classProblem(
+          plan.edits.map((edit) => edit.path),
+          globs,
+        ) !== null,
+    )
+    .map((plan) => plan.repository);
+  const line =
+    `${EXEMPT_CLASS} class: ${bumps.length - leaving.length} of ${bumps.length} bump plan(s) stay inside it` +
+    (leaving.length === 0
+      ? "."
+      : `; ${leaving.length} leave it and need a work package: ${leaving.join(", ")}.`);
+  return { line, leaving };
+}
+
+/**
+ * ONE read of the written commit: the message, a NUL, then the trailers git
+ * parsed from it. One read, so the sign-off and the declaration are judged on
+ * the same message.
+ */
+export const WRITTEN_MESSAGE_FORMAT = "%B%x00%(trailers:only,unfold)";
+
+/** The message and the trailers of `WRITTEN_MESSAGE_FORMAT`, or null when the separator is missing. */
+export function splitWrittenMessage(
+  stdout: string,
+): { readonly message: string; readonly trailers: readonly string[] } | null {
+  const cut = stdout.indexOf("\0");
+  if (cut === -1) {
+    return null;
+  }
+  return {
+    message: stdout.slice(0, cut),
+    trailers: stdout
+      .slice(cut + 1)
+      .split("\n")
+      .filter((line) => line !== ""),
+  };
 }
 
 /** The git arguments of the bump commit: the identity of the data file, signed off. */
@@ -710,17 +792,17 @@ async function applyRepository(
     }
     // The commit declares the class; the gate refuses a declaration whose diff
     // leaves the class. Say so here, before anything is written, not in the consumer's CI.
-    const outside = editsOutsideClass(
+    const leaves = classProblem(
       replanned.edits.map((edit) => edit.path),
       classGlobs,
     );
-    if (outside.length > 0) {
+    if (leaves !== null) {
       return fail(
-        `the edit set leaves the ${EXEMPT_CLASS} class (${outside.join(", ")}): open this bump by hand with a work package — nothing written`,
+        `the ${EXEMPT_CLASS} declaration would be refused (${leaves}): open this bump by hand with a work package — nothing written`,
       );
     }
     for (const edit of replanned.edits) writeFileSync(join(directory, edit.path), edit.after);
-    const { title, body } = commitMessage(replanned);
+    const { title, description, body } = commitMessage(replanned);
     const steps: (readonly string[])[] = [
       ["checkout", "--quiet", "-b", branch],
       ["add", "--", ...replanned.edits.map((edit) => edit.path)],
@@ -730,13 +812,14 @@ async function applyRepository(
       const result = git(step, directory);
       if (result.code !== 0) return fail(`git ${step[0]} failed: ${result.stderr.trim()}`);
     }
-    const problem = messageProblem(
-      git(["log", "-1", "--format=%B"], directory).stdout,
-      git(["log", "-1", "--format=%(trailers:only,unfold)"], directory)
-        .stdout.split("\n")
-        .filter((line) => line !== ""),
-      data.identity,
-    );
+    const written = git(["log", "-1", `--format=${WRITTEN_MESSAGE_FORMAT}`], directory);
+    const read = written.code === 0 ? splitWrittenMessage(written.stdout) : null;
+    if (read === null) {
+      return fail(
+        `cannot read the written commit message: ${written.stderr.trim() || "no separator"}`,
+      );
+    }
+    const problem = messageProblem(read.message, read.trailers, data.identity);
     if (problem !== null) return fail(problem);
     const changed = git(["diff", "--name-only", "HEAD~1", "HEAD"], directory)
       .stdout.trim()
@@ -767,7 +850,7 @@ async function applyRepository(
       ],
       {
         env: { GH_TOKEN: token },
-        stdin: `${prDescription(body)}\n\n${renderPlanDetail(replanned).join("\n")}\n`,
+        stdin: `${description}\n\n${renderPlanDetail(replanned).join("\n")}\n`,
       },
     );
     if (pr.code !== 0)
@@ -912,20 +995,10 @@ if (import.meta.main) {
     say(`The ${EXEMPT_CLASS} class cannot be read — ${classGlobs.reason}.`);
     failed = true;
   } else {
-    const bumps = plans.filter((plan) => plan.status === "bump");
-    const leaving = bumps.filter(
-      (plan) =>
-        editsOutsideClass(
-          plan.edits.map((edit) => edit.path),
-          classGlobs.value,
-        ).length > 0,
-    );
-    say(
-      `${EXEMPT_CLASS} class: ${bumps.length - leaving.length} of ${bumps.length} bump plan(s) stay inside it` +
-        (leaving.length === 0
-          ? "."
-          : `; ${leaving.length} leave it and need a work package: ${leaving.map((plan) => plan.repository).join(", ")}.`),
-    );
+    const summary = classSummary(plans, classGlobs.value);
+    say(summary.line);
+    // Like a refused plan: a repository that cannot be bumped automatically is a signal.
+    if (summary.leaving.length > 0) failed = true;
   }
 
   if (options.apply) {

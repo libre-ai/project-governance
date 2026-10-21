@@ -12,6 +12,11 @@ on:
     paths:
       - ecosystem/fleet-pins.v1.yaml
       - tools/fleet/**
+      # The class the bump commits declare, and the gate modules the tool judges it with.
+      - ecosystem/work-package-policy.v1.yaml
+      - tools/quality/check-work-package-link.ts
+      - tools/quality/check-review-evidence.ts
+      - tools/quality/work-package-policy.ts
       - .github/workflows/fleet-bump.yml
   workflow_dispatch:
     inputs:

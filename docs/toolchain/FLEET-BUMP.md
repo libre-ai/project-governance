@@ -22,7 +22,8 @@ GraphQL batch of `HEAD:<path>` expressions, so the served branch is used whateve
 it is called. The final line prints the volume examined — repositories to bump, up
 to date, without surface, refused, unreadable and excluded, and the number of
 sites read in how many files. The exit status is non-zero when any repository is
-refused or unreadable, or when no site at all was observed.
+refused or unreadable, when a bump plan leaves the `fleet-bump` class (see below), or
+when no site at all was observed.
 
 The surfaces it recognises, the refusals and their reasons are documented at the
 head of `tools/fleet/bump-plan.ts`. Data the tool needs and no repository can
@@ -52,8 +53,9 @@ every changed file matches a glob of the class `fleet-bump` in
 `toolchains/*.json`, `README.md` and `README.fr.md` at the root. A bump that edits
 anything else (a nested file, `Cargo.toml`, `AGENTS.md`) declares a work package
 instead. The tool checks this itself:
-- the dry run prints how many bump plans stay inside the class and names those that
-  leave it;
+- the dry run prints how many bump plans stay inside the class, names those that
+  leave it, and exits non-zero when one does (such a repository cannot be bumped
+  automatically, exactly like a refused plan);
 - `--apply` refuses a repository whose edit set leaves the class, before writing
   anything, and refuses the whole run when the policy cannot be read or does not list
   the class;
