@@ -28,6 +28,26 @@ exempt:
     paths:
       - "**/*.md"
       - "docs/**"
+  # A governance-generation bump moves pins and nothing else. The list is a
+  # subset of the candidate files of tools/fleet/bump-generation.ts
+  # (isCandidatePath; the tool also reads any file carrying the old sha prefix
+  # but refuses an occurrence no rule recognises), at the depth where a dry
+  # run measured it editing them. Every entry is a root or one-level path.
+  # Left out: nested files, Cargo.toml and AGENTS.md (agents read it as
+  # instructions, and no measured bump edited it). A pull request that
+  # touches a file outside the list declares a work package instead.
+  # The class proves where a change landed, not what it wrote, and it is
+  # tied to no author (see docs/specifications/WORK-PACKAGES.md).
+  fleet-bump:
+    paths:
+      - ".github/workflows/*.yml"
+      - ".github/workflows/*.yaml"
+      - "package.json"
+      - "bun.lock"
+      - "project.v1.yaml"
+      - "toolchains/*.json"
+      - "README.md"
+      - "README.fr.md"
   revert:
     titlePrefix: "Revert "
 owners:

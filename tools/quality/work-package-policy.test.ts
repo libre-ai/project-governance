@@ -1,8 +1,23 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { join } from "node:path";
-import { loadWorkPackagePolicy } from "./work-package-policy";
+import { type ExemptRule, loadWorkPackagePolicy } from "./work-package-policy";
 
 const SHIPPED = join(import.meta.dir, "..", "..", "ecosystem", "work-package-policy.v1.yaml");
+
+// What the shipped file declares for a governance-generation bump. The
+// behaviour of the class is tested in fleet-bump-class.test.ts.
+const SHIPPED_FLEET_BUMP: ExemptRule = {
+  paths: [
+    ".github/workflows/*.yml",
+    ".github/workflows/*.yaml",
+    "package.json",
+    "bun.lock",
+    "project.v1.yaml",
+    "toolchains/*.json",
+    "README.md",
+    "README.fr.md",
+  ],
+};
 
 // `décision` has an accent, so it is written quoted: a bare token is ASCII only.
 const HEAD = 'approvedFrom: "décision"\n';
@@ -43,6 +58,7 @@ describe("loadWorkPackagePolicy", () => {
         exempt: {
           dependabot: { author: "dependabot[bot]" },
           "docs-only": { paths: ["**/*.md", "docs/**"] },
+          "fleet-bump": SHIPPED_FLEET_BUMP,
           revert: { titlePrefix: "Revert " },
         },
         owners: ["constantin-jais"],
@@ -447,6 +463,7 @@ describe("rule names and keys that YAML resolves to the same key are ok:false", 
     expect(result.ok && Object.keys(result.value.exempt)).toEqual([
       "dependabot",
       "docs-only",
+      "fleet-bump",
       "revert",
     ]);
   });
