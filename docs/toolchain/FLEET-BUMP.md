@@ -22,7 +22,8 @@ GraphQL batch of `HEAD:<path>` expressions, so the served branch is used whateve
 it is called. The final line prints the volume examined — repositories to bump, up
 to date, without surface, refused, unreadable and excluded, and the number of
 sites read in how many files. The exit status is non-zero when any repository is
-refused or unreadable, or when no site at all was observed.
+refused or unreadable, when a bump plan leaves the `fleet-bump` class (see below), or
+when no site at all was observed.
 
 The surfaces it recognises, the refusals and their reasons are documented at the
 head of `tools/fleet/bump-plan.ts`. Data the tool needs and no repository can
@@ -41,11 +42,28 @@ For each repository planned as `bump`, `--apply` clones the served branch,
 re-plans on the clone (a second instrument, and a full-tree count of the old
 generation), refuses when the two plans disagree, commits on `work/bump-<gen8>`
 with `-s` and the identity of `bump-generation.v1.yaml` (sign-off as the last
-line), pushes without force and opens the pull request. The commit message ends with
-the declaration `Exempt: fleet-bump` in the same trailer block as the sign-off, which
-the work-package link gate reads; the tool re-reads the written message and refuses
-the repository when the sign-off is not the last line or the declaration is missing. It never merges: each
-consumer's required checks and a reviewer do. A branch that already exists is
+line), pushes without force and opens the pull request. It never merges: each
+consumer's required checks and a reviewer do.
+
+The commit message ends with the declaration `Exempt: fleet-bump` in the same trailer
+block as the sign-off. The work-package link gate reads it, and accepts it only if
+every changed file matches a glob of the class `fleet-bump` in
+`ecosystem/work-package-policy.v1.yaml`: workflow files directly under
+`.github/workflows/`, and `package.json`, `bun.lock`, `project.v1.yaml`,
+`toolchains/*.json`, `README.md` and `README.fr.md` at the root. A bump that edits
+anything else (a nested file, `Cargo.toml`, `AGENTS.md`) declares a work package
+instead. The tool checks this itself:
+- the dry run prints how many bump plans stay inside the class, names those that
+  leave it, and exits non-zero when one does (such a repository cannot be bumped
+  automatically, exactly like a refused plan);
+- `--apply` refuses a repository whose edit set leaves the class, before writing
+  anything, and refuses the whole run when the policy cannot be read or does not list
+  the class;
+- after the commit it re-reads the written message, with the trailers as git parses
+  them, and refuses the repository when the sign-off is not the last line or the
+  declaration is not exactly one `Exempt: fleet-bump`.
+
+The pull request description is the commit body without the declaration line. A branch that already exists is
 left as is. It refuses a target that `fleet-pins.v1.yaml` does not declare.
 
 The workflow `.github/workflows/fleet-bump.yml` runs on every push to the served
