@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
-import { isCandidatePath } from "../fleet/bump-generation";
+import { EXEMPT_TRAILER, isCandidatePath } from "../fleet/bump-generation";
 import {
   type CommitDeclarations,
   evaluateWorkPackageLink,
@@ -181,6 +181,14 @@ describe("the fleet-bump exemption class", () => {
     // Upgrade trigger: a line-level port (the diff body) and a predicate on
     // the shape of the changed lines.
     expect(await outcomeFor(["package.json"])).toBe("pass");
+  });
+});
+
+describe("the class the bump tool declares", () => {
+  test("is a class the shipped policy lists", async () => {
+    const declared: string = EXEMPT_TRAILER.replace(/^Exempt: /, "");
+    expect(declared).not.toBe(EXEMPT_TRAILER);
+    expect(Object.keys((await shippedPolicy()).exempt)).toContain(declared);
   });
 });
 
