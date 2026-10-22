@@ -295,19 +295,19 @@ légitimes, et le gate des dépôts retirés les rejetterait. Une fois le renomm
 fusionné, aucune référence opérationnelle ne repose sur la redirection de
 GitHub.
 
-## 15. Amendment of 2026-10-22 — product repository of P02 (ADR-0042 §7, act 1, proposed)
+## 15. Amendement du 2026-10-22 — dépôt produit de P02 (ADR-0042 §7, acte 1, proposé)
 
-Owner-arbitration: 2026-10-22 — P02 v1 decision P02-D9 (a repository dedicated to P02, in domain Connaissance), arbitrated in chat. The name below is PROPOSED: merging this entry, within ADR-0054, is the owner's signature.
+Owner-arbitration: 2026-10-22 — décision P02-D9 du lot P02 v1 (dépôt dédié à P02, dans le domaine Connaissance), arbitrée en chat. Le nom ci-dessous est PROPOSÉ : la fusion de cette entrée, dans ADR-0054, vaut signature du propriétaire.
 
-ADR-0054 admits, for the domain Connaissance only, a second product repository dedicated to P02 (information watch), by amendment of ADR-0042 §7. This section is act 1 of §7 for that repository: it fixes the name. Nothing is created by this entry. The owner creates the repository under I-30.
+ADR-0054 admet, pour le seul domaine Connaissance, un second dépôt produit dédié à P02 (information watch), par amendement d'ADR-0042 §7. Cette section est l'acte 1 de §7 pour ce dépôt : elle fixe le nom. Rien n'est créé par cette entrée. Le propriétaire crée le dépôt au titre de I-30.
 
-### 15.1 Proposed canonical name
+### 15.1 Nom canonique (proposé)
 
-| Domain       | Repository                    | Public name               | Layer | Products |
-| ------------ | ----------------------------- | ------------------------- | ----- | -------- |
-| Connaissance | `libre-ai/information-watch`  | Libre AI Information Watch | 1     | P02      |
+| Domaine      | Dépôt                        | Nom public                 | Couche | Produits |
+| ------------ | ---------------------------- | -------------------------- | ------ | -------- |
+| Connaissance | `libre-ai/information-watch` | Libre AI Information Watch | 1      | P02      |
 
-The public name follows the standard derivation (« Libre AI » and the repository name in title case), with no brand exception. The repository `libre-ai/personal-knowledge-workspace` keeps the other products of the domain (P01 and P03 to P07).
+Le nom public suit la dérivation standard (« Libre AI » et le nom du dépôt en casse de titre), sans exception de marque. Le dépôt `libre-ai/personal-knowledge-workspace` conserve les autres produits du domaine (P01 et P03 à P07).
 
 ## Historique — carte antérieure à ADR-0041
 
