@@ -309,6 +309,15 @@ ADR-0054 admet, pour le seul domaine Connaissance, un second dépôt produit dé
 
 Le nom public suit la dérivation standard (« Libre AI » et le nom du dépôt en casse de titre), sans exception de marque. Le dépôt `libre-ai/personal-knowledge-workspace` conserve les autres produits du domaine (P01 et P03 à P07).
 
+### 15.2 Vérification de disponibilité
+
+Mesurée par l'orchestrateur le 2026-10-22, puis rejouée avant rédaction de cette section. Une vérification de nom ne vaut pas droit d'usage : elle écarte seulement une collision connue.
+
+- Dépôt : `gh repo view libre-ai/information-watch` → « Could not resolve to a Repository with the name 'libre-ai/information-watch' ». Dépôt introuvable : le nom est libre dans l'organisation.
+- Registre crates.io : `curl -s -A "libre-ai-availability-check" -o /dev/null -w '%{http_code}' https://crates.io/api/v1/crates/<nom>` répond 404 pour `information-watch`, `watch-core`, `watch-domain`, `watch-fetch`, `watch-parse`, `watch-store`, `watch-api`, `watch-worker`, `watch-client`, `watch-host` et `watch-cli`. Sans en-tête User-Agent, crates.io répond 403 : la requête doit donc porter un User-Agent. Ces crates n'existent pas encore ; elles seront privées au workspace (`publish = false`, intention de conception, non vérifiée à ce jour). La vérification écarte seulement une confusion de nom sur le registre public.
+- Registre npm : `curl -s -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@libre-ai%2finformation-watch"` répond 404.
+- Collisions dans la carte : `grep -n -i "watch\|veille\|information" docs/decisions/LEXICON.md` rend, sur la base, la seule ligne `information-feed-filter` (dépôt archivé, nom distinct). Sur cette branche, le même grep rend en plus les lignes de la présente section §15 (texte et tableau 15.1, qui contiennent « information watch »). Aucune entrée de la colonne « À éviter » ne vise `watch`.
+
 ## Historique — carte antérieure à ADR-0041
 
 Owner-arbitration: 2026-10-09 — décision propriétaire Y22.

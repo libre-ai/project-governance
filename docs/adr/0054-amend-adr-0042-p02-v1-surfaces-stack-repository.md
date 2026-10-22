@@ -32,7 +32,7 @@ ADR-0042 §5 (Bun et PostgreSQL pour les produits serveur) ne s'applique pas à 
 
 ### 2. Dépôt dédié dans le domaine Connaissance (amende ADR-0042 §7, P02-D9)
 
-ADR-0042 §7 pose qu'un domaine a au plus un dépôt produit. Pour le seul domaine Connaissance, cet amendement en admet un second : `libre-ai/information-watch`, dédié à P02.
+ADR-0042 §7 pose qu'un domaine a au plus un dépôt produit. Pour le seul domaine Connaissance, cet amendement en admet un second : `libre-ai/information-watch`, dédié à P02. Le présent ADR lève le moratoire d'ADR-0042 §3 pour le seul dépôt produit de P02 dans le domaine Connaissance ; il ne le lève pour aucun autre dépôt.
 
 - P02 est porté par le nouveau dépôt. Le dépôt du domaine `libre-ai/personal-knowledge-workspace` conserve les autres produits du domaine (P01 et P03 à P07, comme le pose §7), et son code P02 devient une référence.
 - Le nom est proposé dans `docs/decisions/LEXICON.md` §15. Son nom public est dérivé de la règle standard (« Libre AI » et le nom du dépôt en casse de titre), sans exception de marque.
@@ -56,7 +56,7 @@ Les appareils mobiles, Windows et Linux ne font pas partie de ce palier ; ils so
 
 ### 4. Modèle commercial de P02 (P02-D1, P02-D7)
 
-- P02 est commercial en deux sens : distribution signée et notarisée à des tiers, et offre hébergée payante pour plusieurs organisations (P02-D1). L'offre hébergée amende la ligne de `docs/positioning/non-goals.md` qui affirme qu'aucune offre hébergée n'existe.
+- P02 est commercial en deux sens : distribution signée et notarisée à des tiers, et offre hébergée payante pour plusieurs organisations (P02-D1). L'offre hébergée amende la ligne de `docs/positioning/non-goals.md` qui affirme qu'aucune offre hébergée n'existe. La décision 3 de la fiche de mission du 2026-10-15 sur le positionnement (non promue, hors de ce dépôt) est remplacée pour P02 par P02-D1 ; aucun document de ce dépôt ne la portait.
 - Plans et quotas sont dans l'application. Le paiement est hors application : aucune donnée de paiement, aucune donnée de carte et aucun webhook de prestataire de paiement dans le code (P02-D7).
 - L'hébergement de l'offre payante sur Clever Cloud suit I-07. C'est une convention établie, pas une des décisions du propriétaire ci-dessus.
 
@@ -64,6 +64,7 @@ Les appareils mobiles, Windows et Linux ne font pas partie de ce palier ; ils so
 
 - **I-06 amendé.** Rust est admis comme runtime serveur complet pour un produit lorsque l'ADR de ce produit le décide. Bun fullstack reste la règle pour tout autre produit.
 - **ADR-0042 §5, §7 et §8 amendés** comme indiqué ci-dessus, pour P02 et pour le seul domaine Connaissance.
+- **Moratoire d'ADR-0042 §3 levé pour un seul dépôt.** Le présent ADR lève le moratoire d'ADR-0042 §3 (« Aucun nouveau dépôt n'est créé avant B′ ») pour le seul dépôt produit de P02 dans le domaine Connaissance ; il ne le lève pour aucun autre dépôt.
 - **Y4 remplacé pour P02.** Y4 (worker en Rust, API en Bun) est consigné dans la spécification de P02, qui n'est pas dans ce dépôt. P02-D5 le remplace pour P02.
 - **`libre-ai/personal-knowledge-workspace#23` devient une référence**, et non la base du nouveau travail. Cet ADR ne la ferme pas.
 - **Aucun code produit de P02 ne démarre avant la fusion de cette pull request** (P02-D11).
