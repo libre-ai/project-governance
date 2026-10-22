@@ -8,7 +8,7 @@
   - ADR-0042 §5 (server stack), for P02 only;
   - ADR-0042 §7 (domain Connaissance: a second product repository dedicated to P02), for that domain only;
   - ADR-0042 §8 (first platform palier), for P02 only: responsive web and PWA, macOS application through a Tauri 2 adapter, browser extension.
-  - The hosted offer of P02 amends `docs/positioning/non-goals.md` line stating that no hosted offer exists. That line is replaced in this pull request; self-hosting and export without lock-in are kept.
+  - Explicitly: the hosted offer amends `docs/positioning/non-goals.md` line stating no hosted offer exists. That line is replaced in this pull request; self-hosting and export without lock-in are kept.
 - **Invariants:** I-06 amended (Rust admitted as a complete server runtime when a product's ADR decides it). The historical text stays in `docs/decisions/INVARIANTS.md` between quotes, as I-10 and I-25 do.
 - **Source:** owner decisions in chat on 2026-10-22. Measured facts are reproducible with the commands listed in the pull request body.
 
