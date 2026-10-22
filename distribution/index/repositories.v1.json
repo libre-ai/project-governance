@@ -2,7 +2,7 @@
   "schema_version": "libre-ai.repository-index.v2",
   "source": "ecosystem/repositories.v1.yaml",
   "source_schema_version": "libre-ai.repositories.v2",
-  "source_updated_on": "2026-10-14",
+  "source_updated_on": "2026-10-22",
   "repositories": [
     {
       "repository": "libre-ai/.github",
@@ -108,6 +108,15 @@
       "role": "reserved-product-home",
       "visibility": "public",
       "lifecycle": "archived",
+      "card": "project.v1.yaml"
+    },
+    {
+      "repository": "libre-ai/information-watch",
+      "name": "information-watch",
+      "layer": "couche-1",
+      "role": "reserved-product-home",
+      "visibility": "public",
+      "lifecycle": "active",
       "card": "project.v1.yaml"
     },
     {
