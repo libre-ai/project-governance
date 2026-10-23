@@ -2,7 +2,9 @@ name: pr-door
 
 # Door gate (tools/quality/check-pr-door.ts): every pull request description
 # declares `Door: one-way|two-way`, and a one-way door names its
-# `Second-instrument:` (gate-integrity §3). A workflow of its own rather than a
+# `Second-instrument:` (gate-integrity §3), and declares its
+# `Origin: observed|inspection|synthetic|proposal` (ADR-0056 D1; `observed`
+# with its ISO date and source). A workflow of its own rather than a
 # step of ci.yml: the declaration lives in the description, so the gate must
 # re-run when the description is `edited`, which ci.yml does not listen to —
 # and re-running the whole CI on every description edit would be the cost of

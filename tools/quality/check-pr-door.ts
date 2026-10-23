@@ -2,7 +2,8 @@ import { concludeGate, GateReport } from "./gate-report";
 
 /**
  * Door gate — every pull request declares whether the change it carries can
- * be walked back, and a one-way change names its second instrument.
+ * be walked back, and a one-way change names its second instrument; and it
+ * declares the origin of the problem it treats (see "Origin" below).
  *
  * Why: reversibility was nowhere written down at PR time. A two-way door
  * (revert the squash and the world is as before) and a one-way door (a
@@ -47,6 +48,38 @@ import { concludeGate, GateReport } from "./gate-report";
  * and cannot be taken by a person. A Door line written by such an author is
  * still judged as written.
  *
+ * Origin (ADR-0056 D1, 2026-10-23): the same description declares where the
+ * problem it treats comes from, by exactly one line at the same place as
+ * `Door:` — start of line, outside comments and code blocks:
+ *
+ *     Origin: observed 2026-10-07 <source>
+ *     Origin: inspection
+ *     Origin: synthetic
+ *     Origin: proposal
+ *
+ * - the value is one of ORIGIN_VALUES, lowercase, as `Door:` refuses
+ *   `Two-Way`. The key itself is case-sensitive, as `Door:` is: an
+ *   `origin:` line is not read, so the declaration is absent;
+ * - `observed` (a failure that happened in real use) carries an ISO 8601
+ *   calendar date, `YYYY-MM-DD`, that exists on the calendar, then a source
+ *   (pull request, issue, `path:line`, session note) that is not a
+ *   placeholder. A `<...>` source is a placeholder unless it is an autolink
+ *   (`<https://...>`);
+ * - `inspection`, `synthetic` and `proposal` carry nothing else on the line,
+ *   as a `Door:` value does: `Origin: proposal mostly` is refused (and
+ *   `Origin: proposal, mostly` too, `proposal,` being no value). ADR-0056
+ *   D1 sends the other origins of a multi-origin problem to the body, not to
+ *   the line, and trailing text on the line would be the place where an
+ *   `observed` claim slips in without its date. The unfilled template line
+ *   `Origin: observed | inspection | synthetic | proposal` is refused by the
+ *   same rule (its `observed` carries `|` where the date goes).
+ *
+ * An author in IMPLICIT_TWO_WAY_AUTHORS writing no Origin line is waived, as
+ * for `Door:` — the verdict says so and names no value, because the gate does
+ * not know which origin a bot's bump has. An Origin line written by such an
+ * author is judged as written. Like `Door:`, this proves a declaration exists,
+ * never that it is true.
+ *
  * Runs on `pull_request` events (including `edited`, so fixing the
  * description re-runs it). Elsewhere it declares that it judged nothing. On a
  * pull_request run, an event payload that is absent or unreadable is a
@@ -62,6 +95,16 @@ const DOOR_LINE = /^[ \t]*Door:(.*)$/gm;
 const SECOND_INSTRUMENT_LINE = /^[ \t]*Second-instrument:(.*)$/gm;
 const DOOR_VALUES = new Set(["one-way", "two-way"]);
 const PLACEHOLDER = /^(?:<[^>]*>|n\/?a|none|tbd|todo|-+|\.+)$/i;
+
+const ORIGIN_LINE = /^[ \t]*Origin:(.*)$/gm;
+/** ADR-0056 D1, closed vocabulary. */
+export const ORIGIN_VALUES = ["observed", "inspection", "synthetic", "proposal"] as const;
+export type OriginValue = (typeof ORIGIN_VALUES)[number];
+const ORIGIN_VALUE_SET: ReadonlySet<string> = new Set(ORIGIN_VALUES);
+const ISO_CALENDAR_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+// Same placeholders as Second-instrument, except a `<https://...>` autolink,
+// which is how markdown writes a bare URL and is a real source.
+const SOURCE_PLACEHOLDER = /^(?:<(?!https?:\/\/)[^>]*>|n\/?a|none|tbd|todo|-+|\.+)$/i;
 
 export interface StrippedBody {
   readonly text: string;
@@ -87,6 +130,7 @@ export interface DoorDeclaration {
   readonly removedBlocks: number;
   readonly doorValues: readonly string[];
   readonly secondInstruments: readonly string[];
+  readonly originValues: readonly string[];
 }
 
 export function readDoorDeclaration(body: string): DoorDeclaration {
@@ -95,12 +139,88 @@ export function readDoorDeclaration(body: string): DoorDeclaration {
   const secondInstruments = [...text.matchAll(SECOND_INSTRUMENT_LINE)].map((match) =>
     (match[1] ?? "").trim(),
   );
+  const originValues = [...text.matchAll(ORIGIN_LINE)].map((match) => (match[1] ?? "").trim());
   const linesExamined = text === "" ? 0 : text.split("\n").length;
-  return { linesExamined, removedBlocks, doorValues, secondInstruments };
+  return { linesExamined, removedBlocks, doorValues, secondInstruments, originValues };
 }
 
 function isSubstantive(value: string): boolean {
   return value.length >= SECOND_INSTRUMENT_MIN_LENGTH && !PLACEHOLDER.test(value);
+}
+
+/** True for `YYYY-MM-DD` naming a day that exists (no 2026-02-30, no month 13). */
+export function isIsoCalendarDate(value: string): boolean {
+  const parts = ISO_CALENDAR_DATE.exec(value);
+  if (parts === null) return false;
+  const year = Number(parts[1]);
+  const month = Number(parts[2]);
+  const day = Number(parts[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  // Date.UTC maps years 0-99 to 1900-1999; setUTCFullYear restores them.
+  date.setUTCFullYear(year);
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
+export type OriginJudgement =
+  | {
+      readonly ok: true;
+      readonly value: OriginValue;
+      readonly date: string | null;
+      readonly source: string | null;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+const ORIGIN_VOCABULARY = ORIGIN_VALUES.map((value) => `"${value}"`).join(", ");
+
+/** Pure verdict over the text that follows one `Origin:` key. */
+export function judgeOrigin(declared: string): OriginJudgement {
+  const value = declared.trim();
+  if (value === "") {
+    return { ok: false, reason: `Origin line carries no value — one of ${ORIGIN_VOCABULARY}` };
+  }
+  const [keyword = "", ...restTokens] = value.split(/\s+/);
+  if (!ORIGIN_VALUE_SET.has(keyword)) {
+    return { ok: false, reason: `Origin value "${keyword}" is none of ${ORIGIN_VOCABULARY}` };
+  }
+  const origin = keyword as OriginValue;
+  if (origin !== "observed") {
+    return restTokens.length === 0
+      ? { ok: true, value: origin, date: null, source: null }
+      : {
+          ok: false,
+          reason: `Origin: ${origin} carries nothing else on its line, found "${restTokens.join(" ")}" — other origins are cited in the body (ADR-0056 D1)`,
+        };
+  }
+  const [date, ...sourceTokens] = restTokens;
+  if (date === undefined) {
+    return {
+      ok: false,
+      reason:
+        "Origin: observed needs its date and its source — `Origin: observed YYYY-MM-DD <source>`",
+    };
+  }
+  if (!isIsoCalendarDate(date)) {
+    return {
+      ok: false,
+      reason: `Origin: observed date "${date}" is not a valid ISO 8601 calendar date (YYYY-MM-DD)`,
+    };
+  }
+  const source = sourceTokens.join(" ");
+  if (source === "") {
+    return {
+      ok: false,
+      reason: `Origin: observed ${date} needs a source after its date (pull request, issue, path:line, session note)`,
+    };
+  }
+  if (SOURCE_PLACEHOLDER.test(source)) {
+    return {
+      ok: false,
+      reason: `Origin: observed source "${source}" is a placeholder — name the pull request, issue, path:line or session note`,
+    };
+  }
+  return { ok: true, value: origin, date, source };
 }
 
 /** Pure verdict over one pull request description. */
@@ -158,10 +278,43 @@ export function evaluateDoor(
     );
   }
 
+  const { originValues } = declaration;
+  const originWaived =
+    originValues.length === 0 && author !== null && IMPLICIT_TWO_WAY_AUTHORS.includes(author);
+  if (originWaived) {
+    report.check(
+      `${label} — Origin`,
+      true,
+      `Origin: waived (no Origin line, author ${author} is in IMPLICIT_TWO_WAY_AUTHORS)`,
+    );
+  } else if (originValues.length === 0) {
+    report.check(
+      `${label} — Origin`,
+      false,
+      `no \`Origin:\` line (outside comments and code blocks) — one of ${ORIGIN_VOCABULARY}, \`observed\` with its date and source (ADR-0056 D1)`,
+    );
+  } else if (originValues.length > 1) {
+    report.check(
+      `${label} — Origin`,
+      false,
+      `${originValues.length} Origin lines (${originValues.map((value) => `"${value}"`).join(", ")}) — declare exactly one`,
+    );
+  } else {
+    const judgement = judgeOrigin(originValues[0] ?? "");
+    report.check(
+      `${label} — Origin`,
+      judgement.ok,
+      judgement.ok
+        ? `Origin: ${[judgement.value, judgement.date, judgement.source].filter((part) => part !== null).join(" ")}`
+        : judgement.reason,
+    );
+  }
+
   report.volume(
     `${declaration.linesExamined} description line(s) examined after removing ${declaration.removedBlocks} comment/code block(s); ` +
-      `${doorValues.length} Door line(s), ${secondInstruments.length} Second-instrument line(s)` +
-      (implicitTwoWay ? `; door implied by author ${author}` : ""),
+      `${doorValues.length} Door line(s), ${secondInstruments.length} Second-instrument line(s), ${originValues.length} Origin line(s)` +
+      (implicitTwoWay ? `; door implied by author ${author}` : "") +
+      (originWaived ? `; origin waived for author ${author}` : ""),
   );
   return report;
 }
