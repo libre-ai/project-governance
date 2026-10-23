@@ -19,6 +19,7 @@ import {
   parseLineSpec,
   type Resolution,
   reconcileCandidates,
+  repositoryFromRemote,
   type ScannedText,
   scanText,
   spansOutside,
@@ -28,6 +29,8 @@ import {
 
 const ORG = "libre-ai";
 const SHA40 = "e149c702f044180ae41005e2dec6f19206e21774";
+/** The repository the gate runs in, as `repositoryFromRemote` derives it. */
+const SELF = "this-repository";
 
 // ------------------------------------------------------------- parsing ---
 
@@ -464,6 +467,65 @@ describe("scanText — bare and unqualified citations", () => {
     // The tail of an unqualified pin is not counted a second time as bare.
     expect(bare).toEqual([]);
   });
+
+  test("reads local pins <sha>:<path>[:<lines>], never as bare, never inside another form", () => {
+    const text = [
+      "(`c466a5c:AGENTS.md:80`, `c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:28-29`)",
+      "a whole file: `abcdef1:docs/a.md`; a malformed spec: `abcdef1:docs/a.md:0`",
+      "pinned `libre-ai/x@abcdef1:packages/core/src/a.ts:33` and unqualified `name@abcdef2:a.ts:2`",
+      "third party `tt-a1i/archify@25cf370:CONTRIBUTING.md:51`; not a sha: `zzzzzzz:docs/a.md:3`",
+    ].join("\n");
+    const { local, bare, pinned, unqualified } = scanText(text, ORG, extensions);
+    expect(
+      local.map((pin) => [pin.line, pin.sha, pin.path, pin.lines, pin.malformedLines]),
+    ).toEqual([
+      [1, "c466a5c", "AGENTS.md", [{ start: 80, end: 80 }], false],
+      [1, "c466a5c", "docs/reviews/AGENT-REVIEW-PROTOCOL.md", [{ start: 28, end: 29 }], false],
+      [2, "abcdef1", "docs/a.md", null, false],
+      [2, "abcdef1", "docs/a.md", null, true],
+    ]);
+    expect(pinned).toHaveLength(1);
+    // Another owner's pin is outside the universe of this gate, by design: it
+    // is neither unqualified (it names its repository) nor local (the sha
+    // follows an '@').
+    expect(unqualified.map((u) => u.text)).toEqual(["name@abcdef2:a.ts:2"]);
+    // `zzzzzzz:` is not hex, so `docs/a.md:3` after it is no bare citation either:
+    // the bare pattern refuses a path preceded by ':'.
+    expect(bare).toEqual([]);
+  });
+
+  test("does not read local pins when no extension is declared", () => {
+    expect(scanText("`c466a5c:AGENTS.md:80`", ORG, []).local).toEqual([]);
+  });
+});
+
+describe("repositoryFromRemote", () => {
+  test("names the repository of the organisation in every form git is given it", () => {
+    for (const url of [
+      "https://github.com/libre-ai/project-governance",
+      "https://github.com/libre-ai/project-governance.git",
+      "https://github.com/libre-ai/project-governance/",
+      "git@github.com:libre-ai/project-governance.git",
+      "ssh://git@github.com/libre-ai/project-governance.git",
+    ]) {
+      expect(repositoryFromRemote(url, ORG)).toBe("project-governance");
+    }
+  });
+
+  test("refuses another host, another owner, a nested path or an unsafe name", () => {
+    for (const url of [
+      "https://gitlab.com/libre-ai/project-governance",
+      "https://github.com/someone-else/project-governance",
+      "https://github.com/libre-ai-fork/project-governance",
+      "https://github.com/libre-ai/a/b",
+      "https://github.com/libre-ai/..",
+      "https://github.com/libre-ai/",
+      "https://github.com/libre-ai/x;rm",
+      "/home/runner/work/project-governance",
+    ]) {
+      expect(repositoryFromRemote(url, ORG)).toBeNull();
+    }
+  });
 });
 
 describe("countLines and spansOutside", () => {
@@ -893,7 +955,7 @@ describe("evaluateCitations", () => {
       "gone@abcdef2": { verdict: "repository-not-found", note: "deleted" },
     });
     const { report, volume } = await evaluateCitations(
-      { config: CONFIG, files, tracked: trackedHere, readTracked },
+      { config: CONFIG, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(volume.pinned).toBe(4);
@@ -940,7 +1002,7 @@ describe("evaluateCitations", () => {
     ];
     const fake = tableResolver({});
     const { report, volume } = await evaluateCitations(
-      { config, files, tracked: trackedHere, readTracked },
+      { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(report.outcome).toBe("pass");
@@ -991,7 +1053,7 @@ describe("evaluateCitations", () => {
       },
     ];
     const { report, volume } = await evaluateCitations(
-      { config, files, tracked: trackedHere, readTracked },
+      { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       tableResolver({}),
     );
     const reconciliation = report.checks.filter((check) => check.item === "pinned citations");
@@ -1039,7 +1101,7 @@ describe("evaluateCitations", () => {
       },
     ];
     const { report, volume } = await evaluateCitations(
-      { config, files, tracked: trackedHere, readTracked },
+      { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
     );
     // 8 candidates: 2 resolve; `a/b@…` is a valid action reference the table does
@@ -1064,6 +1126,7 @@ describe("evaluateCitations", () => {
         files: [{ path: "docs/a.md", text: "libre-ai/restored@abcdef1" }],
         tracked: trackedHere,
         readTracked,
+        selfRepository: SELF,
       },
       tableResolver({ "restored@abcdef1": { verdict: "resolved", note: "commit abcdef1…" } }),
     );
@@ -1080,7 +1143,7 @@ describe("evaluateCitations", () => {
       "gone@abcdef2": { verdict: "repository-not-found", note: "deleted" },
     });
     const red = await evaluateCitations(
-      { config: CONFIG, files, tracked: trackedHere, readTracked },
+      { config: CONFIG, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(
@@ -1098,7 +1161,7 @@ describe("evaluateCitations", () => {
       ],
     };
     const green = await evaluateCitations(
-      { config: listed, files, tracked: trackedHere, readTracked },
+      { config: listed, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(green.report.outcome).toBe("pass");
@@ -1111,7 +1174,7 @@ describe("evaluateCitations", () => {
     const files = [{ path: "docs/a.md", text: "libre-ai/live@abcdef1" }];
     const fake = tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } });
     const { report } = await evaluateCitations(
-      { config: CONFIG, files, tracked: trackedHere, readTracked },
+      { config: CONFIG, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(report.violations).toEqual([
@@ -1127,7 +1190,7 @@ describe("evaluateCitations", () => {
       { path: "docs/other.md", text: citation },
     ];
     const { report, volume } = await evaluateCitations(
-      { config: CONFIG, files, tracked: trackedHere, readTracked },
+      { config: CONFIG, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       tableResolver({}),
     );
     expect([volume.pinnedExempted, volume.pinnedFailed]).toEqual([1, 1]);
@@ -1139,7 +1202,7 @@ describe("evaluateCitations", () => {
   test("an empty scope and an unreadable file are failures, never zeros", async () => {
     const fake = tableResolver({});
     const empty = await evaluateCitations(
-      { config: CONFIG, files: [], tracked: trackedHere, readTracked },
+      { config: CONFIG, files: [], tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
     expect(empty.report.outcome).toBe("violations");
@@ -1153,6 +1216,7 @@ describe("evaluateCitations", () => {
         files: [{ path: "docs/x.md", text: null }],
         tracked: trackedHere,
         readTracked,
+        selfRepository: SELF,
       },
       fake,
     );
@@ -1170,6 +1234,7 @@ describe("evaluateCitations", () => {
         files: [{ path: "docs/a.md", text: "no citation" }],
         tracked: trackedHere,
         readTracked,
+        selfRepository: SELF,
       },
       tableResolver({}),
     );
@@ -1199,7 +1264,7 @@ describe("evaluateCitations", () => {
       },
     ];
     const { report, volume, information } = await evaluateCitations(
-      { config, files, tracked: trackedHere, readTracked },
+      { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
     );
     expect([
@@ -1231,6 +1296,66 @@ describe("evaluateCitations", () => {
     expect(information[1]).toContain("2 unqualified pin(s)");
   });
 
+  test("local pins: asked of this repository above the threshold, counted below it", async () => {
+    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+    const files = [
+      {
+        path: "docs/adr/0011-new.md",
+        text: [
+          "resolves: `c466a5c:AGENTS.md:80`",
+          "not here: `abcdef9:docs/a.md`",
+          "malformed: `c466a5c:AGENTS.md:9-3`",
+        ].join("\n"),
+      },
+      { path: "docs/adr/0010-old.md", text: "`abcdef9:docs/a.md:3` and `c466a5c:x.ts`" },
+      { path: "docs/notes.md", text: "`abcdef9:docs/a.md:3` is not in an ADR" },
+    ];
+    const fake = tableResolver({
+      [`${SELF}@c466a5c`]: { verdict: "resolved", note: "AGENTS.md:80 lies in its 80 line(s)" },
+    });
+    const { report, volume, information } = await evaluateCitations(
+      { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
+      fake,
+    );
+    expect([volume.guardedLocal, volume.guardedLocalResolved, volume.guardedLocalFailed]).toEqual([
+      3, 1, 2,
+    ]);
+    expect(volume.legacyLocal).toBe(2);
+    // Only the guarded, well-formed pins reach the resolver, each as this repository.
+    expect(fake.asked).toEqual([`${SELF}@c466a5c`, `${SELF}@abcdef9`]);
+    // A local pin is neither bare nor unqualified: no other counter sees it.
+    expect([volume.guardedBare, volume.guardedUnqualified, volume.legacyBare]).toEqual([0, 0, 0]);
+    expect(report.violations).toEqual([
+      "docs/adr/0011-new.md:2 abcdef9:docs/a.md: local pin in an ADR above 10: sha-not-found: absent from the table",
+      "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: local pin in an ADR above 10: malformed line spec (L, a-b, a,b; 1-based, a <= b)",
+    ]);
+    expect(report.volumeSummary).toContain(
+      `local pins (<sha>:<path>, asked of libre-ai/${SELF}) there: 3 examined = 1 resolved + 2 failed`,
+    );
+    expect(information[2]).toContain("2 local pin(s) (<sha>:<path>, repository implicit)");
+  });
+
+  test("a local pin fails when the name of this repository could not be derived", async () => {
+    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+    const fake = tableResolver({});
+    const { report, volume } = await evaluateCitations(
+      {
+        config,
+        files: [{ path: "docs/adr/0011-new.md", text: "`c466a5c:AGENTS.md:80`" }],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: null,
+      },
+      fake,
+    );
+    expect([volume.guardedLocal, volume.guardedLocalFailed]).toEqual([1, 1]);
+    expect(fake.asked).toEqual([]);
+    expect(report.violations).toEqual([
+      "docs/adr/0011-new.md:1 c466a5c:AGENTS.md:80: local pin in an ADR above 10: the name of this repository could not be derived from its origin remote, so no repository can be asked: write libre-ai/<repository>@c466a5c:AGENTS.md",
+    ]);
+    expect(report.volumeSummary).toContain("asked of an underived repository");
+  });
+
   test("a bare citation of a tracked file that cannot be read fails, never resolves", async () => {
     const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
     const tracked = new Set(["docs/a.md", "docs/unreadable.md"]);
@@ -1241,7 +1366,7 @@ describe("evaluateCitations", () => {
       },
     ];
     const { report, volume } = await evaluateCitations(
-      { config, files, tracked, readTracked },
+      { config, files, tracked, readTracked, selfRepository: SELF },
       tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
     );
     expect([volume.guardedBare, volume.guardedBareResolved, volume.guardedBareFailed]).toEqual([
@@ -1267,6 +1392,7 @@ describe("evaluateCitations", () => {
         files: [{ path: "docs/a.md", text: "libre-ai/live@abcdef1" }],
         tracked: trackedHere,
         readTracked,
+        selfRepository: SELF,
       },
       tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
     );

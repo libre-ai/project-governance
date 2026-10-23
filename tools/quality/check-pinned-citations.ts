@@ -34,6 +34,15 @@
  * it names no repository to ask. Elsewhere such pins are counted, not judged:
  * eleven on 2026-10-22, ten of them in ADRs 0028, 0045, 0048 and 0049.
  *
+ * LOCAL PINS (`<sha>:<path>[:<lines>]`, the repository left implicit) of a
+ * guarded ADR are asked of THIS repository, through the same resolver and with
+ * the same verdicts as a pinned citation (owner arbitration 2026-10-23): a sha
+ * this repository's remote does not carry fails, and the citation must then be
+ * qualified. The name of this repository is derived from its `origin` remote,
+ * never written in data; a name that cannot be derived fails every local pin.
+ * In ADRs at or below the threshold they are counted, not judged. They are read
+ * in ADRs only, like bare citations.
+ *
  * ACTION REFERENCES of the organisation (`libre-ai/<repository>/<path>@<sha>`, a
  * reusable workflow or a composite action) name a repository, a commit and a
  * path: they are resolved as `libre-ai/<repository>@<sha>:<path>`, so one that
@@ -103,8 +112,10 @@
  * the organisation in data and a name restricted to `[A-Za-z0-9._-]`. At most
  * four git processes run at once, whatever a document cites.
  *
- * It reads other repositories, so it runs where the fleet gates run
- * (`inventory-drift.yml`), not in `bun run check`.
+ * It reads other repositories, so it runs in its own workflow
+ * (`pinned-citations.yml`), not in `bun run check`: a required check of the
+ * served branch since the owner arbitration of 2026-10-23, kept apart from
+ * `inventory-drift.yml`, whose fleet gates are knowingly red.
  */
 
 import { execFileSync } from "node:child_process";
@@ -267,11 +278,24 @@ export interface UnqualifiedPin {
   readonly line: number;
 }
 
+/** `<sha>:<path>[:<lines>]`: a commit of this repository, the repository left implicit. */
+export interface LocalPin {
+  readonly text: string;
+  readonly sha: string;
+  readonly path: string;
+  /** Null when no line is cited. */
+  readonly lines: readonly LineSpan[] | null;
+  /** True when a line suffix is written but malformed (`:0`, `:9-3`). */
+  readonly malformedLines: boolean;
+  readonly line: number;
+}
+
 export interface ScannedText {
   readonly pinned: readonly PinnedCitation[];
   readonly rejected: readonly RejectedCitation[];
   readonly bare: readonly BareCitation[];
   readonly unqualified: readonly UnqualifiedPin[];
+  readonly local: readonly LocalPin[];
   /** The raw candidate segments the parser judged, in order: reconciled against the independent walk. */
   readonly candidates: readonly string[];
 }
@@ -572,6 +596,20 @@ function barePattern(extensions: readonly string[]): RegExp {
   );
 }
 
+// Measured 2026-10-23: ADR-0056 carries nine `c466a5c:<path>:<lines>` citations,
+// a commit of this repository with the repository left implicit. The bare
+// pattern skips them (a `:` precedes the path) and the unqualified one needs an
+// `@`, so the gate counted them nowhere: "0 examined" above the threshold while
+// nine were written there. Owner arbitration of the same day: they are judged
+// against this repository, through the same resolver as a pinned citation, so
+// a sha this repository does not carry fails and must be qualified.
+function localPinPattern(extensions: readonly string[]): RegExp {
+  return new RegExp(
+    String.raw`(?<![A-Za-z0-9_./@:-])([0-9a-f]{7,40}):([A-Za-z0-9_./-]+\.(?:${extensions.join("|")}))(?::(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*))?(?![0-9A-Za-z])`,
+    "g",
+  );
+}
+
 /**
  * Every pinned and bare citation of a text.
  *
@@ -588,9 +626,12 @@ export function scanText(
   const rejected: RejectedCitation[] = [];
   const bare: BareCitation[] = [];
   const unqualified: UnqualifiedPin[] = [];
+  const local: LocalPin[] = [];
   const candidates: string[] = [];
   const needle = `${organization}/`;
   const bareRegExp: RegExp | null = bareExtensions.length > 0 ? barePattern(bareExtensions) : null;
+  const localRegExp: RegExp | null =
+    bareExtensions.length > 0 ? localPinPattern(bareExtensions) : null;
 
   for (const [index, sourceLine] of text.split("\n").entries()) {
     const line = index + 1;
@@ -611,6 +652,22 @@ export function scanText(
       unqualified.push({ text: match[0].replace(TRAILING_PUNCTUATION, ""), line });
     }
 
+    // Not blanked afterwards: the bare pattern already refuses a path preceded by ':'.
+    if (localRegExp !== null) {
+      for (const match of masked.matchAll(localRegExp)) {
+        const spec = match[3];
+        const lines = spec === undefined ? null : parseLineSpec(spec);
+        local.push({
+          text: match[0],
+          sha: match[1] ?? "",
+          path: match[2] ?? "",
+          lines,
+          malformedLines: spec !== undefined && lines === null,
+          line,
+        });
+      }
+    }
+
     if (bareRegExp === null) continue;
     for (const match of masked.matchAll(bareRegExp)) {
       const path = match[1] ?? "";
@@ -619,7 +676,7 @@ export function scanText(
       bare.push({ text: match[0], path, lines: parseLineSpec(match[2] ?? ""), line });
     }
   }
-  return { pinned, rejected, bare, unqualified, candidates };
+  return { pinned, rejected, bare, unqualified, local, candidates };
 }
 
 /** Lines in a text the way an editor numbers them: a final newline opens no line. */
@@ -975,6 +1032,12 @@ export interface CitationsInput {
   readonly tracked: ReadonlySet<string>;
   /** Reads a tracked file of this repository; null when unreadable. */
   readonly readTracked: (path: string) => Promise<string | null>;
+  /**
+   * The name of this repository in the organisation, derived from its `origin`
+   * remote (`repositoryFromRemote`); null when it could not be derived. A local
+   * pin is asked of this repository, so without a name it fails.
+   */
+  readonly selfRepository: string | null;
 }
 
 export interface CitationsVolume {
@@ -1001,6 +1064,35 @@ export interface CitationsVolume {
   readonly guardedUnqualified: number;
   /** Unqualified pins anywhere else in the scope: counted, not judged. */
   readonly unjudgedUnqualified: number;
+  /** Local pins (`<sha>:<path>[:<lines>]`) of guarded ADRs: examined = resolved + failed. */
+  readonly guardedLocal: number;
+  readonly guardedLocalResolved: number;
+  readonly guardedLocalFailed: number;
+  /** Local pins of ADRs at or below the threshold: counted, not judged. */
+  readonly legacyLocal: number;
+}
+
+/**
+ * The repository an `origin` URL names in `organization`, or null.
+ *
+ * `actions/checkout` sets `https://github.com/<owner>/<repository>`; a clone by
+ * `gh` or by hand may add `.git` or use the SSH form. Anything else — another
+ * host, another owner, a name outside `[A-Za-z0-9._-]` — is null: the gate
+ * would otherwise ask a repository it guessed.
+ */
+export function repositoryFromRemote(url: string, organization: string): string | null {
+  const prefixes = [
+    `https://github.com/${organization}/`,
+    `git@github.com:${organization}/`,
+    `ssh://git@github.com/${organization}/`,
+  ];
+  const prefix = prefixes.find((candidate) => url.startsWith(candidate));
+  if (prefix === undefined) return null;
+  let name = url.slice(prefix.length);
+  if (name.endsWith("/")) name = name.slice(0, -1);
+  if (name.endsWith(".git")) name = name.slice(0, -".git".length);
+  if (name === "." || name === ".." || !REPOSITORY_NAME.test(name)) return null;
+  return name;
 }
 
 export type AdrStanding = "guarded" | "legacy" | "not-an-adr";
@@ -1047,6 +1139,41 @@ async function resolveBare(
     };
   }
   return { ok: true, note: `${citation.path} resolves in this tree (${lineCount} line(s))` };
+}
+
+/**
+ * A local pin, asked of this repository through the same resolver as a pinned
+ * citation: the commit must be reachable from a branch or tag of the remote,
+ * not merely present in the working clone, so a sha left on an unpushed or
+ * squashed-away branch fails like any other.
+ */
+async function resolveLocal(
+  pin: LocalPin,
+  input: CitationsInput,
+  resolver: Pick<CitationResolver, "resolve">,
+): Promise<{ ok: boolean; note: string }> {
+  if (pin.malformedLines) {
+    return { ok: false, note: "malformed line spec (L, a-b, a,b; 1-based, a <= b)" };
+  }
+  if (input.selfRepository === null) {
+    return {
+      ok: false,
+      note: `the name of this repository could not be derived from its origin remote, so no repository can be asked: write ${input.config.organization}/<repository>@${pin.sha}:${pin.path}`,
+    };
+  }
+  const resolution = await resolver.resolve({
+    repository: input.selfRepository,
+    sha: pin.sha,
+    path: pin.path,
+    lines: pin.lines,
+  });
+  return {
+    ok: resolution.verdict === "resolved",
+    note:
+      resolution.verdict === "resolved"
+        ? resolution.note
+        : `${resolution.verdict}: ${resolution.note}`,
+  };
 }
 
 /**
@@ -1110,6 +1237,10 @@ export async function evaluateCitations(
   let legacyBareResolving = 0;
   let guardedUnqualified = 0;
   let unjudgedUnqualified = 0;
+  let guardedLocal = 0;
+  let guardedLocalResolved = 0;
+  let guardedLocalFailed = 0;
+  let legacyLocal = 0;
   const foundSegments: string[] = [];
   const judgedSegments: string[] = [];
 
@@ -1220,6 +1351,20 @@ export async function evaluateCitations(
           `unqualified pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: write ${config.organization}/<repository>@<sha>:<path> so the repository can be asked`,
         );
       }
+      for (const pin of scanned.local) {
+        guardedLocal += 1;
+        const item = `${file.path}:${pin.line} ${pin.text}`;
+        const outcome = await resolveLocal(pin, input, resolver);
+        if (outcome.ok) guardedLocalResolved += 1;
+        else guardedLocalFailed += 1;
+        report.check(
+          item,
+          outcome.ok,
+          outcome.ok
+            ? outcome.note
+            : `local pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: ${outcome.note}`,
+        );
+      }
       for (const citation of scanned.bare) {
         guardedBare += 1;
         const outcome = await resolveBare(citation, input);
@@ -1238,6 +1383,7 @@ export async function evaluateCitations(
     }
     if (standing === "legacy") {
       legacyAdrs += 1;
+      legacyLocal += scanned.local.length;
       for (const citation of scanned.bare) {
         legacyBare += 1;
         if ((await resolveBare(citation, input)).ok) legacyBareResolving += 1;
@@ -1279,6 +1425,10 @@ export async function evaluateCitations(
     legacyBareUnverifiable: legacyBare - legacyBareResolving,
     guardedUnqualified,
     unjudgedUnqualified,
+    guardedLocal,
+    guardedLocalResolved,
+    guardedLocalFailed,
+    legacyLocal,
   };
   const failures = Object.entries(byVerdict)
     .filter(([verdict]) => verdict !== "resolved")
@@ -1292,7 +1442,9 @@ export async function evaluateCitations(
       `against ${found} candidate segment(s) (${foundCharacters} character(s)) found by an independent walk; ` +
       `${config.exemptions.length} exemption(s) declared, ${usedExemptions.size} matched; ` +
       `bare citations of ${guardedAdrs} ADR(s) above ${config.adr.bareCitationsGuardedAbove}: ${guardedBare} examined = ` +
-      `${guardedBareResolved} resolved + ${guardedBareFailed} failed; ${guardedUnqualified} unqualified pin(s) there, all failed`,
+      `${guardedBareResolved} resolved + ${guardedBareFailed} failed; ${guardedUnqualified} unqualified pin(s) there, all failed; ` +
+      `local pins (<sha>:<path>, asked of ${input.selfRepository === null ? "an underived repository" : `${config.organization}/${input.selfRepository}`}) there: ` +
+      `${guardedLocal} examined = ${guardedLocalResolved} resolved + ${guardedLocalFailed} failed`,
   );
   const information = [
     `Pinned citations (information, not a pass): ${legacyAdrs} ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} ` +
@@ -1301,6 +1453,8 @@ export async function evaluateCitations(
       "the forward rule does not rewrite history.",
     `Pinned citations (information, not a pass): ${unjudgedUnqualified} unqualified pin(s) (<name>@<sha>, no organisation) ` +
       "outside the guarded ADRs — no repository to ask, so not verified.",
+    `Pinned citations (information, not a pass): ${legacyLocal} local pin(s) (<sha>:<path>, repository implicit) ` +
+      `in ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} — counted, not judged: the forward rule does not rewrite history.`,
   ];
   return { report, volume, information };
 }
@@ -1328,6 +1482,16 @@ if (import.meta.main) {
   const files = await Promise.all(
     inScope.map(async (path) => ({ path, text: await readOrNull(root, path) })),
   );
+  let origin: string | null;
+  try {
+    origin = execFileSync("git", ["remote", "get-url", "origin"], {
+      encoding: "utf8",
+      cwd: root,
+    }).trim();
+  } catch {
+    origin = null;
+  }
+  const selfRepository = origin === null ? null : repositoryFromRemote(origin, config.organization);
   const scratch = await mkdtemp(join(tmpdir(), "check-pinned-citations-"));
   let outcome: Awaited<ReturnType<typeof evaluateCitations>>;
   let addressed: number;
@@ -1339,7 +1503,13 @@ if (import.meta.main) {
       scratch,
     });
     outcome = await evaluateCitations(
-      { config, files, tracked: new Set(tracked), readTracked: (path) => readOrNull(root, path) },
+      {
+        config,
+        files,
+        tracked: new Set(tracked),
+        readTracked: (path) => readOrNull(root, path),
+        selfRepository,
+      },
       resolver,
     );
     addressed = resolver.repositoriesAddressed;

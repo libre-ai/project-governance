@@ -121,16 +121,6 @@ jobs:
       - name: No raw-SQL construction outside the reviewed allowlist
         if: always()
         run: bun ecosystem/check-sql-construction.ts
-      # Every pinned code citation of docs/ (`libre-ai/<repository>@<sha>:<path>[:<lines>]`)
-      # names a repository, a commit, a path and lines that exist, and an ADR
-      # above the threshold of tools/quality/pinned-citations.v1.json cites no
-      # bare path:line it cannot resolve here. Asked over the git protocol
-      # (ls-remote, blobless bare clone), never the REST API: no token, no
-      # quota. Reads other repositories, hence here and not in `bun run check`.
-      - name: Every pinned code citation of the documents resolves
-        if: always()
-        timeout-minutes: 15
-        run: bun tools/quality/check-pinned-citations.ts
       # I-37 (ADR-0049, owner arbitration 2026-10-10): every web surface of the
       # fleet serves the strict web-platform header policy (or a Caddyfile with
       # the same base), names each CSP relaxation and raw HTML sink in
