@@ -102,7 +102,7 @@ sont épinglées sur la base `c466a5c`.
    sont écrits nulle part dans l'autorité : ni sur la base `c466a5c` ni sur la
    tête de la branche servie du 2026-10-23 (`6ffeb40`), aucun des outils de
    l'amorce de D4 n'y est nommé. Reproduire, pour chacun des deux commits :
-   `git grep -il -E 'agent-reach|agentcontrolplane|humanlayer|morluto|\brtk\b|archify|claude-watch|claude-video|golive' <commit> -- .`
+   `git grep -il -E 'agent-reach|agentcontrolplane|humanlayer|morluto|rtk|archify|claude-watch|claude-video|golive' <commit> -- .`
    → aucune sortie. Une session suivante ne peut donc pas les consulter.
    Archify tient une section « Not planned » de 12 idées refusées, chacune
    motivée. Reproduire :
@@ -167,8 +167,8 @@ Chaque constat d'une revue reçoit une disposition, et une seule :
 Un risque non vérifié n'est jamais présenté comme un défaut reproduit : faute
 de preuve, il est une preuve requise.
 
-Une re-revue part du dernier head revu et en fixe le point de départ ; elle
-n'abolit pas la passe fraîche exigée par
+Une re-revue part du dernier head revu, qui fixe le point de départ de la
+passe fraîche ; elle n'abolit pas la passe fraîche exigée par
 `c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:32` après tout changement
 normatif postérieur à un verdict. Un vert antérieur ne prouve rien sur le
 nouveau diff.
@@ -241,7 +241,7 @@ est décrit en tête du fichier.
 
 - **Critère d'entrée.** Toute entrée porte au moins une preuve publique qui
   établit son motif : citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`,
-  ou URL datée quand la page peut changer. Un constat du motif que la preuve
+  ou URL toujours suivie de sa date de consultation. Un constat du motif que la preuve
   publique n'établit pas est marqué comme tel dans l'entrée. Une entrée sans
   preuve publique ne s'écrit pas.
 - Le registre se consulte avant toute nouvelle proposition d'un projet, d'un

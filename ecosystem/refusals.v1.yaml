@@ -39,7 +39,8 @@ schema_version: libre-ai.refusals.v1
 #   n'établit pas est marqué comme tel ;
 # - `evidence` : au moins une preuve publique qui établit le motif —
 #   citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`, ou
-#   URL avec sa date de consultation ; une entrée sans preuve publique ne
+#   URL, toujours suivie de sa date de consultation ; une entrée sans preuve
+#   publique ne
 #   s'écrit pas ;
 # - `reexamine_when` : la condition de réexamen, ou `null` s'il n'en a pas.
 #
@@ -85,9 +86,10 @@ refusals:
     origin: inspection
     decided_on: 2026-10-09
     reason: >-
-      `check-update` imprime les 20 premières lignes des notes de la
-      dernière release, et, faute de release, le message du dernier commit de
-      la branche `main` non épinglée ; la skill demande à l'agent de lancer
+      Quand une version plus récente existe, `check-update` imprime les 20
+      premières lignes des notes de la dernière release ; faute de release,
+      il imprime la première ligne du message du dernier commit de la branche
+      `main` non épinglée. La skill demande à l'agent de lancer
       cette commande et de relayer la nouvelle version : un contenu distant
       entre dans le contexte de l'agent. Le canal web lit toute page par un
       intermédiaire tiers (Jina Reader) et se déclare `ok` sans sonde
@@ -97,8 +99,10 @@ refusals:
       ce décompte n'est pas établi par les citations ci-dessous.
     evidence:
       - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2276
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2290
       - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2294-2297
       - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2309-2319
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2317
       - Panniantong/Agent-Reach@94f06c1:agent_reach/skill/SKILL_en.md:41-45
       - Panniantong/Agent-Reach@94f06c1:agent_reach/channels/web.py:43-46
       - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:550-556
@@ -117,12 +121,17 @@ refusals:
     reason: >-
       La transcription extrait l'audio de la vidéo et l'envoie à l'API
       Whisper de Groq en premier, à celle d'OpenAI à défaut, selon la clé
-      présente dans l'environnement : le contenu audio quitte le poste vers
-      un service tiers. L'amont dont il dérive est
+      d'API trouvée sur le poste (environnement ou fichier local) : le contenu
+      audio quitte le poste vers un service tiers. Le projet déclare tenir ce
+      pipeline du projet `claude-video`, dont l'amont est
       `bradautomates/claude-video@03ceb42f7fa2c4439aca01752118044baabffb8f`.
     evidence:
       - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:2
+      - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:4
       - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:28-36
+      - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:68-75
+      - taoufik123-collab/claude-watch@7711231:README.md:33
+      - taoufik123-collab/claude-watch@7711231:README.md:214
     reexamine_when: null
 
   - id: refusal.golive-skill-install
@@ -144,6 +153,8 @@ refusals:
       - mikehasa/golive-skill@8fd3d8e:skills/golive/scripts/golive.mjs:10648
       - mikehasa/golive-skill@8fd3d8e:skills/golive/scripts/golive.mjs:219-220
       - mikehasa/golive-skill@8fd3d8e:src/core/exec.ts:26
+      - mikehasa/golive-skill@8fd3d8e:src/core/context.ts:13
+      - mikehasa/golive-skill@8fd3d8e:docs/TRUST.md:89-91
       - https://github.com/mikehasa/golive-skill/issues/81 (consultée le 2026-10-23)
     reexamine_when: null
 
@@ -198,7 +209,7 @@ refusals:
       - morluto/rea@33d5ae0:src/contracts/sessionToolContracts.ts:95-99
       - morluto/rea@33d5ae0:src/contracts/toolEffects.ts:303-309
       - morluto/rea@33d5ae0:src/contracts/toolEffects.ts:337
-      - morluto/rea@33d5ae0:skill-src/reverse-engineer-anything/SKILL.md:160-161
+      - morluto/rea@33d5ae0:skill-src/reverse-engineer-anything/SKILL.md:161-162
       - morluto/rea@33d5ae0:src/application/SetupPlan.ts:274
       - morluto/rea@33d5ae0:.github/workflows/
     reexamine_when: null
@@ -240,7 +251,7 @@ refusals:
       L'extension réplique la session vers HumanLayer : invites, réponses et
       raisonnement du modèle, appels d'outils et leurs résultats, commandes
       shell et leur sortie, et le diff de tout le dépôt contre le commit de
-      départ, fichiers non suivis compris. Le diff exclut seulement les
+      départ, fichiers non suivis non ignorés compris. Le diff exclut seulement les
       fichiers et dossiers `.env*`, `*.env` et `.humanlayer/` ; aucune autre
       rédaction n'est décrite. La déconnexion ne révoque pas les jetons côté
       serveur.
