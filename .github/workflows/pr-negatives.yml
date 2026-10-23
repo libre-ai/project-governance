@@ -10,7 +10,9 @@ name: pr-negatives
 # The description is read from the event payload file by the gate, never
 # interpolated into a shell command: it is author-controlled text. The diff is
 # read from git, between the merge base of the fetched base branch and HEAD:
-# the full history is checked out so the merge base exists.
+# the full history is checked out so the merge base exists. The rules
+# (tools/quality/pr-negatives.v1.json) are read at that merge base, never from
+# the head.
 
 on:
   pull_request:
@@ -31,6 +33,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # No token is left in .git/config: the gate fetches a public base
+          # branch, and nothing after the checkout needs to authenticate.
+          persist-credentials: false
       - name: Install archived Bun toolchain
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip

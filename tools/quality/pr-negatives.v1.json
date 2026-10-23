@@ -1,23 +1,53 @@
 {
+  "because": "What 'added' means for the three verifiable negatives of ADR-0056 D5. Read by tools/quality/check-pr-negatives.ts at the MERGE BASE of the pull request, never from its head: a pull request cannot set the rules it is judged by. Every pattern is a regular expression over the repository-relative path, compiled case-insensitively.",
   "workflow": {
-    "addedPathPatterns": ["^\\.github/workflows/"],
-    "because": "ADR-0056 D5 names the files of .github/workflows/. Any file added there counts, a workflow GitHub would not run included: the negative says the pull request adds nothing to that directory, and a narrower reading would let a file that becomes a workflow by a later rename pass."
+    "directory": ".github/workflows",
+    "because": "ADR-0056 D5 names the files of .github/workflows/. Any file added at or under it counts, compared case-insensitively, a file GitHub would not run included; so does any symlink or type change at or under it, and a symlink that replaces one of its parent directories: through a link, the files that run are whatever the target holds."
   },
   "schema": {
-    "addedPathPatterns": ["\\.schema\\.json$"],
-    "because": "Measured on 2026-10-23 over the served branch of the 22 unarchived libre-ai repositories: 320 tracked paths end in .schema.json, every file under a schemas/ directory among them; the 13 other paths containing 'schema' are code (validators, tests, a Rust module), a migration snapshot and a vendored third-party .proto. Rerun: for each repository, `gh api repos/libre-ai/<repo>/git/trees/<served branch>?recursive=1 --jq '.tree[] | select(.type==\"blob\") | .path' | grep -i schema | grep -v fixture`."
+    "addedPathPatterns": [
+      "\\.schema\\.(?:json|ya?ml)$",
+      "(?:^|/)schema\\.(?:json|ya?ml)$",
+      "(?:^|/)schemas?/(?:[^/]+/)*[^/]+\\.(?:json|ya?ml)$"
+    ],
+    "content": {
+      "extensions": [".json"],
+      "rootKey": "$schema",
+      "metaSchemaPrefixes": ["http://json-schema.org/", "https://json-schema.org/"]
+    },
+    "because": "Measured on 2026-10-23 over the served branch of the 22 unarchived libre-ai repositories, fixtures excluded: 320 tracked paths end in .schema.json, every file under a schemas/ directory among them. The patterns go wider than the measure, as the 2026-10-23 review asked: the .schema suffix in JSON or YAML, a file named schema.json or schema.yaml, any JSON or YAML file under a schema/ or schemas/ directory, and, by content, any added .json whose root $schema names a JSON Schema meta-schema. Rerun the measure: for each repository, `gh api repos/libre-ai/<repo>/git/trees/<served branch>?recursive=1 --jq '.tree[] | select(.type==\"blob\") | .path' | grep -i schema | grep -v fixture`."
   },
   "dependency": {
     "manifests": [
       {
         "basename": "package.json",
         "parser": "json",
-        "sections": ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]
+        "dependencySections": [
+          "dependencies",
+          "devDependencies",
+          "optionalDependencies",
+          "peerDependencies",
+          "catalog",
+          "catalogs.*",
+          "workspaces.catalog",
+          "workspaces.catalogs.*"
+        ],
+        "overrideSections": [
+          "overrides",
+          "resolutions",
+          "pnpm.overrides",
+          "bundleDependencies",
+          "bundledDependencies"
+        ],
+        "provenance": {
+          "aliasProtocols": ["npm:"],
+          "rangeOnlyProtocols": ["workspace:"]
+        }
       },
       {
         "basename": "Cargo.toml",
         "parser": "toml",
-        "sections": [
+        "dependencySections": [
           "dependencies",
           "dev-dependencies",
           "build-dependencies",
@@ -25,7 +55,11 @@
           "target.*.dependencies",
           "target.*.dev-dependencies",
           "target.*.build-dependencies"
-        ]
+        ],
+        "overrideSections": ["patch.*", "replace"],
+        "provenance": {
+          "tableKeys": ["package", "git", "path", "registry", "branch", "rev", "tag", "workspace"]
+        }
       }
     ],
     "lockfiles": [
@@ -46,17 +80,25 @@
       "composer.lock"
     ],
     "unreadManifestPatterns": [
-      "^requirements[^/]*\\.(?:txt|in)$",
-      "^pyproject\\.toml$",
-      "^Pipfile$",
-      "^setup\\.(?:py|cfg)$",
-      "^go\\.mod$",
-      "^Gemfile$",
-      "^composer\\.json$",
-      "^deno\\.jsonc?$",
-      "^pom\\.xml$",
-      "^build\\.gradle(?:\\.kts)?$"
+      "(?:^|/)requirements[^/]*\\.(?:txt|in)$",
+      "(?:^|/)requirements/(?:[^/]+/)*[^/]+\\.(?:txt|in)$",
+      "(?:^|/)constraints[^/]*\\.txt$",
+      "(?:^|/)environment\\.ya?ml$",
+      "(?:^|/)pyproject\\.toml$",
+      "(?:^|/)Pipfile$",
+      "(?:^|/)setup\\.(?:py|cfg)$",
+      "(?:^|/)go\\.mod$",
+      "(?:^|/)Gemfile$",
+      "(?:^|/)composer\\.json$",
+      "(?:^|/)deno\\.jsonc?$",
+      "(?:^|/)package\\.json5$",
+      "(?:^|/)package\\.yaml$",
+      "(?:^|/)pnpm-workspace\\.yaml$",
+      "(?:^|/)pom\\.xml$",
+      "(?:^|/)build\\.gradle(?:\\.kts)?$"
     ],
-    "because": "Manifests are matched by file name, at any depth. A section path is dotted; `*` matches any one key (a Cargo target cfg). The two read formats cover the manifests tracked by this repository except tools/licensing/requirements.txt; a manifest matching unreadManifestPatterns is named and makes a declared `dependency` negative unverifiable, never a silent zero."
+    "gitmodules": ".gitmodules",
+    "usesFilePatterns": ["^\\.github/workflows/", "(?:^|/)action\\.ya?ml$"],
+    "because": "Read manifests are matched by exact file name at any depth; a section path is dotted, and `*` matches any one key. A dependency is added when: a manifest, lockfile or manifest of an unread format is added (vendored, or without a single entry, included); an entry appears in a dependency or override section; an existing entry changes provenance (npm alias target, a git/github/http/file/link/portal/other protocol spec, a path or shorthand spec, or the Cargo keys of provenance.tableKeys appearing or changing); a submodule is added or .gitmodules changes; a workflow or action file gains a `uses:` (compared without its @ref). A version change alone is not one, and neither is a lockfile only modified. A manifest of an unread format that changes, a file of the scan that is a symlink at the base or the head, and anything unparsable make the negative unverifiable."
   }
 }
