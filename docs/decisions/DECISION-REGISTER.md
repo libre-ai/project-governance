@@ -97,6 +97,7 @@ This register is the D0x sequence of execution decisions proper to the Big Bang 
 | D91 | Les PR d'amendement portent `Owner-arbitration: 2026-10-22` ; la fusion est un acte du propriétaire ; aucun code produit de P02 avant fusion (P02-D11) | S'applique à ADR-0054 et à ses amendements compagnons ; ADR-0043 pour la signature. Owner-arbitration: 2026-10-22 |
 | D92 | La mémoire résidente de l'application Tauri reste sous 512 MiB en régime établi, chiffre figé avant mesure ; un dépassement mesuré au troisième jalon est une décision de surface (retour au natif), non une révision du seuil (P02-D12) | ADR-0054 §3. Owner-arbitration: 2026-10-22 |
 | D93 | La qualification macOS est un smoke test natif, un parcours fonctionnel Playwright webkit et un spike de `@wdio/tauri-service` ; si le spike est vert, le parcours complet tourne aussi dans la coquille (P02-D13) | ADR-0054 §3. Owner-arbitration: 2026-10-22 |
+| D94 | Le propriétaire décide, le 2026-10-22, que `signalement` sort du gel posé par ADR-0042 §1 et qu'il est le seul dépôt porteur de P15 (projets, tickets et support) ; ses lots reprennent pour livrer sa v1.0 sans attendre B′, sans création de dépôt ; `ai-work-supervision` relève de la fabrique et ne porte aucune application du catalogue, P15 comprise ; l'ordre d'ADR-0042 §3, le jalon B′ et le moratoire restent inchangés — amende ADR-0042 §1 (D52) | ADR-0055 — 2026-10-23 |
 
 Changes to this register require an ADR and explicit human approval.
 
