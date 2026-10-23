@@ -1,104 +1,72 @@
 {
-  "because": "What 'added' means for the three verifiable negatives of ADR-0056 D5. Read by tools/quality/check-pr-negatives.ts at the MERGE BASE of the pull request, never from its head: a pull request cannot set the rules it is judged by. Every pattern is a regular expression over the repository-relative path, compiled case-insensitively.",
+  "because": "The surfaces of the three verifiable negatives of ADR-0056 D5. A negative holds only when the diff touches none of its surface; any contact makes it unverifiable, and the pull request does not declare it (the line is optional). Read by tools/quality/check-pr-negatives.ts at the MERGE BASE of the pull request, never from its head. Every pattern is a regular expression over the repository-relative path and every name is compared case-insensitively.",
   "workflow": {
     "directory": ".github/workflows",
-    "because": "ADR-0056 D5 names the files of .github/workflows/. Any file added at or under it counts, compared case-insensitively, a file GitHub would not run included; so does any symlink or type change at or under it, and a symlink that replaces one of its parent directories: through a link, the files that run are whatever the target holds."
+    "symlinkRoot": ".github",
+    "because": "A path added or type-changed at or under the directory is a workflow added (a rename is an addition: the list is read with --no-renames). A symlink added or modified at or under .github can make GitHub read any target as a workflow or action."
   },
   "schema": {
-    "addedPathPatterns": [
+    "pathPatterns": [
       "\\.schema\\.(?:json|ya?ml)$",
       "(?:^|/)schema\\.(?:json|ya?ml)$",
       "(?:^|/)schemas?/(?:[^/]+/)*[^/]+\\.(?:json|ya?ml)$"
     ],
-    "content": {
-      "extensions": [".json"],
-      "rootKey": "$schema",
-      "metaSchemaPrefixes": ["http://json-schema.org/", "https://json-schema.org/"]
-    },
-    "because": "Measured on 2026-10-23 over the served branch of the 22 unarchived libre-ai repositories, fixtures excluded: 320 tracked paths end in .schema.json, every file under a schemas/ directory among them. The patterns go wider than the measure, as the 2026-10-23 review asked: the .schema suffix in JSON or YAML, a file named schema.json or schema.yaml, any JSON or YAML file under a schema/ or schemas/ directory, and, by content, any added .json whose root $schema names a JSON Schema meta-schema. Rerun the measure: for each repository, `gh api repos/libre-ai/<repo>/git/trees/<served branch>?recursive=1 --jq '.tree[] | select(.type==\"blob\") | .path' | grep -i schema | grep -v fixture`."
+    "contentExtensions": [".json", ".jsonc", ".yaml", ".yml"],
+    "contentMarkers": ["$schema", "\\u0024schema", "\\x24schema"],
+    "because": "Names: the .schema suffix in JSON or YAML (320 tracked .schema.json paths over the 22 unarchived libre-ai repositories on 2026-10-23, fixtures excluded), the bare schema.json|yaml|yml, and any JSON or YAML file under a schema/ or schemas/ directory. Content: a raw byte search, no parse, for $schema and the two escapes a JSON or YAML string can write it with; a tsconfig or a Biome configuration carrying $schema is a contact, and the author does not declare the negative."
   },
   "dependency": {
-    "manifests": [
-      {
-        "basename": "package.json",
-        "parser": "json",
-        "dependencySections": [
-          "dependencies",
-          "devDependencies",
-          "optionalDependencies",
-          "peerDependencies",
-          "catalog",
-          "catalogs.*",
-          "workspaces.catalog",
-          "workspaces.catalogs.*"
-        ],
-        "overrideSections": [
-          "overrides",
-          "resolutions",
-          "pnpm.overrides",
-          "bundleDependencies",
-          "bundledDependencies"
-        ],
-        "provenance": {
-          "aliasProtocols": ["npm:"],
-          "rangeOnlyProtocols": ["workspace:"]
-        }
-      },
-      {
-        "basename": "Cargo.toml",
-        "parser": "toml",
-        "dependencySections": [
-          "dependencies",
-          "dev-dependencies",
-          "build-dependencies",
-          "workspace.dependencies",
-          "target.*.dependencies",
-          "target.*.dev-dependencies",
-          "target.*.build-dependencies"
-        ],
-        "overrideSections": ["patch.*", "replace"],
-        "provenance": {
-          "tableKeys": ["package", "git", "path", "registry", "branch", "rev", "tag", "workspace"]
-        }
-      }
-    ],
-    "lockfiles": [
+    "basenames": [
+      "package.json",
+      "package.json5",
+      "package.yaml",
       "bun.lock",
       "bun.lockb",
       "package-lock.json",
       "npm-shrinkwrap.json",
       "yarn.lock",
       "pnpm-lock.yaml",
-      "deno.lock",
+      "pnpm-workspace.yaml",
+      "Cargo.toml",
       "Cargo.lock",
+      "pyproject.toml",
       "uv.lock",
       "poetry.lock",
-      "pdm.lock",
+      "Pipfile",
       "Pipfile.lock",
+      "setup.py",
+      "setup.cfg",
+      "go.mod",
       "go.sum",
+      "Gemfile",
       "Gemfile.lock",
-      "composer.lock"
+      "composer.json",
+      "composer.lock",
+      "deno.json",
+      "deno.jsonc",
+      "deno.lock",
+      "flake.nix",
+      "flake.lock",
+      "pom.xml",
+      "build.gradle",
+      "build.gradle.kts",
+      "environment.yml",
+      "environment.yaml",
+      ".npmrc",
+      ".yarnrc",
+      ".yarnrc.yml",
+      "bunfig.toml",
+      "pip.conf",
+      ".gitmodules"
     ],
-    "unreadManifestPatterns": [
-      "(?:^|/)requirements[^/]*\\.(?:txt|in)$",
-      "(?:^|/)requirements/(?:[^/]+/)*[^/]+\\.(?:txt|in)$",
+    "pathPatterns": [
+      "(?:^|/)requirements[^/]*\\.txt$",
+      "(?:^|/)requirements/",
       "(?:^|/)constraints[^/]*\\.txt$",
-      "(?:^|/)environment\\.ya?ml$",
-      "(?:^|/)pyproject\\.toml$",
-      "(?:^|/)Pipfile$",
-      "(?:^|/)setup\\.(?:py|cfg)$",
-      "(?:^|/)go\\.mod$",
-      "(?:^|/)Gemfile$",
-      "(?:^|/)composer\\.json$",
-      "(?:^|/)deno\\.jsonc?$",
-      "(?:^|/)package\\.json5$",
-      "(?:^|/)package\\.yaml$",
-      "(?:^|/)pnpm-workspace\\.yaml$",
-      "(?:^|/)pom\\.xml$",
-      "(?:^|/)build\\.gradle(?:\\.kts)?$"
+      "(?:^|/)\\.cargo/",
+      "^\\.github/workflows/",
+      "^\\.github/actions/"
     ],
-    "gitmodules": ".gitmodules",
-    "usesFilePatterns": ["^\\.github/workflows/", "(?:^|/)action\\.ya?ml$"],
-    "because": "Read manifests are matched by exact file name at any depth; a section path is dotted, and `*` matches any one key. A dependency is added when: a manifest, lockfile or manifest of an unread format is added (vendored, or without a single entry, included); an entry appears in a dependency or override section; an existing entry changes provenance (npm alias target, a git/github/http/file/link/portal/other protocol spec, a path or shorthand spec, or the Cargo keys of provenance.tableKeys appearing or changing); a submodule is added or .gitmodules changes; a workflow or action file gains a `uses:` (compared without its @ref). A version change alone is not one, and neither is a lockfile only modified. A manifest of an unread format that changes, a file of the scan that is a symlink at the base or the head, and anything unparsable make the negative unverifiable."
+    "because": "Every manifest and lockfile known to the fleet's ecosystems, the requirements and constraints files, the registry configurations (.npmrc, .yarnrc, .yarnrc.yml, bunfig.toml, .cargo/, pip.conf), .gitmodules, and the workflow and action directories where `uses:` lives. Gitlinks and symlinks are on the surface by mode, in the gate's logic, not by name. Any status counts, both sides of a rename included."
   }
 }

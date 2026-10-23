@@ -1,13 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -18,9 +10,9 @@ import { dirname, join } from "node:path";
  * the change set git actually produces — merge base, `--raw --no-renames`
  * path list with modes, `cat-file` blobs, both trees — is the one the verdict
  * is about, whatever the repository config says. They are black-box on
- * purpose: the probes of the 2026-10-23 review (one `describe` per finding)
- * were run unchanged against the gate before its correction, to show each
- * red there.
+ * purpose: the probes of the second review of 2026-10-23 (one `describe` per
+ * finding N1 to N10) were run unchanged against the gate it reviewed
+ * (961880b), to show each red there.
  *
  * WHY A FIXTURE REMOTE. The gate fetches `origin <base>`: a throwaway
  * repository over `file://`, no network. Three base branches, none a
@@ -40,27 +32,29 @@ const BARE_BASE = "probe/served-bare";
 const LINKED_BASE = "probe/served-linked";
 const SHA_A = "a".repeat(40);
 
-const BASE_PACKAGE = {
-  name: "probe",
-  dependencies: { ajv: "8.20.0" },
-  devDependencies: { typescript: "7.0.2" },
-};
-const BASE_CARGO = '[package]\nname = "probe"\nversion = "0.1.0"\n\n[dependencies]\nserde = "1"\n';
+const BASE_PACKAGE = `${JSON.stringify(
+  {
+    name: "probe",
+    workspaces: ["packages/*"],
+    dependencies: { ajv: "8.20.0" },
+    devDependencies: { typescript: "7.0.2" },
+  },
+  null,
+  2,
+)}\n`;
 const CI_WORKFLOW = `name: ci\non: push\npermissions: {}\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@${SHA_A}\n`;
 
 /** The files of every base branch, path → content. */
 const BASE_FILES: Readonly<Record<string, string>> = {
   ".github/workflows/ci.yml": CI_WORKFLOW,
-  "package.json": `${JSON.stringify(BASE_PACKAGE, null, 2)}\n`,
-  "Cargo.toml": BASE_CARGO,
+  "package.json": BASE_PACKAGE,
   "bun.lock": '{ "lockfileVersion": 1 }\n',
-  "requirements/dev.txt": "pytest==8.0.0\n",
-  "constraints.txt": "urllib3<3\n",
-  "environment.yml": "dependencies:\n  - numpy\n",
-  "package.json5": "{ name: 'probe' }\n",
-  "package.yaml": "name: probe\n",
-  "pnpm-workspace.yaml": "packages: []\n",
-  ".gitmodules": '[submodule "x"]\n\tpath = x\n\turl = https://example.invalid/x.git\n',
+  "bunfig.toml": "[install]\n",
+  "vendor/evil/package.json": '{ "name": "evil", "scripts": { "postinstall": "true" } }\n',
+  "vendor/lib": "a plain file, before it becomes a gitlink\n",
+  "config/app.yaml": "name: probe\n",
+  "data/plain.json": '{ "a": 1 }\n',
+  "docs/readme.md": "probe\n",
 };
 
 interface Run {
@@ -106,25 +100,6 @@ function write(relative: string, text: string, root = clone): void {
 
 function read(relative: string): string {
   return readFileSync(join(clone, relative), "utf8");
-}
-
-function editJson(relative: string, edit: (value: Record<string, unknown>) => void): void {
-  const value = JSON.parse(read(relative)) as Record<string, unknown>;
-  edit(value);
-  write(relative, `${JSON.stringify(value, null, 2)}\n`);
-}
-
-/** Set `value` at the key path `keys` of a JSON file, creating the tables on the way. */
-function setJson(relative: string, keys: readonly string[], value: unknown): () => void {
-  return () =>
-    editJson(relative, (document) => {
-      let node: Record<string, unknown> = document;
-      for (const key of keys.slice(0, -1)) {
-        if (typeof node[key] !== "object" || node[key] === null) node[key] = {};
-        node = node[key] as Record<string, unknown>;
-      }
-      node[keys[keys.length - 1] ?? ""] = value;
-    });
 }
 
 /** Stage `text` at `path` in the index only: the case of the path is kept even on a case-insensitive disk. */
@@ -244,6 +219,157 @@ function expectFails(run: Run, ...texts: string[]): void {
   for (const text of texts) expect(run.stderr).toContain(text);
 }
 
+function expectPasses(run: Run, ...texts: string[]): void {
+  expect(run.exitCode).toBe(0);
+  for (const text of texts) expect(run.stdout).toContain(text);
+}
+
+const addWorkflow = () => write(".github/workflows/new.yml", "name: new\n");
+
+describe("second review, N1: a duplicated JSON key", () => {
+  test("package.json touched: `dependency` cannot be verified", () => {
+    branchWith(() =>
+      write(
+        "package.json",
+        '{"name":"probe","workspaces":["packages/*"],"dependencies":{"ajv":"npm:evil@1","ajv":"8.20.0"},"devDependencies":{"typescript":"7.0.2"}}\n',
+      ),
+    );
+    expectFails(runGate("Not-added: dependency"), "cannot verify: package.json (M,");
+  });
+});
+
+describe("second review, N2: an npm spec without `/` that npm reads as a path", () => {
+  test.each(["..", ".evil", "evil.tgz"])("%j: `dependency` cannot be verified", (spec) => {
+    branchWith(() => write("package.json", BASE_PACKAGE.replace('"8.20.0"', JSON.stringify(spec))));
+    expectFails(runGate("Not-added: dependency"), "cannot verify: package.json (M,");
+  });
+});
+
+describe("second review, N3: an existing package.json brought into the workspace", () => {
+  test("workspaces widened: `dependency` cannot be verified", () => {
+    branchWith(() =>
+      write("package.json", BASE_PACKAGE.replace('"packages/*"', '"packages/*", "vendor/*"')),
+    );
+    expectFails(runGate("Not-added: dependency"), "cannot verify: package.json (M,");
+  });
+
+  test("a directory symlinked into the workspace: `dependency` cannot be verified", () => {
+    branchWith(() => {
+      mkdirSync(join(clone, "packages"), { recursive: true });
+      symlinkSync("../vendor/evil", join(clone, "packages/evil"));
+    });
+    expectFails(runGate("Not-added: dependency"), "cannot verify: packages/evil (A, symlink)");
+  });
+});
+
+describe("second review, N4: registry configurations", () => {
+  test.each([
+    [".npmrc", "registry=https://registry.example.invalid/\n", "A"],
+    ["bunfig.toml", '[install]\nregistry = "https://registry.example.invalid/"\n', "M"],
+    [".cargo/config.toml", '[source.crates-io]\nreplace-with = "evil"\n', "A"],
+  ])("%s changed: `dependency` cannot be verified", (path, text, status) => {
+    branchWith(() => write(path, text));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (${status},`);
+  });
+});
+
+describe("second review, N5: escaped forms of the key that GitHub renders", () => {
+  test.each([
+    ["a backslash escape", "Not\\-added: workflow"],
+    ["an HTML entity", "Not&#45;added: workflow"],
+    ["an empty tag", "Not-<b></b>added: workflow"],
+    ["a zero-width space (Cf)", "Not\u200b-added: workflow"],
+    ["a soft hyphen", "Not\u00adadded: workflow"],
+    ["a list item with an entity", "- Not&#x2D;added: workflow"],
+  ])("%s is refused by name", (_, line) => {
+    branchWith(addWorkflow);
+    expectFails(
+      runGate(`Door: two-way\n${line}`),
+      'write it as "Not-added:" at the start of its own line',
+    );
+  });
+
+  test("declared limit: a homoglyph is neither a declaration nor refused", () => {
+    branchWith(addWorkflow);
+    expectPasses(
+      runGate("Door: two-way\nN\u043et-added: workflow"),
+      "0 Not-added line(s), 0 misplaced key(s)",
+    );
+  });
+});
+
+describe("second review, N6: prose that mentions the key in the middle of a line", () => {
+  test("the sentence #143 and #145 were refused for passes", () => {
+    branchWith(() => write("docs/readme.md", "changed\n"));
+    const body =
+      "Door: two-way\n- `langsmith` reads variables which neither ADR-0058 section 3.4 nor the ticket lists. Not added: the gate refuses exactly the list of them.\n";
+    expectPasses(runGate(body), "0 Not-added line(s), 0 misplaced key(s)");
+  });
+});
+
+describe("second review, N7: a workflow the YAML reader would truncate", () => {
+  test("a workflow touched, whatever it holds: `dependency` cannot be verified", () => {
+    branchWith(() =>
+      write(
+        ".github/workflows/ci.yml",
+        `${CI_WORKFLOW.trimEnd()}\u0000\n      - uses: evil/action@v1\n`,
+      ),
+    );
+    expectFails(runGate("Not-added: dependency"), "cannot verify: .github/workflows/ci.yml (M,");
+  });
+});
+
+describe("second review, N8: manifest names in any case", () => {
+  test("PACKAGE.JSON added: `dependency` cannot be verified", () => {
+    branchWith(
+      () => stageAt("vendor/x/PACKAGE.JSON", "100644", '{ "dependencies": { "evil": "1" } }\n'),
+      BASE_BRANCH,
+      true,
+    );
+    expectFails(runGate("Not-added: dependency"), "cannot verify: vendor/x/PACKAGE.JSON (A,");
+  });
+});
+
+describe("second review, N9: $schema in any JSON or YAML added or modified", () => {
+  test.each([
+    [
+      "config/app.yaml",
+      "$schema: https://json-schema.org/draft/2020-12/schema\nname: probe\n",
+      "M",
+    ],
+    ["tsconfig.jsonc", '{ "$schema": "https://json.schemastore.org/tsconfig" }\n', "A"],
+    ["data/plain.json", '{ "\\u0024schema": "https://json-schema.org/draft-07/schema#" }\n', "M"],
+  ])("%s: `schema` cannot be verified", (path, text, status) => {
+    branchWith(() => write(path, text));
+    expectFails(runGate("Not-added: schema"), `cannot verify: ${path} (${status}, content carries`);
+  });
+});
+
+describe("second review, N10: a gitlink by type change", () => {
+  test("named as a gitlink contact, never as `submodule added`", () => {
+    branchWith(() => stageAt("vendor/lib", "160000", ""), BASE_BRANCH, true);
+    const run = runGate("Not-added: dependency");
+    expectFails(run, "cannot verify: vendor/lib (T, gitlink)");
+    expect(run.stderr).not.toContain("submodule added");
+  });
+});
+
+describe("witnesses", () => {
+  test("a pull request touching only docs/ declares all three verifiable negatives and passes", () => {
+    branchWith(() => write("docs/readme.md", "changed\n"));
+    expectPasses(
+      runGate("Door: two-way\nNot-added: dependency, schema, workflow"),
+      "the dependency surface is not touched by any of 1 changed path(s)",
+      "the schema surface is not touched",
+      "the workflow surface is not touched",
+    );
+  });
+
+  test("no line: the gate passes and does not read the diff", () => {
+    expectPasses(runGate("Door: two-way"), "diff not read: no negative declared");
+  });
+});
+
 describe("this pull request's own shape", () => {
   const ownShape = () => {
     write(
@@ -252,20 +378,22 @@ describe("this pull request's own shape", () => {
     );
     write(DATA_PATH, readFileSync(DATA, "utf8"));
     write("tools/quality/check-pr-negatives.ts", "export {};\n");
-    editJson("package.json", (manifest) => {
-      manifest.scripts = { x: "y" };
-    });
+    write(
+      "package.json",
+      BASE_PACKAGE.replace('"name": "probe",', '"name": "probe",\n  "scripts": { "x": "y" },'),
+    );
   };
 
-  test("it adds a workflow, so it cannot declare `workflow`; its workflow's uses is a dependency added", () => {
+  test("it adds a workflow and touches package.json: `workflow` and `dependency` cannot be verified", () => {
     branchWith(ownShape);
     expectFails(
-      runGate("Door: two-way\nNot-added: workflow"),
-      "workflow file added: .github/workflows/pr-negatives.yml",
+      runGate("Not-added: workflow"),
+      "cannot verify: .github/workflows/pr-negatives.yml (A, workflow file",
     );
     expectFails(
-      runGate("Door: two-way\nNot-added: dependency"),
-      "uses added: .github/workflows/pr-negatives.yml: actions/checkout",
+      runGate("Not-added: dependency"),
+      "cannot verify: .github/workflows/pr-negatives.yml (A,",
+      "cannot verify: package.json (M,",
     );
   });
 
@@ -275,292 +403,43 @@ describe("this pull request's own shape", () => {
       runGate("Not-added: schema", BARE_BASE),
       "the rules are read at the merge base, never from the head",
     );
-    const declarative = runGate("Door: two-way\nNot-added: hosted-service, telemetry", BARE_BASE);
-    expect(declarative.exitCode).toBe(0);
-    expect(declarative.stdout).toContain("diff not read: no verifiable negative declared");
-  });
-});
-
-describe("review 2026-10-23, finding 1: a provenance change or an override is a dependency added", () => {
-  const cases: readonly (readonly [string, () => void, string])[] = [
-    [
-      "npm alias",
-      setJson("package.json", ["dependencies", "ajv"], "npm:evil-pkg@1.0.0"),
-      "provenance changed: package.json: dependencies.ajv",
-    ],
-    [
-      "github shorthand protocol",
-      setJson("package.json", ["dependencies", "ajv"], "github:evil/ajv#main"),
-      "provenance changed: package.json: dependencies.ajv",
-    ],
-    [
-      "Cargo package rename",
-      () =>
-        write(
-          "Cargo.toml",
-          BASE_CARGO.replace('serde = "1"', 'serde = { version = "1", package = "evil-crate" }'),
-        ),
-      "provenance changed: Cargo.toml: dependencies.serde",
-    ],
-    [
-      "Cargo git source",
-      () =>
-        write(
-          "Cargo.toml",
-          BASE_CARGO.replace('serde = "1"', 'serde = { git = "https://example.invalid/serde" }'),
-        ),
-      "provenance changed: Cargo.toml: dependencies.serde",
-    ],
-    [
-      "Cargo [patch]",
-      () =>
-        write("Cargo.toml", `${BASE_CARGO}\n[patch.crates-io]\nserde = { path = "../serde" }\n`),
-      "entry added: Cargo.toml: patch.crates-io.serde",
-    ],
-    [
-      "Cargo [replace]",
-      () =>
-        write(
-          "Cargo.toml",
-          `${BASE_CARGO}\n[replace]\n"serde:1.0.0" = { git = "https://example.invalid/serde" }\n`,
-        ),
-      "entry added: Cargo.toml: replace.serde:1.0.0",
-    ],
-    [
-      "npm overrides",
-      setJson("package.json", ["overrides"], { ajv: "npm:evil@1" }),
-      "entry added: package.json: overrides.ajv",
-    ],
-    [
-      "yarn resolutions",
-      setJson("package.json", ["resolutions"], { ajv: "1.0.0" }),
-      "entry added: package.json: resolutions.ajv",
-    ],
-    [
-      "pnpm overrides",
-      setJson("package.json", ["pnpm", "overrides"], { ajv: "1.0.0" }),
-      "entry added: package.json: pnpm.overrides.ajv",
-    ],
-    [
-      "bundleDependencies",
-      setJson("package.json", ["bundleDependencies"], ["ajv"]),
-      "entry added: package.json: bundleDependencies.ajv",
-    ],
-    [
-      "bundledDependencies",
-      setJson("package.json", ["bundledDependencies"], ["ajv"]),
-      "entry added: package.json: bundledDependencies.ajv",
-    ],
-  ];
-
-  test.each(cases)("%s", (_, change, expected) => {
-    branchWith(change);
-    expectFails(runGate("Not-added: dependency"), expected);
-  });
-
-  test("control: a version change alone is not a dependency added", () => {
-    branchWith(setJson("package.json", ["dependencies", "ajv"], "8.21.0"));
-    expect(runGate("Not-added: dependency").exitCode).toBe(0);
-  });
-});
-
-describe("review 2026-10-23, finding 2: manifests the gate does not read, submodules and uses", () => {
-  const unread: string[] = [
-    "requirements/dev.txt",
-    "constraints.txt",
-    "environment.yml",
-    "package.json5",
-    "package.yaml",
-    "pnpm-workspace.yaml",
-  ];
-
-  test.each(unread)("%s modified: the negative is unverifiable, named", (path) => {
-    branchWith(() => write(path, `${read(path)}# changed\n`));
-    expectFails(
-      runGate("Not-added: dependency"),
-      `manifest of a format this gate does not read: ${path} (M)`,
-    );
-  });
-
-  test("a submodule added is a dependency added, even when the config hides submodules", () => {
-    branchWith(
-      () => {
-        const head = git(clone, ["rev-parse", "HEAD"]);
-        git(clone, ["update-index", "--add", "--cacheinfo", `160000,${head},vendor/lib`]);
-      },
-      BASE_BRANCH,
-      true,
-    );
-    withConfig({ "diff.ignoreSubmodules": "all" }, () => {
-      expectFails(runGate("Not-added: dependency"), "submodule added: vendor/lib");
-    });
-  });
-
-  test(".gitmodules changed is a dependency added", () => {
-    branchWith(() =>
-      write(
-        ".gitmodules",
-        read(".gitmodules").replace("example.invalid/x", "example.invalid/evil"),
-      ),
-    );
-    expectFails(runGate("Not-added: dependency"), ".gitmodules changed: submodule list or URLs");
-  });
-
-  test("a new uses: in a modified workflow is a dependency added", () => {
-    branchWith(() =>
-      write(".github/workflows/ci.yml", `${CI_WORKFLOW}      - uses: evil/action@v1\n`),
-    );
-    expectFails(
-      runGate("Not-added: dependency"),
-      "uses added: .github/workflows/ci.yml: evil/action",
-    );
-  });
-
-  test("control: bumping the sha of an existing uses: is a version change", () => {
-    branchWith(() => write(".github/workflows/ci.yml", CI_WORKFLOW.replace(SHA_A, "b".repeat(40))));
-    expect(runGate("Not-added: dependency").exitCode).toBe(0);
-  });
-
-  test("a vendored manifest added, without a single entry, is a dependency added", () => {
-    branchWith(() => write("vendor/x/package.json", '{ "name": "x" }\n'));
-    expectFails(runGate("Not-added: dependency"), "manifest added: vendor/x/package.json");
-  });
-});
-
-describe("review 2026-10-23, finding 3: a declaration visible when rendered is never read as absent", () => {
-  const bodies: readonly (readonly [string, string])[] = [
-    ["a quote", "> Not-added: workflow"],
-    ["a list item", "- Not-added: workflow"],
-    ["bold", "**Not-added:** workflow"],
-    ["a heading", "## Not-added: workflow"],
-    ["a non-breaking hyphen", "Not\u2011added: workflow"],
-    ["an en dash", "Not\u2013added: workflow"],
-  ];
-
-  test.each(bodies)("%s is refused by name", (_, body) => {
-    branchWith(() => write(".github/workflows/new.yml", "name: new\n"));
-    expectFails(
-      runGate(`Door: two-way\n${body}`),
-      'write it as "Not-added:" at the start of its own line',
-    );
-  });
-
-  test("a leading byte-order mark is removed before reading", () => {
-    branchWith(() => write(".github/workflows/new.yml", "name: new\n"));
-    expectFails(
-      runGate("\uFEFFNot-added: workflow"),
-      "workflow file added: .github/workflows/new.yml",
-    );
-  });
-});
-
-describe("review 2026-10-23, finding 4: schema files by every convention", () => {
-  const schemas: readonly (readonly [string, string])[] = [
-    ["a.SCHEMA.JSON", "{}\n"],
-    ["schemas/foo.json", "{}\n"],
-    ["schema.json", "{}\n"],
-    ["foo.schema.yaml", "type: object\n"],
-    [
-      "data/meta.json",
-      '{ "$schema": "https://json-schema.org/draft/2020-12/schema", "type": "object" }\n',
-    ],
-  ];
-
-  test.each(schemas)("%s added contradicts `schema`", (path, text) => {
-    branchWith(() => write(path, text));
-    expectFails(runGate("Not-added: schema"), `schema file added: ${path}`);
-  });
-});
-
-describe("review 2026-10-23, finding 5: the rules are the base's, not the head's", () => {
-  test("a head that neutralises the rules is still judged by the base's", () => {
-    branchWith(() => {
-      editJson(DATA_PATH, (rules) => {
-        const workflow = rules.workflow as Record<string, unknown>;
-        workflow.addedPathPatterns = ["^never$"];
-        workflow.directory = "never";
-      });
-      write(".github/workflows/new.yml", "name: new\n");
-    });
-    expectFails(runGate("Not-added: workflow"), "workflow file added: .github/workflows/new.yml");
-  });
-
-  test("rules absent at the merge base fail closed, even when the head carries them", () => {
-    branchWith(() => {
-      write(DATA_PATH, readFileSync(DATA, "utf8"));
-      write(".github/workflows/new.yml", "name: new\n");
-    }, BARE_BASE);
-    expectFails(
-      runGate("Not-added: workflow", BARE_BASE),
-      "the rules are read at the merge base, never from the head",
-    );
-  });
-});
-
-describe("review 2026-10-23, finding 6: workflow paths in any case, and through symlinks", () => {
-  test.each([
-    ".github/Workflows/new.yml",
-    ".GITHUB/workflows/new.yml",
-  ])("%s added contradicts `workflow`", (path) => {
-    branchWith(() => stageAt(path, "100644", "name: new\n"), BASE_BRANCH, true);
-    expectFails(runGate("Not-added: workflow"), `workflow file added: ${path}`);
-  });
-
-  test(".github/workflows replaced by a symlink contradicts `workflow`", () => {
-    branchWith(() => {
-      rmSync(join(clone, ".github/workflows"), { recursive: true });
-      mkdirSync(join(clone, "elsewhere"), { recursive: true });
-      write("elsewhere/new.yml", "name: new\n");
-      symlinkSync("../elsewhere", join(clone, ".github/workflows"));
-    });
-    expectFails(runGate("Not-added: workflow"), "workflow file added: .github/workflows (symlink)");
-  });
-});
-
-describe("review 2026-10-23, finding 7: the dependency partition sums to the paths examined", () => {
-  test("a deleted manifest, a read manifest and another file are each counted once", () => {
-    branchWith(() => {
-      unlinkSync(join(clone, "Cargo.toml"));
-      setJson("package.json", ["dependencies", "ajv"], "8.21.0")();
-      write("README.md", "probe\n");
-    });
-    const run = runGate("Not-added: dependency");
-    expect(run.exitCode).toBe(0);
-    expect(run.stdout).toContain("dependency partition of 3 changed path(s):");
-    expect(run.stdout).toContain("1 manifest read,");
-    expect(run.stdout).toContain("1 dependency file deleted, 1 other");
-  });
-});
-
-describe("review 2026-10-23, finding 8: a symlinked manifest cannot be verified", () => {
-  test("its target changing while the link does not fails, naming the link", () => {
-    branchWith(setJson("linked/real.json", ["dependencies"], { evil: "1.0.0" }), LINKED_BASE);
-    expectFails(
-      runGate("Not-added: dependency", LINKED_BASE),
-      "linked/package.json is a symlink at the base",
+    expectPasses(
+      runGate("Door: two-way\nNot-added: hosted-service, telemetry", BARE_BASE),
+      "diff not read: no verifiable negative declared",
     );
   });
 });
 
 describe("the change set is git's own", () => {
-  test("a devDependency added in package.json contradicts `dependency`", () => {
-    branchWith(setJson("package.json", ["devDependencies", "left-pad"], "1.3.0"));
-    expectFails(
-      runGate("Not-added: dependency"),
-      "entry added: package.json: devDependencies.left-pad",
-    );
+  test("a head that neutralises the rules is still judged by the base's", () => {
+    branchWith(() => {
+      const rules = JSON.parse(read(DATA_PATH));
+      rules.workflow.directory = "never";
+      write(DATA_PATH, `${JSON.stringify(rules, null, 2)}\n`);
+      addWorkflow();
+    });
+    expectFails(runGate("Not-added: workflow"), "cannot verify: .github/workflows/new.yml (A,");
   });
 
-  test("a textconv driver cannot hide the entry: contents are read as blobs", () => {
-    branchWith(setJson("package.json", ["devDependencies", "left-pad"], "1.3.0"));
-    const driver = join(workspace, "hide-left-pad.sh");
-    writeFileSync(driver, '#!/bin/sh\ngrep -v left-pad "$1"\n', { mode: 0o755 });
-    write(".git/info/attributes", "package.json diff=hide\n");
+  test("a submodule hidden by the config is still a gitlink contact", () => {
+    branchWith(() => stageAt("vendor/sub", "160000", ""), BASE_BRANCH, true);
+    withConfig({ "diff.ignoreSubmodules": "all" }, () => {
+      expectFails(runGate("Not-added: dependency"), "cannot verify: vendor/sub (A, gitlink)");
+    });
+  });
+
+  test("a textconv driver cannot hide $schema: contents are read as blobs", () => {
+    branchWith(() =>
+      write("data/plain.json", '{ "$schema": "https://json-schema.org/draft-07/schema#" }\n'),
+    );
+    const driver = join(workspace, "hide-schema.sh");
+    writeFileSync(driver, '#!/bin/sh\ngrep -v schema "$1"\n', { mode: 0o755 });
+    write(".git/info/attributes", "*.json diff=hide\n");
     try {
       withConfig({ "diff.hide.textconv": driver }, () => {
         expectFails(
-          runGate("Not-added: dependency"),
-          "entry added: package.json: devDependencies.left-pad",
+          runGate("Not-added: schema"),
+          "cannot verify: data/plain.json (M, content carries $schema)",
         );
       });
     } finally {
@@ -568,23 +447,32 @@ describe("the change set is git's own", () => {
     }
   });
 
-  test("only a lockfile modified: not an addition, and named", () => {
+  test("a lockfile only modified touches the surface", () => {
     branchWith(() => write("bun.lock", '{ "lockfileVersion": 1, "packages": {} }\n'));
-    const run = runGate("Not-added: dependency");
-    expect(run.exitCode).toBe(0);
-    expect(run.stdout).toContain(
-      "lockfile(s) modified without a manifest entry added, not judged an addition: bun.lock",
-    );
+    expectFails(runGate("Not-added: dependency"), "cannot verify: bun.lock (M,");
   });
 
   test("a workflow renamed in, with rename detection configured, is still added", () => {
     branchWith(() => git(clone, ["mv", ".github/workflows/ci.yml", ".github/workflows/build.yml"]));
     withConfig({ "diff.renames": "true" }, () => {
+      const run = runGate("Not-added: workflow, dependency");
       expectFails(
-        runGate("Not-added: workflow"),
-        "workflow file added: .github/workflows/build.yml",
+        run,
+        "cannot verify: .github/workflows/build.yml (A,",
+        "cannot verify: .github/workflows/ci.yml (D,",
       );
     });
+  });
+
+  test("a symlinked manifest unchanged in the diff is a contact through the tree", () => {
+    branchWith(
+      () => write("linked/real.json", '{ "dependencies": { "evil": "1" } }\n'),
+      LINKED_BASE,
+    );
+    expectFails(
+      runGate("Not-added: dependency", LINKED_BASE),
+      "cannot verify: linked/package.json (base, a symlink in the base tree)",
+    );
   });
 
   test("a head with no merge base fails instead of reading as an empty change", () => {
@@ -597,12 +485,6 @@ describe("the change set is git's own", () => {
       `diff: unreadable, nothing verified: could not find the merge base of origin/${BASE_BRANCH} and HEAD`,
     );
   });
-
-  test("no declaration: the diff is not needed, and the gate passes on the orphan head too", () => {
-    const run = runGate("Door: two-way");
-    expect(run.exitCode).toBe(0);
-    expect(run.stdout).toContain("diff not read: no negative declared");
-  });
 });
 
 describe("the event", () => {
@@ -614,9 +496,8 @@ describe("the event", () => {
   });
 
   test("outside a pull_request run, the gate declares that it judged nothing", () => {
-    const run = runGate("Not-added: schema", BASE_BRANCH, { GITHUB_EVENT_NAME: "push" });
-    expect(run.exitCode).toBe(0);
-    expect(run.stdout).toContain(
+    expectPasses(
+      runGate("Not-added: schema", BASE_BRANCH, { GITHUB_EVENT_NAME: "push" }),
       "PR negatives verified nothing, as declared: not a pull_request run",
     );
   });
