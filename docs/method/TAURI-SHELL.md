@@ -38,7 +38,7 @@ Zéro tentative est un échec, jamais un vert.
 
 | N° | Contrôle (ADR-0057 §2) | Entrée rouge du vecteur | Refus attendu, compté | Où il s'exécute |
 | --- | --- | --- | --- | --- |
-| C1 | Le front est servi depuis la mémoire de l'application par un gestionnaire de schéma privé, jamais depuis un hôte distant | `app.windows[].url` ou toute URL de la configuration pointant vers `http(s)://`, `ws(s)://` | 0 URL distante parmi N valeurs de configuration lues | `bun test` (§3.1) |
+| C1 | Le front est servi depuis la mémoire de l'application par un gestionnaire de schéma privé, jamais depuis un hôte distant | `app.windows[].url` ou toute URL de la configuration pointant vers `http(s)://`, `ws(s)://` ; puis, à l'exécution, une requête du front vers une URL hors du schéma privé | 0 URL distante parmi N valeurs de configuration lues ; 0 requête aboutie sur K tentées hors schéma | `bun test` (§3.1), puis spike D93 (§3.4) |
 | C2 | La configuration Tauri n'autorise aucune URL distante | une capacité portant `remote.urls`, ou une URL absolue dans `tauri.conf.json` | 0 capacité distante parmi N lues | `bun test` (§3.1) |
 | C3 | CSP `default-src 'none'` élargie aux seules origines du schéma privé | un `default-src` autre que `'none'` ; une source autre que `'none'` ou `'self'` (et, pour `connect-src`, autre que `ipc:` et `http://ipc.localhost`) : joker, `https:`, `data:`, `'unsafe-inline'`, hôte nommé | 0 source hors liste blanche parmi N directives lues | `bun test` (§3.1) |
 | C4 | Le magasin de données de la vue web est non persistant | une fenêtre sans `incognito: true` ; puis, à l'exécution, une écriture `localStorage` ou IndexedDB qui survit à un redémarrage | 0 fenêtre persistante parmi N ; 0 valeur relue après redémarrage parmi M écrites | `bun test` (§3.1), puis spike D93 (§3.3) |
@@ -400,6 +400,21 @@ déclare tenu que sur sa moitié de configuration (§3.1).
 La même contrainte vaut pour C5 si le harnais de §3.2 n'applique pas l'ACL : le
 pilote de ce spike est alors le seul instrument d'exécution.
 
+### 3.4 Vecteur C1 à l'exécution
+
+Une requête vers une URL hors schéma est le premier cas rouge nommé par
+ADR-0057 §2. Les vecteurs de §3.1 prouvent qu'aucune URL distante n'est
+configurée ; ils ne prouvent pas que la coquille construite refuse la requête
+qu'un front compromis tenterait. Depuis le front, dans la coquille construite :
+émettre K requêtes (`fetch`, `XMLHttpRequest`, chargement d'image et de
+script, `WebSocket`) vers des URL hors du schéma privé, dont un hôte local en
+clair (`http://127.0.0.1:<port-de-contrôle>`), ouvert par le pilote pour que
+l'aboutissement soit observable côté serveur. Le vecteur compte les tentatives
+et les requêtes abouties ; il est vert à **0 aboutie sur K tentées** (K > 0) et
+rouge si le serveur de contrôle a reçu une connexion. Même pilote que §3.3 :
+tant que le verdict du spike n'existe pas, ce vecteur est **NON VÉRIFIÉ** et C1
+ne se déclare tenu que sur sa moitié de configuration (§3.1).
+
 ## 4. Qualification macOS (ADR-0057 §4, D98)
 
 Elle s'exécute sur un runner macOS, sur la coquille construite et lancée. Le
@@ -420,7 +435,23 @@ open "$APP"
 sleep 10
 ROOT_PID="$(pgrep -x "$PROCESS_NAME" | head -n 1)"
 [ -n "$ROOT_PID" ] || { echo "C6 : processus $PROCESS_NAME introuvable" >&2; exit 1; }
-PIDS="$ROOT_PID $(pgrep -P "$ROOT_PID" | tr '\n' ' ')"
+# Le processus et tous ses descendants, générations comprises : `pgrep -P` ne
+# liste que les enfants directs, donc on le rejoue sur chaque pid découvert
+# jusqu'à épuisement (un petit-fils en écoute resterait sinon invisible).
+tree_pids() {
+  queue="$1"
+  found=""
+  while [ -n "$queue" ]; do
+    next=""
+    for parent in $queue; do
+      found="$found $parent"
+      next="$next $(pgrep -P "$parent" 2>/dev/null | tr '\n' ' ' || true)"
+    done
+    queue="$(echo $next)"
+  done
+  echo $found
+}
+PIDS="$(tree_pids "$ROOT_PID")"
 examined=0
 listening=0
 processes=0
