@@ -560,7 +560,12 @@ export function evaluateRefusals(
   const seenIds = new Set<string>();
 
   entries.forEach((entry, index) => {
-    const name = isRecord(entry) && typeof entry.id === "string" ? entry.id : `refusals[${index}]`;
+    // An id names the entry only once it passes its form: an empty or
+    // multi-line id would otherwise blank or split the report line.
+    const name =
+      isRecord(entry) && typeof entry.id === "string" && ID.test(entry.id)
+        ? entry.id
+        : `refusals[${index}]`;
     if (!isRecord(entry)) {
       report.check(name, false, "une entrée est une table");
       tally.entriesBad += 1;

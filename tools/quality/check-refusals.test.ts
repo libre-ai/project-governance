@@ -269,12 +269,25 @@ describe("entry fields", () => {
   const ID_FORM =
     "`id` doit s'écrire `refusal.<mot>[-<mot>…]`, mots en minuscules ASCII et chiffres (^refusal\\.[a-z0-9]+(-[a-z0-9]+)*$)";
 
-  test("an id without the `refusal.` prefix fails", () => {
-    expect(violationsOf({ id: "archify-install" })).toEqual([`archify-install: ${ID_FORM}`]);
+  // An id that fails its form never names the entry in the report: the entry
+  // is named by its index, so an empty or multi-line id cannot blank or split
+  // the report line (re-review of #142, N1).
+  test("an id without the `refusal.` prefix fails, under the entry's index", () => {
+    expect(violationsOf({ id: "archify-install" })).toEqual([`refusals[0]: ${ID_FORM}`]);
   });
 
-  test("an id that is only the prefix fails", () => {
-    expect(violationsOf({ id: "refusal." })).toEqual([`refusal.: ${ID_FORM}`]);
+  test("an id that is only the prefix fails, under the entry's index", () => {
+    expect(violationsOf({ id: "refusal." })).toEqual([`refusals[0]: ${ID_FORM}`]);
+  });
+
+  test("an empty id fails under the entry's index, not under an empty name", () => {
+    expect(violationsOf({ id: '""' })).toEqual([`refusals[0]: ${ID_FORM}`]);
+  });
+
+  test("an id carrying a line break fails under the entry's index, on one report line", () => {
+    const violations = violationsOf({ id: '"refusal.a\\n"' });
+    expect(violations).toEqual([`refusals[0]: ${ID_FORM}`]);
+    expect(violations.every((violation) => !violation.includes("\n"))).toBe(true);
   });
 
   test("a duplicate id fails", () => {
