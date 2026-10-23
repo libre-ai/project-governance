@@ -1,6 +1,6 @@
 schema_version: libre-ai.refusals.v1
-# Registre des refus de flotte — projets, outils et dépendances tiers évalués
-# puis écartés, avec leur motif.
+# Registre des refus de flotte — projets, outils et dépendances tiers
+# évalués puis écartés, avec leur motif.
 #
 # Un outil écarté qui n'est écrit nulle part revient : la session suivante le
 # repropose sans relire pourquoi il a été écarté, et le rediscute sur des
@@ -10,30 +10,37 @@ schema_version: libre-ai.refusals.v1
 #
 # Partage sans recouvrement :
 # - ici, seulement un projet, un outil ou une dépendance **tiers** qui a été
-#   évalué (drill, essai) puis écarté ;
-# - les non-objectifs de la cible et des produits, y compris un choix de stack
-#   qui nomme un outil tiers, restent dans `vision.md` §28 ;
+#   évalué (drill, essai) puis écarté ; une dépendance n'y entre que pour
+#   l'outillage de flotte (gates, harnais, CI) ;
+# - les non-objectifs de la cible et des produits, y compris un choix de
+#   stack qui nomme un outil tiers et le refus d'une dépendance d'un produit,
+#   restent dans `vision.md` §28 ;
 # - les idées de skills refusées restent dans `skills/.out-of-scope/`
 #   (ADR-0025 D4).
 #
 # Une entrée porte :
 # - `id` : identifiant stable, préfixé `refusal.` ;
-# - `subject` : ce qui est refusé, et seulement cela (un refus d'installation
-#   n'interdit pas d'étudier le code, ni d'en reprendre une idée par réécriture) ;
-# - `source` : URL publique du projet ; `revision` : commit amont examiné, sous
-#   la forme `<propriétaire>/<dépôt>@<sha>`, quand il existe ;
-# - `action` : ce qui est refusé — `install` (installation live sur un poste ou
-#   dans un harnais : skill, plugin, hook, outil d'agent), `depend` (dépendance
-#   ou outil d'un produit), `reuse-code` (reprise ou déploiement du code),
+# - `subject` : ce qui est refusé, et seulement cela (un refus
+#   d'installation n'interdit pas d'étudier le code, ni d'en reprendre une
+#   idée par réécriture) ;
+# - `source` : URL publique du projet ; `revision` : commit amont examiné,
+#   sous la forme `<propriétaire>/<dépôt>@<sha>`, quand il existe ;
+# - `action` : ce qui est refusé —
+#   `install` (installation live sur un poste ou dans un harnais : skill,
+#   plugin, hook, outil d'agent),
+#   `depend` (dépendance ou outil de l'outillage de flotte : gates, harnais,
+#   CI ; jamais d'un produit, ce refus relevant de `vision.md` §28),
+#   `reuse-code` (reprise ou déploiement du code),
 #   `use-service` (service hébergé) ;
 # - `origin` : origine du constat, au vocabulaire d'ADR-0055 D1 —
 #   `observed`, `inspection`, `synthetic`, `proposal` ;
 # - `decided_on` : date du refus (ISO 8601) ;
 # - `reason` : le motif, en constats ; un constat que la preuve publique
 #   n'établit pas est marqué comme tel ;
-# - `evidence` : au moins une preuve publique qui établit le motif — citation
-#   épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>` ou URL, datée
-#   quand la page peut changer ; une entrée sans preuve publique ne s'écrit pas ;
+# - `evidence` : au moins une preuve publique qui établit le motif —
+#   citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`, ou
+#   URL avec sa date de consultation ; une entrée sans preuve publique ne
+#   s'écrit pas ;
 # - `reexamine_when` : la condition de réexamen, ou `null` s'il n'en a pas.
 #
 # Retirer une entrée ou lever le refus qu'elle porte est une décision du
@@ -42,8 +49,8 @@ schema_version: libre-ai.refusals.v1
 refusals:
   - id: refusal.archify-install
     subject: >-
-      Archify, skill d'agent et CLI qui rendent des diagrammes en HTML autonome,
-      installé comme outil de la flotte.
+      Archify, skill d'agent et CLI qui rendent des diagrammes en HTML
+      autonome, installé comme outil de la flotte.
     source: https://github.com/tt-a1i/archify
     revision: tt-a1i/archify@25cf37080fc8b1dbe758a4efc3935b55f3327083
     action: install
@@ -52,10 +59,11 @@ refusals:
     reason: >-
       Un diagramme dont un nœud porte `brand: {url, sha256}` déclenche un GET
       vers l'hôte nommé à chaque rendu, avant la comparaison du digest, sans
-      variable d'environnement qui le coupe : le module lit deux variables, en
-      trois endroits ; l'une élargit les cibles admises aux adresses privées,
-      l'autre règle le délai, aucune ne désactive la requête. Le contenu du
-      diagramme, souvent écrit par un modèle, décide donc d'une sortie réseau.
+      variable d'environnement qui le coupe : le module lit deux variables,
+      en trois endroits ; l'une élargit les cibles admises aux adresses
+      privées, l'autre règle le délai, aucune ne désactive la requête. Le
+      contenu du diagramme, souvent écrit par un modèle, décide donc d'une
+      sortie réseau.
     evidence:
       - tt-a1i/archify@25cf370:archify/renderers/shared/brand-marks.mjs:607-612
       - tt-a1i/archify@25cf370:archify/renderers/shared/brand-marks.mjs:135
@@ -64,7 +72,8 @@ refusals:
     reexamine_when: >-
       Un échec observé et daté du dispositif de diagrammes en place (barre
       d'ADR-0050 D1), puis une décision du propriétaire classant un moteur de
-      rendu de diagrammes au regard d'ADR-0042 §4 (brique ou outil concurrent).
+      rendu de diagrammes au regard d'ADR-0042 §4 (brique ou outil
+      concurrent).
 
   - id: refusal.agent-reach-install
     subject: >-
@@ -76,21 +85,66 @@ refusals:
     origin: inspection
     decided_on: 2026-10-09
     reason: >-
-      `check-update` interroge la tête de la branche `main` non épinglée et
-      imprime les 20 premières lignes des notes de version distantes ; la skill
-      demande à l'agent de lancer cette commande et de relayer la nouvelle
-      version : un contenu distant entre dans le contexte de l'agent. Le canal web lit toute page par un intermédiaire
-      tiers (Jina Reader) et se déclare `ok` sans sonde réseau. L'installation
-      écrit la skill dans toutes les racines de skills existantes, dont une
-      racine partagée entre harnais. Le drill relevait aussi que la moitié des
-      canaux reposent sur une session de navigateur ; ce décompte n'est pas
-      établi par les citations ci-dessous.
+      `check-update` imprime les 20 premières lignes des notes de la
+      dernière release, et, faute de release, le message du dernier commit de
+      la branche `main` non épinglée ; la skill demande à l'agent de lancer
+      cette commande et de relayer la nouvelle version : un contenu distant
+      entre dans le contexte de l'agent. Le canal web lit toute page par un
+      intermédiaire tiers (Jina Reader) et se déclare `ok` sans sonde
+      réseau. L'installation écrit la skill dans toutes les racines de skills
+      existantes, dont une racine partagée entre harnais. Le drill relevait
+      aussi que la moitié des canaux reposent sur une session de navigateur ;
+      ce décompte n'est pas établi par les citations ci-dessous.
     evidence:
-      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2277
-      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2290-2300
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2276
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2294-2297
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2309-2319
       - Panniantong/Agent-Reach@94f06c1:agent_reach/skill/SKILL_en.md:41-45
       - Panniantong/Agent-Reach@94f06c1:agent_reach/channels/web.py:43-46
       - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:550-556
+    reexamine_when: null
+
+  - id: refusal.claude-watch-install
+    subject: >-
+      claude-watch, skill d'agent qui regarde une vidéo (images et
+      transcription), dérivée de claude-video, installée sur un poste ou dans
+      un harnais.
+    source: https://github.com/taoufik123-collab/claude-watch
+    revision: taoufik123-collab/claude-watch@7711231e4c47e5d4e06bcf5326c4abf5b70ab4a9
+    action: install
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      La transcription extrait l'audio de la vidéo et l'envoie à l'API
+      Whisper de Groq en premier, à celle d'OpenAI à défaut, selon la clé
+      présente dans l'environnement : le contenu audio quitte le poste vers
+      un service tiers. L'amont dont il dérive est
+      `bradautomates/claude-video@03ceb42f7fa2c4439aca01752118044baabffb8f`.
+    evidence:
+      - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:2
+      - taoufik123-collab/claude-watch@7711231:scripts/whisper.py:28-36
+    reexamine_when: null
+
+  - id: refusal.golive-skill-install
+    subject: >-
+      golive-skill, skill et CLI de mise en production multi-fournisseurs,
+      installée sur un poste ou dans un harnais.
+    source: https://github.com/mikehasa/golive-skill
+    revision: mikehasa/golive-skill@8fd3d8e96844c79c500aabaf215d1267fcde08c5
+    action: install
+    origin: inspection
+    decided_on: 2026-10-22
+    reason: >-
+      La résolution DNS passe par des résolveurs DoH codés en dur, Cloudflare
+      puis Google. Chaque CLI de fournisseur lancée par l'outil hérite de
+      tout l'environnement du processus parent, identifiants compris, alors
+      que la documentation de confiance de l'outil annonce qu'une valeur ne
+      va qu'au fournisseur qui en a besoin.
+    evidence:
+      - mikehasa/golive-skill@8fd3d8e:skills/golive/scripts/golive.mjs:10648
+      - mikehasa/golive-skill@8fd3d8e:skills/golive/scripts/golive.mjs:219-220
+      - mikehasa/golive-skill@8fd3d8e:src/core/exec.ts:26
+      - https://github.com/mikehasa/golive-skill/issues/81 (consultée le 2026-10-23)
     reexamine_when: null
 
   - id: refusal.rtk-shell-rewrite-hook
@@ -103,18 +157,18 @@ refusals:
     origin: observed
     decided_on: 2026-10-08
     reason: >-
-      Essai daté du 2026-09-08 au 2026-09-22. Pendant l'essai, la réécriture de
-      `head -N` en `rtk read --max-lines N` rendait environ N/2 lignes, et une
-      seule pour `--max-lines 3` sur un fichier de 5 lignes en 0.48.0 : un
-      agent recevait moins de contenu qu'il n'en demandait, sans le savoir.
-      Correction amont : `head -N` est réécrit en `--head-lines N` depuis la
-      v0.50.0 (rtk-ai/rtk#3941, signalée close dans rtk-ai/rtk#3370 le
-      2026-10-18). Constats non publics, mesurés pendant l'essai : l'hypothèse
-      de l'essai, une baisse de coût, est nulle (30 runs, 10 paires à cache
-      chaud, médiane -1 %, tours 0 %) ; le script local qui branchait rtk en
-      hook avait une suite de tests rouge.
+      Essai daté du 2026-09-08 au 2026-09-22. Pendant l'essai, la réécriture
+      de `head -N` en `rtk read --max-lines N` rendait environ N/2 lignes, et
+      une seule pour `--max-lines 3` sur un fichier de 5 lignes en 0.48.0 :
+      un agent recevait moins de contenu qu'il n'en demandait, sans le
+      savoir. Correction amont : `head -N` est réécrit en `--head-lines N`
+      depuis la v0.50.0 (rtk-ai/rtk#3941, signalée close dans rtk-ai/rtk#3370
+      le 2026-10-18). Constats non publics, mesurés pendant l'essai :
+      l'hypothèse de l'essai, une baisse de coût, est nulle (30 runs, 10
+      paires à cache chaud, médiane -1 %, tours 0 %) ; le script local qui
+      branchait rtk en hook avait une suite de tests rouge.
     evidence:
-      - https://github.com/rtk-ai/rtk/issues/3370
+      - https://github.com/rtk-ai/rtk/issues/3370 (consultée le 2026-10-23)
     reexamine_when: >-
       Une hypothèse neuve, autre que le coût, bornée et datée avant l'essai,
       dont l'échéance est lue par un mécanisme et non par une intention.
@@ -130,48 +184,53 @@ refusals:
     decided_on: 2026-10-09
     reason: >-
       L'outil MCP `capture_process_scenario` exécute une commande choisie par
-      l'appelant, avec les permissions de l'utilisateur, et se déclare lui-même
-      hors bac à sable ; il lance un processus et accède au réseau sans porter
-      `destructiveHint`, dérivé de la seule perte de données. La skill dit à
-      l'agent qu'aucune approbation par appel n'est requise. L'installation
-      place la skill dans une racine de skills partagée entre harnais. Aucune
-      des 88 références d'action de CI n'est épinglée par SHA. Le refus ne vise
-      pas la lecture stable d'artefact, reprise sous attribution MIT dans
-      `libre-ai/pi-evidence`.
+      l'appelant, avec les permissions de l'utilisateur, et se déclare
+      lui-même hors bac à sable ; il lance un processus et accède au réseau
+      sans porter `destructiveHint`, dérivé de la seule perte de données. La
+      skill dit à l'agent qu'aucune approbation par appel n'est requise.
+      L'installation place la skill dans une racine de skills partagée entre
+      harnais. Aucune des 88 références d'action de CI n'est épinglée par
+      SHA (`git grep -h -oE 'uses: [^ ]+' 33d5ae0 -- .github/workflows`
+      compte 88 lignes, dont 0 terminée par `@<sha de 40 caractères>`). Le
+      refus ne vise pas la lecture stable d'artefact, reprise sous
+      attribution MIT dans `libre-ai/pi-evidence`.
     evidence:
       - morluto/rea@33d5ae0:src/contracts/sessionToolContracts.ts:95-99
       - morluto/rea@33d5ae0:src/contracts/toolEffects.ts:303-309
       - morluto/rea@33d5ae0:src/contracts/toolEffects.ts:337
       - morluto/rea@33d5ae0:skill-src/reverse-engineer-anything/SKILL.md:160-161
       - morluto/rea@33d5ae0:src/application/SetupPlan.ts:274
+      - morluto/rea@33d5ae0:.github/workflows/
     reexamine_when: null
 
   - id: refusal.humanlayer-agentcontrolplane-code
     subject: >-
-      Agent Control Plane de HumanLayer, opérateur Kubernetes : reprise de son
-      code ou déploiement. Ses défauts restent utilisables comme vecteurs de
-      panne.
+      Agent Control Plane de HumanLayer, opérateur Kubernetes : reprise de
+      son code ou déploiement. Ses défauts restent utilisables comme vecteurs
+      de panne.
     source: https://github.com/humanlayer/agentcontrolplane
     revision: humanlayer/agentcontrolplane@eaa2a7ed1d9cb4e13dc53defaf420e36f481dcad
     action: reuse-code
     origin: inspection
     decided_on: 2026-10-09
     reason: >-
-      Les routes de l'API ne passent par aucune authentification ; une requête
-      de création d'agent porte la commande et les arguments d'un serveur MCP
-      en transport stdio, que l'opérateur exécute : une requête anonyme mène à
-      une exécution de commande. Dernier push du dépôt le 2025-07-02.
+      Les routes de l'API ne passent par aucune authentification ; une
+      requête de création d'agent porte la commande et les arguments d'un
+      serveur MCP en transport stdio, que l'opérateur exécute : une requête
+      anonyme mène à une exécution de commande. Dernier push du dépôt le
+      2025-07-02 (champ `pushed_at` de l'API GitHub, consulté le
+      2026-10-23).
     evidence:
       - humanlayer/agentcontrolplane@eaa2a7e:acp/internal/server/server.go:132-155
       - humanlayer/agentcontrolplane@eaa2a7e:acp/internal/server/server.go:746-756
       - humanlayer/agentcontrolplane@eaa2a7e:acp/internal/mcpmanager/mcpmanager.go:142
-      - https://api.github.com/repos/humanlayer/agentcontrolplane (champ `pushed_at`, relevé le 2026-10-23)
+      - https://api.github.com/repos/humanlayer/agentcontrolplane (consultée le 2026-10-23)
     reexamine_when: null
 
   - id: refusal.humanlayer-pi-install
     subject: >-
-      humanlayer-pi, extension du harnais Pi publiée par HumanLayer, installée
-      sur un poste.
+      humanlayer-pi, extension du harnais Pi publiée par HumanLayer,
+      installée sur un poste.
     source: https://github.com/humanlayer/humanlayer-pi
     revision: humanlayer/humanlayer-pi@f4bd3ed65cfdb8dfea474b4cadce2ed90cc4acbd
     action: install
@@ -181,9 +240,10 @@ refusals:
       L'extension réplique la session vers HumanLayer : invites, réponses et
       raisonnement du modèle, appels d'outils et leurs résultats, commandes
       shell et leur sortie, et le diff de tout le dépôt contre le commit de
-      départ, fichiers non suivis compris. Le diff exclut seulement les fichiers
-      et dossiers `.env*`, `*.env` et `.humanlayer/` ; aucune autre rédaction
-      n'est décrite. La déconnexion ne révoque pas les jetons côté serveur.
+      départ, fichiers non suivis compris. Le diff exclut seulement les
+      fichiers et dossiers `.env*`, `*.env` et `.humanlayer/` ; aucune autre
+      rédaction n'est décrite. La déconnexion ne révoque pas les jetons côté
+      serveur.
     evidence:
       - humanlayer/humanlayer-pi@f4bd3ed:README.md:5
       - humanlayer/humanlayer-pi@f4bd3ed:README.md:35
@@ -194,18 +254,19 @@ refusals:
 
   - id: refusal.humanlayer-service
     subject: >-
-      Le produit HumanLayer, IDE et cloud pour agents de code, comme service de
-      la flotte.
+      Le produit HumanLayer, IDE et cloud pour agents de code, comme service
+      de la flotte.
     source: https://www.humanlayer.com/
     revision: null
     action: use-service
     origin: inspection
     decided_on: 2026-10-09
     reason: >-
-      Produit propriétaire : la page du produit répond « Not yet » à la question
-      de l'ouverture du code, et indique que tout se synchronise par l'API de
-      HumanLayer. Le drill relevait aussi un compte obligatoire ; la page ne
+      Produit propriétaire : sa page se décrit comme « a multiplayer coding
+      agent IDE and cloud », indique « Everything syncs through the
+      HumanLayer API » et répond « Not yet » à la question de l'ouverture du
+      code. Le drill relevait aussi un compte obligatoire ; la page ne
       l'établit pas.
     evidence:
-      - https://www.humanlayer.com/ (relevé le 2026-10-23 : « a multiplayer coding agent IDE and cloud », « Everything syncs through the HumanLayer API », « Not yet »)
+      - https://www.humanlayer.com/ (consultée le 2026-10-23)
     reexamine_when: null

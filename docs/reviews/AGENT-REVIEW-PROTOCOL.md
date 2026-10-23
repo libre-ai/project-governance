@@ -33,7 +33,9 @@ Identifiers are audit metadata; equality with authoring identifiers does not inv
 
 ## Disposition of each finding
 
-Each finding also carries one disposition — blocking defect, required evidence, suggestion or ready — defined by `docs/adr/0055-method-origin-review-dispositions-live-install-refusals-negatives.md` D2, which is the only authority on them and is not restated here. How dispositions combine with the severity scale, the verdicts and the fresh pass above is an owner arbitration point of that ADR; until it is settled, no verdict rule of this protocol changes.
+Each finding also carries one disposition — blocking defect, required evidence, suggestion or ready — defined by `docs/adr/0055-method-origin-review-dispositions-live-install-refusals-negatives.md` D2, which is the only authority on them and is not restated here. Its re-review rule sets the starting point of the fresh pass required above and never replaces it. How dispositions combine with the severity scale and the verdicts above is the only owner arbitration point of that ADR; a merge without an explicit choice settles it as its option B, and then no verdict rule of this protocol changes.
+
+A pull request whose declared negative (ADR-0055 D5: it adds no dependency, schema or workflow) is contradicted by its own diff carries a finding of severity `blocking`, whatever that arbitration settles.
 
 ## Candidate integration
 
