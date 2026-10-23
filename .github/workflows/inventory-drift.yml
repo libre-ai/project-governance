@@ -140,11 +140,15 @@ jobs:
       # and must carry no configuration. Reads the fleet in one GraphQL batch, like
       # context-conformance; the report names each drifted repository and the
       # first differing line, so the wave that fixes it needs no second look.
-      # Scheduled and dispatched runs only: this job is a required pull
-      # request check of this repository, and the fleet baseline is 0/35 by
-      # construction until the adoption wave lands — a required check that
-      # no governance pull request can turn green is the phantom requirement
-      # the branch-protection norm forbids. The weekly run stays red instead,
+      # Scheduled and dispatched runs only: the fleet baseline is 0/35 by
+      # construction until the adoption wave lands, so on a pull request this
+      # step could only be red, whatever the pull request does. This job is
+      # NOT a required check of migrate/recover-code (measured 2026-10-23: the
+      # ruleset requires `composition / validate`, `Composed targets pass the
+      # manifest gates of their composed governance`, `Door declaration` and
+      # `Bun quality`); were it made required, this step would become the
+      # phantom requirement the branch-protection norm forbids — no governance
+      # pull request could turn it green. The weekly run stays red instead,
       # and its second consecutive red files the governance issue below. Last
       # of the job for the same reason as the toolchain step above.
       - name: Every repository carries the canonical Dependabot configuration

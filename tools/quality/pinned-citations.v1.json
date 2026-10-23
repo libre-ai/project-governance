@@ -1,0 +1,43 @@
+{
+  "organization": "libre-ai",
+  "scope": ["docs/"],
+  "adr": {
+    "directory": "docs/adr/",
+    "bareCitationsGuardedAbove": 53,
+    "unnumbered": [
+      {
+        "path": "docs/adr/2026-09-29-portfolio-consolidation.md",
+        "because": "dated, not numbered, and written before the forward rule (2026-09-29): its bare citations are counted with the legacy ADRs, not rewritten"
+      }
+    ],
+    "extensions": ["ts", "tsx", "js", "mjs", "md", "yaml", "yml", "json", "rs", "toml", "sh"]
+  },
+  "exemptions": [
+    {
+      "file": "docs/specifications/WORK-PACKAGES.md",
+      "citation": "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md",
+      "because": "fictitious sha in the example of a PRD reference: it illustrates the pinned form and names no commit"
+    },
+    {
+      "file": "docs/reviews/signalement-bootstrap/8b02f8e61e1675948caaea5be3c57a898cbd624b/evidence/provider-policy.json",
+      "citation": "libre-ai/governance/.github/workflows/reusable-licensing.yml@94fc054c6b16e047eb0736e12444a08d50728efc",
+      "because": "a reusable-workflow pin recorded verbatim as review evidence (allowed_actions.patterns_allowed); its repository was deleted on 2026-09-16, and evidence is never rewritten"
+    },
+    {
+      "file": "docs/superpowers/specs/2026-07-28-multi-repo-activation-design.md",
+      "citation": "libre-ai/governance/.github/...@<sha>",
+      "because": "the shape `uses: libre-ai/governance/.github/...@<sha>` written as a template in the multi-repo activation design: a placeholder, naming no commit"
+    },
+    {
+      "file": "docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md",
+      "citation": "tt-a1i/archify@25cf370:<chemin>",
+      "because": "the form in which ADR-0056 cites the upstream drill, written as a template in its header: a placeholder path, naming no file"
+    }
+  ],
+  "foreignOwners": [
+    {
+      "owner": "tt-a1i",
+      "because": "upstream of the archify drill (MIT, public), cited pinned by ADR-0056 as the source of its five method rules"
+    }
+  ]
+}
