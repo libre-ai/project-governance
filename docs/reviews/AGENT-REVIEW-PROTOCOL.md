@@ -31,6 +31,17 @@ Each review record includes:
 
 Identifiers are audit metadata; equality with authoring identifiers does not invalidate a role-separated pass. Any normative change after a verdict makes affected approval stale and requires a fresh pass.
 
+## Disposition of each finding
+
+Authority: ADR-0055 D2, in force when that ADR is merged. Severity (above) says how much a finding weighs; the disposition says what is established. Each finding carries exactly one disposition:
+
+- **blocking defect** — its trigger, its impact and reproduced evidence;
+- **required evidence** — the claim at stake and the smallest check that would settle it; also used for a scope decision the review cannot take;
+- **suggestion** — an improvement that does not condition the merge;
+- **ready** — nothing on the reviewed scope stands against the merge.
+
+An unverified risk is never reported as a reproduced defect: without evidence it is required evidence, whatever its severity. `approve` coexists with no blocking defect and no open required evidence. A re-review starts from the last reviewed head and, when the base moved, from the intervening base changes: an earlier green proves nothing about the new diff. The axis order (security > quality > performance > completeness) still says what to look at; the dispositions only say how to conclude.
+
 ## Candidate integration
 
 A candidate branch may be merged when:

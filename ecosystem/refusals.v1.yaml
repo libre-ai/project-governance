@@ -1,0 +1,185 @@
+schema_version: libre-ai.refusals.v1
+# Registre des refus de flotte — outils et idées écartés, avec leur motif.
+#
+# Une idée refusée qui n'est écrite nulle part revient : la session suivante la
+# repropose sans relire pourquoi elle a été écartée, et la rediscute sur des
+# prémisses déjà mesurées. Ce registre se consulte avant toute nouvelle
+# proposition d'outil, de dépendance, de service ou d'idée. Autorité :
+# ADR-0055 D4.
+#
+# Les refus d'idées de skills restent dans `skills/.out-of-scope/` (ADR-0025 D4) :
+# ce registre ne les recopie pas.
+#
+# Une entrée porte :
+# - `id` : identifiant stable, préfixé `refusal.` ;
+# - `subject` : ce qui est refusé, et seulement cela (un refus d'installation
+#   n'interdit pas d'étudier le code, ni d'en reprendre une idée par réécriture) ;
+# - `source` : URL publique de l'outil ou de l'idée ; `revision` : commit
+#   amont examiné, sous la forme `<propriétaire>/<dépôt>@<sha>`, quand il existe ;
+# - `action` : ce qui est refusé — `install` (installation live sur un poste ou
+#   dans un harnais : skill, plugin, hook, outil d'agent), `depend` (dépendance
+#   ou outil d'un produit), `reuse-code` (reprise ou déploiement du code),
+#   `use-service` (service hébergé) ;
+# - `origin` : origine du constat, au vocabulaire d'ADR-0055 D1 —
+#   `observed` (défaillance d'usage datée), `inspection`, `synthetic`, `proposal` ;
+# - `decided_on` : date du refus (ISO 8601) ;
+# - `reason` : le motif, en constats ; `evidence` : citations épinglées, quand
+#   elles existent ;
+# - `reexamine_when` : la condition de réexamen, ou `null` s'il n'en a pas.
+#
+# Une entrée dont le motif n'est pas établi ne s'écrit pas. Retirer une entrée
+# ou en lever le refus est une décision du propriétaire.
+
+refusals:
+  - id: refusal.archify-install
+    subject: >-
+      Archify, skill d'agent et CLI qui rendent des diagrammes en HTML autonome,
+      installé comme outil de la flotte.
+    source: https://github.com/tt-a1i/archify
+    revision: tt-a1i/archify@25cf37080fc8b1dbe758a4efc3935b55f3327083
+    action: install
+    origin: inspection
+    decided_on: 2026-10-22
+    reason: >-
+      Un diagramme dont un nœud porte `brand: {url, sha256}` déclenche un GET
+      vers l'hôte nommé à chaque rendu, avant la comparaison du digest, sans
+      variable d'environnement qui le coupe : les trois variables lues par le
+      module élargissent la cible ou règlent le délai, aucune ne désactive la
+      requête. Le contenu du diagramme, souvent écrit par un modèle, décide
+      donc d'une sortie réseau. S'y ajoutent un rappel de mise à jour actif par
+      défaut et un HTML livré sans CSP.
+    evidence:
+      - tt-a1i/archify@25cf370:archify/renderers/shared/brand-marks.mjs:607-612
+    reexamine_when: >-
+      Un échec observé et daté du dispositif de diagrammes en place (barre
+      d'ADR-0050 D1), puis une décision du propriétaire classant un moteur de
+      rendu de diagrammes au regard d'ADR-0042 §4 (brique ou outil concurrent).
+
+  - id: refusal.agent-reach-install
+    subject: >-
+      Agent-Reach, installateur et skill routeur de canaux de lecture pour
+      agents, installé sur un poste ou dans un harnais.
+    source: https://github.com/Panniantong/Agent-Reach
+    revision: Panniantong/Agent-Reach@94f06c1969dfc1834001269d79d3ad0972d9dee6
+    action: install
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      Ce n'est pas une couche de lecture mais un installateur, un diagnostic et
+      une skill routeur. 8 canaux sur 16 reposent sur des cookies ou une session
+      de navigateur, 3 envoient tout le contenu à un intermédiaire américain ;
+      sa contribution propre à la matrice de connecteurs de P01 est nulle.
+      `check-update` injecte les notes de version et une URL de branche non
+      épinglée dans le contexte de l'agent ; le canal web se déclare `ok` sans
+      sonde ; la skill s'écrit dans toutes les racines de skills, dont une
+      racine partagée entre harnais.
+    evidence:
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/cli.py:2290-2300
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/skill/SKILL_en.md:43
+      - Panniantong/Agent-Reach@94f06c1:agent_reach/channels/web.py:43-46
+    reexamine_when: null
+
+  - id: refusal.yt-dlp-dependency
+    subject: >-
+      yt-dlp comme outil d'accès à YouTube pour un produit de la flotte
+      (connecteurs de P01, P29).
+    source: https://github.com/yt-dlp/yt-dlp
+    revision: null
+    action: depend
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      Les conditions d'utilisation de YouTube, dans leur version du 2026-01-09,
+      interdisent l'accès automatisé et le contournement. Le besoin est couvert
+      par le flux Atom et le lien, la transcription ne portant que sur des
+      fichiers fournis.
+    evidence: []
+    reexamine_when: null
+
+  - id: refusal.rtk-shell-rewrite-hook
+    subject: >-
+      rtk branché en hook qui réécrit chaque commande shell d'une session
+      d'agent. L'appel délibéré de la CLI n'est pas visé.
+    source: https://github.com/rtk-ai/rtk
+    revision: null
+    action: install
+    origin: observed
+    decided_on: 2026-10-08
+    reason: >-
+      Essai daté du 2026-09-08 au 2026-09-22. L'hypothèse de l'essai, une baisse
+      de coût, est mesurée nulle : 30 runs, 10 paires à cache chaud, médiane
+      -1 %, tours 0 %. Perte de contenu constatée : `head -N` réécrit rendait
+      N-1 lignes. En 0.51.0, `exclude_commands` ne filtre que la commande de
+      tête d'un pipeline. Un réécriveur à suite de tests rouge se trouvait dans
+      le chemin de toute commande shell.
+    evidence:
+      - https://github.com/rtk-ai/rtk/issues/3370
+    reexamine_when: >-
+      Une hypothèse neuve, autre que le coût, bornée et datée avant l'essai,
+      dont l'échéance est lue par un mécanisme et non par une intention.
+
+  - id: refusal.rea-install
+    subject: >-
+      REA, serveur MCP de rétro-ingénierie et sa skill, installé sur un poste
+      ou dans un harnais.
+    source: https://github.com/morluto/rea
+    revision: morluto/rea@33d5ae0b52b8684634ecf14d4e9469968c69d462
+    action: install
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      L'outil MCP `capture_process_scenario` exécute une commande arbitraire et
+      se déclare `destructiveHint: false`. La skill dit à l'agent qu'aucune
+      approbation n'est requise. `setup` écrit dans une racine de skills
+      partagée entre harnais. 0 action de CI sur 88 n'est épinglée par SHA, et
+      aucun shrinkwrap ne fige les dépendances. Le refus ne vise pas la lecture
+      stable d'artefact, reprise sous attribution MIT dans `libre-ai/pi-evidence`.
+    evidence: []
+    reexamine_when: null
+
+  - id: refusal.humanlayer-agentcontrolplane-code
+    subject: >-
+      Agent Control Plane de HumanLayer, opérateur Kubernetes : reprise de son
+      code ou déploiement. Ses défauts restent utilisables comme vecteurs de
+      panne.
+    source: https://github.com/humanlayer/agentcontrolplane
+    revision: humanlayer/agentcontrolplane@eaa2a7ed1d9cb4e13dc53defaf420e36f481dcad
+    action: reuse-code
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      Projet abandonné, dernier push le 2025-07-02. Son API sans
+      authentification mène à une exécution de code à distance. L'approbation
+      n'est pas liée à ce qu'elle approuve : statut mutable, spécification
+      modifiable après approbation, lot vide pris pour terminé.
+    evidence: []
+    reexamine_when: null
+
+  - id: refusal.humanlayer-pi-install
+    subject: >-
+      humanlayer-pi, extension de harnais d'agent publiée par HumanLayer,
+      installée sur un poste.
+    source: https://github.com/humanlayer/humanlayer-pi
+    revision: null
+    action: install
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      L'extension réplique par défaut la transcription, le raisonnement et le
+      diff complet de la session, sans rédaction, sous un jeton non révocable.
+    evidence: []
+    reexamine_when: null
+
+  - id: refusal.humanlayer-service
+    subject: >-
+      Le produit HumanLayer, IDE et cloud propriétaires pour agents de code,
+      comme service de la flotte.
+    source: https://www.humanlayer.com/
+    revision: null
+    action: use-service
+    origin: inspection
+    decided_on: 2026-10-09
+    reason: >-
+      IDE et cloud propriétaires pour agents de code, compte obligatoire.
+    evidence: []
+    reexamine_when: null
