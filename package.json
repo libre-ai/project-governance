@@ -43,6 +43,7 @@
     "check:advisory-waivers": "bun run check:bun:runtime && bun tools/quality/check-advisory-waivers.ts",
     "check:kernel-status-authority": "bun run check:bun:runtime && bun tools/quality/check-kernel-status-authority.ts",
     "check:threat-model-citations": "bun run check:bun:runtime && bun tools/quality/check-threat-model-citations.ts",
+    "check:pinned-citations": "bun run check:bun:runtime && bun tools/quality/check-pinned-citations.ts",
     "check:skills": "bun run check:bun:runtime && bun tools/skills/check-skills.ts",
     "check:skills-routing": "bun run check:bun:runtime && bun tools/skills/check-skills-routing.ts",
     "check:skills-cascade": "bun run check:bun:runtime && bun tools/skills/check-skills-cascade.ts",

@@ -1,0 +1,21 @@
+{
+  "organization": "libre-ai",
+  "scope": ["docs/"],
+  "adr": {
+    "directory": "docs/adr/",
+    "bareCitationsGuardedAbove": 53,
+    "unnumbered": [
+      {
+        "path": "docs/adr/2026-09-29-portfolio-consolidation.md",
+        "because": "dated, not numbered, and written before the forward rule (2026-09-29): its bare citations are counted with the legacy ADRs, not rewritten"
+      }
+    ],
+    "extensions": ["ts", "tsx", "js", "mjs", "md", "yaml", "yml", "json", "rs", "toml", "sh"]
+  },
+  "exemptions": [
+    {
+      "citation": "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md",
+      "because": "fictitious sha in the example of a PRD reference in WORK-PACKAGES.md: it illustrates the pinned form and names no commit"
+    }
+  ]
+}
