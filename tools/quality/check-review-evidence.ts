@@ -65,7 +65,8 @@ import { concludeGate, GateReport } from "./gate-report";
  * already in the register, merged by an earlier pull request, shown only
  * because it sits next to the changed line — counted the same as one this
  * pull request writes, and so did a marker on a line the pull request
- * REMOVES. Observed on #131: "10 candidate signal(s): 4 admissible", the four
+ * REMOVES. Observed on #131 at c6cc66f: "9 candidate signal(s): 4 admissible,
+ * 5 rejected", the four admitted
  * being `Owner-arbitration:` markers of decisions D91 to D93 printed as
  * context around the added row. A hunk header (`@@ … @@ <function context>`)
  * repeats a nearby line too, so it is not evidence either. The diff is parsed
@@ -293,6 +294,23 @@ function sh(argv: string[]): { exitCode: number; stdout: string; stderr: string 
   };
 }
 
+/**
+ * Run one `git diff` of the gate and return its stdout, or exit 1.
+ *
+ * An unreadable diff is not an empty one: an empty path list reads as
+ * "touches none of the gated paths" and passes, an empty content diff reads
+ * as "no evidence" for a reason that is not the change. Both calls share this
+ * one exit, so a single probe (a head with no merge base) holds it.
+ */
+function gitDiffOrExit(argv: readonly string[], what: string): string {
+  const result: { exitCode: number; stdout: string; stderr: string } = sh(["git", ...argv]);
+  if (result.exitCode !== 0) {
+    console.error(`check-review-evidence: could not ${what}: ${result.stderr.trim()}`);
+    process.exit(1);
+  }
+  return result.stdout;
+}
+
 async function readPullRequestBody(): Promise<string> {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) return "";
@@ -328,43 +346,54 @@ if (import.meta.main) {
       );
       process.exit(1);
     }
-    const names = sh(["git", "diff", "--name-only", `origin/${baseRef}...HEAD`]);
-    // An unreadable diff is not an empty one: it would read as "touches none
-    // of the gated paths" and pass.
-    if (names.exitCode !== 0) {
-      console.error(
-        `check-review-evidence: could not list the paths changed in origin/${baseRef}...HEAD: ${names.stderr.trim()}`,
-      );
-      process.exit(1);
-    }
-    const changedPaths = names.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    // The parser reads git's own format: no colour, no external diff driver,
-    // no textconv, and the `a/`/`b/` prefixes whatever `diff.noprefix` says.
-    const diff = sh([
-      "git",
-      "diff",
-      "--no-color",
-      "--no-ext-diff",
-      "--no-textconv",
-      "--src-prefix=a/",
-      "--dst-prefix=b/",
-      `origin/${baseRef}...HEAD`,
-      "--",
-      ...GATED_PATHSPECS,
-    ]);
-    if (diff.exitCode !== 0) {
-      console.error(
-        `check-review-evidence: could not diff origin/${baseRef}...HEAD: ${diff.stderr.trim()}`,
-      );
-      process.exit(1);
-    }
+    const range: string = `origin/${baseRef}...HEAD`;
+    // `--no-renames`: with rename detection, an ADR moved out of docs/adr is
+    // listed under its new name only, and the change "touches none" of the
+    // gated paths. Without it, the old path is listed, deleted. `-z`: paths
+    // come NUL-terminated and unquoted, so `core.quotePath` cannot turn a
+    // non-ASCII name into its quoted octal form (`"docs/adr/0004-na\303\257ve.md"`
+    // for U+00EF), which the gated patterns do not match.
+    const names: string = gitDiffOrExit(
+      ["diff", "--name-only", "-z", "--no-renames", range],
+      `list the paths changed in ${range}`,
+    );
+    const changedPaths: readonly string[] = names.split("\0").filter(Boolean);
+    // The parser reads git's own format, whatever the repository config says:
+    // - no colour: an escape sequence before `+` would hide an added line;
+    // - no external diff driver and no textconv: either replaces the text
+    //   git compares, so a driver could print an added marker the change
+    //   never wrote;
+    // Rename detection is pinned ON here (`--find-renames`, whatever
+    // `diff.renames` says), unlike the path list: without it, an ADR renamed inside docs/adr would print its whole
+    // body as added lines, and a marker an earlier pull request wrote in it
+    // would count as evidence. Detected, a pure rename adds no line; an ADR
+    // moved out of the gated paths shows as a deletion, because rename
+    // detection only pairs paths the pathspec kept.
+    // The `a/`/`b/` prefixes and `core.quotePath=false` only keep the file
+    // printed beside each signal readable: `destinationPath` already absorbs
+    // `diff.noprefix`, and the verdict never depends on the file name, so for
+    // the verdict these three are equivalent mutants and no test claims them.
+    const diff: string = gitDiffOrExit(
+      [
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--find-renames",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        range,
+        "--",
+        ...GATED_PATHSPECS,
+      ],
+      `diff ${range}`,
+    );
     const prBody = await readPullRequestBody();
     concludeGate(
       "Review evidence",
-      evaluateReviewEvidence(changedPaths, prBody, diff.stdout, existsAtHead),
+      evaluateReviewEvidence(changedPaths, prBody, diff, existsAtHead),
     );
   }
 }

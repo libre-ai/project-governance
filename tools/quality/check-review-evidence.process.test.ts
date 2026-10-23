@@ -42,6 +42,17 @@ const BASE_REGISTER = [
   "",
 ].join("\n");
 
+/** An accepted ADR whose arbitration marker an earlier pull request wrote. */
+const ADR = "docs/adr/0042-example.md";
+const BASE_ADR = [
+  "# ADR-0042 Example",
+  "",
+  "Accepted. Owner-arbitration: 2026-09-01",
+  "",
+  "A decision with enough body for rename detection to pair the two paths.",
+  "",
+].join("\n");
+
 interface Run {
   readonly exitCode: number;
   readonly stdout: string;
@@ -88,6 +99,39 @@ function pullRequestBranch(name: string, edit: (register: string) => string): vo
   git(clone, ["commit", "--quiet", "--no-gpg-sign", "-am", name]);
 }
 
+/** A pull-request branch off the base whose change is whatever `change` does to the clone. */
+function branchWith(name: string, change: () => void): void {
+  git(clone, ["switch", "--quiet", "-c", name, `origin/${BASE_BRANCH}`]);
+  change();
+  git(clone, ["add", "-A"]);
+  git(clone, ["commit", "--quiet", "--no-gpg-sign", "-m", name]);
+}
+
+/** The register without the D91 row: a pull request that removes a marker. */
+function withoutD91(register: string): string {
+  return register.replace(
+    "| D91 | Amendment pull requests carry `Owner-arbitration: 2026-10-22` | ADR-0052 |\n",
+    "",
+  );
+}
+
+/** A throwaway executable in the fixture workspace: test-authored, never read from a change. */
+function script(name: string, body: string): string {
+  const path = join(workspace, name);
+  writeFileSync(path, `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+  return path;
+}
+
+/** Set repository config for one probe, and unset it whatever the probe's outcome. */
+function withConfig(entries: Readonly<Record<string, string>>, probe: () => void): void {
+  for (const [key, value] of Object.entries(entries)) git(clone, ["config", key, value]);
+  try {
+    probe();
+  } finally {
+    for (const key of Object.keys(entries)) git(clone, ["config", "--unset", key]);
+  }
+}
+
 /** Run the gate on the checked-out branch as a pull_request against the fixture base. */
 function runGate(body: string): Run {
   const eventPath = join(workspace, "event.json");
@@ -123,7 +167,9 @@ beforeAll(() => {
   git(workspace, ["init", "--quiet", "-b", BASE_BRANCH, upstream]);
   mkdirSync(join(upstream, "docs/decisions"), { recursive: true });
   writeFileSync(join(upstream, REGISTER), BASE_REGISTER);
-  git(upstream, ["add", REGISTER]);
+  mkdirSync(join(upstream, "docs/adr"), { recursive: true });
+  writeFileSync(join(upstream, ADR), BASE_ADR);
+  git(upstream, ["add", REGISTER, ADR]);
   git(upstream, ["commit", "--quiet", "--no-gpg-sign", "-m", "fixture base"]);
   git(workspace, ["clone", "--quiet", `file://${upstream}`, clone]);
 });
@@ -201,5 +247,90 @@ describe("only the lines a pull request adds are evidence", () => {
       git(clone, ["config", "--unset", "color.diff"]);
       git(clone, ["config", "--unset", "diff.noprefix"]);
     }
+  });
+});
+
+// Each probe below is a bypass that reproduced against the gate before its
+// flag existed; each flag is held by exactly one probe.
+describe("the diff the gate reads is git's own, over every gated path", () => {
+  test("a head with no merge base exits 1 instead of reading as an empty change", () => {
+    git(clone, ["switch", "--quiet", "--orphan", "probe/orphan"]);
+    mkdirSync(join(clone, "docs/decisions"), { recursive: true });
+    writeFileSync(join(clone, REGISTER), "| D99 | unrelated history |\n");
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "--quiet", "--no-gpg-sign", "-m", "orphan"]);
+    const run = runGate("Owner-arbitration: 2026-10-23");
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(
+      `check-review-evidence: could not list the paths changed in origin/${BASE_BRANCH}...HEAD`,
+    );
+    expect(run.stdout).toBe("");
+  });
+
+  test("an external diff driver cannot print a marker the change never wrote", () => {
+    pullRequestBranch("probe/external-driver", withoutD91);
+    const driver = script(
+      "fake-external-diff.sh",
+      // git passes: path old-file old-hex old-mode new-file new-hex new-mode
+      `printf 'diff --git a/%s b/%s\\n--- a/%s\\n+++ b/%s\\n@@ -1 +1 @@\\n+Owner-arbitration: 2026-10-23\\n' "$1" "$1" "$1" "$1"`,
+    );
+    withConfig({ "diff.external": driver }, () => {
+      const run = runGate("");
+      expect(run.exitCode).toBe(1);
+      expect(run.stderr).toContain("0 candidate signal(s) examined");
+    });
+  });
+
+  test("a textconv filter cannot print a marker the change never wrote", () => {
+    pullRequestBranch("probe/textconv", withoutD91);
+    const filter = script(
+      "fake-textconv.sh",
+      // Appends a marker to the side that lost D91, i.e. the head.
+      `cat "$1"; grep -q 'D91' "$1" || echo 'Owner-arbitration: 2026-10-23'`,
+    );
+    const attributes = join(clone, ".git/info/attributes");
+    writeFileSync(attributes, "*.md diff=probe\n");
+    try {
+      withConfig({ "diff.probe.textconv": filter }, () => {
+        const run = runGate("");
+        expect(run.exitCode).toBe(1);
+        expect(run.stderr).toContain("0 candidate signal(s) examined");
+      });
+    } finally {
+      writeFileSync(attributes, "");
+    }
+  });
+
+  test("an ADR moved out of docs/adr is a gated change, not a change that touches none", () => {
+    branchWith("probe/rename-out", () => {
+      mkdirSync(join(clone, "docs/archive"), { recursive: true });
+      git(clone, ["mv", ADR, "docs/archive/0042-example.md"]);
+    });
+    const run = runGate("");
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(`Review evidence: ${ADR}: neither the pull request description`);
+  });
+
+  test("an ADR renamed inside docs/adr does not re-add the marker an earlier pull request wrote", () => {
+    branchWith("probe/rename-inside", () => {
+      git(clone, ["mv", ADR, "docs/adr/0042-renamed.md"]);
+    });
+    // `diff.renames=false` is what `--find-renames` overrides: without it the
+    // whole moved body, its old marker included, prints as added lines.
+    withConfig({ "diff.renames": "false" }, () => {
+      const run = runGate("");
+      expect(run.exitCode).toBe(1);
+      expect(run.stderr).toContain("0 added line(s) examined");
+    });
+  });
+
+  test("a gated file with a non-ASCII name is gated", () => {
+    const name = "docs/adr/0043-naïve.md";
+    branchWith("probe/non-ascii", () => {
+      writeFileSync(join(clone, name), "# ADR-0043\n\nNo arbitration here.\n");
+    });
+    const run = runGate("");
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(`Review evidence: ${name}: neither the pull request description`);
   });
 });

@@ -217,8 +217,26 @@ describe("extractAddedLines", () => {
     expect(extractAddedLines(diff).added).toEqual([{ file: "docs/adr/x y.md", text: "line" }]);
   });
 
+  // Two guards make malformed input fail closed, each tested alone: a line
+  // outside any hunk is never content, and a hunk with no file header is not
+  // attributable. A bare `+` line exercises both at once, so it proves neither.
   test("a + line outside any hunk is not added content: input that is not a git diff fails closed", () => {
     expect(extractAddedLines("+Owner-arbitration: 2026-08-18").added).toEqual([]);
+  });
+
+  test("a + line after a file header but before any hunk is not added content", () => {
+    const diff = [
+      `diff --git a/${REGISTER} b/${REGISTER}`,
+      `--- a/${REGISTER}`,
+      `+++ b/${REGISTER}`,
+      "+Owner-arbitration: 2026-08-18",
+      "",
+    ].join("\n");
+    expect(extractAddedLines(diff).added).toEqual([]);
+  });
+
+  test("a hunk with no file header adds nothing: its lines belong to no file", () => {
+    expect(extractAddedLines("@@ -0,0 +1 @@\n+Owner-arbitration: 2026-08-18\n").added).toEqual([]);
   });
 
   test("the four counts sum to the number of lines of the diff", () => {
@@ -347,10 +365,10 @@ describe("evaluateReviewEvidence", () => {
     const diff = gitDiff(
       REGISTER,
       [
-        " | D91 | Les PR d'amendement portent `Owner-arbitration: 2026-10-22` |",
+        " | D91 | Amendment pull requests carry `Owner-arbitration: 2026-10-22` |",
         " | D92 | Owner-arbitration: 2026-10-22 |",
         " | D93 | Owner-arbitration: 2026-10-22 |",
-        "+| D94 | Cinq règles de méthode issues du drill |",
+        "+| D94 | Five method rules from the drill |",
         " ",
       ],
       " This register is the D0x sequence — Owner-arbitration: 2026-10-22",
