@@ -9,16 +9,16 @@ import {
   CitationResolver,
   CONFIG_PATH,
   classifyRemoteFailure,
-  countCandidateSegments,
   countLines,
   evaluateCitations,
   HARDENING_FLAGS,
   hardenedGitEnvironment,
+  listCandidateSegments,
   type PinnedCitation,
   type PinnedCitationsConfig,
   parseLineSpec,
   type Resolution,
-  reconcileFound,
+  reconcileCandidates,
   type ScannedText,
   scanText,
   spansOutside,
@@ -69,6 +69,32 @@ describe("validateCitedPath", () => {
     expect(validateCitedPath("a:b")).toContain("colon");
     expect(validateCitedPath("a\u0001b")).toContain("control");
     expect(validateCitedPath("a\u007fb")).toContain("control");
+  });
+
+  test("refuses each markdown or revision character by name", () => {
+    for (const character of [
+      "*",
+      "{",
+      "}",
+      "[",
+      "]",
+      "|",
+      "(",
+      ")",
+      "<",
+      ">",
+      "'",
+      '"',
+      "`",
+      "#",
+      "^",
+      "~",
+      "?",
+    ]) {
+      expect(validateCitedPath(`docs/a${character}b.md`)).toBe(
+        `the path carries '${character}', a markdown or revision character no cited path is written with`,
+      );
+    }
   });
 });
 
@@ -135,7 +161,7 @@ describe("scanText — pinned citations", () => {
     const { pinned, rejected } = scan(text);
     expect(pinned).toEqual([]);
     expect(rejected.map((r) => r.text)).toEqual(["libre-ai/x@"]);
-    expect(countCandidateSegments(text, ORG)).toBe(1);
+    expect(listCandidateSegments(text, ORG)).toHaveLength(1);
   });
 
   test("closed by default: anything written against the organisation is refused, never skipped", () => {
@@ -164,7 +190,7 @@ describe("scanText — pinned citations", () => {
         "'see.' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
       ],
     ]);
-    expect(countCandidateSegments(text, ORG)).toBe(4);
+    expect(listCandidateSegments(text, ORG)).toHaveLength(4);
   });
 
   test("D1: a character glued to the sha or the path is part of the citation, never its end", () => {
@@ -223,7 +249,7 @@ describe("scanText — pinned citations", () => {
         "the path carries '<', a markdown or revision character no cited path is written with",
       ],
     ]);
-    expect(countCandidateSegments(text, ORG)).toBe(8);
+    expect(listCandidateSegments(text, ORG)).toHaveLength(8);
   });
 
   test("D2: emphasis and a glued point no longer hide a citation from either count", () => {
@@ -245,7 +271,7 @@ describe("scanText — pinned citations", () => {
     expect(rejected.map((r) => [r.line, r.text])).toEqual([
       [3, "see.libre-ai/nonexistent-repo-zz@abcdef1"],
     ]);
-    expect(countCandidateSegments(text, ORG)).toBe(3);
+    expect(listCandidateSegments(text, ORG)).toHaveLength(3);
   });
 
   test("named wrappings are removed only when they enclose the citation", () => {
@@ -293,7 +319,7 @@ describe("scanText — pinned citations", () => {
     expect(rejected.map((r) => r.reason)).toEqual([
       "'1;libre-ai/y@abcdef2' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
     ]);
-    expect(countCandidateSegments(text, ORG)).toBe(1);
+    expect(listCandidateSegments(text, ORG)).toHaveLength(1);
   });
 
   test("a suffix that opens with a digit is judged as a line spec", () => {
@@ -357,8 +383,8 @@ describe("scanText — pinned citations", () => {
       ],
       [5, "'' is not a sha: a pin names a commit, never a branch, a tag or a revision expression"],
     ]);
-    // The independent count sees exactly the segments the parser judged.
-    expect(countCandidateSegments(text, ORG)).toBe(rejected.length);
+    // The independent walk sees exactly the segments the parser judged.
+    expect(listCandidateSegments(text, ORG)).toHaveLength(rejected.length);
   });
 
   test("refuses a sha that is not 7-40 lowercase hex, naming the reason", () => {
@@ -888,11 +914,11 @@ describe("evaluateCitations", () => {
     expect(volume.found).toBe(4);
     expect(report.outcome).toBe("violations");
     expect(report.violations.some((v) => v.includes("repository-not-found: deleted"))).toBe(true);
-    expect(report.violations.some((v) => v.includes("independent count"))).toBe(false);
+    expect(report.violations.some((v) => v.includes("independent walk"))).toBe(false);
     expect(report.volumeSummary).toContain("4 pinned citation(s) examined in 1 tracked file(s)");
     expect(report.volumeSummary).toContain("= 1 resolved + 1 exempted (with reason) + 2 failed");
     expect(report.volumeSummary).toContain(
-      "against 4 candidate segment(s) found by an independent count",
+      "against 4 candidate segment(s) (159 character(s)) found by an independent walk",
     );
   });
 
@@ -928,14 +954,79 @@ describe("evaluateCitations", () => {
     expect(fake.asked).toEqual([]);
   });
 
-  test("a difference between found and examined is a failure, never a sum to itself", () => {
-    expect(reconcileFound(6, 6, ORG)).toBeNull();
-    expect(reconcileFound(6, 4, ORG)).toBe(
-      "6 candidate segment(s) holding libre-ai/…@… found by the independent count, 4 citation(s) examined — the parser and the count disagree on what a citation is",
+  test("reconciliation fails on the number of segments, their text, or the verdicts given", () => {
+    const walk = ["libre-ai/x@abcdef1*docs/x.md", "libre-ai/y@abcdef2"];
+    expect(reconcileCandidates(walk, walk, 2)).toBeNull();
+    // Same count, different text: a parser that cut the first segment at `*`.
+    expect(reconcileCandidates(walk, ["libre-ai/x@abcdef1", "libre-ai/y@abcdef2"], 2)).toBe(
+      'the independent walk found 2 candidate segment(s) (47 character(s)), the parser judged 2 (37 character(s)) and 2 received a verdict; first difference at segment 1: walk "libre-ai/x@abcdef1*docs/x.md", parser "libre-ai/x@abcdef1"',
     );
+    // A segment the parser does not judge.
+    expect(reconcileCandidates(walk, walk.slice(0, 1), 1)).toContain("the parser judged 1");
+    // A segment judged but given no verdict.
+    expect(reconcileCandidates(walk, walk, 1)).toContain("and 1 received a verdict");
   });
 
-  test("every token the independent count sees is examined: found equals examined", async () => {
+  test("the reconciliation holds on every character a parser could split on, and on every candidate edge", async () => {
+    // One fixture for the whole class: each line carries a character that a
+    // parser splitting on more than whitespace (M02-M09) would cut at, or a
+    // segment a different candidate test (M20-M22) would admit or miss.
+    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+    const files = [
+      {
+        path: "docs/a.md",
+        text: [
+          "libre-ai/x@abcdef1*docs/x.md",
+          "libre-ai/x@abcdef1:package.json(9999)",
+          "libre-ai/x@abcdef1|docs/x.md",
+          "libre-ai/x@abcdef1'#L9999",
+          "libre-ai/x@abcdef1:package.json<9999>",
+          "libre-ai/x@abcdef1{~1}:package.json",
+          "libre-ai/x@abcdef1[0]:package.json:9999",
+          '"libre-ai/x@abcdef1:package.json":9999',
+          "libre-ai/project-governance names a repository",
+          "git@github.com:libre-ai/x.git puts its '@' first",
+          "_libre-ai/x@abcdef1:a.ts_ and see.libre-ai/x@abcdef1",
+        ].join("\n"),
+      },
+    ];
+    const { report, volume } = await evaluateCitations(
+      { config, files, tracked: trackedHere, readTracked },
+      tableResolver({}),
+    );
+    const reconciliation = report.checks.filter((check) => check.item === "pinned citations");
+    expect(reconciliation).toEqual([]);
+    expect([volume.found, volume.pinned]).toEqual([10, 10]);
+  });
+
+  test("the quote pair is a wrapping only when it encloses the whole citation", () => {
+    // Split on `"`, a parser would resolve `…:package.json` and drop `:9999`.
+    const { pinned, rejected } = scanText(
+      '"libre-ai/project-governance@c466a5c:package.json":9999',
+      ORG,
+      [],
+    );
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.text, r.reason])).toEqual([
+      [
+        '"libre-ai/project-governance@c466a5c:package.json":9999',
+        "'\"' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
+      ],
+    ]);
+  });
+
+  test("a citation ending in ':' is refused: its path would be in the next segment", () => {
+    const { pinned, rejected } = scanText("libre-ai/x@c466a5c: package.json:9999", ORG, []);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.text, r.reason])).toEqual([
+      [
+        "libre-ai/x@c466a5c:",
+        "the citation ends with ':': a ':' introduces a path or a line spec, written in the same segment",
+      ],
+    ]);
+  });
+
+  test("every segment the independent walk sees is examined: found equals examined", async () => {
     const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
     const files = [
       {
@@ -957,7 +1048,7 @@ describe("evaluateCitations", () => {
     expect([volume.found, volume.pinned, volume.pinnedResolved, volume.pinnedFailed]).toEqual([
       8, 8, 2, 6,
     ]);
-    expect(report.violations.some((v) => v.includes("independent count"))).toBe(false);
+    expect(report.violations.some((v) => v.includes("independent walk"))).toBe(false);
   });
 
   test("an exemption whose citation resolves again fails", async () => {
@@ -1138,6 +1229,27 @@ describe("evaluateCitations", () => {
       "1 ADR(s) at or below 10 carry 2 bare path:line citation(s); 1 resolve",
     );
     expect(information[1]).toContain("2 unqualified pin(s)");
+  });
+
+  test("a bare citation of a tracked file that cannot be read fails, never resolves", async () => {
+    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+    const tracked = new Set(["docs/a.md", "docs/unreadable.md"]);
+    const files = [
+      {
+        path: "docs/adr/0011-new.md",
+        text: "pinned: libre-ai/live@abcdef1 and bare: `docs/unreadable.md:1`",
+      },
+    ];
+    const { report, volume } = await evaluateCitations(
+      { config, files, tracked, readTracked },
+      tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
+    );
+    expect([volume.guardedBare, volume.guardedBareResolved, volume.guardedBareFailed]).toEqual([
+      1, 0, 1,
+    ]);
+    expect(report.violations).toEqual([
+      "docs/adr/0011-new.md:1 docs/unreadable.md:1: bare citation in an ADR above 10: docs/unreadable.md is tracked but could not be read",
+    ]);
   });
 
   test("a listed unnumbered ADR that is not tracked fails", async () => {

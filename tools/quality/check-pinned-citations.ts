@@ -57,10 +57,28 @@
  * it is an `invalid-citation` with its reason: after the sha only `:` or the
  * end; no ref that is not a sha (`@v2`, `@main`); no character in a path that a
  * path is never written with (`*{}[]|()<>'"\`#^~?`); nothing written against
- * the organisation (`@libre-ai/ui@1.0.0`, `https://github.com/libre-ai/…`).
- * The number examined is reconciled with a count made by a separate character
- * walk over the same segments, and a difference fails: resolved + exempted +
- * failed sums to itself by construction, the reconciliation does not.
+ * the organisation (`@libre-ai/ui@1.0.0`, `https://github.com/libre-ai/…`); no
+ * citation ending in `:` (`@<sha>: package.json:9999` would otherwise resolve
+ * the commit alone, its path being in the next segment).
+ *
+ * RECONCILIATION. `listCandidateSegments` walks the text character by character
+ * with no regular expression, no wrapping removal and its own copy of the
+ * candidate test. It shares the definitions, not the code: whitespace (the code
+ * points `\s` names, listed) and the organisation. The gate requires the walk
+ * and the parser to agree on the number of candidate segments, on their
+ * concatenated text, and on the number of verdicts given. resolved + exempted +
+ * failed sums to itself by construction; these three do not. A parser that
+ * splits a segment on any extra character changes the text, a candidate test
+ * that admits or misses a segment changes the number. What stays open by
+ * construction: a mistake made identically in both definitions (a whitespace
+ * set, an organisation string) is invisible to a comparison between them.
+ *
+ * OUT OF DECLARED SCOPE — read by nothing, by design: a citation split by a
+ * zero-width space (U+200B is not whitespace, so it stays inside one segment
+ * the grammar then refuses — but `libre` U+200B `-ai/` is no candidate at all);
+ * another case (`Libre-AI/`) or a homoglyph of the organisation; a GitHub
+ * permalink (`github.com/libre-ai/x/blob/<sha>/…`, no `@`); a markdown link
+ * `[libre-ai/…@…](x)`, which is a candidate and is refused, never resolved.
  *
  * A citation of a deleted repository, a deliberately fictitious example, or an
  * action pin recorded as evidence fails unless it is listed in the data file,
@@ -254,6 +272,8 @@ export interface ScannedText {
   readonly rejected: readonly RejectedCitation[];
   readonly bare: readonly BareCitation[];
   readonly unqualified: readonly UnqualifiedPin[];
+  /** The raw candidate segments the parser judged, in order: reconciled against the independent walk. */
+  readonly candidates: readonly string[];
 }
 
 const LINE_SPEC: RegExp = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
@@ -327,13 +347,21 @@ const PAIRED_WRAPPINGS: readonly (readonly [string, string])[] = [
   ['"', '"'],
 ];
 
+/**
+ * Final punctuation a citation may be followed by. `:` is not in it: written
+ * `@<sha>: package.json:9999`, the path sits in the next segment and the
+ * citation would silently become a commit-only one. A citation ending in `:` is
+ * refused instead.
+ */
+const FINAL_PUNCTUATION: RegExp = /[.,;!?]+$/;
+
 function occurrences(text: string, character: string): number {
   return text.split(character).length - 1;
 }
 
 /**
  * Removes the named wrappings of a segment, from the outside in: final
- * punctuation `.,;:!?`, backticks (a code span may open in an earlier segment),
+ * punctuation `.,;!?` (not `:`, see `FINAL_PUNCTUATION`), backticks (a code span may open in an earlier segment),
  * an enclosing pair of `**`, `__`, `*`, `_`, `()`, `[]` or `""`, and a closing
  * parenthesis the segment does not open. Nothing else is removed — whatever
  * remains must be a citation in full.
@@ -342,7 +370,7 @@ export function unwrapSegment(segment: string): string {
   let core = segment;
   for (;;) {
     const before = core;
-    core = core.replace(TRAILING_PUNCTUATION, "");
+    core = core.replace(FINAL_PUNCTUATION, "");
     core = core.replace(/^`+/, "").replace(/`+$/, "");
     for (const [open, close] of PAIRED_WRAPPINGS) {
       if (
@@ -361,32 +389,61 @@ export function unwrapSegment(segment: string): string {
   }
 }
 
-/** Whether a whitespace-free segment is a candidate citation. */
+/** The parser's test: whether a whitespace-free segment is a candidate citation. */
 function isCandidate(segment: string, needle: string): boolean {
   const at = segment.indexOf(needle);
   return at !== -1 && segment.includes("@", at + needle.length);
 }
 
 /**
- * How many candidate segments a text carries, by a character walk that shares
- * nothing with the parser: no regular expression, no wrapping removal (it does
- * not change whether a segment holds `<org>/` and a later `@`). The gate
- * compares it with the number of citations it examined; a parser that splits,
- * skips or truncates differently makes the numbers differ, and the gate fails.
+ * The code points ECMAScript's `\s` matches, listed rather than matched, so the
+ * independent walk below needs no regular expression. They are the
+ * specification's WhiteSpace and LineTerminator sets; the parser's `\S+` splits
+ * on exactly these.
  */
-export function countCandidateSegments(text: string, organization: string): number {
+const WHITESPACE_CODE_POINTS: ReadonlySet<number> = new Set([
+  0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20, 0xa0, 0x1680, 0x2000, 0x2001, 0x2002, 0x2003, 0x2004, 0x2005,
+  0x2006, 0x2007, 0x2008, 0x2009, 0x200a, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff,
+]);
+
+/**
+ * The walk's own copy of the candidate test, written apart on purpose: a count
+ * that called the parser's predicate would agree with any mistake in it.
+ */
+function holdsOrganisationThenAt(segment: string, needle: string): boolean {
+  for (let start = 0; start + needle.length <= segment.length; start += 1) {
+    if (segment.slice(start, start + needle.length) !== needle) continue;
+    for (let after = start + needle.length; after < segment.length; after += 1) {
+      if (segment.charAt(after) === "@") return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+/**
+ * Every candidate segment of a text, raw, by a character walk independent of
+ * the parser: no regular expression, no wrapping removal, and its own copy of
+ * the candidate test. What it shares with the parser is the definition, not the
+ * code: whitespace (`WHITESPACE_CODE_POINTS`, the set `\s` names) and the
+ * organisation. The gate reconciles both the number AND the concatenated text
+ * of these segments with the ones the parser judged, so a parser that splits a
+ * segment differently — on `*`, `(`, `"` or any other character — changes the
+ * text even where it leaves the number alone.
+ */
+export function listCandidateSegments(text: string, organization: string): string[] {
   const needle = `${organization}/`;
-  let count = 0;
+  const segments: string[] = [];
   let segment = "";
   for (const character of `${text}\n`) {
-    if (/\s/u.test(character)) {
-      if (segment.length > 0 && isCandidate(segment, needle)) count += 1;
+    if (WHITESPACE_CODE_POINTS.has(character.codePointAt(0) ?? 0)) {
+      if (segment.length > 0 && holdsOrganisationThenAt(segment, needle)) segments.push(segment);
       segment = "";
     } else {
       segment += character;
     }
   }
-  return count;
+  return segments;
 }
 
 type ParsedPin =
@@ -424,6 +481,11 @@ export function parsePinToken(organization: string, raw: string, line: number): 
   });
   const at = raw.indexOf("@");
   if (at === -1) return reject("no '@<sha>' follows the repository");
+  if (raw.endsWith(":")) {
+    return reject(
+      "the citation ends with ':': a ':' introduces a path or a line spec, written in the same segment",
+    );
+  }
   const left = raw.slice(0, at);
   const rest = raw.slice(at + 1);
   const slash = left.indexOf("/");
@@ -526,6 +588,7 @@ export function scanText(
   const rejected: RejectedCitation[] = [];
   const bare: BareCitation[] = [];
   const unqualified: UnqualifiedPin[] = [];
+  const candidates: string[] = [];
   const needle = `${organization}/`;
   const bareRegExp: RegExp | null = bareExtensions.length > 0 ? barePattern(bareExtensions) : null;
 
@@ -536,6 +599,7 @@ export function scanText(
       const segment = match[0];
       // `libre-ai/<repository>` without a later `@` names a repository, it pins nothing.
       if (!isCandidate(segment, needle)) continue;
+      candidates.push(segment);
       masked = blank(masked, match.index ?? 0, segment.length);
       const parsed = parseCandidate(organization, segment, line);
       if (parsed.kind === "pinned") pinned.push(parsed.citation);
@@ -555,7 +619,7 @@ export function scanText(
       bare.push({ text: match[0], path, lines: parseLineSpec(match[2] ?? ""), line });
     }
   }
-  return { pinned, rejected, bare, unqualified };
+  return { pinned, rejected, bare, unqualified, candidates };
 }
 
 /** Lines in a text the way an editor numbers them: a final newline opens no line. */
@@ -916,8 +980,10 @@ export interface CitationsInput {
 export interface CitationsVolume {
   readonly files: number;
   readonly filesUnreadable: number;
-  /** `<org>/…@…` tokens counted independently of the parser; must equal `pinned`. */
+  /** Candidate segments found by the independent walk; must equal `pinned`. */
   readonly found: number;
+  /** Their concatenated length: equal to the parser's, or the gate fails. */
+  readonly foundCharacters: number;
   readonly pinned: number;
   readonly pinnedResolved: number;
   readonly pinnedExempted: number;
@@ -984,22 +1050,35 @@ async function resolveBare(
 }
 
 /**
- * Null when every token the independent count saw was examined, else why not.
+ * Null when the parser and the independent walk agree, else why not.
  *
- * `examined` sums its own parts (resolved + exempted + failed) by construction;
- * `found` does not — it comes from `countCandidateSegments`, a separate
- * character walk — so a citation the parser splits, drops or truncates shows up
- * as a difference here, in either direction.
+ * Three equalities, each closing a different way to disagree:
+ *   - `found.length === examined`: `examined` sums its own parts (resolved +
+ *     exempted + failed) by construction, so a citation the parser records but
+ *     never gives a verdict shows up here;
+ *   - `found.length === judged.length`: a candidate test that admits or misses
+ *     a segment the walk does not;
+ *   - the concatenated text of `found` equals that of `judged`: a parser that
+ *     splits a segment on a character the walk does not changes the text even
+ *     where the count happens to stay the same (`@<sha>*x` cut at `*` is still
+ *     one candidate, but a shorter one).
  */
-export function reconcileFound(
-  found: number,
+export function reconcileCandidates(
+  found: readonly string[],
+  judged: readonly string[],
   examined: number,
-  organization: string,
 ): string | null {
-  if (found === examined) return null;
+  const foundText = found.join("\n");
+  const judgedText = judged.join("\n");
+  if (found.length === examined && found.length === judged.length && foundText === judgedText) {
+    return null;
+  }
+  let first = 0;
+  while (first < found.length && found[first] === judged[first]) first += 1;
   return (
-    `${found} candidate segment(s) holding ${organization}/…@… found by the independent count, ` +
-    `${examined} citation(s) examined — the parser and the count disagree on what a citation is`
+    `the independent walk found ${found.length} candidate segment(s) (${foundText.length} character(s)), ` +
+    `the parser judged ${judged.length} (${judgedText.length} character(s)) and ${examined} received a verdict; ` +
+    `first difference at segment ${first + 1}: walk ${JSON.stringify(found[first] ?? null)}, parser ${JSON.stringify(judged[first] ?? null)}`
   );
 }
 
@@ -1031,7 +1110,8 @@ export async function evaluateCitations(
   let legacyBareResolving = 0;
   let guardedUnqualified = 0;
   let unjudgedUnqualified = 0;
-  let found = 0;
+  const foundSegments: string[] = [];
+  const judgedSegments: string[] = [];
 
   if (input.files.length === 0) {
     report.check(
@@ -1061,13 +1141,14 @@ export async function evaluateCitations(
       );
       continue;
     }
-    found += countCandidateSegments(file.text, config.organization);
+    foundSegments.push(...listCandidateSegments(file.text, config.organization));
     const standing = adrStanding(file.path, config.adr);
     const scanned = scanText(
       file.text,
       config.organization,
       standing === "not-an-adr" ? [] : config.adr.extensions,
     );
+    judgedSegments.push(...scanned.candidates);
 
     for (const rejected of scanned.rejected) {
       const key = exemptionKey(file.path, rejected.text);
@@ -1174,12 +1255,15 @@ export async function evaluateCitations(
   }
 
   const pinned = pinnedResolved + pinnedExempted + pinnedFailed;
-  const unreconciled = reconcileFound(found, pinned, config.organization);
+  const unreconciled = reconcileCandidates(foundSegments, judgedSegments, pinned);
   if (unreconciled !== null) report.check("pinned citations", false, unreconciled);
+  const found = foundSegments.length;
+  const foundCharacters = foundSegments.join("\n").length;
   const volume: CitationsVolume = {
     files: input.files.length,
     filesUnreadable,
     found,
+    foundCharacters,
     pinned,
     pinnedResolved,
     pinnedExempted,
@@ -1205,7 +1289,7 @@ export async function evaluateCitations(
     `${pinned} pinned citation(s) examined in ${input.files.length} tracked file(s) of ${config.scope.join(", ")} ` +
       `(${filesUnreadable} unreadable) = ${pinnedResolved} resolved + ${pinnedExempted} exempted (with reason) + ` +
       `${pinnedFailed} failed${failures.length > 0 ? ` [${failures}]` : ""}, ` +
-      `against ${found} candidate segment(s) found by an independent count; ` +
+      `against ${found} candidate segment(s) (${foundCharacters} character(s)) found by an independent walk; ` +
       `${config.exemptions.length} exemption(s) declared, ${usedExemptions.size} matched; ` +
       `bare citations of ${guardedAdrs} ADR(s) above ${config.adr.bareCitationsGuardedAbove}: ${guardedBare} examined = ` +
       `${guardedBareResolved} resolved + ${guardedBareFailed} failed; ${guardedUnqualified} unqualified pin(s) there, all failed`,
