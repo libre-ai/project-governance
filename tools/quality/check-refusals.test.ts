@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -457,8 +457,14 @@ describe("exemptions", () => {
 });
 
 describe("files", () => {
+  const created: string[] = [];
+  afterAll(() => {
+    for (const dir of created) rmSync(dir, { recursive: true, force: true });
+  });
+
   function scratch(files: Record<string, string>): string {
     const dir = mkdtempSync(join(tmpdir(), "check-refusals-"));
+    created.push(dir);
     for (const [name, content] of Object.entries(files)) writeFileSync(join(dir, name), content);
     return dir;
   }
