@@ -24,7 +24,7 @@
 
 ## Décision
 
-Les précisions de mécanisme de cette section reprennent le texte des options retenues par le propriétaire le 2026-10-22 : parseur isolé par processus fils sur tout système d'exploitation (P02-D5), service worker et IndexedDB pour le hors-ligne de F31 (P02-D6), conséquences de P02-D12 et P02-D13 (§3).
+Les précisions de mécanisme de cette section ont deux sources. Le texte des options retenues par le propriétaire le 2026-10-22 porte : le parseur isolé par processus fils sur tout système d'exploitation (P02-D5) ; le service worker et IndexedDB pour le hors-ligne de F31 (P02-D6) ; l'absence de donnée bancaire ni PCI (P02-D7) ; les conséquences de P02-D12 et de P02-D13 (§3). La conception de P02, approuvée par le propriétaire le même jour comme description complète de la v1, porte : une extension Manifest V3 sans accès réseau, qui parle à l'hôte par stdio ; une application macOS qui ne parse jamais les flux et délègue à l'API ; l'absence de webhook tiers (section 5.10 de la conception). Cette conception n'est pas dans ce dépôt.
 
 ### 1. Stack serveur de P02 (amende ADR-0042 §5, P02-D5)
 
