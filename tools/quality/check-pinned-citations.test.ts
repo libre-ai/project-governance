@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -10,6 +10,7 @@ import {
   CONFIG_PATH,
   classifyRemoteFailure,
   countLines,
+  countPinShapedTokens,
   evaluateCitations,
   HARDENING_FLAGS,
   hardenedGitEnvironment,
@@ -17,6 +18,7 @@ import {
   type PinnedCitationsConfig,
   parseLineSpec,
   type Resolution,
+  reconcileFound,
   type ScannedText,
   scanText,
   spansOutside,
@@ -124,16 +126,83 @@ describe("scanText — pinned citations", () => {
     ]);
   });
 
-  test("does not read package specifiers, URLs, other organisations or non-hex refs", () => {
+  test("does not read package specifiers, URLs, other organisations or repository mentions", () => {
     const text = [
       "@libre-ai/ui@1.2.3 is a package, @libre-ai/ui@abcdef1 too",
       "https://github.com/libre-ai/x@abcdef1 is a URL",
       "other-org/x@abcdef1:a.ts:1 and xlibre-ai/x@abcdef1",
-      "libre-ai/x@v2:README.md and libre-ai/x@main are refs, not pins",
+      "libre-ai/project-governance names a repository and pins nothing",
     ].join("\n");
     const { pinned, rejected } = scan(text);
     expect(pinned).toEqual([]);
     expect(rejected).toEqual([]);
+    expect(countPinShapedTokens(text, ORG)).toBe(0);
+  });
+
+  test("judges the token whole: nothing but ':' or its end may follow the sha", () => {
+    // Each of these resolved on the commit alone in the first form of the gate.
+    const text = [
+      "libre-ai/project-governance@c466a5c/docs/does-not-exist.md",
+      "libre-ai/project-governance@c466a5c~1:docs/adr/0049-threat-model-coverage.md",
+      "libre-ai/project-governance@c466a5c^:docs/adr/0049-threat-model-coverage.md:9999",
+      "libre-ai/project-governance@c466a5c#L9999",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.line, r.text])).toEqual([
+      [1, "libre-ai/project-governance@c466a5c/docs/does-not-exist.md"],
+      [2, "libre-ai/project-governance@c466a5c~1:docs/adr/0049-threat-model-coverage.md"],
+      [3, "libre-ai/project-governance@c466a5c^:docs/adr/0049-threat-model-coverage.md:9999"],
+      [4, "libre-ai/project-governance@c466a5c#L9999"],
+    ]);
+    expect(rejected.map((r) => r.reason)).toEqual([
+      "after the sha only ':' or the end of the citation may follow, found '/': 'c466a5c/docs/does-not-exist.md' does not name a commit",
+      "after the sha only ':' or the end of the citation may follow, found '~': 'c466a5c~1' does not name a commit",
+      "after the sha only ':' or the end of the citation may follow, found '^': 'c466a5c^' does not name a commit",
+      "after the sha only ':' or the end of the citation may follow, found '#': 'c466a5c#L9999' does not name a commit",
+    ]);
+  });
+
+  test("every libre-ai/…@… token is examined: what is not a pin is rejected, never skipped", () => {
+    const text = [
+      "libre-ai/../evil@abcdef1:README.md",
+      "libre-ai/a/b@abcdef1:README.md",
+      "libre-ai/x@abcdef1q:README.md",
+      "libre-ai/x@v2:README.md and libre-ai/x@main",
+      "libre-ai/x@",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.line, r.reason])).toEqual([
+      [
+        1,
+        "'../evil' is a path, not a repository: a pin is libre-ai/<repository>@<sha>[:<path>[:<lines>]]",
+      ],
+      [
+        2,
+        "'a/b' is a path, not a repository: a pin is libre-ai/<repository>@<sha>[:<path>[:<lines>]]",
+      ],
+      [
+        3,
+        "after the sha only ':' or the end of the citation may follow, found 'q': 'abcdef1q' does not name a commit",
+      ],
+      [
+        4,
+        "'v2' is not a sha: a pin names a commit, never a branch, a tag or a revision expression",
+      ],
+      [
+        4,
+        "'main' is not a sha: a pin names a commit, never a branch, a tag or a revision expression",
+      ],
+      [5, "'' is not a sha: a pin names a commit, never a branch, a tag or a revision expression"],
+    ]);
+    // The independent count sees exactly the tokens the parser judged.
+    expect(countPinShapedTokens(text, ORG)).toBe(rejected.length);
+  });
+
+  test("markdown emphasis ends a token", () => {
+    const { pinned } = scan("**libre-ai/x@abcdef1:a.ts:3**");
+    expect(pinned.map((c) => c.text)).toEqual(["libre-ai/x@abcdef1:a.ts:3"]);
   });
 
   test("refuses a sha that is not 7-40 lowercase hex, naming the reason", () => {
@@ -351,6 +420,8 @@ function git(cwd: string, args: readonly string[], input?: string): string {
 
 let older = ""; // src/a.ts has 3 lines here
 let newer = ""; // src/a.ts has 5 lines here
+let lazyCommit = "";
+let brokenCommit = "";
 let ambiguousPrefix = "";
 let ambiguousCandidates: string[] = [];
 let scratchCount = 0;
@@ -371,19 +442,41 @@ function fastImportStream(count: number): string {
   return parts.join("");
 }
 
-beforeAll(() => {
+beforeAll(async () => {
   base = mkdtempSync(join(tmpdir(), "pinned-citations-test-"));
 
   const source = join(base, "source");
   git(base, ["init", "--quiet", "-b", "trunk", source]);
-  Bun.write(join(source, "src", "a.ts"), "one\ntwo\nthree\n");
-  Bun.write(join(source, "docs", "readme.md"), "readme\n");
+  await Bun.write(join(source, "src", "a.ts"), "one\ntwo\nthree\n");
+  await Bun.write(join(source, "docs", "readme.md"), "readme\n");
   git(source, ["add", "-A"]);
   git(source, ["commit", "--quiet", "-m", "three lines"]);
   older = git(source, ["rev-parse", "HEAD"]);
-  Bun.write(join(source, "src", "a.ts"), "one\ntwo\nthree\nfour\nfive\n");
+  await Bun.write(join(source, "src", "a.ts"), "one\ntwo\nthree\nfour\nfive\n");
   git(source, ["commit", "--quiet", "-am", "five lines"]);
   newer = git(source, ["rev-parse", "HEAD"]);
+
+  // A source that honours `--filter=blob:none`, so the gate's clone holds trees
+  // and no blob: once this source disappears, a path is still in the tree but
+  // its object cannot be fetched — the case `cat-file -e` exists for.
+  const lazy = join(base, "lazy");
+  git(base, ["init", "--quiet", "-b", "trunk", lazy]);
+  git(lazy, ["config", "uploadpack.allowFilter", "true"]);
+  await Bun.write(join(lazy, "src", "a.ts"), "one\n");
+  git(lazy, ["add", "-A"]);
+  git(lazy, ["commit", "--quiet", "-m", "one line"]);
+  lazyCommit = git(lazy, ["rev-parse", "HEAD"]);
+
+  // A source whose refs answer ls-remote but whose root tree is gone: the
+  // clone fails after a successful probe.
+  const broken = join(base, "broken");
+  git(base, ["init", "--quiet", "-b", "trunk", broken]);
+  await Bun.write(join(broken, "a.ts"), "one\n");
+  git(broken, ["add", "-A"]);
+  git(broken, ["commit", "--quiet", "-m", "one line"]);
+  brokenCommit = git(broken, ["rev-parse", "HEAD"]);
+  const tree = git(broken, ["rev-parse", "HEAD^{tree}"]);
+  rmSync(join(broken, ".git", "objects", tree.slice(0, 2), tree.slice(2)));
 
   // Two commits sharing a short prefix. A collision on 7 hex characters cannot
   // be manufactured in a test; git's ambiguity rule is the same at 4, which
@@ -411,7 +504,7 @@ afterAll(() => {
   if (base.length > 0) rmSync(base, { recursive: true, force: true });
 });
 
-function resolver(allowProtocol = "file"): CitationResolver {
+function resolver(allowProtocol = "file", maxConcurrentGit = 4): CitationResolver {
   scratchCount += 1;
   const scratch = mkdtempSync(join(base, `scratch-${scratchCount}-`));
   return new CitationResolver({
@@ -419,6 +512,7 @@ function resolver(allowProtocol = "file"): CitationResolver {
     allowProtocol,
     scratch,
     timeoutMs: 60_000,
+    maxConcurrentGit,
   });
 }
 
@@ -504,6 +598,57 @@ describe("CitationResolver against local repositories", () => {
     const resolution = await resolver().resolve(cite(newer, "../outside"));
     expect(resolution.verdict).toBe("invalid-citation");
   });
+
+  test("a path in the tree whose object cannot be fetched is unreachable, never resolved", async () => {
+    const r = resolver();
+    const lazy = (path: string | null): Cited => ({
+      repository: "lazy",
+      sha: lazyCommit,
+      path,
+      lines: null,
+    });
+    // The first resolution clones (blobless); then the promisor disappears.
+    expect((await r.resolve(lazy(null))).verdict).toBe("resolved");
+    renameSync(join(base, "lazy"), join(base, "lazy-gone"));
+    try {
+      const resolution = await r.resolve(lazy("src/a.ts"));
+      expect(resolution.verdict).toBe("repository-unreachable");
+      expect(resolution.note).toContain("could not be fetched");
+      // Absent stays absent: a missing path is not mistaken for a network failure.
+      expect((await r.resolve(lazy("src/missing.ts"))).verdict).toBe("path-absent");
+    } finally {
+      renameSync(join(base, "lazy-gone"), join(base, "lazy"));
+    }
+  }, 60_000);
+
+  test("a repository that answers ls-remote but cannot be cloned is unreachable", async () => {
+    const resolution = await resolver().resolve({
+      repository: "broken",
+      sha: brokenCommit,
+      path: "a.ts",
+      lines: null,
+    });
+    expect(resolution.verdict).toBe("repository-unreachable");
+    expect(resolution.note).toContain("answered ls-remote but could not be cloned");
+  }, 60_000);
+
+  test("no more git processes run at once than the cap", async () => {
+    const r = resolver("file", 2);
+    const citations = [
+      cite(newer, "src/a.ts", "1"),
+      cite(newer, "src/a.ts", "2"),
+      cite(older, "src/a.ts", "3"),
+      cite(newer, "docs/readme.md", "1"),
+      cite(older, "docs/readme.md"),
+      cite(newer.slice(0, 9)),
+    ];
+    const resolutions = await Promise.all(citations.map((citation) => r.resolve(citation)));
+    expect(resolutions.map((resolution) => resolution.verdict)).toEqual(
+      citations.map(() => "resolved"),
+    );
+    expect(r.peakConcurrentGit).toBeGreaterThanOrEqual(1);
+    expect(r.peakConcurrentGit).toBeLessThanOrEqual(2);
+  }, 60_000);
 });
 
 // ------------------------------------------------------------- verdict ---
@@ -576,12 +721,93 @@ describe("evaluateCitations", () => {
       "repository-not-found": 1,
       "invalid-citation": 1,
     });
-    // The exempted citation was never asked of git.
-    expect(fake.asked).toEqual(["live@abcdef1", "gone@abcdef2"]);
+    // The exempted citation is asked too, so a citation that resolves again is caught;
+    // the invalid one never reaches the resolver.
+    expect(fake.asked).toEqual([
+      "live@abcdef1",
+      "gone@abcdef2",
+      "ai-work-supervision@0123456789abcdef0123456789abcdef01234567",
+    ]);
+    expect(volume.found).toBe(4);
     expect(report.outcome).toBe("violations");
     expect(report.violations.some((v) => v.includes("repository-not-found: deleted"))).toBe(true);
+    expect(report.violations.some((v) => v.includes("independent count"))).toBe(false);
     expect(report.volumeSummary).toContain("4 pinned citation(s) examined in 1 tracked file(s)");
     expect(report.volumeSummary).toContain("= 1 resolved + 1 exempted (with reason) + 2 failed");
+    expect(report.volumeSummary).toContain(
+      "against 4 libre-ai/…@… token(s) found by an independent count",
+    );
+  });
+
+  test("an invalid citation passes only when listed with a reason, and counts as exempted", async () => {
+    const written =
+      "libre-ai/governance/.github/workflows/reusable-licensing.yml@94fc054c6b16e047eb0736e12444a08d50728efc";
+    const config: PinnedCitationsConfig = {
+      ...CONFIG,
+      exemptions: [{ citation: written, because: "action pin recorded as evidence" }],
+    };
+    const files = [{ path: "docs/evidence.json", text: `"${written}"` }];
+    const { report, volume } = await evaluateCitations(
+      { config, files, tracked: trackedHere, readTracked },
+      tableResolver({}),
+    );
+    expect(report.outcome).toBe("pass");
+    expect([volume.found, volume.pinned, volume.pinnedExempted, volume.pinnedFailed]).toEqual([
+      1, 1, 1, 0,
+    ]);
+    expect(report.checks.map((check) => check.note)).toEqual([
+      "exempt: action pin recorded as evidence",
+    ]);
+  });
+
+  test("a difference between found and examined is a failure, never a sum to itself", () => {
+    expect(reconcileFound(6, 6, ORG)).toBeNull();
+    expect(reconcileFound(6, 4, ORG)).toBe(
+      "6 libre-ai/…@… token(s) found by the independent count, 4 examined — 2 citation(s) neither resolved, exempted nor failed",
+    );
+  });
+
+  test("every token the independent count sees is examined: found equals examined", async () => {
+    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+    const files = [
+      {
+        path: "docs/a.md",
+        text: [
+          "libre-ai/live@abcdef1 and `libre-ai/live@abcdef1:a.ts:1`.",
+          "libre-ai/a/b@abcdef1 libre-ai/x@v2 libre-ai/x@abcdef1q (libre-ai/x@abcdef1#L3)",
+          "@libre-ai/ui@1.0.0 and github.com/libre-ai/x@abcdef1 and libre-ai/project-governance",
+        ].join("\n"),
+      },
+    ];
+    const { report, volume } = await evaluateCitations(
+      { config, files, tracked: trackedHere, readTracked },
+      tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
+    );
+    expect([volume.found, volume.pinned, volume.pinnedResolved, volume.pinnedFailed]).toEqual([
+      6, 6, 2, 4,
+    ]);
+    expect(report.violations.some((v) => v.includes("independent count"))).toBe(false);
+  });
+
+  test("an exemption whose citation resolves again fails", async () => {
+    const config: PinnedCitationsConfig = {
+      ...CONFIG,
+      exemptions: [{ citation: "libre-ai/restored@abcdef1", because: "deleted 2026-09-16" }],
+    };
+    const { report, volume } = await evaluateCitations(
+      {
+        config,
+        files: [{ path: "docs/a.md", text: "libre-ai/restored@abcdef1" }],
+        tracked: trackedHere,
+        readTracked,
+      },
+      tableResolver({ "restored@abcdef1": { verdict: "resolved", note: "commit abcdef1…" } }),
+    );
+    expect(report.outcome).toBe("violations");
+    expect(volume.byVerdict).toEqual({ "exemption-now-resolves": 1 });
+    expect(report.violations[0]).toContain(
+      'exemption-now-resolves: commit abcdef1… — remove the exemption ("deleted 2026-09-16")',
+    );
   });
 
   test("a citation of a deleted repository passes only when listed with a reason", async () => {
@@ -608,7 +834,9 @@ describe("evaluateCitations", () => {
       fake,
     );
     expect(green.report.outcome).toBe("pass");
-    expect(green.report.checks[0]?.note).toBe("exempt: deleted 2026-09-16, kept as history");
+    expect(green.report.checks[0]?.note).toBe(
+      "exempt: deleted 2026-09-16, kept as history (still repository-not-found)",
+    );
   });
 
   test("an exemption matching nothing fails", async () => {

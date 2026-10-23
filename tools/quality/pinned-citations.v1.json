@@ -16,6 +16,14 @@
     {
       "citation": "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md",
       "because": "fictitious sha in the example of a PRD reference in WORK-PACKAGES.md: it illustrates the pinned form and names no commit"
+    },
+    {
+      "citation": "libre-ai/governance/.github/workflows/reusable-licensing.yml@94fc054c6b16e047eb0736e12444a08d50728efc",
+      "because": "a reusable-workflow reference recorded verbatim in the provider-policy evidence of the signalement bootstrap review (allowed_actions.patterns_allowed): an action pin captured as evidence, not a code citation, and evidence is never rewritten"
+    },
+    {
+      "citation": "libre-ai/governance/.github/...@",
+      "because": "the shape `uses: libre-ai/governance/.github/...@<sha>` written as a template in the 2026-07-28 multi-repo activation design: a placeholder for an action pin, naming no commit"
     }
   ]
 }

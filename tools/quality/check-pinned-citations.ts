@@ -41,17 +41,26 @@
  * repository is not a missing one — the first is about the network, the second
  * about the citation — and neither is ever a zero.
  *
- * A citation of a deleted repository, or a deliberately fictitious example,
- * fails unless it is listed in the data file with a written reason. An
- * exemption that matches no citation fails too: it is a permission nobody
- * checks.
+ * EVERY `libre-ai/…@…` TOKEN IS JUDGED WHOLE. It is a valid pin or an
+ * `invalid-citation` with a named reason — never skipped, never truncated. After
+ * the sha only `:` or the end of the token may follow, so `@<sha>/docs/x.md`,
+ * `@<sha>~1:…`, `@<sha>^:…` and `@<sha>#L9` are refused (the first form of this
+ * gate read a prefix and resolved them on the commit alone); so are a ref that
+ * is not a sha (`@v2`, `@main`) and a path in the repository slot
+ * (`libre-ai/a/b@…`, `libre-ai/../x@…`). The number examined is reconciled with
+ * a separate character count of the same tokens, and a difference fails: the
+ * sum resolved + exempted + failed is true by construction, the reconciliation
+ * is not.
+ *
+ * A citation of a deleted repository, a deliberately fictitious example, or an
+ * action pin recorded as evidence fails unless it is listed in the data file
+ * with a written reason. An exemption that matches no citation fails, and so
+ * does one whose citation resolves again: both are permissions nobody checks.
  *
  * WHAT IT DOES NOT ASSERT: that the cited code still says what the prose says
  * it says — a pin is exactly the means of not having to, and the relevance of a
- * citation stays a review matter. A ref that is not a sha
- * (`libre-ai/<repository>@v2`) is not a pin and is not read. A private
- * repository is indistinguishable from a deleted one: no credential is ever
- * offered, on purpose.
+ * citation stays a review matter. A private repository is indistinguishable
+ * from a deleted one: no credential is ever offered, on purpose.
  *
  * HARDENING. The text this gate reads is written by anyone who can open a pull
  * request, and it becomes git arguments. So: git runs in an empty environment
@@ -61,7 +70,8 @@
  * hex by construction; the path is refused if absolute, if it carries a `.` or
  * `..` segment (`<rev>:./x` is resolved against the working directory), a
  * backslash, a colon or a control character. The repository URL is built from
- * the organisation in data and a name restricted to `[A-Za-z0-9._-]`.
+ * the organisation in data and a name restricted to `[A-Za-z0-9._-]`. At most
+ * four git processes run at once, whatever a document cites.
  *
  * It reads other repositories, so it runs where the fleet gates run
  * (`inventory-drift.yml`), not in `bun run check`.
@@ -206,7 +216,8 @@ export interface RejectedCitation {
 export interface BareCitation {
   readonly text: string;
   readonly path: string;
-  readonly lines: readonly LineSpan[];
+  /** Null when the line suffix is malformed (`:0`, `:9-3`). */
+  readonly lines: readonly LineSpan[] | null;
   readonly line: number;
 }
 
@@ -266,13 +277,113 @@ function escapeRegExp(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+/**
+ * Characters that end a citation token in prose, markdown or JSON. Everything
+ * else belongs to the token, so a token is read whole and judged whole: the
+ * first form of this gate matched a prefix and ignored the rest, and
+ * `@<sha>/docs/x.md`, `@<sha>~1:…`, `@<sha>^:…` or `@<sha>#L9` came out
+ * `resolved` on the commit alone.
+ */
+const TOKEN_DELIMITERS = "\\s`'\"()<>\\[\\]{}|*";
+const DELIMITER: RegExp = new RegExp(`[${TOKEN_DELIMITERS}]`);
+/** A character that may precede `<org>/` in a citation (not a path, scope or word character). */
+const PRECEDING: RegExp = /[A-Za-z0-9_.@/-]/;
+
 function pinnedPattern(organization: string): RegExp {
   // Not preceded by a path or scope character: `@libre-ai/ui@1.0.0` is a package
   // specifier and `github.com/libre-ai/x` a URL, neither is a citation.
   return new RegExp(
-    String.raw`(?<![A-Za-z0-9_.@/-])${escapeRegExp(organization)}/([A-Za-z0-9._-]+)@([0-9A-Za-z]+)(?::([^\s\`'"()<>\[\]{}|]*))?`,
+    `(?<![A-Za-z0-9_.@/-])${escapeRegExp(organization)}/([^${TOKEN_DELIMITERS}]+)`,
     "g",
   );
+}
+
+/**
+ * How many `<org>/…@…` tokens a text carries, counted by a character scan that
+ * shares nothing with the parser but the delimiter set. The gate compares it
+ * with the number of citations it examined: a citation the parser drops (as
+ * the first form of this gate dropped `@v2`, `@<sha>q`, `a/b@<sha>`) makes the
+ * two numbers differ, and the gate fails instead of summing to itself.
+ */
+export function countPinShapedTokens(text: string, organization: string): number {
+  const needle = `${organization}/`;
+  let count = 0;
+  for (const line of text.split("\n")) {
+    let from = 0;
+    for (;;) {
+      const at = line.indexOf(needle, from);
+      if (at === -1) break;
+      from = at + needle.length;
+      if (at > 0 && PRECEDING.test(line.charAt(at - 1))) continue;
+      let end = from;
+      while (end < line.length && !DELIMITER.test(line.charAt(end))) end += 1;
+      if (end > from && line.slice(from, end).includes("@")) count += 1;
+    }
+  }
+  return count;
+}
+
+type ParsedPin =
+  | { readonly kind: "pinned"; readonly citation: PinnedCitation }
+  | { readonly kind: "rejected"; readonly rejection: RejectedCitation };
+
+/** One `<org>/<token>` judged whole: a valid pin, or a rejection with its reason. */
+export function parsePinToken(organization: string, token: string, line: number): ParsedPin {
+  const raw = token.replace(TRAILING_PUNCTUATION, "");
+  const text = `${organization}/${raw}`;
+  const reject = (reason: string): ParsedPin => ({
+    kind: "rejected",
+    rejection: { text, line, reason },
+  });
+  const at = raw.indexOf("@");
+  const repository = raw.slice(0, at);
+  const rest = raw.slice(at + 1);
+  if (repository.includes("/")) {
+    return reject(
+      `'${repository}' is a path, not a repository: a pin is ${organization}/<repository>@<sha>[:<path>[:<lines>]]`,
+    );
+  }
+  if (repository === "." || repository === ".." || !REPOSITORY_NAME.test(repository)) {
+    return reject(`'${repository}' is not a repository name`);
+  }
+  const colon = rest.indexOf(":");
+  const ref = colon === -1 ? rest : rest.slice(0, colon);
+  const tail = colon === -1 ? "" : rest.slice(colon + 1);
+  if (!SHA.test(ref)) {
+    if (HEX_LIKE.test(ref)) {
+      return reject("a pinned sha is 7 to 40 lowercase hexadecimal characters");
+    }
+    const sha = /^[0-9a-f]{7,40}/.exec(ref)?.[0];
+    if (sha === undefined) {
+      return reject(
+        `'${ref}' is not a sha: a pin names a commit, never a branch, a tag or a revision expression`,
+      );
+    }
+    return reject(
+      `after the sha only ':' or the end of the citation may follow, found '${ref.charAt(sha.length)}': '${ref}' does not name a commit`,
+    );
+  }
+  if (tail.length === 0) {
+    return {
+      kind: "pinned",
+      citation: { text, repository, sha: ref, path: null, lines: null, line },
+    };
+  }
+  let path = tail;
+  let lines: LineSpan[] | null = null;
+  const lastColon = tail.lastIndexOf(":");
+  if (lastColon !== -1 && /^[0-9][0-9,-]*$/.test(tail.slice(lastColon + 1))) {
+    path = tail.slice(0, lastColon);
+    lines = parseLineSpec(tail.slice(lastColon + 1));
+    if (lines === null) {
+      return reject(
+        `'${tail.slice(lastColon + 1)}' is not a line spec (L, a-b, a,b; 1-based, a <= b)`,
+      );
+    }
+  }
+  const invalid = validateCitedPath(path);
+  if (invalid !== null) return reject(invalid);
+  return { kind: "pinned", citation: { text, repository, sha: ref, path, lines, line } };
 }
 
 // Measured 2026-10-22: eleven pins in docs omit the organisation
@@ -319,48 +430,13 @@ export function scanText(
     const line = index + 1;
     let masked = sourceLine;
     for (const match of sourceLine.matchAll(pinnedRegExp)) {
-      const repository = match[1] ?? "";
-      const token = match[2] ?? "";
-      // A ref that is not hex (`@v2`) is not a commit pin: not this gate's object.
-      if (!HEX_LIKE.test(token)) continue;
+      const token = match[1] ?? "";
+      // `libre-ai/<repository>` without `@` names a repository, it pins nothing.
+      if (!token.includes("@")) continue;
       masked = blank(masked, match.index ?? 0, match[0].length);
-
-      const tail = (match[3] ?? "").replace(TRAILING_PUNCTUATION, "");
-      const head = `${organization}/${repository}@${token}`;
-      const written = tail.length > 0 ? `${head}:${tail}` : head;
-      const reject = (reason: string): void => {
-        rejected.push({ text: written, line, reason });
-      };
-
-      if (repository === "." || repository === ".." || !REPOSITORY_NAME.test(repository)) {
-        reject(`'${repository}' is not a repository name`);
-        continue;
-      }
-      if (!SHA.test(token)) {
-        reject("a pinned sha is 7 to 40 lowercase hexadecimal characters");
-        continue;
-      }
-      if (tail.length === 0) {
-        pinned.push({ text: written, repository, sha: token, path: null, lines: null, line });
-        continue;
-      }
-      let path = tail;
-      let lines: LineSpan[] | null = null;
-      const colon = tail.lastIndexOf(":");
-      if (colon !== -1 && /^[0-9][0-9,-]*$/.test(tail.slice(colon + 1))) {
-        path = tail.slice(0, colon);
-        lines = parseLineSpec(tail.slice(colon + 1));
-        if (lines === null) {
-          reject(`'${tail.slice(colon + 1)}' is not a line spec (L, a-b, a,b; 1-based, a <= b)`);
-          continue;
-        }
-      }
-      const invalid = validateCitedPath(path);
-      if (invalid !== null) {
-        reject(invalid);
-        continue;
-      }
-      pinned.push({ text: written, repository, sha: token, path, lines, line });
+      const parsed = parsePinToken(organization, token, line);
+      if (parsed.kind === "pinned") pinned.push(parsed.citation);
+      else rejected.push(parsed.rejection);
     }
 
     for (const match of masked.matchAll(UNQUALIFIED_PIN)) {
@@ -371,12 +447,9 @@ export function scanText(
     if (bareRegExp === null) continue;
     for (const match of masked.matchAll(bareRegExp)) {
       const path = match[1] ?? "";
-      const lines = parseLineSpec(match[2] ?? "");
-      if (lines === null) {
-        rejected.push({ text: match[0], line, reason: "malformed line spec" });
-        continue;
-      }
-      bare.push({ text: match[0], path, lines, line });
+      // A malformed spec (`:0`, `:9-3`) stays a bare citation: judged under the
+      // forward rule, counted below it — never mixed into the pinned tally.
+      bare.push({ text: match[0], path, lines: parseLineSpec(match[2] ?? ""), line });
     }
   }
   return { pinned, rejected, bare, unqualified };
@@ -478,6 +551,8 @@ export interface ResolverOptions {
   /** A fresh directory owned by the caller, removed by the caller. */
   readonly scratch: string;
   readonly timeoutMs?: number;
+  /** At most this many git processes at once (default 4): a document citing many repositories must not fork-bomb the runner. */
+  readonly maxConcurrentGit?: number;
 }
 
 type RepositoryHandle =
@@ -489,10 +564,15 @@ export class CitationResolver {
   readonly #environment: Record<string, string>;
   readonly #repositories = new Map<string, Promise<RepositoryHandle>>();
   readonly #citations = new Map<string, Promise<Resolution>>();
+  readonly #limit: number;
+  #running = 0;
+  #peak = 0;
+  readonly #waiting: (() => void)[] = [];
 
   constructor(options: ResolverOptions) {
     this.#options = options;
     this.#environment = hardenedGitEnvironment(options.scratch, options.allowProtocol);
+    this.#limit = Math.max(1, options.maxConcurrentGit ?? 4);
   }
 
   /** Repositories this resolver addressed: printed so the volume includes them. */
@@ -500,21 +580,47 @@ export class CitationResolver {
     return this.#repositories.size;
   }
 
+  /** The most git processes that ever ran at once: the cap, observed. */
+  get peakConcurrentGit(): number {
+    return this.#peak;
+  }
+
+  async #acquire(): Promise<void> {
+    if (this.#running < this.#limit) {
+      this.#running += 1;
+      this.#peak = Math.max(this.#peak, this.#running);
+      return;
+    }
+    // The releasing call hands its slot over: `#running` is unchanged.
+    await new Promise<void>((resume) => this.#waiting.push(resume));
+  }
+
+  #release(): void {
+    const next = this.#waiting.shift();
+    if (next === undefined) this.#running -= 1;
+    else next();
+  }
+
   async #git(args: readonly string[]): Promise<Ran> {
-    const proc = Bun.spawn(["git", ...HARDENING_FLAGS, ...args], {
-      cwd: this.#options.scratch,
-      env: this.#environment,
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      timeout: this.#options.timeoutMs ?? 120_000,
-    });
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr, timedOut: proc.signalCode === "SIGTERM" };
+    await this.#acquire();
+    try {
+      const proc = Bun.spawn(["git", ...HARDENING_FLAGS, ...args], {
+        cwd: this.#options.scratch,
+        env: this.#environment,
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: this.#options.timeoutMs ?? 120_000,
+      });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      return { code, stdout, stderr, timedOut: proc.signalCode === "SIGTERM" };
+    } finally {
+      this.#release();
+    }
   }
 
   #open(repository: string): Promise<RepositoryHandle> {
@@ -707,6 +813,8 @@ export interface CitationsInput {
 export interface CitationsVolume {
   readonly files: number;
   readonly filesUnreadable: number;
+  /** `<org>/…@…` tokens counted independently of the parser; must equal `pinned`. */
+  readonly found: number;
   readonly pinned: number;
   readonly pinnedResolved: number;
   readonly pinnedExempted: number;
@@ -748,17 +856,21 @@ async function resolveBare(
 ): Promise<{ ok: boolean; note: string }> {
   const invalid = validateCitedPath(citation.path);
   if (invalid !== null) return { ok: false, note: invalid };
+  const spans = citation.lines;
+  if (spans === null) {
+    return { ok: false, note: "malformed line spec (L, a-b, a,b; 1-based, a <= b)" };
+  }
   if (!input.tracked.has(citation.path)) {
     return {
       ok: false,
-      note: `${citation.path} is not tracked in this repository: pin it as ${input.config.organization}/<repository>@<sha>:${citation.path}:${renderSpans(citation.lines)}`,
+      note: `${citation.path} is not tracked in this repository: pin it as ${input.config.organization}/<repository>@<sha>:${citation.path}:${renderSpans(spans)}`,
     };
   }
   const text = await input.readTracked(citation.path);
   if (text === null)
     return { ok: false, note: `${citation.path} is tracked but could not be read` };
   const lineCount = countLines(text);
-  const outside = spansOutside(citation.lines, lineCount);
+  const outside = spansOutside(spans, lineCount);
   if (outside.length > 0) {
     return {
       ok: false,
@@ -766,6 +878,25 @@ async function resolveBare(
     };
   }
   return { ok: true, note: `${citation.path} resolves in this tree (${lineCount} line(s))` };
+}
+
+/**
+ * Null when every token the independent count saw was examined, else why not.
+ *
+ * `examined` sums its own parts (resolved + exempted + failed) by construction;
+ * `found` does not — it comes from `countPinShapedTokens`, a separate character
+ * scan — so a citation the parser drops shows up as a difference here.
+ */
+export function reconcileFound(
+  found: number,
+  examined: number,
+  organization: string,
+): string | null {
+  if (found === examined) return null;
+  return (
+    `${found} ${organization}/…@… token(s) found by the independent count, ${examined} examined — ` +
+    `${found - examined} citation(s) neither resolved, exempted nor failed`
+  );
 }
 
 /** The verdict over files already read; git is reached only through `resolver`. */
@@ -794,6 +925,7 @@ export async function evaluateCitations(
   let legacyBareResolving = 0;
   let guardedUnqualified = 0;
   let unjudgedUnqualified = 0;
+  let found = 0;
 
   if (input.files.length === 0) {
     report.check(
@@ -823,6 +955,7 @@ export async function evaluateCitations(
       );
       continue;
     }
+    found += countPinShapedTokens(file.text, config.organization);
     const standing = adrStanding(file.path, config.adr);
     const scanned = scanText(
       file.text,
@@ -847,18 +980,33 @@ export async function evaluateCitations(
       );
     }
 
+    // Exempted citations are resolved too: an exemption whose citation resolves
+    // again (the repository restored, the example made real) is a permission
+    // that no longer has a reason, and it fails like an unused one.
     const resolutions = await Promise.all(
-      scanned.pinned.map((citation) =>
-        exemptions.has(citation.text) ? Promise.resolve(null) : resolver.resolve(citation),
-      ),
+      scanned.pinned.map((citation) => resolver.resolve(citation)),
     );
     for (const [index, citation] of scanned.pinned.entries()) {
       const item = `${file.path}:${citation.line} ${citation.text}`;
-      const resolution = resolutions[index];
-      if (resolution === null || resolution === undefined) {
+      const resolution = resolutions[index] ?? {
+        verdict: "repository-unreachable",
+        note: "no resolution was produced for this citation",
+      };
+      const because = exemptions.get(citation.text);
+      if (because !== undefined) {
         usedExemptions.add(citation.text);
+        if (resolution.verdict === "resolved") {
+          pinnedFailed += 1;
+          tally("exemption-now-resolves");
+          report.check(
+            item,
+            false,
+            `exemption-now-resolves: ${resolution.note} — remove the exemption ("${because}")`,
+          );
+          continue;
+        }
         pinnedExempted += 1;
-        report.check(item, true, `exempt: ${exemptions.get(citation.text) ?? ""}`);
+        report.check(item, true, `exempt: ${because} (still ${resolution.verdict})`);
         continue;
       }
       tally(resolution.verdict);
@@ -918,9 +1066,12 @@ export async function evaluateCitations(
   }
 
   const pinned = pinnedResolved + pinnedExempted + pinnedFailed;
+  const unreconciled = reconcileFound(found, pinned, config.organization);
+  if (unreconciled !== null) report.check("pinned citations", false, unreconciled);
   const volume: CitationsVolume = {
     files: input.files.length,
     filesUnreadable,
+    found,
     pinned,
     pinnedResolved,
     pinnedExempted,
@@ -945,7 +1096,8 @@ export async function evaluateCitations(
   report.volume(
     `${pinned} pinned citation(s) examined in ${input.files.length} tracked file(s) of ${config.scope.join(", ")} ` +
       `(${filesUnreadable} unreadable) = ${pinnedResolved} resolved + ${pinnedExempted} exempted (with reason) + ` +
-      `${pinnedFailed} failed${failures.length > 0 ? ` [${failures}]` : ""}; ` +
+      `${pinnedFailed} failed${failures.length > 0 ? ` [${failures}]` : ""}, ` +
+      `against ${found} ${config.organization}/…@… token(s) found by an independent count; ` +
       `${config.exemptions.length} exemption(s) declared, ${usedExemptions.size} matched; ` +
       `bare citations of ${guardedAdrs} ADR(s) above ${config.adr.bareCitationsGuardedAbove}: ${guardedBare} examined = ` +
       `${guardedBareResolved} resolved + ${guardedBareFailed} failed; ${guardedUnqualified} unqualified pin(s) there, all failed`,
@@ -987,6 +1139,7 @@ if (import.meta.main) {
   const scratch = await mkdtemp(join(tmpdir(), "check-pinned-citations-"));
   let outcome: Awaited<ReturnType<typeof evaluateCitations>>;
   let addressed: number;
+  let peak: number;
   try {
     const resolver = new CitationResolver({
       urlFor: (repository) => `https://github.com/${config.organization}/${repository}`,
@@ -998,10 +1151,13 @@ if (import.meta.main) {
       resolver,
     );
     addressed = resolver.repositoriesAddressed;
+    peak = resolver.peakConcurrentGit;
   } finally {
     await rm(scratch, { recursive: true, force: true });
   }
-  console.log(`Pinned citations: ${addressed} repository(ies) addressed over git (https only).`);
+  console.log(
+    `Pinned citations: ${addressed} repository(ies) addressed over git (https only), at most ${peak} git process(es) at once.`,
+  );
   for (const line of outcome.information) console.log(line);
   concludeGate("Pinned citations", outcome.report);
 }
