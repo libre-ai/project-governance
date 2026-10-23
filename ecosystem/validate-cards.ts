@@ -1,7 +1,12 @@
 import { existsSync } from "node:fs";
 
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
-import { aggregateProgress, collectPathReferences, validateCard } from "./project-cards";
+import {
+  aggregateProgress,
+  collectPathReferences,
+  summariseDesktopShells,
+  validateCard,
+} from "./project-cards";
 
 /**
  * γ phase 3.2 — card validation gate (`bun run check:cards`).
@@ -10,6 +15,11 @@ import { aggregateProgress, collectPathReferences, validateCard } from "./projec
  * before cards are dispatched into their repositories in phase 3.6) plus any
  * `project.v1.yaml` at the repository root, validates each against the
  * schema, and prints the computed progress display — never a declared one.
+ *
+ * It also prints the desktop-shell census (ADR-0057 §4): how many cards were
+ * read, how many declare a shell, how many of those fix a memory ceiling. A
+ * shell without a ceiling fails the schema, and the census is printed on the
+ * red run as well, so the failure comes with the volume it was found in.
  */
 const globs = [new Bun.Glob("ecosystem/cards/*.project.v1.yaml"), new Bun.Glob("project.v1.yaml")];
 const paths: string[] = [];
@@ -17,6 +27,7 @@ for (const glob of globs) {
   for await (const path of glob.scan({ cwd: ".", onlyFiles: true })) paths.push(path);
 }
 const report = new GateReport();
+const parsed: unknown[] = [];
 
 for (const path of paths.sort()) {
   let value: unknown;
@@ -26,6 +37,7 @@ for (const path of paths.sort()) {
     report.check(path, false, `invalid YAML (${(error as Error).message})`);
     continue;
   }
+  parsed.push(value);
   const errors = validateCard(value);
   if (errors.length > 0) {
     report.check(path, false, errors.map((error) => error.replace(/^: /, "")).join("; "));
@@ -50,4 +62,13 @@ for (const path of paths.sort()) {
 if (report.asserted === 0) {
   report.check("ecosystem/cards/", false, "no project card found (γ 3.2, design §6)");
 }
+const census = summariseDesktopShells(parsed);
+const unparsable = paths.length - census.cards;
+const volume =
+  `${census.cards} card(s) read${unparsable > 0 ? `, ${unparsable} unparsable` : ""}, ` +
+  `${census.declaringShell} declare a desktop shell ` +
+  `(${census.withCeiling} with a fixed ceiling, ${census.withoutCeiling} without; ADR-0057 §4)`;
+report.volume(volume);
+// A red run prints only its violations: say the volume they were found in.
+if (report.violations.length > 0) console.error(`Project cards volume: ${volume}`);
 concludeGate("Project cards", report);
