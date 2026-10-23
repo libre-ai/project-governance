@@ -21,6 +21,7 @@
     "tools/**/*.ts",
     "verification/**/*.ts",
     "distribution/*.ts",
+    "distribution/templates/**/*.ts",
     "crates/ecosystem-engine/scripts/**/*.ts",
     "packages/**/*.ts"
   ],
