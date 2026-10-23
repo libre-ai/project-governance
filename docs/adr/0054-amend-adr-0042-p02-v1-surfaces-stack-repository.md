@@ -24,6 +24,8 @@
 
 ## Décision
 
+Les précisions de mécanisme de cette section reprennent le texte des options retenues par le propriétaire le 2026-10-22 : parseur isolé par processus fils sur tout système d'exploitation (P02-D5), service worker et IndexedDB pour le hors-ligne de F31 (P02-D6), conséquences de P02-D12 et P02-D13 (§3).
+
 ### 1. Stack serveur de P02 (amende ADR-0042 §5, P02-D5)
 
 Pour P02, le serveur est entièrement en Rust : axum pour l'API HTTP, sqlx pour l'accès aux données, PostgreSQL pour le stockage. L'API et le worker vivent dans un même workspace Cargo. Le parseur s'exécute comme processus fils isolé, sur tous les systèmes d'exploitation.
@@ -42,14 +44,14 @@ ADR-0042 §7 pose qu'un domaine a au plus un dépôt produit. Pour le seul domai
 
 Le premier palier de plateformes de P02 est composé de trois surfaces sur le même cœur et la même API :
 
-- **Application web responsive.** Une PWA construite avec React 19, TypeScript en mode strict et Vite. Un client typé est généré depuis la description OpenAPI. Un service worker et IndexedDB assurent la lecture et la recherche hors ligne des items conservés. Le design system est écrit sous EUPL ; `@libre-ai/ui` (Apache-2.0, bloqué pour cet usage) n'est pas réutilisé.
+- **Application web responsive.** Une PWA construite avec React 19, TypeScript en mode strict et Vite. Un client typé est généré depuis la description OpenAPI. Un service worker et IndexedDB assurent le hors-ligne des éléments conservés (F31 de la spécification de P02). Le design system est écrit sous EUPL ; `@libre-ai/ui` (Apache-2.0, bloqué pour cet usage) n'est pas réutilisé.
 - **Application macOS.** Un adaptateur Tauri 2 : le cœur Rust et le front web tournent dans une WKWebView. L'hôte de native messaging, écrit en Rust, est livré avec l'application. L'application ne parse jamais les flux : elle délègue à l'API.
 - **Extension navigateur** pour Chrome et Firefox, Manifest V3, sans accès réseau. Elle parle à l'hôte de native messaging par stdio.
 
 Preuves, par surface :
 
 - **Web :** Playwright sur chromium, firefox et webkit, à 360, 768 et 1280 px.
-- **macOS :** l'application est construite et lancée sur un runner macOS. Le contrôle porte sur : `lsof -i -P` ne montre aucun port en écoute ; `codesign --verify --strict` et `spctl --assess` passent ; un ticket de notarisation existe pour chaque release candidate. La mémoire résidente doit rester sous 512 MiB en régime établi, chiffre figé avant mesure (P02-D12) ; un dépassement mesuré au troisième jalon est une décision de surface (retour au natif), non une révision du seuil. Le parcours fonctionnel tourne sous Playwright webkit ; une story de spike essaie `@wdio/tauri-service` avec son fournisseur `embedded` sur runner macOS : si elle est verte, le parcours complet tourne aussi dans la coquille ; si elle est rouge, le parcours reste prouvé par Playwright webkit, et le pilote, recommandé par la documentation officielle de Tauri pour macOS, reste une dépendance d'un projet tiers (WebdriverIO) : cette dépendance est assumée (P02-D13). Ces deux conséquences reprennent le texte des options retenues par le propriétaire le 2026-10-22 pour P02-D12 et P02-D13.
+- **macOS :** l'application est construite et lancée sur un runner macOS. Le contrôle porte sur : `lsof -i -P` ne montre aucun port en écoute ; `codesign --verify --strict` et `spctl --assess` passent ; un ticket de notarisation existe pour chaque release candidate. La mémoire résidente doit rester sous 512 MiB en régime établi, chiffre figé avant mesure (P02-D12) ; un dépassement mesuré au troisième jalon est une décision de surface (retour au natif), non une révision du seuil. Le parcours fonctionnel tourne sous Playwright webkit ; une story de spike essaie `@wdio/tauri-service` avec son fournisseur `embedded` sur runner macOS : si elle est verte, le parcours complet tourne aussi dans la coquille ; si elle est rouge, le parcours reste prouvé par Playwright webkit, et le pilote, recommandé par la documentation officielle de Tauri pour macOS, reste une dépendance d'un projet tiers (WebdriverIO) : cette dépendance est assumée (P02-D13).
 - **Extension :** sur un Chrome réel et un Firefox réel.
 
 Les appareils mobiles, Windows et Linux ne font pas partie de ce palier ; ils sont candidats à un second palier.
