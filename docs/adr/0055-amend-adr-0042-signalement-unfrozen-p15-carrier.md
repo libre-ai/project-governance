@@ -1,4 +1,4 @@
-# ADR-0054 — Amendement d'ADR-0042 §1 : `signalement` sort du gel et porte P15
+# ADR-0055 — Amendement d'ADR-0042 §1 : `signalement` sort du gel et porte P15
 
 - **Statut :** proposed — la fusion de cette pull request par le propriétaire
   constitue l'arbitrage.
@@ -13,7 +13,7 @@
 - **Amende :** ADR-0042 §1 (gel de Capture & Relay jusqu'au jalon B′). Le reste
   d'ADR-0042 est inchangé : catalogue, ordre du §3, jalon B′ et moratoire de
   création de dépôt.
-- **Décision :** D81 de `docs/decisions/DECISION-REGISTER.md`.
+- **Décision :** D94 de `docs/decisions/DECISION-REGISTER.md`.
 - **Applique :** I-03 (un sujet, une autorité), I-13 (la méthode est le produit
   zéro), I-14 (portefeuille par couches).
 
