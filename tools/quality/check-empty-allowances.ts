@@ -62,6 +62,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     because:
       "the declaration lives in a pull request description, which exists only on a pull_request run; a push, a dispatch or a local run has no description to read. On a pull_request run an absent or unreadable event payload fails instead of reading as empty",
   },
+  {
+    file: "tools/quality/check-pr-negatives.ts",
+    because:
+      "same absence as check-pr-door.ts: the Not-added line lives in a pull request description, and the diff it is confronted to is the pull request's. On a pull_request run an absent or unreadable event payload, data file or diff fails instead of reading as empty",
+  },
 ];
 
 const SCANNED_DIRECTORIES = ["tools", "ecosystem"];

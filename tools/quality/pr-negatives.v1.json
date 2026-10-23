@@ -1,0 +1,62 @@
+{
+  "workflow": {
+    "addedPathPatterns": ["^\\.github/workflows/"],
+    "because": "ADR-0056 D5 names the files of .github/workflows/. Any file added there counts, a workflow GitHub would not run included: the negative says the pull request adds nothing to that directory, and a narrower reading would let a file that becomes a workflow by a later rename pass."
+  },
+  "schema": {
+    "addedPathPatterns": ["\\.schema\\.json$"],
+    "because": "Measured on 2026-10-23 over the served branch of the 22 unarchived libre-ai repositories: 320 tracked paths end in .schema.json, every file under a schemas/ directory among them; the 13 other paths containing 'schema' are code (validators, tests, a Rust module), a migration snapshot and a vendored third-party .proto. Rerun: for each repository, `gh api repos/libre-ai/<repo>/git/trees/<served branch>?recursive=1 --jq '.tree[] | select(.type==\"blob\") | .path' | grep -i schema | grep -v fixture`."
+  },
+  "dependency": {
+    "manifests": [
+      {
+        "basename": "package.json",
+        "parser": "json",
+        "sections": ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]
+      },
+      {
+        "basename": "Cargo.toml",
+        "parser": "toml",
+        "sections": [
+          "dependencies",
+          "dev-dependencies",
+          "build-dependencies",
+          "workspace.dependencies",
+          "target.*.dependencies",
+          "target.*.dev-dependencies",
+          "target.*.build-dependencies"
+        ]
+      }
+    ],
+    "lockfiles": [
+      "bun.lock",
+      "bun.lockb",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "yarn.lock",
+      "pnpm-lock.yaml",
+      "deno.lock",
+      "Cargo.lock",
+      "uv.lock",
+      "poetry.lock",
+      "pdm.lock",
+      "Pipfile.lock",
+      "go.sum",
+      "Gemfile.lock",
+      "composer.lock"
+    ],
+    "unreadManifestPatterns": [
+      "^requirements[^/]*\\.(?:txt|in)$",
+      "^pyproject\\.toml$",
+      "^Pipfile$",
+      "^setup\\.(?:py|cfg)$",
+      "^go\\.mod$",
+      "^Gemfile$",
+      "^composer\\.json$",
+      "^deno\\.jsonc?$",
+      "^pom\\.xml$",
+      "^build\\.gradle(?:\\.kts)?$"
+    ],
+    "because": "Manifests are matched by file name, at any depth. A section path is dotted; `*` matches any one key (a Cargo target cfg). The two read formats cover the manifests tracked by this repository except tools/licensing/requirements.txt; a manifest matching unreadManifestPatterns is named and makes a declared `dependency` negative unverifiable, never a silent zero."
+  }
+}
