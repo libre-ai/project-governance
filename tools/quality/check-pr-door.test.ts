@@ -141,7 +141,6 @@ describe("evaluateDoor — Origin", () => {
     "Origin: observed 2026-10-07 session note of the fleet-pins drill",
     "Origin: observed 2026-10-07 <https://github.com/libre-ai/project-governance/pull/135>",
     "Origin: observed 2024-02-29 #12",
-    "  Origin: proposal",
   ])("a valid Origin line passes: %s", (line) => {
     expect(originOk(line)).toBe(true);
   });
@@ -229,7 +228,6 @@ describe("evaluateDoor — Origin", () => {
   });
 
   test.each([
-    "<source>",
     "n/a",
     "none",
     "TBD",
@@ -238,6 +236,11 @@ describe("evaluateDoor — Origin", () => {
   ])("observed with a placeholder source fails: %p", (source) => {
     const report = evaluate(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
     expect(report.violations.join("\n")).toContain("is a placeholder");
+  });
+
+  test("the template placeholder <source> is refused by the grammar (G3)", () => {
+    const report = evaluate("Door: two-way\nOrigin: observed 2026-10-07 <source>\n");
+    expect(report.violations.join("\n")).toContain("declaration value carries '<'");
   });
 
   test("an Origin line inside an HTML comment does not count", () => {
@@ -291,23 +294,38 @@ describe("evaluateDoor — Origin", () => {
 const verdict = (body: string, author: string | null = null) =>
   evaluateDoor(body, "d", author, NOW);
 const passes = (body: string): boolean => verdict(body).outcome === "pass";
+// Invisible characters are written by code point: a literal one cannot be read in review.
+const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+const WORD_JOINER = String.fromCodePoint(0x2060);
+const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029);
 
 describe("finding 1 — an observed source must be visible", () => {
   test.each([
-    "​",
+    ZERO_WIDTH_SPACE,
     "&#8203;",
     "&nbsp;",
-    "<b></b>",
-    "<b>​</b>",
-    "``",
     "?",
-    "⁠⁠",
-    "<https://>",
-    "<http://>",
+    `${WORD_JOINER}${WORD_JOINER}`,
   ])("a source with no visible letter or digit fails: %p", (source) => {
     const report = verdict(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
     expect(report.outcome).toBe("violations");
     expect(report.violations.join("\n")).toContain("no letter or digit");
+  });
+
+  // Round 2: tags, code spans and host-less autolinks no longer reach the
+  // source check; the grammar refuses the line first (G3).
+  test.each([
+    "<b></b>",
+    `<b>${ZERO_WIDTH_SPACE}</b>`,
+    "<b>PR #135</b>",
+    "``",
+    "<https://>",
+    "<http://>",
+  ])("a source opening a construct is refused before it is judged: %p", (source) => {
+    const report = verdict(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain("that can open a construct over the next lines");
   });
 
   test.each([
@@ -315,7 +333,6 @@ describe("finding 1 — an observed source must be visible", () => {
     "#7",
     "a.ts:3",
     "note de session Ω",
-    "<b>PR #135</b>",
   ])("a visible source passes: %p", (source) => {
     expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(true);
   });
@@ -341,8 +358,13 @@ describe("finding 2 — indented code and CommonMark fences", () => {
     ).toBe(false);
   });
 
-  test("three spaces of indentation still declare", () => {
-    expect(passes("   Door: two-way\n   Origin: proposal\n")).toBe(true);
+  // Round 2 (G1): a declaration starts at column 0; one to three spaces are refused by name.
+  test("three spaces of indentation no longer declare", () => {
+    const report = verdict("   Door: two-way\n   Origin: proposal\n");
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain(
+      "is indented (a declaration starts at column 0)",
+    );
   });
 
   test("a shorter run inside a longer fence does not close it", () => {
@@ -384,8 +406,12 @@ describe("finding 3 — the short comments <!--> and <!---> are complete", () =>
     const report = verdict(
       `Door: two-way\nOrigin: proposal\n${short}\nOrigin: observed 2026-10-07\n<!-- -->\n`,
     );
+    // Round 2 (G2/G4): the second Origin line follows a comment that follows a
+    // non-blank line, so it is not read, and an unread Origin line fails the gate.
     expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("2 Origin lines");
+    expect(report.violations.join("\n")).toContain(
+      "1 Origin line(s) outside comments and code are not read: line 4 continues the line above",
+    );
   });
 
   test("<!----> is a complete comment too", () => {
@@ -395,12 +421,18 @@ describe("finding 3 — the short comments <!--> and <!---> are complete", () =>
 
 describe("finding 4 — lines are CommonMark lines, and a declaration starts a block", () => {
   test("U+2028 and U+2029 do not end a line", () => {
-    expect(passes("Door: two-way\n\n<code>x Origin: proposal y</code>\n")).toBe(false);
+    expect(
+      passes(
+        `Door: two-way\n\n<code>x${LINE_SEPARATOR}Origin: proposal${PARAGRAPH_SEPARATOR}y</code>\n`,
+      ),
+    ).toBe(false);
   });
 
   test("a declaration line carrying U+2028 is still one line, read as GitHub shows it", () => {
-    expect(passes("Door: two-way \nOrigin: proposal\n")).toBe(true);
-    expect(passes("Door: two-way\nOrigin: proposal observed 2026-10-07 x\n")).toBe(false);
+    expect(passes(`Door: two-way${LINE_SEPARATOR}\nOrigin: proposal\n`)).toBe(true);
+    expect(passes(`Door: two-way\nOrigin: proposal${LINE_SEPARATOR}observed 2026-10-07 x\n`)).toBe(
+      false,
+    );
   });
 
   test("a prose line breaks a chain", () => {
@@ -490,7 +522,7 @@ describe("finding 6 — the line counters sum to the body", () => {
       "<!-- guidance -->\nDoor: one-way\nSecond-instrument: none\nOrigin: proposal\n",
     );
     expect(report.volumeSummary).toBe(
-      "5 description line(s) = 4 examined + 1 removed in 1 comment/code block(s); 1 Door line(s), 1 Second-instrument line(s), 1 Origin line(s); 0 key line(s) not read",
+      "4 description line(s) = 3 examined + 1 removed in 1 comment/code block(s); 1 Door line(s), 1 Second-instrument line(s), 1 Origin line(s); 0 key line(s) not read (0 inside comments or code)",
     );
   });
 
@@ -506,7 +538,292 @@ describe("finding 6 — the line counters sum to the body", () => {
     expect(counts).not.toBeNull();
     const [total, examined, removed] = (counts ?? []).slice(1).map(Number);
     expect((examined ?? -1) + (removed ?? -1)).toBe(total ?? -2);
-    expect(total).toBe(body === "" ? 0 : body.replace(/\r\n?/g, "\n").split("\n").length);
+    // Round 2 (E): a final newline opens no line.
+    const normalised = body.replace(/\r\n?/g, "\n");
+    const expected =
+      normalised === "" ? 0 : normalised.split("\n").length - (normalised.endsWith("\n") ? 1 : 0);
+    expect(total).toBe(expected);
+  });
+});
+
+// Review n°2 of #141 (2026-10-23): restricted grammar. Each probe is verbatim
+// from the review, or measured through GitHub's renderer (POST /markdown,
+// mode gfm) as hiding or swallowing the declaration lines it carries.
+const notRead = (body: string, key: string): boolean => {
+  const report = verdict(body);
+  return (
+    report.outcome === "violations" &&
+    (report.volumeSummary ?? "").includes(`0 ${key} line(s)`) &&
+    report.violations.some((violation) => violation.includes(`— ${key}`))
+  );
+};
+
+describe("round 2 — A: a line emptied by cleaning is never a boundary by itself", () => {
+  test("A1: a link title spanning an indented comment", () => {
+    const body =
+      'Summary text.\n\n[x]: https://example.com "t\n    <!-- -->\nDoor: two-way\nOrigin: proposal\n"\n';
+    expect(notRead(body, "Door")).toBe(true);
+    expect(notRead(body, "Origin")).toBe(true);
+  });
+
+  test("A2: an attribute spanning a comment that follows a non-blank line", () => {
+    const body =
+      'Summary text.\n\n<div title="\n<!-- -->\nDoor: one-way\nSecond-instrument: none taken, trust me\nOrigin: proposal\n"></div>\n';
+    expect(notRead(body, "Door")).toBe(true);
+    expect(notRead(body, "Origin")).toBe(true);
+  });
+
+  test("A3: an attribute spanning a fence", () => {
+    expect(notRead('<div title="\n~~~\n~~~\nOrigin: proposal\n', "Origin")).toBe(true);
+  });
+
+  test("A4: a comment opened in the middle of a line", () => {
+    expect(notRead('x <span title="a <!--\n-->\nOrigin: proposal\n', "Origin")).toBe(true);
+  });
+
+  test("a comment or fence that follows a blank line, or opens the body, is a boundary", () => {
+    expect(passes("<!-- c -->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+    expect(passes("Summary.\n\n<!--\nc\n-->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+    expect(passes("Summary.\n\n```\nx\n```\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+  });
+
+  test("a comment that follows a non-blank line is not a boundary", () => {
+    expect(notRead("Summary.\n<!-- c -->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+  });
+
+  test("a comment indented four spaces is not a boundary", () => {
+    expect(notRead("Summary.\n\n    <!-- c -->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
+      true,
+    );
+  });
+
+  test("a comment followed by text on its closing line is not a boundary", () => {
+    expect(notRead("Summary.\n\n<!-- c --> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
+      true,
+    );
+  });
+
+  test("a second comment on the line of the first is not a boundary", () => {
+    expect(notRead("<!-- a --><!-- b\n-->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+  });
+
+  test("a short comment at the body start is a boundary, but not with text after it", () => {
+    expect(passes("<!-->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+    expect(passes("<!--->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+    expect(notRead("<!--> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+    expect(notRead("<!---> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+  });
+
+  test("a fence that follows a non-blank line is not a boundary", () => {
+    expect(notRead("Summary.\n```\nx\n```\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+  });
+});
+
+describe("round 2 — B: a declaration value never opens a construct", () => {
+  test("B1: an HTML attribute opened in a Second-instrument value", () => {
+    expect(
+      notRead(
+        'Door: two-way\nSecond-instrument: n/a <span title="\nOrigin: proposal\n"\\>x</span>\n',
+        "Origin",
+      ),
+    ).toBe(true);
+  });
+
+  test("B2: a link title opened in a Second-instrument value", () => {
+    expect(
+      notRead(
+        'Door: two-way\nSecond-instrument: see [doc](https://example.com "\nOrigin: proposal\n")\n',
+        "Origin",
+      ),
+    ).toBe(true);
+  });
+
+  test("B3: a code span opened in a Second-instrument value", () => {
+    expect(
+      notRead("Door: two-way\nSecond-instrument: see `x\nOrigin: proposal\n`\n", "Origin"),
+    ).toBe(true);
+  });
+
+  test.each([
+    "<",
+    ">",
+    "[",
+    "]",
+    "`",
+    '"',
+  ])("each construct character is refused by name in any key's value: %s", (character) => {
+    for (const key of ["Owner-arbitration", "Not-added", "Second-instrument"]) {
+      const report = verdict(`${key}: x ${character} y\nDoor: two-way\nOrigin: proposal\n`);
+      expect(report.outcome).toBe("violations");
+      expect(report.violations.join("\n")).toContain(
+        `declaration value carries '${character}' that can open a construct over the next lines`,
+      );
+    }
+  });
+
+  test("an observed source may carry a whole autolink, and nothing else that opens", () => {
+    expect(
+      passes("Door: two-way\nOrigin: observed 2026-10-07 <https://example.com/a?b=1> and #135\n"),
+    ).toBe(true);
+    expect(passes("Door: two-way\nOrigin: observed 2026-10-07 <http://example.com>\n")).toBe(true);
+    for (const source of [
+      "<https://>",
+      "<ftp://example.com>",
+      '<https://example.com/"x>',
+      "<https://example.com> [doc]",
+      "<https://example.com",
+    ]) {
+      expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(false);
+    }
+  });
+
+  test("a refused value on the first line of a block is named for its character", () => {
+    const report = verdict("Door: two-way <b>x</b>\nOrigin: proposal\n");
+    expect(report.violations.join("\n")).toContain(
+      "line 1: declaration value carries '<' that can open a construct over the next lines",
+    );
+  });
+
+  test("the autolink exception is for an observed source only", () => {
+    expect(
+      passes("Door: two-way\nSecond-instrument: <https://example.com>\nOrigin: proposal\n"),
+    ).toBe(false);
+  });
+});
+
+describe("round 2 — G0: no declaration is read after raw HTML (measured on GitHub)", () => {
+  test.each([
+    ["an attribute across a blank line (renders nothing)", '<div title="\n\nDoor: two-way\n">\n'],
+    ["CDATA (renders nothing)", "<![CDATA[\n\nDoor: two-way\n\n]]>\n"],
+    ["a processing instruction (renders nothing)", "<?x\n\nDoor: two-way\n\n?>\n"],
+    ["a declaration (renders nothing)", "<!X\n\nDoor: two-way\n\n>\n"],
+    ["details (collapsed)", "<details>\n\nDoor: two-way\n\n</details>\n"],
+    ["video (fallback content)", "<video>\n\nDoor: two-way\n\n</video>\n"],
+    [
+      "a table cell attribute (renders nothing)",
+      '<table><tr><td title="\n\nDoor: two-way\n\n"></td></tr></table>\n',
+    ],
+  ])("%s", (_name, body) => {
+    const report = verdict(`Origin: proposal\n\n${body}`);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain("follows raw HTML at line");
+  });
+
+  test("raw HTML on a refused key line, or after a comment on its closing line, counts too", () => {
+    expect(notRead("Not-added: <details>\n\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
+    expect(notRead("<!--\nc\n--><details>\n\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
+      true,
+    );
+  });
+
+  test("a complete void tag without quotes hides nothing (measured on GitHub)", () => {
+    for (const tag of [
+      "<br>",
+      "<hr/>",
+      "<img src=x>",
+      "<input type=checkbox>",
+      "<wbr>",
+      "<source>",
+    ]) {
+      expect(passes(`x ${tag}\n\nDoor: two-way\nOrigin: proposal\n`)).toBe(true);
+    }
+  });
+
+  test("an incomplete or quoted void tag is still raw HTML", () => {
+    expect(notRead("<img src=x\n\nDoor: two-way\nOrigin: proposal\n>\n", "Door")).toBe(true);
+    expect(notRead('x <img title="a">\n\nDoor: two-way\nOrigin: proposal\n', "Door")).toBe(true);
+  });
+
+  test("raw HTML after the block does not matter, nor tags inside code spans", () => {
+    expect(passes("Door: two-way\nOrigin: proposal\n\n<details>x</details>\n")).toBe(true);
+    expect(
+      passes("See `<details>` and <https://example.com>.\n\nDoor: two-way\nOrigin: proposal\n"),
+    ).toBe(true);
+  });
+});
+
+describe("round 2 — G1/G4: column 0, and every displayed key line must be read", () => {
+  test("one to three spaces of indentation no longer declare", () => {
+    expect(notRead("Origin: proposal\n\n  Door: two-way\n", "Door")).toBe(true);
+  });
+
+  test("a second Origin line that is not read fails the gate (P17)", () => {
+    const report = verdict(
+      "Door: two-way\nOrigin: proposal\n<!-->\nOrigin: observed 2026-10-07\n<!-- -->\n",
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations.join("\n")).toContain(
+      "Origin line(s) outside comments and code are not read",
+    );
+  });
+
+  test("an absent key with unread lines fails once, naming them", () => {
+    const report = verdict("Summary\nDoor: two-way\n\nOrigin: proposal\n");
+    expect(report.violations.filter((violation) => violation.includes("— Door")).length).toBe(1);
+    expect(report.volumeSummary).toContain("1 Origin line(s)");
+  });
+
+  test("an unread Door or Origin line removes the implicit-author waiver", () => {
+    expect(verdict("Bumps x.\nDoor: one-way\n", "dependabot[bot]").outcome).toBe("violations");
+    expect(verdict("Bumps x.\nOrigin: proposal\n", "dependabot[bot]").outcome).toBe("violations");
+    expect(verdict("Bumps x.\n", "dependabot[bot]").outcome).toBe("pass");
+  });
+
+  test("key lines inside comments and code are counted, never failing", () => {
+    const report = verdict(
+      "Door: two-way\nOrigin: proposal\n\n<!--\nSecond-instrument: <x>\nNot-added: dependency\n-->\n",
+    );
+    expect(report.outcome).toBe("pass");
+    expect(report.volumeSummary).toContain("2 key line(s) not read (2 inside comments or code)");
+  });
+});
+
+describe("round 2 — C: hangul fillers are not visible letters", () => {
+  test.each([
+    "\u115f",
+    "\u1160",
+    "\u3164",
+    "\uffa0",
+    "\u3164\u3164 #",
+  ])("a source of fillers fails: %p", (source) => {
+    expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(false);
+  });
+
+  test("a markdown link with an empty text is refused (G3)", () => {
+    expect(passes("Door: two-way\nOrigin: observed 2026-10-07 [](https://example.com)\n")).toBe(
+      false,
+    );
+  });
+});
+
+describe("round 2 — D: fences opened on a list marker", () => {
+  test("indented Door inside an ordered-list fence is not read", () => {
+    expect(notRead("1. ~~~\n\n   Door: two-way\n   ~~~\n", "Door")).toBe(true);
+  });
+
+  test("indented Door inside a bullet-list fence is not read", () => {
+    expect(notRead("- ```\n\n  Door: two-way\n  ```\n", "Door")).toBe(true);
+  });
+
+  // Measured 2026-10-23 through POST /markdown (gfm): a non-indented line after
+  // the blank ends the list item, and GitHub renders it as a paragraph,
+  // `<p>Door: two-way<br> Origin: proposal</p>`. Reading it invents nothing.
+  test("the non-indented variant is displayed by GitHub, so it is read", () => {
+    expect(passes("1. ~~~\n\nDoor: two-way\nOrigin: proposal\n   ~~~\n")).toBe(true);
+    expect(passes("- ```\n\nDoor: two-way\nOrigin: proposal\n```\n")).toBe(true);
+  });
+});
+
+describe("round 2 — E: no phantom line for the final newline", () => {
+  test.each([
+    ["", 0],
+    ["\n", 1],
+    ["Door: two-way", 1],
+    ["Door: two-way\n", 1],
+    ["Door: two-way\r\n", 1],
+    ["a\n\n", 2],
+  ])("%p has %p line(s)", (body, lines) => {
+    expect(verdict(body).volumeSummary ?? "").toStartWith(`${lines} description line(s) =`);
   });
 });
 
@@ -553,7 +870,8 @@ describe("stripNonDeclarations", () => {
 
   test("counts the lines it emptied, not the lines it shortened or the blank ones", () => {
     const stripped = stripNonDeclarations("a <!-- x --> b\n<!-- y -->\n\n```\n\n```\n");
-    expect(stripped.lines).toEqual(["a  b", "", "", "", "", "", ""]);
+    expect(stripped.lines).toEqual(["a  b", "", "", "", "", ""]);
+    expect(stripped.text).toBe("a  b\n\n\n\n\n\n");
     expect(stripped.removedLines).toBe(4);
     expect(stripped.removedBlocks).toBe(3);
   });
