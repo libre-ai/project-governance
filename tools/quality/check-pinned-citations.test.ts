@@ -1642,6 +1642,39 @@ describe("evaluateCitations", () => {
     ]);
   });
 
+  test("no exemption applies to a segment holding the organisation only in another case", async () => {
+    // `(` and `{` are no named wrapping, so these are refused as written
+    // against the organisation; the organisation is there only by the fold.
+    const written = ["(Libre-AI/x@abcdef1:a.md", "{Libre-AI/x@abcdef1}"];
+    // The same refusal in the organisation's own case stays exemptable.
+    const lower = "(libre-ai/x@abcdef1:a.md";
+    const fake = tableResolver({});
+    const { report, volume } = await evaluateCitations(
+      {
+        config: {
+          ...CONFIG,
+          exemptions: [...written, lower].map((citation) => ({
+            file: "docs/notes.md",
+            citation,
+            because: "tried",
+          })),
+        },
+        files: [{ path: "docs/notes.md", text: [...written, lower].join("\n") }],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: SELF,
+      },
+      fake,
+    );
+    expect(fake.asked).toEqual([]);
+    expect([volume.pinnedExempted, volume.pinnedFailed]).toEqual([1, 2]);
+    const failed = report.violations.join("\n");
+    for (const citation of written) {
+      expect(failed).toContain(`docs/notes.md: ${citation}: exemption matches no citation`);
+    }
+    expect(failed).not.toContain(lower);
+  });
+
   test("an exemption never lets the organisation in another case pass, in any file", async () => {
     const written = "Libre-AI/project-governance@abcdef1:AGENTS.md";
     const fake = tableResolver({});

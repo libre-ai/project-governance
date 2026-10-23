@@ -94,7 +94,11 @@
  * `libre-ai/`, in any ASCII case, with an `@` after it — no delimiter list, no
  * lookbehind. The organisation in another case (`Libre-AI/…@…`, which GitHub
  * serves as the organisation's) is refused by name, and no exemption applies to
- * that refusal: it would let a repository GitHub serves pass unasked. Two
+ * that refusal, nor to any refusal of a segment that holds the organisation
+ * only in another case: it would let a repository GitHub serves pass unasked.
+ * With no lookbehind, an owner whose name ends with the organisation
+ * (`NotLibre-AI/x@…`) is read as written against it and refused: it can never
+ * be cited, which fails closed. Two
  * earlier forms of this gate had both, and each character in them was a way to
  * cut a citation short (`@<sha>*docs/x`, `:a.json(9999)` came out `resolved` on
  * the prefix) or to hide one (`_libre-ai/…_`, `see.libre-ai/…` were seen by
@@ -635,6 +639,9 @@ export function parseCandidate(organization: string, segment: string, line: numb
         text: core,
         line,
         reason: `'${at > 0 ? core.slice(0, at) : core}' is written against ${prefix}: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes`,
+        // A candidate only through the case fold (`(Libre-AI/x@…`) holds a
+        // spelling GitHub serves: no exemption may let it pass unasked.
+        unexemptable: !core.includes(prefix),
       },
     };
   }
