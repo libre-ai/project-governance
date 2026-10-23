@@ -1,8 +1,8 @@
-# ADR-0055 — Méthode : origine du problème déclarée, dispositions de revue, installation live, registre des refus, négative par tranche
+# ADR-0056 — Méthode : origine du problème déclarée, dispositions de revue, installation live, registre des refus, négative par tranche
 
 - **Statut :** proposed — la fusion de cette pull request est la signature du
   propriétaire (I-17, `AGENTS.md` : « a doctrine merge is a signature ») ;
-  D1 à D5, I-38 et l'entrée D94 entrent en vigueur à la fusion, y compris les
+  D1 à D5, I-38 et l'entrée D95 entrent en vigueur à la fusion, y compris les
   quatre dispositions de D2 et la règle de re-revue. Seule la conciliation des
   dispositions avec la gravité et les verdicts du protocole de revue (D2,
   options A et B) est un point d'arbitrage ; une fusion sans choix explicite
@@ -22,9 +22,9 @@
   modifié (D1).
 - **Applique :** I-17 (surface à touche humaine fermée), I-25 (collection de
   skills), I-05 (projection jamais éditée à la main).
-- **Invariants :** I-38 candidat (installation live) ; entrée D94 de
+- **Invariants :** I-38 candidat (installation live) ; entrée D95 de
   `docs/decisions/DECISION-REGISTER.md`.
-- **Autorise :** l'inscription d'I-38 et de D94 ; le registre
+- **Autorise :** l'inscription d'I-38 et de D95 ; le registre
   `ecosystem/refusals.v1.yaml` et son amorce de neuf entrées ; le renvoi de
   `docs/reviews/AGENT-REVIEW-PROTOCOL.md` vers D2 et la ligne de gravité de
   D5 dans ce protocole ; la ligne du registre des
@@ -324,9 +324,9 @@ Archify déclare de telles négatives sur 16 lignes et n'en vérifie aucune
 
 ## Conséquences
 
-- I-38 est inscrit au registre des invariants, source « ADR-0055 (candidat,
+- I-38 est inscrit au registre des invariants, source « ADR-0056 (candidat,
   signature au merge sous I-17) ».
-- Le registre des décisions gagne D94.
+- Le registre des décisions gagne D95.
 - `ecosystem/refusals.v1.yaml` est créé avec neuf entrées ; `REUSE.toml` le
   place sous `CC-BY-4.0` ; la carte d'autorité gagne sa ligne, qui en écrit le
   partage avec `vision.md` §28 et `skills/.out-of-scope/`.
@@ -381,15 +381,16 @@ request.
 
 ## Numérotation
 
-ADR-0055, D94 et I-38 suivent les derniers numéros de la branche servie, où
-la pull request #130 a fusionné ADR-0054 et D81 à D93. Reproduire, sur la tête
-de la branche servie :
+ADR-0056, D95 et I-38 suivent les derniers numéros de la branche servie. La
+pull request #130 y a fusionné ADR-0054 et D81 à D93, puis la pull request
+#134 ADR-0055 et D94 ; rédigé d'abord sous ADR-0055 et D94, cet ADR a été
+renuméroté à la fusion de #134. Reproduire, sur la tête de la branche servie :
 `git ls-tree --name-only origin/migrate/recover-code docs/adr/ | sed 's#docs/adr/##' | grep -oE '^[0-9]{4}-[a-z]' | cut -c1-4 | sort -n | tail -1`
-→ `0054` (le filtre `-[a-z]` écarte `2026-09-29-portfolio-consolidation.md`,
+→ `0055` (le filtre `-[a-z]` écarte `2026-09-29-portfolio-consolidation.md`,
 qu'un simple `^[0-9]{4}` compte comme le numéro 2026) ;
 `git show origin/migrate/recover-code:docs/decisions/DECISION-REGISTER.md | grep -oE '^\| D[0-9]+' | tail -1`
-→ `| D93` ;
+→ `| D94` ;
 `git show origin/migrate/recover-code:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1`
-→ `| I-37` (#130 amende I-06 sans ajouter d'invariant). Mesures du
-2026-10-23, tête `6ffeb40`. Un conflit de numéro à la fusion se résout par
+→ `| I-37` (ni #130 ni #134 n'ajoutent d'invariant). Mesures du 2026-10-23,
+tête `84c0e6d`. Un conflit de numéro à la fusion se résout par
 renumérotation, jamais par réutilisation.

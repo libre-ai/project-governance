@@ -6,7 +6,7 @@ schema_version: libre-ai.refusals.v1
 # repropose sans relire pourquoi il a été écarté, et le rediscute sur des
 # prémisses déjà mesurées. Ce registre se consulte avant toute nouvelle
 # proposition d'un projet, d'un outil, d'une dépendance ou d'un service tiers.
-# Autorité : ADR-0055 D4.
+# Autorité : ADR-0056 D4.
 #
 # Partage sans recouvrement :
 # - ici, seulement un projet, un outil ou une dépendance **tiers** qui a été
@@ -32,7 +32,7 @@ schema_version: libre-ai.refusals.v1
 #   CI ; jamais d'un produit, ce refus relevant de `vision.md` §28),
 #   `reuse-code` (reprise ou déploiement du code),
 #   `use-service` (service hébergé) ;
-# - `origin` : origine du constat, au vocabulaire d'ADR-0055 D1 —
+# - `origin` : origine du constat, au vocabulaire d'ADR-0056 D1 —
 #   `observed`, `inspection`, `synthetic`, `proposal` ;
 # - `decided_on` : date du refus (ISO 8601) ;
 # - `reason` : le motif, en constats ; un constat que la preuve publique
