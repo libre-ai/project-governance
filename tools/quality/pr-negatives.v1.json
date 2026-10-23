@@ -1,9 +1,9 @@
 {
-  "because": "The surfaces of the three verifiable negatives of ADR-0056 D5. A negative holds only when the diff touches none of its surface; any contact makes it unverifiable, and the pull request does not declare it (the line is optional). Read by tools/quality/check-pr-negatives.ts at the MERGE BASE of the pull request, never from its head. Every pattern is a regular expression over the repository-relative path and every name is compared case-insensitively.",
+  "because": "The surfaces of the three verifiable negatives of ADR-0056 D5. A negative holds only when the diff touches none of its surface; any contact makes it unverifiable, and the pull request does not declare it (the line is optional, so a wide surface costs nothing: widen rather than refine). Read by tools/quality/check-pr-negatives.ts at the MERGE BASE of the pull request, never from its head. Every pattern is a regular expression over the repository-relative path, compiled case-insensitively, and every name and content marker is compared case-insensitively.",
   "workflow": {
     "directory": ".github/workflows",
     "symlinkRoot": ".github",
-    "because": "A path added or type-changed at or under the directory is a workflow added (a rename is an addition: the list is read with --no-renames). A symlink added or modified at or under .github can make GitHub read any target as a workflow or action."
+    "because": "A path added or type-changed at or under the directory is a workflow added (a rename is an addition: the list is read with --no-renames). A symlink at or under .github, added or modified in the diff or present in either tree, can make GitHub read any target as a workflow or action."
   },
   "schema": {
     "pathPatterns": [
@@ -11,9 +11,9 @@
       "(?:^|/)schema\\.(?:json|ya?ml)$",
       "(?:^|/)schemas?/(?:[^/]+/)*[^/]+\\.(?:json|ya?ml)$"
     ],
-    "contentExtensions": [".json", ".jsonc", ".yaml", ".yml"],
-    "contentMarkers": ["$schema", "\\u0024schema", "\\x24schema"],
-    "because": "Names: the .schema suffix in JSON or YAML (320 tracked .schema.json paths over the 22 unarchived libre-ai repositories on 2026-10-23, fixtures excluded), the bare schema.json|yaml|yml, and any JSON or YAML file under a schema/ or schemas/ directory. Content: a raw byte search, no parse, for $schema and the two escapes a JSON or YAML string can write it with; a tsconfig or a Biome configuration carrying $schema is a contact, and the author does not declare the negative."
+    "contentExtensions": [".json", ".jsonc", ".json5", ".yaml", ".yml"],
+    "contentMarkers": ["schema", "\\u", "\\x"],
+    "because": "Names: the .schema suffix in JSON or YAML (320 tracked .schema.json paths over the 22 unarchived libre-ai repositories on 2026-10-23, fixtures excluded), the bare schema.json|yaml|yml, and any JSON or YAML file under a schema/ or schemas/ directory. Content, deliberately wide and failing closed: a raw byte search, no parse, for the substring `schema` or an escape opener (backslash u, backslash x, any case). Every escaped spelling of $schema needs one of them; a file that merely says schema, or escapes anything, is a contact, and the author does not declare the negative."
   },
   "dependency": {
     "basenames": [
@@ -32,12 +32,15 @@
       "pyproject.toml",
       "uv.lock",
       "poetry.lock",
+      "pdm.lock",
       "Pipfile",
       "Pipfile.lock",
       "setup.py",
       "setup.cfg",
       "go.mod",
       "go.sum",
+      "go.work",
+      "go.work.sum",
       "Gemfile",
       "Gemfile.lock",
       "composer.json",
@@ -50,6 +53,8 @@
       "pom.xml",
       "build.gradle",
       "build.gradle.kts",
+      "settings.gradle",
+      "settings.gradle.kts",
       "environment.yml",
       "environment.yaml",
       ".npmrc",
@@ -57,16 +62,48 @@
       ".yarnrc.yml",
       "bunfig.toml",
       "pip.conf",
+      "pip.ini",
+      "uv.toml",
+      ".pnpmfile.cjs",
+      ".pnp.cjs",
+      ".pnp.loader.mjs",
+      "import_map.json",
+      "import-map.json",
+      ".tool-versions",
+      ".nvmrc",
+      ".node-version",
+      ".python-version",
+      "mise.toml",
+      ".mise.toml",
+      "rust-toolchain",
+      "rust-toolchain.toml",
+      "action.yml",
+      "action.yaml",
       ".gitmodules"
     ],
     "pathPatterns": [
-      "(?:^|/)requirements[^/]*\\.txt$",
+      "(?:^|/)[^/]*requirements[^/]*\\.(?:txt|in)$",
       "(?:^|/)requirements/",
       "(?:^|/)constraints[^/]*\\.txt$",
+      "(?:^|/)[^/]*\\.py\\.lock$",
+      "(?:^|/)pylock[^/]*\\.toml$",
+      "(?:^|/)gradle/libs\\.versions\\.toml$",
+      "(?:^|/)gradle/wrapper/",
       "(?:^|/)\\.cargo/",
+      "(?:^|/)\\.yarn/",
+      "[^/]\\.pin\\.json$",
+      "(?:^|/)toolchains/",
+      "(?:^|/)node_modules/",
+      "(?:^|/)vendor/",
+      "(?:^|/)third_party/",
+      "(?:^|/)patches/",
+      "(?:^|/)Dockerfile[^/]*$",
+      "(?:^|/)Containerfile[^/]*$",
       "^\\.github/workflows/",
       "^\\.github/actions/"
     ],
-    "because": "Every manifest and lockfile known to the fleet's ecosystems, the requirements and constraints files, the registry configurations (.npmrc, .yarnrc, .yarnrc.yml, bunfig.toml, .cargo/, pip.conf), .gitmodules, and the workflow and action directories where `uses:` lives. Gitlinks and symlinks are on the surface by mode, in the gate's logic, not by name. Any status counts, both sides of a rename included."
+    "contentExtensions": [".py"],
+    "contentMarkers": ["# /// script"],
+    "because": "What is covered, and nothing more. By name: the manifests, lockfiles and workspace files of npm, Bun, pnpm, Yarn, Deno, Cargo, uv, Poetry, PDM, pip, Go, Bundler, Composer, Nix, Maven and Gradle; the registry and package-manager configurations (.npmrc, .yarnrc*, bunfig.toml, pip.conf, pip.ini, uv.toml, .pnpmfile.cjs, Plug'n'Play loaders, import maps); the version files (.tool-versions, .nvmrc, .node-version, .python-version, mise.toml, rust-toolchain*); every action.yml|yaml; .gitmodules. By path: *requirements*.txt|in, requirements/, constraints*.txt, PEP 723 locks (*.py.lock), pylock*.toml, the Gradle version catalog and wrapper, .cargo/, .yarn/, the tooling pins of this repository (*.pin.json, toolchains/ — dependencies of the tooling in the sense of ADR-0056 D4), node_modules/, vendor/, third_party/, patches/, Dockerfile*, Containerfile*, and the workflow and action directories where `uses:` lives. By content: a .py carrying a PEP 723 block (`# /// script`). By mode, in the gate's logic: any gitlink, any symlink, and a symlink in either tree whose path or path-as-a-directory is on the surface. Any status counts, both sides of a rename included."
   }
 }

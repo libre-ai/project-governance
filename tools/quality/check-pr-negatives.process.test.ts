@@ -30,6 +30,10 @@ const DATA_PATH = "tools/quality/pr-negatives.v1.json";
 const BASE_BRANCH = "probe/served";
 const BARE_BASE = "probe/served-bare";
 const LINKED_BASE = "probe/served-linked";
+/** A base whose `.cargo` is a DIRECTORY symlink (third review, point 1). */
+const DIRLINK_BASE = "probe/served-dirlink";
+/** A base with a symlink inside `.github/workflows` (third review, point 5). */
+const WFLINK_BASE = "probe/served-wflink";
 const SHA_A = "a".repeat(40);
 
 const BASE_PACKAGE = `${JSON.stringify(
@@ -207,6 +211,20 @@ beforeAll(() => {
       symlinkSync("real.json", join(upstream, "linked/package.json"));
     },
   );
+  commitBase(
+    DIRLINK_BASE,
+    { ...BASE_FILES, [DATA_PATH]: data, "config/cargo/config.toml": "[net]\n" },
+    () => {
+      symlinkSync("config/cargo", join(upstream, ".cargo"));
+    },
+  );
+  commitBase(
+    WFLINK_BASE,
+    { ...BASE_FILES, [DATA_PATH]: data, "config/shared.yml": "name: shared\n" },
+    () => {
+      symlinkSync("../../config/shared.yml", join(upstream, ".github/workflows/shared.yml"));
+    },
+  );
   git(workspace, ["clone", "--quiet", `file://${upstream}`, clone]);
 });
 
@@ -321,12 +339,14 @@ describe("second review, N7: a workflow the YAML reader would truncate", () => {
 
 describe("second review, N8: manifest names in any case", () => {
   test("PACKAGE.JSON added: `dependency` cannot be verified", () => {
+    // Off every path rule (not under vendor/ since the third review widened
+    // it), so only the case-insensitive file name can make it a contact.
     branchWith(
-      () => stageAt("vendor/x/PACKAGE.JSON", "100644", '{ "dependencies": { "evil": "1" } }\n'),
+      () => stageAt("pkgs/x/PACKAGE.JSON", "100644", '{ "dependencies": { "evil": "1" } }\n'),
       BASE_BRANCH,
       true,
     );
-    expectFails(runGate("Not-added: dependency"), "cannot verify: vendor/x/PACKAGE.JSON (A,");
+    expectFails(runGate("Not-added: dependency"), "cannot verify: pkgs/x/PACKAGE.JSON (A,");
   });
 });
 
@@ -351,6 +371,118 @@ describe("second review, N10: a gitlink by type change", () => {
     const run = runGate("Not-added: dependency");
     expectFails(run, "cannot verify: vendor/lib (T, gitlink)");
     expect(run.stderr).not.toContain("submodule added");
+  });
+});
+
+describe("third review, point 1: a directory symlink at a surface path", () => {
+  test("`.cargo` linked to a directory whose content changes: `dependency` cannot be verified", () => {
+    branchWith(
+      () => write("config/cargo/config.toml", '[source.crates-io]\nreplace-with = "evil"\n'),
+      DIRLINK_BASE,
+    );
+    expectFails(
+      runGate("Not-added: dependency", DIRLINK_BASE),
+      "cannot verify: .cargo (base, a symlink in the base tree)",
+    );
+  });
+});
+
+describe("third review, point 2: any requirements file", () => {
+  test.each([
+    "toolchains-x/reuse-requirements.txt",
+    "dev-requirements.txt",
+    "requirements.in",
+  ])("%s added: `dependency` cannot be verified", (path) => {
+    branchWith(() => write(path, "evil==1.0\n"));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (A,`);
+  });
+});
+
+describe("third review, point 3: the tooling pins and version files", () => {
+  test.each([
+    "crates/ecosystem-engine/contracts-authority.pin.json",
+    "toolchains/bun.json",
+    ".nvmrc",
+    ".tool-versions",
+    "rust-toolchain.toml",
+    "gradle/wrapper/gradle-wrapper.properties",
+  ])("%s added: `dependency` cannot be verified", (path) => {
+    branchWith(() => write(path, "x\n"));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (A,`);
+  });
+});
+
+describe("third review, point 4: locks, manager configurations, third-party code, actions, images", () => {
+  test.each([
+    "scripts/x.py.lock",
+    "pylock.toml",
+    "go.work",
+    "gradle/libs.versions.toml",
+    "settings.gradle.kts",
+    ".pnpmfile.cjs",
+    ".yarn/releases/yarn.cjs",
+    "uv.toml",
+    "pip.ini",
+    "import_map.json",
+    "node_modules/x/index.js",
+    "vendor/x/lib.go",
+    "third_party/x/a.c",
+    "patches/x.patch",
+    "tools/a/action.yml",
+    "Dockerfile",
+    "images/Containerfile.dev",
+  ])("%s added: `dependency` cannot be verified", (path) => {
+    branchWith(() => write(path, "x\n"));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (A,`);
+  });
+
+  test("a .py carrying a PEP 723 block: `dependency` cannot be verified", () => {
+    branchWith(() =>
+      write("scripts/run.py", '# /// script\n# dependencies = ["evil"]\n# ///\nprint(1)\n'),
+    );
+    expectFails(
+      runGate("Not-added: dependency"),
+      "cannot verify: scripts/run.py (A, content carries # /// script)",
+    );
+  });
+});
+
+describe("third review, point 5: workflow symlinks in either tree", () => {
+  test("a workflow linked at the base, whose target changes: `workflow` cannot be verified", () => {
+    branchWith(() => write("config/shared.yml", "name: shared\non: push\n"), WFLINK_BASE);
+    expectFails(
+      runGate("Not-added: workflow", WFLINK_BASE),
+      "cannot verify: .github/workflows/shared.yml (base, a symlink under .github in the base tree)",
+    );
+  });
+});
+
+describe("third review, point 6: escaped or bare schema content", () => {
+  test.each([
+    ["data/plain.json", '{ "\\u0024\\u0073chema": "x" }\n', "M", "\\u"],
+    ["data/new.json5", "{ $schema: 'x' }\n", "A", "schema"],
+    ["config/app.yaml", '"\\x24\\x73chema": x\n', "M", "\\x"],
+    ["data/version.json", '{ "schemaVersion": 1 }\n', "A", "schema"],
+  ])("%s: `schema` cannot be verified", (path, text, status, marker) => {
+    branchWith(() => write(path, text));
+    expectFails(
+      runGate("Not-added: schema"),
+      `cannot verify: ${path} (${status}, content carries ${marker})`,
+    );
+  });
+});
+
+describe("third review, point 8: more markup prefixes", () => {
+  test.each([
+    "[Not-added:](#) dependency",
+    "`Not-added:` dependency",
+    "~~Not-added:~~ dependency",
+  ])("%s is refused by name", (line) => {
+    branchWith(() => write("docs/readme.md", "changed\n"));
+    expectFails(
+      runGate(`Door: two-way\n${line}`),
+      'write it as "Not-added:" at the start of its own line',
+    );
   });
 });
 
@@ -439,7 +571,7 @@ describe("the change set is git's own", () => {
       withConfig({ "diff.hide.textconv": driver }, () => {
         expectFails(
           runGate("Not-added: schema"),
-          "cannot verify: data/plain.json (M, content carries $schema)",
+          "cannot verify: data/plain.json (M, content carries schema)",
         );
       });
     } finally {

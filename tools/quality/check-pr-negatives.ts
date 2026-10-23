@@ -44,25 +44,48 @@ import {
  * - `dependency` now means "the pull request does not touch the dependency
  *   surface" — stronger than "adds no dependency": a version bump, a lockfile
  *   refresh, a removal, any change of a registry configuration, all touch
- *   it. The surface: every known manifest and lockfile by file name; the
- *   requirements and constraints files; the registry configurations
- *   (`.npmrc`, `.yarnrc`, `.yarnrc.yml`, `bunfig.toml`, `.cargo/`,
- *   `pip.conf`); `.gitmodules` and any gitlink (mode 160000) on either side;
- *   any symlink (mode 120000) added, modified or deleted anywhere — a link can
- *   bring an existing manifest into a workspace; everything under
- *   `.github/workflows/` and `.github/actions/`, where `uses:` lives. Any
- *   status counts, and a rename counts on both sides (the list is read with
- *   `--no-renames`, so a rename is a deletion and an addition). A symlink at a
- *   surface path in either TREE counts too, in the diff or not: its target
- *   can change without the link changing.
+ *   it. The surface is WIDE ON PURPOSE (orchestrator, third review of
+ *   2026-10-23): the line is optional, so a wide surface costs nothing, and
+ *   widening beats refining the analysis. It holds, by name or path (the
+ *   list in the data file is the authority): manifests, lockfiles and
+ *   workspace files of the fleet's ecosystems; every `*requirements*.txt|in`,
+ *   `requirements/`, `constraints*.txt`; the registry and package-manager
+ *   configurations (`.npmrc`, `.yarnrc*`, `.yarn/`, `bunfig.toml`,
+ *   `.cargo/`, `pip.conf`, `pip.ini`, `uv.toml`, `.pnpmfile.cjs`, Plug'n'Play
+ *   loaders, import maps); the tooling pins of this repository (`*.pin.json`,
+ *   `toolchains/`) and the version files (`.tool-versions`, `.nvmrc`,
+ *   `.node-version`, `.python-version`, `mise.toml`, `rust-toolchain*`,
+ *   `gradle/wrapper/`); third-party code and its patches (`node_modules/`,
+ *   `vendor/`, `third_party/`, `patches/`); `.github/workflows/`,
+ *   `.github/actions/` and every `action.yml|yaml`, where `uses:` lives;
+ *   `Dockerfile*` and `Containerfile*`; `.gitmodules`. By mode: any gitlink
+ *   (160000) on either side, and any symlink (120000) added, modified or
+ *   deleted anywhere — a link can bring an existing manifest into a
+ *   workspace. By content: any `.py` added or modified that carries a PEP 723
+ *   block (`# /// script`), a byte search. Any status counts, and a rename
+ *   counts on both sides (the list is read with `--no-renames`). A symlink in
+ *   either TREE, in the diff or not, whose path or path-as-a-directory (`path`
+ *   and `path/`) is on the surface counts too: its target can change without
+ *   the link changing, and a directory link named `.cargo` holds what
+ *   `.cargo/` would.
  * - `workflow`: no path added or type-changed at or under `.github/workflows`
- *   (a rename is an addition), and no symlink added or modified at or under
- *   `.github`.
+ *   (a rename is an addition), and no symlink at or under `.github`, added or
+ *   modified in the diff, or present in either tree.
+ *
+ * STRUCTURAL LIMITS, not enumerable by path and therefore not verified: a
+ * script already referenced (a `postinstall`, a build script) that installs
+ * at run time; `npm:` or `https:` imports written in source code; a change of
+ * behaviour of an already-vendored dependency living outside the listed
+ * paths. A reviewer reads those; the negative does not cover them.
  * - `schema`: no path added, modified or type-changed matching the schema name
- *   rules; and no `.json`, `.jsonc`, `.yaml` or `.yml` added, modified or
- *   type-changed whose raw content contains `$schema` (or its `$` and
- *   `\x24` escapes) — a byte search, no parse. A tsconfig with `$schema` makes
- *   the negative unverifiable, which is acceptable: do not declare it.
+ *   rules; and no `.json`, `.jsonc`, `.json5`, `.yaml` or `.yml` added,
+ *   modified or type-changed whose raw content contains, in any case, the
+ *   substring `schema` or an escape sequence opener (backslash `u`, backslash
+ *   `x`) — a byte search, no parse. The rule is DELIBERATELY WIDE and fails
+ *   closed: every escaped spelling of `$schema` needs one of those openers, so
+ *   no spelling is missed, and a file that merely says `schema`, or escapes
+ *   anything, makes the negative unverifiable. That is acceptable: do not
+ *   declare it.
  *
  * All path comparisons are case-insensitive: macOS and Windows checkouts are.
  *
@@ -74,7 +97,8 @@ import {
  * MISPLACED KEYS. A visible line that is not a declaration but whose START
  * renders as the key is refused by name ("write it as `Not-added:` at the
  * start of its own line"): behind markup prefixes (`>`, `-`, `*`, `+`, `#`,
- * `_`, a number followed by `.` or `)`), and after normalising the line:
+ * `_`, `[`, a backquote, `~`, a number followed by `.` or `)`), and after
+ * normalising the line:
  * backslash escapes removed, HTML entities decoded, tags removed, every
  * `\p{Pd}` dash read as `-`, `\p{Cf}` characters removed (a BOM, a
  * zero-width space, a soft hyphen — the key pattern needs no separator, so
@@ -113,9 +137,9 @@ const DECLARATION_LINE = /^Not-added:(.*)$/;
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
 /** Markup a line may start with before the key still renders first. */
-const MARKUP_PREFIX = /^(?:\s+|[>\-*+#_]|\d+[.)])/;
-/** Any occurrence, to count the mentions a comment or code block hid. */
-const KEY_ANYWHERE = /not[\s\p{Pd}]*added\s*:/giu;
+const MARKUP_PREFIX = /^(?:\s+|[>\-*+#_[`~]|\d+[.)])/;
+/** Any occurrence, to count the lines whose mention a comment or code block hid. */
+const KEY_ANYWHERE = /not[\s\p{Pd}]*added\s*:/iu;
 const BAD_SEPARATOR = /[\s;|/]/;
 /** U+FEFF, written as a code point so the source carries no invisible character. */
 const BYTE_ORDER_MARK = String.fromCodePoint(0xfeff);
@@ -152,10 +176,6 @@ export type NegativesDeclaration =
   | (NegativesLines & { readonly kind: "absent" })
   | (NegativesLines & { readonly kind: "refused"; readonly reasons: readonly string[] })
   | (NegativesLines & { readonly kind: "declared"; readonly values: readonly Negative[] });
-
-function countMatches(text: string, pattern: RegExp): number {
-  return [...text.matchAll(pattern)].length;
-}
 
 /** Author text quoted in a verdict: one line, escaped, bounded. */
 function quote(text: string): string {
@@ -214,7 +234,14 @@ export function readNegativesDeclaration(
   const lines: NegativesLines = {
     linesExamined: text === "" ? 0 : visible.length,
     removedBlocks,
-    ignoredInBlocks: countMatches(normalized, KEY_ANYWHERE) - countMatches(text, KEY_ANYWHERE),
+    // Counted directly, never as a difference of two totals (which went to -1
+    // on `Not<!-- x -->-added:`, where removing the comment CREATES a key): a
+    // line is counted when it mentions the key before stripping and no longer
+    // does after. `stripNonDeclarations` keeps the line count.
+    ignoredInBlocks: normalized
+      .split("\n")
+      .filter((line, index) => KEY_ANYWHERE.test(line) && !KEY_ANYWHERE.test(visible[index] ?? ""))
+      .length,
     declarationLines: declarations.length,
     misplacedLines: misplaced.length,
   };
@@ -273,6 +300,9 @@ export interface NegativesConfig {
   readonly schemaContentMarkers: readonly string[];
   readonly dependencyBasenames: ReadonlySet<string>;
   readonly dependencyPatterns: readonly RegExp[];
+  /** Files whose CONTENT puts them on the surface (a PEP 723 block in a `.py`). */
+  readonly dependencyContentExtensions: readonly string[];
+  readonly dependencyContentMarkers: readonly string[];
 }
 
 export type ConfigRead =
@@ -331,9 +361,11 @@ export function validateConfig(value: unknown): ConfigRead {
   if (
     !isRecord(dependency) ||
     !isStrings(dependency.basenames) ||
-    !isStrings(dependency.pathPatterns)
+    !isStrings(dependency.pathPatterns) ||
+    !isStrings(dependency.contentExtensions) ||
+    !isStrings(dependency.contentMarkers)
   ) {
-    return fail("dependency needs basenames and pathPatterns");
+    return fail("dependency needs basenames, pathPatterns, contentExtensions and contentMarkers");
   }
   const schemaPatterns = compile(schema.pathPatterns, "schema.pathPatterns");
   if (typeof schemaPatterns === "string") return fail(schemaPatterns);
@@ -349,6 +381,10 @@ export function validateConfig(value: unknown): ConfigRead {
       schemaContentMarkers: schema.contentMarkers.map((marker) => marker.toLowerCase()),
       dependencyBasenames: new Set(dependency.basenames.map((name) => name.toLowerCase())),
       dependencyPatterns,
+      dependencyContentExtensions: dependency.contentExtensions.map((extension) =>
+        extension.toLowerCase(),
+      ),
+      dependencyContentMarkers: dependency.contentMarkers.map((marker) => marker.toLowerCase()),
     },
   };
 }
@@ -412,18 +448,37 @@ export function dependencyContacts(context: ChangeContext): Contact[] {
       ? "gitlink"
       : isSymlink(entry)
         ? "symlink"
-        : onDependencySurfaceByName(entry.path, context.config);
+        : (onDependencySurfaceByName(entry.path, context.config) ??
+          dependencyContent(entry, context));
     if (why !== null) contacts.push({ path: entry.path, status: entry.status, why });
   }
   for (const side of ["base", "head"] as const) {
     for (const entry of context.trees[side]) {
       if (entry.mode !== SYMLINK_MODE || inDiff.has(entry.path)) continue;
-      if (onDependencySurfaceByName(entry.path, context.config) !== null) {
+      // A link is tested as a file AND as a directory: the directory patterns
+      // end with `/`, and a link named `.cargo` holds what `.cargo/` would.
+      if (
+        onDependencySurfaceByName(entry.path, context.config) !== null ||
+        onDependencySurfaceByName(`${entry.path}/`, context.config) !== null
+      ) {
         contacts.push({ path: entry.path, status: side, why: `a symlink in the ${side} tree` });
       }
     }
   }
   return contacts;
+}
+
+/** A file put on the surface by its content: a PEP 723 block in a `.py`, by byte search. */
+function dependencyContent(entry: ChangedPath, context: ChangeContext): string | null {
+  const { dependencyContentExtensions, dependencyContentMarkers } = context.config;
+  if (entry.status === "D") return null;
+  const lower = entry.path.toLowerCase();
+  if (!dependencyContentExtensions.some((extension) => lower.endsWith(extension))) return null;
+  const blob = context.readBlob(entry.path);
+  if (!blob.ok) return `unreadable: ${blob.reason}`;
+  const content = blob.text.toLowerCase();
+  const marker = dependencyContentMarkers.find((candidate) => content.includes(candidate));
+  return marker === undefined ? null : `content carries ${marker}`;
 }
 
 /** Pure: every contact of the change set with the workflow surface. */
@@ -447,6 +502,20 @@ export function workflowContacts(context: ChangeContext): Contact[] {
         status: entry.status,
         why: `symlink under ${workflowSymlinkRoot}`,
       });
+    }
+  }
+  const named = new Set(contacts.map((contact) => contact.path));
+  for (const side of ["base", "head"] as const) {
+    for (const entry of context.trees[side]) {
+      if (entry.mode !== SYMLINK_MODE || named.has(entry.path)) continue;
+      if (atOrUnder(entry.path, workflowSymlinkRoot)) {
+        named.add(entry.path);
+        contacts.push({
+          path: entry.path,
+          status: side,
+          why: `a symlink under ${workflowSymlinkRoot} in the ${side} tree`,
+        });
+      }
     }
   }
   return contacts;

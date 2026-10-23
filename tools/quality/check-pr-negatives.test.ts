@@ -139,6 +139,10 @@ describe("the declaration", () => {
     ["Not&hyphen;added: schema"],
     ["Not-<b></b>added: schema"],
     ["<span>Not-added:</span> schema"],
+    ["[Not-added:](#) dependency"],
+    ["`Not-added:` dependency"],
+    ["~~Not-added:~~ dependency"],
+    ["`Not-added:` is optional."],
     [`Not${cp(0x2011)}added: schema`],
     [`Not${cp(0x2013)}added: schema`],
     [`Not${cp(0x00ad)}added: schema`],
@@ -157,12 +161,24 @@ describe("the declaration", () => {
       "lists. Not added: the gate refuses exactly the list",
     ],
     ["inline code mid-line", "The `Not-added:` line is optional."],
-    ["inline code at the start", "`Not-added:` is optional."],
     ["a homoglyph, out of reach and declared so", `N${cp(0x043e)}t-added: schema`],
   ])("%s is not refused", (_, line) => {
     const { report, rendered } = verdict(`Door: two-way\n${line}`);
     expect(report.outcome).toBe("pass");
     expect(rendered).toContain("0 Not-added line(s), 0 misplaced key(s)");
+  });
+
+  test.each([
+    ["a comment that creates the key once removed", "Not<!-- x -->-added: dependency", 0],
+    ["a key hidden in a comment", "<!-- Not-added: x -->", 1],
+    [
+      "a key hidden in a comment beside a visible one",
+      "Not-added: schema <!-- Not-added: x -->",
+      0,
+    ],
+    ["two lines hidden in a code block", "```\nNot-added: a\nNot-added: b\n```", 2],
+  ])("the ignored-mention counter never goes below zero: %s", (_, body, expected) => {
+    expect(readNegativesDeclaration(body).ignoredInBlocks).toBe(expected);
   });
 
   test("author text in a refusal is escaped onto one line", () => {
@@ -279,6 +295,35 @@ describe("the dependency surface", () => {
     ]);
   });
 
+  test.each([
+    ".cargo",
+    "deep/requirements",
+    ".github/actions",
+    "x/node_modules",
+    "toolchains",
+  ])("a DIRECTORY symlink %s in a tree, outside the diff, is a contact", (path) => {
+    const contacts = dependencyContacts(
+      context([file("M", "docs/readme.md")], {}, { base: [{ mode: "120000", path }] }),
+    );
+    expect(contacts).toEqual([{ path, status: "base", why: "a symlink in the base tree" }]);
+  });
+
+  test("a .py carrying a PEP 723 block is a contact by content; one without it is not", () => {
+    const contacts = dependencyContacts(
+      context([file("A", "a.py"), file("M", "b.py"), file("D", "c.py")], {
+        "a.py": "# /// SCRIPT\n# dependencies = []\n# ///\n",
+        "b.py": "print('no block')\n",
+      }),
+    );
+    expect(contacts).toEqual([{ path: "a.py", status: "A", why: "content carries # /// script" }]);
+  });
+
+  test("an unreadable .py is a contact: its content cannot be told apart", () => {
+    expect(dependencyContacts(context([file("M", "x.py")]))[0]?.why).toBe(
+      "unreadable: no blob for x.py",
+    );
+  });
+
   test("paths off the surface are not contacts", () => {
     const entries = [
       file("M", "docs/readme.md"),
@@ -303,6 +348,23 @@ describe("the workflow surface", () => {
     expect(paths(workflowContacts(context([entry])))).toEqual([entry.path]);
   });
 
+  test.each([
+    ["base", ".github/workflows/shared.yml"],
+    ["head", ".github"],
+    ["base", ".github/actions/setup"],
+  ])("a symlink in the %s tree at %s is a contact", (side, path) => {
+    const contacts = workflowContacts(context([], {}, { [side]: [{ mode: "120000", path }] }));
+    expect(paths(contacts)).toEqual([path]);
+  });
+
+  test("a symlink both in the diff and in a tree is named once", () => {
+    const entry = file("A", ".github/workflows/x.yml", "000000", "120000");
+    const contacts = workflowContacts(
+      context([entry], {}, { head: [{ mode: "120000", path: ".github/workflows/x.yml" }] }),
+    );
+    expect(paths(contacts)).toEqual([".github/workflows/x.yml"]);
+  });
+
   test("a workflow modified or deleted, an action added, a symlink removed: no contact", () => {
     const entries = [
       file("M", ".github/workflows/ci.yml"),
@@ -325,10 +387,12 @@ describe("the schema surface", () => {
   });
 
   test.each([
-    ["$schema", '{"$schema":"x"}'],
-    ["\\u0024schema", '{"\\u0024schema":"x"}'],
-    ["\\x24schema", '"\\x24schema": x'],
-  ])("content carrying %s is a contact, in any case", (marker, text) => {
+    ["schema", '{"$schema":"x"}'],
+    ["schema", '{"schemaVersion": 1}'],
+    ["\\u", '{"\\u0024\\u0073chema":"x"}'],
+    ["\\u", '{"\\U00000024x":"x"}'],
+    ["\\x", '"\\x24\\x73chema": x'],
+  ])("content carrying %s is a contact, in any case (%s)", (marker, text) => {
     const contacts = schemaContacts(
       context([file("M", "data/x.yaml")], { "data/x.yaml": text.toUpperCase() }),
     );
