@@ -59,6 +59,10 @@ import { concludeGate, GateReport } from "./gate-report";
  * D4), and an entry written without its review would be read by the next
  * session as a settled refusal. Like FORGOTTEN.yaml, the file is gated
  * exactly, not its neighbours; its shape is checked by `check-refusals.ts`.
+ * `tools/quality/refusals-exemptions.v1.json` joined with it: an exemption
+ * relaxes that shape gate for one evidence, which is a guardrail mutation
+ * (I-17) in the same way as editing the register. The other data files under
+ * `tools/quality/` that relax a gate are an earlier class, not gated here.
  *
  * A review-artefact reference counts only if it names a path that exists in
  * the tree under review (2026-10-14). Before, any string shaped like
@@ -93,6 +97,7 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^docs\/decisions\/LEXICON\.md$/,
   /^ecosystem\/FORGOTTEN\.yaml$/,
   /^ecosystem\/refusals\.v1\.yaml$/,
+  /^tools\/quality\/refusals-exemptions\.v1\.json$/,
 ];
 
 /**
@@ -107,6 +112,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "docs/decisions/LEXICON.md",
   "ecosystem/FORGOTTEN.yaml",
   "ecosystem/refusals.v1.yaml",
+  "tools/quality/refusals-exemptions.v1.json",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */

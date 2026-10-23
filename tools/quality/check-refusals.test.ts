@@ -58,8 +58,11 @@ function register(entries: readonly string[], head = `schema_version: ${SCHEMA_V
   return [head, "# a comment line is never a key", "", "refusals:", ...entries, ""].join("\n");
 }
 
+/** A fixed clock: the gate reads the clock at its entry point only. */
+const NOW = new Date("2026-10-23T12:00:00Z");
+
 function judge(text: string, exemptions: readonly EvidenceExemption[] = []) {
-  return evaluateRefusals(text, exemptions);
+  return evaluateRefusals(text, exemptions, NOW);
 }
 
 /** The violations of a register holding one entry built from `overrides`. */
@@ -69,9 +72,11 @@ function violationsOf(overrides: Fields): string[] {
 
 describe("the register of the repository", () => {
   test("passes, and its volume matches an independent count of entries and evidence", async () => {
+    // The real clock, as the entry point reads it: the register must hold today.
     const report = await evaluateRefusalsFiles(
       join(ROOT, REGISTER_PATH),
       join(ROOT, EXEMPTIONS_PATH),
+      new Date(),
     );
     expect(report.violations).toEqual([]);
     expect(report.outcome).toBe("pass");
@@ -160,7 +165,9 @@ describe("root", () => {
   });
 
   test("`refusals` that is not a list fails", () => {
-    expect(judge(`schema_version: ${SCHEMA_VERSION}\nrefusals: none\n`).violations).toEqual([
+    // `refusals:` with nothing under it parses to null. A value on the same
+    // line (`refusals: none`) is refused earlier, as a root outside the block style.
+    expect(judge(`schema_version: ${SCHEMA_VERSION}\nrefusals:\n`).violations).toEqual([
       `${REGISTER_PATH}: \`refusals\` doit être une liste`,
     ]);
   });
@@ -259,16 +266,15 @@ describe("entry keys", () => {
 });
 
 describe("entry fields", () => {
+  const ID_FORM =
+    "`id` doit s'écrire `refusal.<mot>[-<mot>…]`, mots en minuscules ASCII et chiffres (^refusal\\.[a-z0-9]+(-[a-z0-9]+)*$)";
+
   test("an id without the `refusal.` prefix fails", () => {
-    expect(violationsOf({ id: "archify-install" })).toEqual([
-      "archify-install: `id` doit être préfixé `refusal.` et sans espace",
-    ]);
+    expect(violationsOf({ id: "archify-install" })).toEqual([`archify-install: ${ID_FORM}`]);
   });
 
   test("an id that is only the prefix fails", () => {
-    expect(violationsOf({ id: "refusal." })).toEqual([
-      "refusal.: `id` doit être préfixé `refusal.` et sans espace",
-    ]);
+    expect(violationsOf({ id: "refusal." })).toEqual([`refusal.: ${ID_FORM}`]);
   });
 
   test("a duplicate id fails", () => {
@@ -286,7 +292,7 @@ describe("entry fields", () => {
   test("a source that is http, or not a URL, fails", () => {
     for (const source of ["http://github.com/example/tool", "github.com/example/tool"]) {
       expect(violationsOf({ source })).toEqual([
-        "refusal.example-install: `source` doit être une URL https",
+        "refusal.example-install: `source` doit être une URL https absolue (`https://<hôte>/…`)",
       ]);
     }
   });
@@ -294,7 +300,7 @@ describe("entry fields", () => {
   test("a revision that is not <owner>/<repository>@<sha> fails", () => {
     for (const revision of ["example/tool", "example/tool@main", "tool@0123456", '""']) {
       expect(violationsOf({ revision })).toEqual([
-        "refusal.example-install: `revision` doit être absent, null ou `<propriétaire>/<dépôt>@<sha>`",
+        "refusal.example-install: `revision` doit être absent, null ou `<propriétaire>/<dépôt>@<sha>`, sha de 7 à 40 caractères hexadécimaux minuscules",
       ]);
     }
   });
@@ -315,7 +321,7 @@ describe("entry fields", () => {
     const notIso = ["22/10/2026", "2026-02-30", "2026-1-5", "2026-10-22T10:00:00Z", "20261022"];
     for (const decided of notIso) {
       expect(violationsOf({ decided_on: decided })).toEqual([
-        "refusal.example-install: `decided_on` doit être une date ISO 8601 valide (AAAA-MM-JJ)",
+        `refusal.example-install: \`decided_on\` '${decided}' n'est pas une date AAAA-MM-JJ réelle comprise entre 2026-01-01 et 2026-10-24`,
       ]);
     }
   });
@@ -345,14 +351,18 @@ describe("entry fields", () => {
 
 describe("evidence", () => {
   const OUT_OF_FORM =
-    "ni citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`, ni URL https suivie de « (consultée le AAAA-MM-JJ) »";
+    "ni citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>` (sha de 7 à 40 caractères hexadécimaux minuscules, lignes `N`, `N-M` ou leur liste séparée par des virgules), ni URL https suivie de « (consultée le AAAA-MM-JJ) »";
+  const PATH_FORM =
+    "attendu un chemin relatif à la racine du dépôt cité, sans segment vide, '.' ni '..'";
+  const RANGE = (item: string) =>
+    `l'intervalle '${item}' ne désigne aucune ligne : lignes numérotées à partir de 1, début inférieur ou égal à la fin`;
 
   test("the two admitted forms are recognised", () => {
-    expect(classifyEvidence("tt-a1i/archify@25cf370:a/b.mjs:607-612")).toEqual({
+    expect(classifyEvidence("tt-a1i/archify@25cf370:a/b.mjs:607-612", NOW)).toEqual({
       kind: "pinned",
     });
-    expect(classifyEvidence("o/r@0123456:a.ts:1,3-4")).toEqual({ kind: "pinned" });
-    expect(classifyEvidence("https://www.humanlayer.com/ (consultée le 2026-10-23)")).toEqual({
+    expect(classifyEvidence("o/r@0123456:a.ts:1,3-4", NOW)).toEqual({ kind: "pinned" });
+    expect(classifyEvidence("https://www.humanlayer.com/ (consultée le 2026-10-23)", NOW)).toEqual({
       kind: "dated-url",
     });
   });
@@ -364,30 +374,38 @@ describe("evidence", () => {
     ["a citation with an upper-case sha", "o/r@ABCDEF0:src/a.ts:1", OUT_OF_FORM],
     ["a URL without its consultation date", "https://example.org/x", OUT_OF_FORM],
     ["a date before the URL", "(consultée le 2026-10-23) https://example.org/x", OUT_OF_FORM],
-    ["line 0", "o/r@0123456:src/a.ts:0", "l'intervalle '0' ne désigne aucune ligne"],
-    ["a reversed range", "o/r@0123456:src/a.ts:9-3", "l'intervalle '9-3' ne désigne aucune ligne"],
+    ["line 0", "o/r@0123456:src/a.ts:0", RANGE("0")],
+    ["a reversed range", "o/r@0123456:src/a.ts:9-3", RANGE("9-3")],
     [
       "a malformed line spec",
       "o/r@0123456:src/a.ts:1-",
-      "'1-' n'est pas une spécification de lignes",
+      "'1-' n'est pas une spécification de lignes `N`, `N-M` ou leur liste séparée par des virgules",
     ],
-    ["an absolute path", "o/r@0123456:/etc/passwd:1", "le chemin est absolu"],
-    ["a path climbing out", "o/r@0123456:src/../x.ts:1", "le chemin porte un segment '..'"],
-    ["a '.' segment", "o/r@0123456:./x.ts:1", "le chemin porte un segment '.'"],
-    ["an empty segment", "o/r@0123456:src//x.ts:1", "le chemin porte un segment vide"],
+    ["an absolute path", "o/r@0123456:/etc/passwd:1", `le chemin est absolu ; ${PATH_FORM}`],
+    [
+      "a path climbing out",
+      "o/r@0123456:src/../x.ts:1",
+      `le chemin porte un segment '..' ; ${PATH_FORM}`,
+    ],
+    ["a '.' segment", "o/r@0123456:./x.ts:1", `le chemin porte un segment '.' ; ${PATH_FORM}`],
+    [
+      "an empty segment",
+      "o/r@0123456:src//x.ts:1",
+      `le chemin porte un segment vide ; ${PATH_FORM}`,
+    ],
     ["a '..' repository", "o/..@0123456:x.ts:1", "'..' n'est pas un nom de dépôt"],
     [
       "an http URL",
       "http://example.org/x (consultée le 2026-10-23)",
-      "'http://example.org/x' n'est pas une URL https",
+      "'http://example.org/x' n'est pas une URL https absolue (`https://<hôte>/…`)",
     ],
     [
       "an impossible consultation date",
       "https://example.org/x (consultée le 2026-13-01)",
-      "la date de consultation '2026-13-01' n'est pas une date ISO 8601 valide",
+      "la date de consultation '2026-13-01' n'est pas une date AAAA-MM-JJ réelle comprise entre 2026-01-01 et 2026-10-24",
     ],
   ])("%s is out of form", (_label, evidence, reason) => {
-    expect(classifyEvidence(evidence)).toEqual({ kind: "invalid", reason });
+    expect(classifyEvidence(evidence, NOW)).toEqual({ kind: "invalid", reason });
     const violations = violationsOf({ evidence: `\n      - ${JSON.stringify(evidence)}` });
     expect(violations).toEqual([
       `refusal.example-install: preuve hors forme '${evidence}' : ${reason}`,
@@ -427,7 +445,7 @@ describe("exemptions", () => {
   test("an exemption of another entry does not cover the evidence", () => {
     const report = judge(withDirectory, [{ ...exemption, id: "refusal.other" }]);
     expect(report.violations).toContain(
-      `refusal.example-install: preuve hors forme '${DIRECTORY}' : ni citation épinglée \`<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>\`, ni URL https suivie de « (consultée le AAAA-MM-JJ) »`,
+      `refusal.example-install: preuve hors forme '${DIRECTORY}' : ni citation épinglée \`<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>\` (sha de 7 à 40 caractères hexadécimaux minuscules, lignes \`N\`, \`N-M\` ou leur liste séparée par des virgules), ni URL https suivie de « (consultée le AAAA-MM-JJ) »`,
     );
   });
 
@@ -469,9 +487,12 @@ describe("files", () => {
     return dir;
   }
 
+  // The exemption file is read as its own re-emission, so fixtures use that layout.
+  const NO_EXEMPTION = '{\n  "exemptions": []\n}\n';
+
   test("an absent register fails, never reads as empty", async () => {
-    const dir = scratch({ "x.json": '{"exemptions": []}' });
-    const report = await evaluateRefusalsFiles(join(dir, "absent.yaml"), join(dir, "x.json"));
+    const dir = scratch({ "x.json": NO_EXEMPTION });
+    const report = await evaluateRefusalsFiles(join(dir, "absent.yaml"), join(dir, "x.json"), NOW);
     expect(report.outcome).toBe("violations");
     expect(report.violations[0]).toStartWith(
       `${join(dir, "absent.yaml")}: registre absent ou illisible : `,
@@ -479,9 +500,13 @@ describe("files", () => {
   });
 
   test("an absent or malformed exemption file fails", async () => {
-    const dir = scratch({ "r.yaml": register([entry()]), "bad.json": "{" });
-    for (const name of ["absent.json", "bad.json"]) {
-      const report = await evaluateRefusalsFiles(join(dir, "r.yaml"), join(dir, name));
+    const dir = scratch({
+      "r.yaml": register([entry()]),
+      "bad.json": "{",
+      "compact.json": '{"exemptions": []}',
+    });
+    for (const name of ["absent.json", "bad.json", "compact.json"]) {
+      const report = await evaluateRefusalsFiles(join(dir, "r.yaml"), join(dir, name), NOW);
       expect(report.violations[0]).toStartWith(
         `${join(dir, name)}: fichier d'exemptions absent ou illisible : `,
       );
@@ -489,8 +514,8 @@ describe("files", () => {
   });
 
   test("files that hold read through to the verdict", async () => {
-    const dir = scratch({ "r.yaml": register([entry()]), "x.json": '{"exemptions": []}' });
-    const report = await evaluateRefusalsFiles(join(dir, "r.yaml"), join(dir, "x.json"));
+    const dir = scratch({ "r.yaml": register([entry()]), "x.json": NO_EXEMPTION });
+    const report = await evaluateRefusalsFiles(join(dir, "r.yaml"), join(dir, "x.json"), NOW);
     expect(report.outcome).toBe("pass");
   });
 });
@@ -517,11 +542,206 @@ describe("scanBlockLayout", () => {
       rootKeys: ["schema_version", "other", "refusals"],
       entryKeys: [["id", "reason", "evidence"], ["id"]],
       unreadLines: [],
+      rootStyleLine: null,
     });
   });
 
   test("a key or nested content before any entry is unread", () => {
     const text = "refusals:\n    id: x\n      - y\n   three spaces\n";
     expect(scanBlockLayout(text).unreadLines).toEqual([2, 3, 4]);
+  });
+});
+
+// Findings of the separate-role review of #142 at f23f6e9 (2026-10-23). Each
+// case below passed the gate at that head; each is now refused by name.
+describe("review findings of 2026-10-23", () => {
+  const rootStyle = (line: number) =>
+    `${REGISTER_PATH}: racine hors du style bloc en colonne 0 (ligne ${line}) : le registre s'écrit en clés nues \`schema_version:\` et \`refusals:\` en colonne 0, \`refusals:\` sans valeur sur sa ligne et suivi de ses entrées \`  - <clé>:\``;
+  const indent = (text: string) =>
+    text
+      .split("\n")
+      .map((line) => (line === "" ? line : ` ${line}`))
+      .join("\n");
+  const flowRegister = (fields: string) =>
+    `schema_version: ${SCHEMA_VERSION}\nrefusals: [{id: refusal.flow-install, subject: s, source: "https://github.com/e/t", action: install, origin: inspection, decided_on: 2026-10-22, ${fields}, reexamine_when: null}]\n`;
+
+  describe("1. the line reading and the parser must agree", () => {
+    test("an indented root with `reason` written twice is refused by name", () => {
+      const text = indent(register([`${entry()}\n    reason: A second motive.`]));
+      expect(Bun.YAML.parse(text)).toMatchObject({ refusals: [{ reason: "A second motive." }] });
+      expect(judge(text).violations).toEqual([rootStyle(1)]);
+    });
+
+    test("an indented root with `refusals` written twice is refused by name", () => {
+      const text = indent(`${register([entry()])}refusals:\n${entry({ id: "refusal.b" })}\n`);
+      expect(judge(text).violations).toEqual([rootStyle(1)]);
+    });
+
+    test("`refusals` written in flow on one line, with `reason` twice, is refused by name", () => {
+      const text = flowRegister('reason: VISIBLE, reason: x, evidence: ["e/t@0123456:a.ts:1"]');
+      expect(Bun.YAML.parse(text)).toMatchObject({ refusals: [{ reason: "x" }] });
+      expect(judge(text).violations).toEqual([rootStyle(2)]);
+    });
+
+    test("`refusals` in flow with `evidence` twice is refused by name", () => {
+      const text = flowRegister(
+        "reason: r, evidence: ['private notes'], evidence: ['x/y@0123456:a:1']",
+      );
+      expect(Bun.YAML.parse(text)).toMatchObject({
+        refusals: [{ evidence: ["x/y@0123456:a:1"] }],
+      });
+      expect(judge(text).violations).toEqual([rootStyle(2)]);
+    });
+
+    test("an entry count that differs between the two readings fails by name", () => {
+      const flow = "  - {id: refusal.flow-install, subject: x}";
+      const violations = judge(register([entry(), flow, entry({ id: "refusal.c" })])).violations;
+      expect(violations).toContain(
+        `${REGISTER_PATH}: 2 entrée(s) lue(s) ligne à ligne, 3 par le parseur : chaque entrée s'ouvre par \`  - <clé>:\` en colonne 2`,
+      );
+      // With the counts apart, an index names a different entry in each reading:
+      // the keys of refusal.c must not be held against the flow entry.
+      expect(violations.filter((violation) => violation.includes("clés lues"))).toEqual([]);
+    });
+
+    test("a root written in flow in column 0 is refused by name", () => {
+      const text = `{schema_version: ${SCHEMA_VERSION}, refusals: [{id: refusal.a, reason: x, reason: y}]}\n`;
+      expect(Bun.YAML.parse(text)).toMatchObject({ refusals: [{ reason: "y" }] });
+      expect(judge(text).violations).toEqual([rootStyle(1)]);
+    });
+
+    test("entry keys that differ between the two readings fail by name", () => {
+      const text = register([`${entry()}\n    'extra': y`]);
+      expect(judge(text).violations).toContain(
+        "refusal.example-install: clés lues ligne à ligne (action, decided_on, evidence, id, origin, reason, reexamine_when, revision, source, subject) et par le parseur (action, decided_on, evidence, extra, id, origin, reason, reexamine_when, revision, source, subject) différentes",
+      );
+    });
+
+    test("root keys that differ between the two readings fail by name", () => {
+      const text = `${register([entry()])}? extra\n: y\n`;
+      expect(judge(text).violations).toContain(
+        `${REGISTER_PATH}: clés racine lues ligne à ligne (refusals, schema_version) et par le parseur (extra, refusals, schema_version) différentes`,
+      );
+    });
+  });
+
+  describe("2. at least one public evidence per entry, one occurrence per exemption", () => {
+    const DIRECTORY = "o/r@0123456:.github/workflows/";
+    const exemption: EvidenceExemption = {
+      id: "refusal.example-install",
+      evidence: DIRECTORY,
+      because: "divergence left to the owner",
+    };
+
+    test("an entry whose every evidence is exempted fails", () => {
+      const text = register([entry({ evidence: `\n      - ${DIRECTORY}` })]);
+      expect(judge(text, [exemption]).violations).toEqual([
+        "refusal.example-install: aucune preuve publique conforme une fois les exemptions retirées : une entrée porte au moins une citation épinglée ou une URL datée (ADR-0056 D4)",
+      ]);
+    });
+
+    test("one exemption does not cover two identical evidence items", () => {
+      const evidence = `\n      - o/r@0123456:src/a.ts:1\n      - ${DIRECTORY}\n      - ${DIRECTORY}`;
+      const violations = judge(register([entry({ evidence })]), [exemption]).violations;
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toStartWith(
+        `refusal.example-install: preuve hors forme '${DIRECTORY}' : `,
+      );
+    });
+  });
+
+  describe("4. dates are bounded by a floor and by the injected clock", () => {
+    const at = (iso: string) => new Date(iso);
+    const decided = (value: string, now = NOW) =>
+      evaluateRefusals(register([entry({ decided_on: value })]), [], now).violations;
+    const consulted = (value: string, now = NOW) =>
+      evaluateRefusals(
+        register([
+          entry({ evidence: `\n      - https://example.org/report (consultée le ${value})` }),
+        ]),
+        [],
+        now,
+      ).violations;
+
+    test("decided_on after the day following now fails; that day passes", () => {
+      expect(decided("2026-10-24")).toEqual([]);
+      expect(decided("2026-10-25")).toEqual([
+        "refusal.example-install: `decided_on` '2026-10-25' n'est pas une date AAAA-MM-JJ réelle comprise entre 2026-01-01 et 2026-10-24",
+      ]);
+    });
+
+    test("decided_on before the 2026-01-01 floor fails; the floor passes", () => {
+      expect(decided("2026-01-01")).toEqual([]);
+      expect(decided("2025-12-31")).toEqual([
+        "refusal.example-install: `decided_on` '2025-12-31' n'est pas une date AAAA-MM-JJ réelle comprise entre 2026-01-01 et 2026-10-24",
+      ]);
+    });
+
+    test("a consultation date outside the same bounds fails", () => {
+      expect(consulted("2026-10-24")).toEqual([]);
+      for (const value of ["2026-10-25", "2025-12-31"]) {
+        expect(consulted(value)).toEqual([
+          `refusal.example-install: preuve hors forme 'https://example.org/report (consultée le ${value})' : la date de consultation '${value}' n'est pas une date AAAA-MM-JJ réelle comprise entre 2026-01-01 et 2026-10-24`,
+        ]);
+      }
+    });
+
+    test("the bound is the injected now, not the clock", () => {
+      expect(decided("2029-06-01", at("2030-01-01T00:00:00Z"))).toEqual([]);
+      expect(consulted("2029-06-01", at("2030-01-01T00:00:00Z"))).toEqual([]);
+    });
+  });
+
+  describe("5. the exemption file refuses duplicate keys", () => {
+    const created: string[] = [];
+    afterAll(() => {
+      for (const dir of created) rmSync(dir, { recursive: true, force: true });
+    });
+
+    test("a key written twice, which JSON.parse swallows, fails", async () => {
+      const dir = mkdtempSync(join(tmpdir(), "check-refusals-"));
+      created.push(dir);
+      writeFileSync(join(dir, "r.yaml"), register([entry()]));
+      const twice =
+        '{\n  "exemptions": [\n    {\n      "id": "a",\n      "id": "refusal.example-install",\n      "evidence": "x",\n      "because": "y"\n    }\n  ]\n}\n';
+      writeFileSync(join(dir, "x.json"), twice);
+      const report = await evaluateRefusalsFiles(join(dir, "r.yaml"), join(dir, "x.json"), NOW);
+      expect(report.violations).toEqual([
+        `${join(dir, "x.json")}: fichier d'exemptions absent ou illisible : ${EXEMPTIONS_PATH}: le texte n'est pas sa réémission \`JSON.stringify(valeur, null, 2)\` suivie d'un saut de ligne ; une clé écrite deux fois, que JSON.parse garde en silence à sa dernière valeur, y diffère`,
+      ]);
+    });
+  });
+
+  describe("6. id is lowercase ASCII words joined by single hyphens", () => {
+    test.each([
+      ["a zero-width space", "refusal.a​"],
+      ["a path", '"refusal.a/../<b>"'],
+      ["an upper-case letter", "refusal.Archify"],
+      ["a double hyphen", "refusal.a--b"],
+      ["a leading hyphen", "refusal.-a"],
+      ["an underscore", "refusal.a_b"],
+    ])("an id with %s fails", (_label, id) => {
+      const violations = violationsOf({ id });
+      expect(violations).toHaveLength(1);
+      expect(violations[0]).toEndWith(
+        ": `id` doit s'écrire `refusal.<mot>[-<mot>…]`, mots en minuscules ASCII et chiffres (^refusal\\.[a-z0-9]+(-[a-z0-9]+)*$)",
+      );
+    });
+  });
+
+  describe("7. each failure states the exact form expected", () => {
+    test("source, revision and evidence messages name their form", () => {
+      expect(violationsOf({ source: "http://e.org" })).toEqual([
+        "refusal.example-install: `source` doit être une URL https absolue (`https://<hôte>/…`)",
+      ]);
+      expect(violationsOf({ revision: "e/t@main" })).toEqual([
+        "refusal.example-install: `revision` doit être absent, null ou `<propriétaire>/<dépôt>@<sha>`, sha de 7 à 40 caractères hexadécimaux minuscules",
+      ]);
+      expect(classifyEvidence("e/t@0123456:a.ts", NOW)).toEqual({
+        kind: "invalid",
+        reason:
+          "ni citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>` (sha de 7 à 40 caractères hexadécimaux minuscules, lignes `N`, `N-M` ou leur liste séparée par des virgules), ni URL https suivie de « (consultée le AAAA-MM-JJ) »",
+      });
+    });
   });
 });

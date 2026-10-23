@@ -63,16 +63,29 @@ describe("touchesGatedPaths", () => {
         "ecosystem/refusals.v2.yaml",
         "ecosystem/refusals.v1.yaml.bak",
         "docs/ecosystem/refusals.v1.yaml",
-        "tools/quality/refusals-exemptions.v1.json",
       ]),
     ).toEqual(["ecosystem/refusals.v1.yaml"]);
+  });
+
+  // Review of #142 (2026-10-23): an exemption relaxes the refusals gate, so
+  // its file is gated like the register — exactly that file. The other
+  // ungated data files of tools/quality are an earlier class, out of scope.
+  test("matches tools/quality/refusals-exemptions.v1.json exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "tools/quality/refusals-exemptions.v1.json",
+        "tools/quality/refusals-exemptions.v2.json",
+        "tools/quality/refusals-exemptions.v1.json.bak",
+        "tools/quality/pinned-citations.v1.json",
+        "tools/quality/check-refusals.ts",
+      ]),
+    ).toEqual(["tools/quality/refusals-exemptions.v1.json"]);
   });
 
   test("every gated pattern has a pathspec whose diff is searched for evidence", () => {
     expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
     for (const pathspec of GATED_PATHSPECS) {
-      const sample =
-        pathspec.endsWith(".md") || pathspec.endsWith(".yaml") ? pathspec : `${pathspec}/x.md`;
+      const sample = /\.(md|yaml|json)$/.test(pathspec) ? pathspec : `${pathspec}/x.md`;
       expect(touchesGatedPaths([sample])).toEqual([sample]);
     }
   });

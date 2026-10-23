@@ -14,35 +14,58 @@
  *   - the root carries `schema_version: libre-ai.refusals.v1` and `refusals`,
  *     and nothing else;
  *   - every entry carries the fields of the format and no other key: `id`
- *     (prefixed `refusal.`, unique), `subject`, `source` (https URL),
- *     `revision` (absent, null, or `<owner>/<repository>@<sha>`), `action` and
- *     `origin` in their closed vocabularies, `decided_on` (a real ISO 8601
- *     calendar date), `reason`, `evidence` and `reexamine_when` (a string or
- *     null, always written);
+ *     (`refusal.` then lowercase ASCII words joined by single hyphens,
+ *     unique), `subject`, `source` (https URL), `revision` (absent, null, or
+ *     `<owner>/<repository>@<sha>`), `action` and `origin` in their closed
+ *     vocabularies, `decided_on` (a real ISO 8601 calendar date, bounded as
+ *     below), `reason`, `evidence` and `reexamine_when` (a string or null,
+ *     always written);
  *   - every evidence is a pinned citation
  *     `<owner>/<repository>@<sha>:<path>:<lines>` or an https URL followed by
  *     its consultation date, written `<url> (consultée le YYYY-MM-DD)` as the
- *     entries of the register write it;
+ *     entries of the register write it; and every entry keeps at least one
+ *     such evidence once its exemptions are set aside (D4: "une entrée sans
+ *     preuve publique ne s'écrit pas");
  *   - the register is non-empty: it was seeded with entries by ADR-0056, so an
  *     empty list means it was emptied or is no longer read, never that the
  *     fleet refused nothing.
+ *
+ * Some of these forms are stricter than the header says (https, the exact
+ * consultation suffix, a sha of 7 to 40 lowercase hexadecimal characters):
+ * the header is on the review surface and is not edited by the gate's own
+ * pull request, so every failure message states the exact form expected.
+ *
+ * Dates. `decided_on` and every consultation date lie between 2026-01-01 and
+ * the day after `now`. The ceiling refuses a date that has not happened yet;
+ * one day of slack keeps a refusal written late on its day valid in any time
+ * zone. The floor is the year the register was born (created by ADR-0056 on
+ * 2026-10-23; its earliest `decided_on` is 2026-10-08): a year boundary rather
+ * than the creation date, so that a refusal evaluated earlier in 2026 is still
+ * recorded under its real date, while a mistyped year (2016, 2025) is refused.
+ * `now` is a parameter; the clock is read at the entry point only.
  *
  * Fail closed, never zero: an absent or unreadable register, a character the
  * YAML parser reads differently from a line scan (`yaml-text-guard`), a parse
  * error, or an exemption file that does not validate is a failure.
  *
- * Duplicate keys. `Bun.YAML.parse` keeps the last of two identical keys
- * without saying so (measured with Bun 1.4.4: `c: 1` then `c: 2` parses to
- * `{ c: 2 }`), so an entry carrying two `reason:` would lose the first one
- * silently. The register is therefore also read line by line, in the block
- * style it is written in, and no key may appear twice there. A line in any
- * other style (a quoted or explicit key, a flow mapping) is refused rather
- * than half read, since a duplicate could hide in it (`scanBlockLayout`).
+ * Two readings that must agree. `Bun.YAML.parse` keeps the last of two
+ * identical keys without saying so (measured with Bun 1.4.4: `c: 1` then
+ * `c: 2` parses to `{ c: 2 }`), so an entry carrying two `reason:` would lose
+ * the first one silently. The register is therefore also read line by line,
+ * in the block style it is written in (`scanBlockLayout`), and the two
+ * readings are compared: same root keys, same number of entries, and for each
+ * entry the same set of keys, none of them written twice. Any disagreement is
+ * a named failure. A root that is not a block mapping in column 0 (indented,
+ * or `refusals` written in flow on its own line) is refused by name before
+ * anything else, because the line reading cannot see into it.
  *
  * Exemptions live in data (`tools/quality/refusals-exemptions.v1.json`), each
- * with its reason, and are printed on the success line. An exemption only
- * covers an evidence that fails the form above; one that covers nothing fails,
- * so it cannot outlive the divergence it records.
+ * with its reason, and are printed on the success line. An exemption covers
+ * one occurrence of an evidence that fails the form above; one that covers
+ * nothing fails, so it cannot outlive the divergence it records. The file
+ * must be exactly its own re-emission by `JSON.stringify(value, null, 2)`:
+ * `JSON.parse` keeps the last of two identical keys in silence, and the
+ * re-emitted text no longer carries the first one.
  *
  * What this gate does NOT assert: that the evidence establishes the motive,
  * that a pinned citation resolves, or that the refusal belongs in this
@@ -55,6 +78,7 @@ import { findUnreadableCharacter } from "./yaml-text-guard";
 export const REGISTER_PATH = "ecosystem/refusals.v1.yaml";
 export const EXEMPTIONS_PATH = "tools/quality/refusals-exemptions.v1.json";
 export const SCHEMA_VERSION = "libre-ai.refusals.v1";
+export const DATE_FLOOR = "2026-01-01";
 
 export const ACTIONS: readonly string[] = ["install", "depend", "reuse-code", "use-service"];
 export const ORIGINS: readonly string[] = ["observed", "inspection", "synthetic", "proposal"];
@@ -73,7 +97,7 @@ const REQUIRED_ENTRY_KEYS: readonly string[] = [
 ];
 const OPTIONAL_ENTRY_KEYS: readonly string[] = ["revision"];
 
-const ID = /^refusal\.\S+$/;
+const ID = /^refusal\.[a-z0-9]+(-[a-z0-9]+)*$/;
 const OWNER = "[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?";
 const REPOSITORY = "[A-Za-z0-9._-]+";
 const SHA = "[0-9a-f]{7,40}";
@@ -83,6 +107,12 @@ const PINNED_CITATION = new RegExp(
 );
 const LINE_SPEC = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
 const DATED_URL = /^(?<url>\S+) \(consultée le (?<date>\d{4}-\d{2}-\d{2})\)$/;
+const ONE_DAY_MS = 86_400_000;
+
+const HTTPS_FORM = "URL https absolue (`https://<hôte>/…`)";
+const SHA_FORM = "sha de 7 à 40 caractères hexadécimaux minuscules";
+const PATH_FORM =
+  "attendu un chemin relatif à la racine du dépôt cité, sans segment vide, '.' ni '..'";
 
 export const EMPTY_REGISTER_NOTE =
   "le registre ne porte aucune entrée : il a été amorcé par ADR-0056 D4, donc une liste vide " +
@@ -110,6 +140,21 @@ export function isIsoDate(value: unknown): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+/** The last day a date may name: the day after `now`, in UTC. */
+export function latestDate(now: Date): string {
+  return new Date(now.getTime() + ONE_DAY_MS).toISOString().slice(0, 10);
+}
+
+/** Null when `value` is a real date between the floor and the day after `now`, else why not. */
+export function dateProblem(value: unknown, now: Date): string | null {
+  const latest = latestDate(now);
+  // `YYYY-MM-DD` strings order like the dates they name, once isIsoDate holds.
+  if (isIsoDate(value) && (value as string) >= DATE_FLOOR && (value as string) <= latest) {
+    return null;
+  }
+  return `'${String(value)}' n'est pas une date AAAA-MM-JJ réelle comprise entre ${DATE_FLOOR} et ${latest}`;
+}
+
 /** An absolute https URL written without whitespace. */
 export function isHttpsUrl(value: unknown): boolean {
   if (typeof value !== "string" || /\s/.test(value)) return false;
@@ -119,22 +164,28 @@ export function isHttpsUrl(value: unknown): boolean {
 
 /** Null when the path names a file inside a repository, else why not. */
 function pathProblem(path: string): string | null {
-  if (path.startsWith("/")) return "le chemin est absolu";
+  if (path.startsWith("/")) return `le chemin est absolu ; ${PATH_FORM}`;
   for (const segment of path.split("/")) {
-    if (segment === "") return "le chemin porte un segment vide";
-    if (segment === "." || segment === "..") return `le chemin porte un segment '${segment}'`;
+    if (segment === "") return `le chemin porte un segment vide ; ${PATH_FORM}`;
+    if (segment === "." || segment === "..") {
+      return `le chemin porte un segment '${segment}' ; ${PATH_FORM}`;
+    }
   }
   return null;
 }
 
 /** Null when `lines` is `L`, `a-b` or a comma list of those, 1-based and ordered. */
 function linesProblem(lines: string): string | null {
-  if (!LINE_SPEC.test(lines)) return `'${lines}' n'est pas une spécification de lignes`;
+  if (!LINE_SPEC.test(lines)) {
+    return `'${lines}' n'est pas une spécification de lignes \`N\`, \`N-M\` ou leur liste séparée par des virgules`;
+  }
   for (const item of lines.split(",")) {
     const [startText, endText] = item.split("-");
     const start = Number(startText);
     const end = endText === undefined ? start : Number(endText);
-    if (start < 1 || end < start) return `l'intervalle '${item}' ne désigne aucune ligne`;
+    if (start < 1 || end < start) {
+      return `l'intervalle '${item}' ne désigne aucune ligne : lignes numérotées à partir de 1, début inférieur ou égal à la fin`;
+    }
   }
   return null;
 }
@@ -145,7 +196,7 @@ export type EvidenceForm =
   | { readonly kind: "invalid"; readonly reason: string };
 
 /** Classify one evidence item against the two forms the register admits. */
-export function classifyEvidence(evidence: unknown): EvidenceForm {
+export function classifyEvidence(evidence: unknown, now: Date): EvidenceForm {
   if (typeof evidence !== "string") {
     return { kind: "invalid", reason: "une preuve est une chaîne" };
   }
@@ -162,21 +213,20 @@ export function classifyEvidence(evidence: unknown): EvidenceForm {
   const dated = DATED_URL.exec(evidence);
   if (dated?.groups !== undefined) {
     if (!isHttpsUrl(dated.groups.url)) {
-      return { kind: "invalid", reason: `'${dated.groups.url}' n'est pas une URL https` };
+      return { kind: "invalid", reason: `'${dated.groups.url}' n'est pas une ${HTTPS_FORM}` };
     }
-    if (!isIsoDate(dated.groups.date)) {
-      return {
-        kind: "invalid",
-        reason: `la date de consultation '${dated.groups.date}' n'est pas une date ISO 8601 valide`,
-      };
+    const problem = dateProblem(dated.groups.date, now);
+    if (problem !== null) {
+      return { kind: "invalid", reason: `la date de consultation ${problem}` };
     }
     return { kind: "dated-url" };
   }
   return {
     kind: "invalid",
     reason:
-      "ni citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`, ni URL https " +
-      "suivie de « (consultée le AAAA-MM-JJ) »",
+      "ni citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>` " +
+      `(${SHA_FORM}, lignes \`N\`, \`N-M\` ou leur liste séparée par des virgules), ` +
+      "ni URL https suivie de « (consultée le AAAA-MM-JJ) »",
   };
 }
 
@@ -214,22 +264,46 @@ export function validateExemptions(value: unknown): readonly EvidenceExemption[]
   return exemptions;
 }
 
+/**
+ * Parse the exemption file text, refusing a key written twice.
+ *
+ * The text must equal its own re-emission: `JSON.parse` keeps the last value
+ * of a repeated key in silence, so the re-emitted text lacks the first one and
+ * differs. This also fixes the layout to the one `JSON.stringify(…, null, 2)`
+ * writes, which is the one the formatter keeps for this file.
+ */
+export function parseExemptionsText(text: string): readonly EvidenceExemption[] {
+  const value: unknown = JSON.parse(text);
+  if (`${JSON.stringify(value, null, 2)}\n` !== text) {
+    throw new Error(
+      `${EXEMPTIONS_PATH}: le texte n'est pas sa réémission \`JSON.stringify(valeur, null, 2)\` ` +
+        "suivie d'un saut de ligne ; une clé écrite deux fois, que JSON.parse garde en silence à " +
+        "sa dernière valeur, y diffère",
+    );
+  }
+  return validateExemptions(value);
+}
+
 /** The keys the register writes, read line by line in its block style. */
 export interface BlockLayout {
   readonly rootKeys: readonly string[];
   readonly entryKeys: readonly (readonly string[])[];
   /** 1-based lines of the shape below that are none of the admitted forms. */
   readonly unreadLines: readonly number[];
+  /** First line putting the root outside a block mapping in column 0, or null. */
+  readonly rootStyleLine: number | null;
 }
 
 const ROOT_KEY = /^([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+/** `refusals:` alone on its line; `[]` is the one inline value, the empty register. */
+const REFUSALS_OPENER = /^refusals:\s*(?:\[\]\s*)?(?:#.*)?$/;
+const FLOW_ROOT = /^[[{]/;
 const ENTRY_START = /^ {2}- ([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
 const ENTRY_KEY = /^ {4}([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
 const NESTED_CONTENT = /^ {5,}\S/;
 
 /**
- * Independent reading of the keys, so a key written twice — which the parser
- * resolves silently to its last value — is seen.
+ * Independent reading of the keys, compared with the parser's.
  *
  * The scan is a whitelist, not a key detector: YAML can also write a key
  * quoted, escaped, as an explicit `? key` or in a flow mapping, and a scan
@@ -238,28 +312,39 @@ const NESTED_CONTENT = /^ {5,}\S/;
  * column 0; and, under `refusals`, an entry opened by `  - <key>:` in column
  * 2, a bare entry key in column 4, or nested content indented five spaces or
  * more (block scalars and evidence items). Any other line is unread, and an
- * unread line fails the register: entry keys can only sit in column 4, and
- * every column-4 line is read. The value of a root key other than `refusals`
- * is not read; that key already fails as unknown.
+ * unread line fails the register. Content before the first root key, a root
+ * written in flow, or `refusals` with a value on its own line put the root
+ * outside the block style: that is `rootStyleLine`, and the register is then
+ * refused before the two readings are compared, since this one sees nothing
+ * inside it. The value of a root key other than `refusals` is not read; that
+ * key already fails as unknown.
  */
 export function scanBlockLayout(text: string): BlockLayout {
   const rootKeys: string[] = [];
   const entryKeys: string[][] = [];
   const unreadLines: number[] = [];
+  let rootStyleLine: number | null = null;
   let currentRoot: string | null = null;
   text
     .replaceAll("\r\n", "\n")
     .split("\n")
     .forEach((line, index) => {
+      const number = index + 1;
       if (line.trim() === "" || line.trimStart().startsWith("#")) return;
       if (!line.startsWith(" ")) {
         const root = ROOT_KEY.exec(line);
         if (root?.[1] === undefined) {
-          unreadLines.push(index + 1);
+          if (FLOW_ROOT.test(line)) rootStyleLine ??= number;
+          else unreadLines.push(number);
           return;
         }
         currentRoot = root[1];
         rootKeys.push(root[1]);
+        if (root[1] === "refusals" && !REFUSALS_OPENER.test(line)) rootStyleLine ??= number;
+        return;
+      }
+      if (currentRoot === null) {
+        rootStyleLine ??= number;
         return;
       }
       if (currentRoot !== "refusals") return;
@@ -275,17 +360,22 @@ export function scanBlockLayout(text: string): BlockLayout {
         return;
       }
       if (NESTED_CONTENT.test(line) && open !== undefined) return;
-      unreadLines.push(index + 1);
+      unreadLines.push(number);
     });
-  return { rootKeys, entryKeys, unreadLines };
+  return { rootKeys, entryKeys, unreadLines, rootStyleLine };
 }
 
 function duplicatesOf(keys: readonly string[]): string[] {
   return [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
 }
 
+/** Distinct keys, sorted, as one comparable and printable string. */
+function keySet(keys: readonly string[]): string {
+  return [...new Set(keys)].sort().join(", ");
+}
+
 /** The problems of one entry's fields, in the order of the format. */
-function fieldProblems(entry: Record<string, unknown>): string[] {
+function fieldProblems(entry: Record<string, unknown>, now: Date): string[] {
   const problems: string[] = [];
   const keys = Object.keys(entry);
   const unknown = keys.filter(
@@ -296,18 +386,23 @@ function fieldProblems(entry: Record<string, unknown>): string[] {
   if (missing.length > 0) problems.push(`champ(s) requis absent(s) : ${missing.join(", ")}`);
 
   if (Object.hasOwn(entry, "id") && !(typeof entry.id === "string" && ID.test(entry.id))) {
-    problems.push("`id` doit être préfixé `refusal.` et sans espace");
+    problems.push(
+      "`id` doit s'écrire `refusal.<mot>[-<mot>…]`, mots en minuscules ASCII et chiffres " +
+        "(^refusal\\.[a-z0-9]+(-[a-z0-9]+)*$)",
+    );
   }
   if (Object.hasOwn(entry, "subject") && !isNonEmptyString(entry.subject)) {
     problems.push("`subject` doit être une chaîne non vide");
   }
   if (Object.hasOwn(entry, "source") && !isHttpsUrl(entry.source)) {
-    problems.push("`source` doit être une URL https");
+    problems.push(`\`source\` doit être une ${HTTPS_FORM}`);
   }
   const revision = entry.revision;
   if (revision !== undefined && revision !== null) {
     if (!(typeof revision === "string" && REVISION.test(revision))) {
-      problems.push("`revision` doit être absent, null ou `<propriétaire>/<dépôt>@<sha>`");
+      problems.push(
+        `\`revision\` doit être absent, null ou \`<propriétaire>/<dépôt>@<sha>\`, ${SHA_FORM}`,
+      );
     }
   }
   if (Object.hasOwn(entry, "action") && !ACTIONS.includes(entry.action as string)) {
@@ -316,8 +411,9 @@ function fieldProblems(entry: Record<string, unknown>): string[] {
   if (Object.hasOwn(entry, "origin") && !ORIGINS.includes(entry.origin as string)) {
     problems.push(`\`origin\` doit valoir l'un de : ${ORIGINS.join(", ")}`);
   }
-  if (Object.hasOwn(entry, "decided_on") && !isIsoDate(entry.decided_on)) {
-    problems.push("`decided_on` doit être une date ISO 8601 valide (AAAA-MM-JJ)");
+  if (Object.hasOwn(entry, "decided_on")) {
+    const problem = dateProblem(entry.decided_on, now);
+    if (problem !== null) problems.push(`\`decided_on\` ${problem}`);
   }
   if (Object.hasOwn(entry, "reason") && !isNonEmptyString(entry.reason)) {
     problems.push("`reason` doit être une chaîne non vide");
@@ -349,7 +445,7 @@ interface Tally {
 }
 
 /**
- * Pure verdict over the register text and the exemptions.
+ * Pure verdict over the register text, the exemptions and the current time.
  *
  * One assertion per entry that holds, named by its id; one per problem
  * otherwise, so a failure says which entry broke and why.
@@ -357,6 +453,7 @@ interface Tally {
 export function evaluateRefusals(
   text: string,
   exemptions: readonly EvidenceExemption[],
+  now: Date,
 ): GateReport {
   const report = new GateReport();
   const unreadable = findUnreadableCharacter(text);
@@ -383,6 +480,17 @@ export function evaluateRefusals(
   }
 
   const layout = scanBlockLayout(text);
+  if (layout.rootStyleLine !== null) {
+    report.check(
+      REGISTER_PATH,
+      false,
+      `racine hors du style bloc en colonne 0 (ligne ${layout.rootStyleLine}) : le registre ` +
+        "s'écrit en clés nues `schema_version:` et `refusals:` en colonne 0, `refusals:` sans " +
+        "valeur sur sa ligne et suivi de ses entrées `  - <clé>:`",
+    );
+    return report;
+  }
+
   const unknownRoot = Object.keys(parsed).filter((key) => !ROOT_KEYS.includes(key));
   if (unknownRoot.length > 0) {
     report.check(REGISTER_PATH, false, `clé(s) racine inconnue(s) : ${unknownRoot.join(", ")}`);
@@ -393,6 +501,13 @@ export function evaluateRefusals(
       REGISTER_PATH,
       false,
       `clé(s) racine écrite(s) deux fois : ${rootTwice.join(", ")}`,
+    );
+  } else if (keySet(layout.rootKeys) !== keySet(Object.keys(parsed))) {
+    report.check(
+      REGISTER_PATH,
+      false,
+      `clés racine lues ligne à ligne (${keySet(layout.rootKeys)}) et par le parseur ` +
+        `(${keySet(Object.keys(parsed))}) différentes`,
     );
   }
   report.check(
@@ -421,6 +536,17 @@ export function evaluateRefusals(
         "une clé écrite deux fois sous une autre forme y échapperait à la lecture par ligne",
     );
   }
+  // Entry keys are compared index by index only when both readings see the
+  // same entries; otherwise an index names a different entry in each.
+  const sameEntries = layout.entryKeys.length === entries.length;
+  if (!sameEntries) {
+    report.check(
+      REGISTER_PATH,
+      false,
+      `${layout.entryKeys.length} entrée(s) lue(s) ligne à ligne, ${entries.length} par le ` +
+        "parseur : chaque entrée s'ouvre par `  - <clé>:` en colonne 2",
+    );
+  }
 
   const tally: Tally = {
     entriesOk: 0,
@@ -440,13 +566,21 @@ export function evaluateRefusals(
       tally.entriesBad += 1;
       return;
     }
-    const problems = fieldProblems(entry);
+    const problems = fieldProblems(entry, now);
 
-    const twice = duplicatesOf(layout.entryKeys[index] ?? []);
-    if (twice.length > 0) {
-      problems.push(
-        `clé(s) écrite(s) deux fois, le parseur ne garde que la dernière : ${twice.join(", ")}`,
-      );
+    const written = sameEntries ? layout.entryKeys[index] : undefined;
+    if (written !== undefined) {
+      const twice = duplicatesOf(written);
+      if (twice.length > 0) {
+        problems.push(
+          `clé(s) écrite(s) deux fois, le parseur ne garde que la dernière : ${twice.join(", ")}`,
+        );
+      } else if (keySet(written) !== keySet(Object.keys(entry))) {
+        problems.push(
+          `clés lues ligne à ligne (${keySet(written)}) et par le parseur ` +
+            `(${keySet(Object.keys(entry))}) différentes`,
+        );
+      }
     }
 
     if (typeof entry.id === "string") {
@@ -455,24 +589,40 @@ export function evaluateRefusals(
     }
 
     const evidence: readonly unknown[] = Array.isArray(entry.evidence) ? entry.evidence : [];
+    let conforming = 0;
+    let outOfForm = 0;
     for (const item of evidence) {
-      const form = classifyEvidence(item);
+      const form = classifyEvidence(item, now);
       if (form.kind === "pinned") {
         tally.pinned += 1;
+        conforming += 1;
       } else if (form.kind === "dated-url") {
         tally.datedUrls += 1;
+        conforming += 1;
       } else {
+        // One exemption covers one occurrence: a second identical item is not covered.
         const exemption = exemptions.find(
-          (candidate) => candidate.id === entry.id && candidate.evidence === item,
+          (candidate) =>
+            !usedExemptions.has(candidate) &&
+            candidate.id === entry.id &&
+            candidate.evidence === item,
         );
         if (exemption !== undefined) {
           usedExemptions.add(exemption);
           tally.exempted.push(`${exemption.id} ← ${exemption.evidence}`);
         } else {
           tally.evidenceBad += 1;
+          outOfForm += 1;
           problems.push(`preuve hors forme '${String(item)}' : ${form.reason}`);
         }
       }
+    }
+    // Counted once: an out-of-form item already says why the entry has no proof.
+    if (evidence.length > 0 && conforming === 0 && outOfForm === 0) {
+      problems.push(
+        "aucune preuve publique conforme une fois les exemptions retirées : une entrée porte au " +
+          "moins une citation épinglée ou une URL datée (ADR-0056 D4)",
+      );
     }
 
     if (problems.length === 0) {
@@ -517,10 +667,11 @@ export function evaluateRefusals(
 export async function evaluateRefusalsFiles(
   registerPath: string,
   exemptionsPath: string,
+  now: Date,
 ): Promise<GateReport> {
   let exemptions: readonly EvidenceExemption[];
   try {
-    exemptions = validateExemptions(JSON.parse(await Bun.file(exemptionsPath).text()));
+    exemptions = parseExemptionsText(await Bun.file(exemptionsPath).text());
   } catch (error) {
     return new GateReport().check(
       exemptionsPath,
@@ -538,9 +689,14 @@ export async function evaluateRefusalsFiles(
       `registre absent ou illisible : ${(error as Error).message}`,
     );
   }
-  return evaluateRefusals(text, exemptions);
+  return evaluateRefusals(text, exemptions, now);
 }
 
 if (import.meta.main) {
-  concludeGate("Refusals register", await evaluateRefusalsFiles(REGISTER_PATH, EXEMPTIONS_PATH));
+  // The one read of the clock: everything below takes `now` as a parameter.
+  const now = new Date();
+  concludeGate(
+    "Refusals register",
+    await evaluateRefusalsFiles(REGISTER_PATH, EXEMPTIONS_PATH, now),
+  );
 }
