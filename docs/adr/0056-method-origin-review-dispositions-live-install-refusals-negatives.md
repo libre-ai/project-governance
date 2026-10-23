@@ -1,16 +1,14 @@
 # ADR-0056 — Méthode : origine du problème déclarée, dispositions de revue, installation live, registre des refus, négative par tranche
 
-- **Statut :** proposed — la fusion de cette pull request est la signature du
-  propriétaire (I-17, `AGENTS.md` : « a doctrine merge is a signature ») ;
-  D1 à D5, I-38 et l'entrée D95 entrent en vigueur à la fusion, y compris les
-  quatre dispositions de D2 et la règle de re-revue. Seule la conciliation des
-  dispositions avec la gravité et les verdicts du protocole de revue (D2,
-  options A et B) est un point d'arbitrage ; une fusion sans choix explicite
-  vaut option B, qui ne change aucune règle de verdict.
-- **Arbitrage :** en attente de signature. La consigne « go all » du
-  propriétaire du 2026-10-22, sur les options recommandées du drill
-  `tt-a1i/archify`, a engagé la rédaction de cet ADR ; elle n'en vaut pas
-  adoption. Aucune trace d'arbitrage n'est écrite par la rédaction.
+- **Statut :** accepted — arbitrage propriétaire du 2026-10-23 en chat ; D1 à
+  D5, I-38 et D95 sont en vigueur à la fusion.
+- **Arbitrage :** la consigne « go all » du propriétaire du 2026-10-22, sur les
+  options recommandées du drill `tt-a1i/archify`, a engagé la rédaction. Le
+  2026-10-23, en question structurée, le propriétaire a retenu l'option A de
+  D2, l'option recommandée (choix du propriétaire en chat), et a autorisé
+  l'agent à fusionner la pull request. La trace datée de cet arbitrage est
+  portée par le corps de la pull request, où le propriétaire a autorisé
+  l'agent à l'écrire ; elle n'est pas recopiée dans ce fichier.
 - **Date de rédaction :** 2026-10-22, révisé le 2026-10-23 après deux passes
   de revue à rôle séparé.
 - **Portée :** forme des pull requests de la flotte (D1, D5), conclusion d'une
@@ -22,7 +20,7 @@
   modifié (D1).
 - **Applique :** I-17 (surface à touche humaine fermée), I-25 (collection de
   skills), I-05 (projection jamais éditée à la main).
-- **Invariants :** I-38 candidat (installation live) ; entrée D95 de
+- **Invariants :** I-38 (installation live) ; entrée D95 de
   `docs/decisions/DECISION-REGISTER.md`.
 - **Autorise :** l'inscription d'I-38 et de D95 ; le registre
   `ecosystem/refusals.v1.yaml` et son amorce de neuf entrées ; le renvoi de
@@ -173,21 +171,36 @@ passe fraîche ; elle n'abolit pas la passe fraîche exigée par
 normatif postérieur à un verdict. Un vert antérieur ne prouve rien sur le
 nouveau diff.
 
-Les quatre dispositions, la règle qui les assortit et la règle de re-revue
-entrent en vigueur à la fusion, sans condition.
-
 Ces dispositions disent **comment conclure**. L'ordre des axes de la flotte
 (sécurité > qualité > performance > complétude) dit **quoi regarder** ; il est
 inchangé, et les dispositions ne le remplacent pas. Archify n'a ni la sécurité
 ni la souveraineté parmi ses axes de revue : seule sa façon de conclure est
 reprise.
 
-**Seul point d'arbitrage du propriétaire — conciliation avec la gravité et les
-verdicts du protocole.** Le protocole classe déjà chaque constat par gravité
-(`blocking`, `major`, `minor`, `non-blocking`) et rend un verdict parmi
-`approve`, `approve-with-minor-reservations` et `reject`
-(`c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:28-29`). La rédaction ne
-tranche pas leur articulation avec les dispositions :
+**Conciliation avec la gravité, les verdicts et la passe fraîche du
+protocole.** Le protocole classe déjà chaque constat par gravité (`blocking`,
+`major`, `minor`, `non-blocking`) et rend un verdict parmi `approve`,
+`approve-with-minor-reservations` et `reject`
+(`c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:28-29`). Les dispositions
+s'y articulent ainsi :
+
+1. la disposition dit comment conclure, la gravité garde le poids ;
+2. un constat `blocking` ou `major` ouvert ne peut être classé que « défaut
+   bloquant » ou « preuve requise » ;
+3. `approve-with-minor-reservations`, comme `approve`, n'admet aucune « preuve
+   requise » ouverte ;
+4. la re-revue incrémentale n'abolit pas la passe fraîche exigée par le
+   protocole, elle en fixe le point de départ (règle de re-revue ci-dessus).
+
+Les quatre dispositions, la règle qui les assortit, la règle de re-revue et
+ces quatre clauses entrent en vigueur à la fusion.
+
+### Options arbitrées le 2026-10-23
+
+Proposées ouvertes le 2026-10-23, tranchées par le propriétaire le même jour :
+**A**. Le tableau reste tel qu'il a été soumis ; les clauses (1) à (3) de
+l'option A sont les clauses 1 à 3 ci-dessus, la clause 4 reprend la règle de
+re-revue, adoptée hors options par une revue précédente.
 
 | Option | Contenu | Conséquence |
 | --- | --- | --- |
@@ -195,9 +208,12 @@ tranche pas leur articulation avec les dispositions :
 | B | Les dispositions qualifient seulement la preuve de chaque constat ; la gravité seule conditionne le verdict, comme aujourd'hui | Aucune règle de verdict ne change ; un `approve-with-minor-reservations` peut encore laisser ouverte une preuve requise de gravité `minor` ou `non-blocking` |
 
 Recommandation de la rédaction : A, parce qu'elle seule empêche qu'un verdict
-favorable repose sur une revendication non vérifiée. **Une fusion sans choix
-explicite du propriétaire vaut option B** : les dispositions s'emploient, et
-aucune règle de verdict du protocole ne change.
+favorable repose sur une revendication non vérifiée.
+
+**Décision : A.** Le choix du propriétaire, en chat : « Un constat blocking ou
+major ouvert ne peut être que « défaut bloquant » ou « preuve requise », et
+approve-with-minor-reservations n'admet aucune preuve requise ouverte. Ferme
+le cas d'un défaut major classé en suggestion. » L'option B est écartée.
 
 ### D3 — Installation live : seule une demande explicite du propriétaire humain l'autorise (R7, I-38)
 
@@ -214,7 +230,7 @@ agent qui reçoit une installation par mandat obtient la demande du
 propriétaire par l'un de ces deux canaux. Une installation partielle se
 rapporte comme un échec partiel, jamais comme un succès.
 
-Inscrite comme invariant candidat I-38. Nature du constat : `inspection` (D1),
+Inscrite comme invariant I-38. Nature du constat : `inspection` (D1),
 pas une défaillance datée — aucune installation non autorisée n'est citée ici.
 Cet ADR n'outille pas la règle : un gate qui la ferait respecter vivrait dans
 le harnais, hors de ce dépôt, et n'est pas proposé ici.
@@ -295,8 +311,8 @@ Archify déclare de telles négatives sur 16 lignes et n'en vérifie aucune
 - **une déclaration démentie par le diff** — une pull request qui déclare ne
   pas ajouter de dépendance, de schéma ou de workflow et en ajoute un — est,
   dès la signature, un défaut bloquant au sens de D2, de gravité `blocking` au
-  sens du protocole de revue, constaté en revue. Cette gravité est fixée ici et
-  ne dépend pas de l'option retenue en D2.
+  sens du protocole de revue, constaté en revue. Cette gravité est fixée ici,
+  indépendamment de la conciliation de D2.
 
 ## Écartés
 
@@ -324,8 +340,7 @@ Archify déclare de telles négatives sur 16 lignes et n'en vérifie aucune
 
 ## Conséquences
 
-- I-38 est inscrit au registre des invariants, source « ADR-0056 (candidat,
-  signature au merge sous I-17) ».
+- I-38 est inscrit au registre des invariants, source « ADR-0056 ».
 - Le registre des décisions gagne D95.
 - `ecosystem/refusals.v1.yaml` est créé avec neuf entrées ; `REUSE.toml` le
   place sous `CC-BY-4.0` ; la carte d'autorité gagne sa ligne, qui en écrit le
@@ -364,10 +379,6 @@ request.
 
 ## Ce qui n'est pas décidé ici
 
-- L'option de conciliation des dispositions de D2 avec la gravité et les
-  verdicts du protocole (A ou B) : seul point d'arbitrage du propriétaire ; une
-  fusion sans choix explicite vaut B. Les dispositions et la règle de re-revue
-  ne sont pas dans ce point : elles entrent en vigueur à la fusion.
 - Le refus de `yt-dlp` pour P29 et les connecteurs de P01 : candidat à un
   amendement d'ADR-0042 par le propriétaire, la phrase signée citée à D4
   faisant de `yt-dlp` le backend de P29.
@@ -392,5 +403,6 @@ qu'un simple `^[0-9]{4}` compte comme le numéro 2026) ;
 → `| D94` ;
 `git show origin/migrate/recover-code:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1`
 → `| I-37` (ni #130 ni #134 n'ajoutent d'invariant). Mesures du 2026-10-23,
-tête `84c0e6d`. Un conflit de numéro à la fusion se résout par
+tête `84c0e6d`, inchangées sur la tête `3f56c57` (#136 et #135 n'ajoutent ni
+ADR, ni décision, ni invariant). Un conflit de numéro à la fusion se résout par
 renumérotation, jamais par réutilisation.
