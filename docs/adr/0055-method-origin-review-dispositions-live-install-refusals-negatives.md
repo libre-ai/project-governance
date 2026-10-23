@@ -2,31 +2,33 @@
 
 - **Statut :** proposed — la fusion de cette pull request est la signature du
   propriétaire (I-17, `AGENTS.md` : « a doctrine merge is a signature ») ;
-  D1 à D5, I-38 et l'entrée D94 entrent en vigueur à la fusion.
+  D1, D3, D4, D5, I-38 et l'entrée D94 entrent en vigueur à la fusion ; D2
+  porte un point d'arbitrage que la fusion tranche dans le sens de l'option
+  retenue par le propriétaire (voir D2).
 - **Arbitrage :** en attente de signature. La consigne « go all » du
   propriétaire du 2026-10-22, sur les options recommandées du drill
   `tt-a1i/archify`, a engagé la rédaction de cet ADR ; elle n'en vaut pas
   adoption. Aucune trace d'arbitrage n'est écrite par la rédaction.
-- **Date de rédaction :** 2026-10-22
+- **Date de rédaction :** 2026-10-22, révisé le 2026-10-23 après une revue à
+  rôle séparé.
 - **Portée :** forme des pull requests de la flotte (D1, D5), conclusion d'une
-  revue (D2), autorisation d'une installation live par un agent (D3), mémoire
-  des refus de flotte (D4).
-- **Étend :** ADR-0050 D1 (l'échec observé, daté et cité, exigé pour une
-  skill) à toute pull request, sous forme déclarative (D1) ; le gate de
-  déclaration `Door:` (`tools/quality/check-pr-door.ts`), dont D1 et D5 sont
-  la suite (D1, D5) ; ADR-0025 D4 (`skills/.out-of-scope/`) aux refus qui ne
-  sont pas des skills (D4).
+  revue (D2), autorisation d'une installation live (D3), mémoire des projets
+  tiers écartés (D4).
+- **Étend :** le gate de déclaration `Door:` (`tools/quality/check-pr-door.ts`),
+  dont D1 et D5 sont la suite ; ADR-0025 D4 (`skills/.out-of-scope/`) aux
+  projets tiers qui ne sont pas des skills (D4). ADR-0050 D1 n'est ni étendu ni
+  modifié (D1).
 - **Applique :** I-17 (surface à touche humaine fermée), I-25 (collection de
   skills), I-05 (projection jamais éditée à la main).
 - **Invariants :** I-38 candidat (installation live) ; entrée D94 de
   `docs/decisions/DECISION-REGISTER.md`.
 - **Autorise :** l'inscription d'I-38 et de D94 ; le registre
-  `ecosystem/refusals.v1.yaml` et son amorce de huit entrées ; la section
-  « Disposition of each finding » de `docs/reviews/AGENT-REVIEW-PROTOCOL.md` ;
-  la ligne du registre des refus dans la carte d'autorité (`docs/README.md`).
+  `ecosystem/refusals.v1.yaml` et son amorce de sept entrées ; le renvoi de
+  `docs/reviews/AGENT-REVIEW-PROTOCOL.md` vers D2 ; la ligne du registre des
+  refus dans la carte d'autorité (`docs/README.md`).
 - **N'autorise pas :** la modification du gabarit de pull request de
   `libre-ai/.github` ; l'extension d'un gate ; l'installation d'un outil
-  étudié ; la reprise verbatim d'un texte amont.
+  étudié ; la reprise verbatim d'un texte amont ; un amendement d'ADR-0042.
 - **Source :** drill du dépôt amont `tt-a1i/archify`
   (https://github.com/tt-a1i/archify, licence MIT, commit
   `25cf37080fc8b1dbe758a4efc3935b55f3327083`, cité sous la forme
@@ -41,7 +43,8 @@ Parmi les règles de méthode que le drill a extraites d'Archify, cinq ont un
 être écrites. Les étiquettes R2, R5, R6, R7, R13 et R15 reprennent la
 numérotation du rapport de méthode du drill, qui n'est pas versionné ici. Les
 constats ci-dessous sont datés du 2026-10-22 ; chaque chiffre est suivi de la
-commande qui le reproduit, à rejouer avant usage.
+commande qui le reproduit, à rejouer avant usage. Les citations de ce dépôt
+sont épinglées sur la base `c466a5c`.
 
 1. **L'origine d'un problème n'est déclarée que pour une skill.** ADR-0050 D1
    exige l'échec observé, daté et cité, pour admettre ou modifier une skill.
@@ -53,15 +56,15 @@ commande qui le reproduit, à rejouer avant usage.
    présence de chaînes dans son gabarit de pull request. La flotte a déjà un
    gate qui lit le corps de la pull request : `check-pr-door`, check requis
    « Door declaration » depuis le 2026-10-14 (en-tête de
-   `tools/quality/check-pr-door.ts`).
+   `c466a5c:tools/quality/check-pr-door.ts`).
 2. **La flotte dit quoi regarder en revue, pas comment conclure.** L'ordre des
-   axes est fixé (`AGENTS.md:80` : « Security > quality > performance >
+   axes est fixé (`c466a5c:AGENTS.md:80` : « Security > quality > performance >
    completeness »), et le protocole de revue classe les constats par gravité
-   (`docs/reviews/AGENT-REVIEW-PROTOCOL.md:28` : « blocking, major, minor and
-   non-blocking findings »). Rien ne distingue un défaut reproduit d'un risque
-   supposé : un constat `blocking` non reproduit a la même forme qu'un constat
-   prouvé. Archify classe chaque constat selon ce qui est établi, pose
-   qu'« an unverified risk is not a reproduced defect »
+   (`c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:28` : « blocking, major,
+   minor and non-blocking findings »). Rien ne distingue un défaut reproduit
+   d'un risque supposé : un constat `blocking` non reproduit a la même forme
+   qu'un constat prouvé. Archify classe chaque constat selon ce qui est établi,
+   pose qu'« an unverified risk is not a reproduced defect »
    (`tt-a1i/archify@25cf370:REVIEWING.md:45`) et fait repartir une re-revue du
    dernier head revu (`:55`).
 3. **Aucun invariant ne dit qui autorise une installation live.** Sur la base
@@ -69,36 +72,50 @@ commande qui le reproduit, à rejouer avant usage.
    I-25, qui fait rejouer une vérification de collision quand un plugin est
    installé, sans dire qui autorise l'installation.
    Reproduire : `git show c466a5c:docs/decisions/INVARIANTS.md | grep -ci install`
-   → `1`. La consigne « ne pas installer » conclut pourtant plusieurs
-   évaluations d'outils : cinq des huit entrées dont le registre de D4 est
-   amorcé refusent une installation, chacune d'un outil différent, décidées
-   entre le 2026-10-08 et le 2026-10-22. Reproduire :
+   → `1`. Deux textes la couvrent en partie, sans rang d'invariant : la skill
+   `verify-runtime` (« Aucune dépendance installée ni configuration durable
+   modifiée sans autorisation », `c466a5c:skills/verify-runtime/SKILL.md:43`),
+   qui ne dit pas qui autorise, et ADR-0050 (« L'installation reste un acte de
+   harness, hors de ce dépôt », `c466a5c:docs/adr/0050-amend-adr-0025-observed-failure-working-signs-collision-replay.md:156-157`),
+   qui ne vise que la distribution de la collection de skills. La consigne
+   « ne pas installer » conclut pourtant plusieurs évaluations d'outils : cinq
+   des sept entrées dont le registre de D4 est amorcé refusent une
+   installation, chacune d'un outil différent, décidées entre le 2026-10-08 et
+   le 2026-10-22. Reproduire :
    `awk '/^  - id:/{id=$3} /^    action: install$/{print id}' ecosystem/refusals.v1.yaml`
    → cinq identifiants (Archify, Agent-Reach, rtk, REA, humanlayer-pi).
-   Archify pose la règle dans son propre `AGENTS.md` (« Repository editing,
+   Archify réserve l'installation à la demande explicite de son utilisateur
+   (« only when the user explicitly requests that action. Repository editing,
    testing, reviewing, publishing, or syncing does not authorize
    installation », `tt-a1i/archify@25cf370:AGENTS.md:15` ; installation
    partielle : `:21`).
-4. **Les refus de la flotte ne sont écrits que pour les skills.**
-   `skills/.out-of-scope/` (ADR-0025 D4) porte deux refus d'idées de skills.
-   Les outils écartés à l'issue d'un drill ne sont écrits nulle part dans
-   l'autorité : sur la base `c466a5c`, aucun des outils de l'amorce de D4 n'y
-   est nommé, sauf `yt-dlp`, cité par ADR-0042 comme moteur de P29 et non comme
-   refus. Reproduire :
-   `git grep -il -E 'agent-reach|agentcontrolplane|humanlayer|morluto|yt-dlp|\brtk\b|archify' c466a5c -- .`
-   → un seul fichier, `docs/adr/0042-product-vision-and-realization-method.md`.
-   Une session suivante ne peut donc pas les consulter.
+4. **Aucun registre ne porte les projets tiers évalués puis écartés.** La
+   flotte écrit des refus à deux endroits, qui ne couvrent pas ce cas :
+   `vision.md` §28 « Non-objectifs » (`c466a5c:vision.md:544-561`, auquel
+   renvoie `c466a5c:docs/positioning/non-goals.md:3`) porte les non-objectifs
+   de la cible, et `skills/.out-of-scope/` (ADR-0025 D4) deux idées de skills
+   refusées. Les projets tiers écartés à l'issue d'un drill ou d'un essai ne
+   sont écrits nulle part dans l'autorité : sur la base `c466a5c`, aucun des
+   outils de l'amorce de D4 n'y est nommé. Reproduire :
+   `git grep -il -E 'agent-reach|agentcontrolplane|humanlayer|morluto|\brtk\b|archify' c466a5c -- .`
+   → aucune sortie. Une session suivante ne peut donc pas les consulter.
    Archify tient une section « Not planned » de 12 idées refusées, chacune
    motivée. Reproduire :
    `gh api 'repos/tt-a1i/archify/contents/ROADMAP.md?ref=25cf37080fc8b1dbe758a4efc3935b55f3327083' -H 'Accept: application/vnd.github.raw' | awk '/^## Not planned/{f=1} f&&/^\| \*\*/{n++} END{print n}'`
    → `12`.
-5. **Une négative déclarée n'est vérifiée par personne.** Archify écrit 16 fois
-   dans sa feuille de route qu'une tranche « adds no » schéma, dépendance,
-   service hébergé, télémétrie ou surface, et aucun gate ne confronte ces
-   phrases au diff. Reproduire : même commande `gh api … ROADMAP.md` suivie de
-   `grep -c "adds no\|add no\|retain their existing boundaries"` → `16`. Une
-   partie de ces négatives est vérifiable par le diff : manifestes de
-   dépendances, schémas, workflows.
+5. **Une négative déclarée n'est vérifiée par personne.** La feuille de route
+   d'Archify porte 16 lignes dont une proposition déclare qu'une tranche
+   n'ajoute pas, ou laisse dans ses limites, un schéma ou une dépendance (avec,
+   selon la ligne, IR, mise en page, stockage, service hébergé, surface
+   mobile), et aucun gate ne confronte ces phrases au diff. Reproduire : même
+   commande `gh api … ROADMAP.md`, suivie de
+   `grep -n -o -E "(adds no|add no)[^.]*|[^.]*retain their existing boundaries" | grep -E 'schema|dependenc' | cut -d: -f1 | sort -un | wc -l`
+   → `16`. Sans le second filtre, la ligne 58 sort deux fois : une fois pour
+   « mobile adds no chrome », qui décrit un comportement et non une négative,
+   une fois pour une vraie négative (« schema, IR, layout, dependencies […]
+   retain their existing boundaries ») ; elle compte donc une fois. Une partie
+   de ces négatives est vérifiable par le diff : manifestes de dépendances,
+   schémas, workflows.
 
 ## Décisions proposées
 
@@ -109,19 +126,26 @@ d'un vocabulaire fermé :
 
 | Valeur | Sens | Exigence |
 | --- | --- | --- |
-| `observed` | une défaillance survenue en usage réel | sa date et sa source (pull request, issue, `chemin:ligne`, note de session) |
-| `inspection` | un défaut trouvé en lisant le code, la doctrine ou un outil, sans défaillance constatée | — |
+| `observed` | une défaillance survenue en usage réel ; un fait périmé, daté et cité, en est une (même lecture qu'ADR-0050 D1) | sa date et sa source (pull request, issue, `chemin:ligne`, note de session) |
+| `inspection` | un défaut trouvé en lisant le code, la doctrine ou un outil, sans défaillance survenue ni fait périmé cité | — |
 | `synthetic` | un cas construit pour l'occasion : sonde, fixture, vecteur, mutation | — |
 | `proposal` | une amélioration sans défaut constaté | — |
 
 Un cas construit n'est jamais présenté comme une défaillance d'usage : une
 sonde qui rougit est `synthetic`, même quand elle reproduit un défaut réel. Une
-pull request qui en porte plusieurs déclare la plus forte qu'elle peut citer.
+pull request dont le problème a plusieurs origines déclare celle qui l'a
+déclenchée et cite les autres dans son corps.
 
 Forme proposée : une ligne `Origin:` à côté de `Door:`, en début de ligne, hors
 commentaire et hors bloc de code (`Origin: observed 2026-10-07 <source>`,
-`Origin: inspection`). ADR-0050 D1 reste plus exigeant pour une skill : une
-pull request de skill déclare `observed`.
+`Origin: inspection`).
+
+**Articulation avec ADR-0050.** ADR-0050 D1 reste la seule autorité sur
+l'admission et la modification d'une skill, et D3 d'ADR-0050 sur sa promotion,
+qui se prononce sur des signes de fonctionnement et ne suppose aucune
+défaillance. `Origin:` est une déclaration orthogonale : elle dit d'où vient le
+problème, elle n'ajoute ni ne retire aucune condition d'admission, et une pull
+request de skill la porte comme toute autre.
 
 ### D2 — Dispositions de revue : comment conclure (R5, R6)
 
@@ -136,14 +160,7 @@ Chaque constat d'une revue reçoit une disposition, et une seule :
 - **prêt** : rien ne s'oppose à la fusion sur le périmètre revu.
 
 Un risque non vérifié n'est jamais présenté comme un défaut reproduit : faute
-de preuve, il est une preuve requise. La disposition dit ce qui est établi ;
-la gravité du protocole (`blocking`, `major`, `minor`, `non-blocking`) dit le
-poids du constat. Un constat `blocking` sans preuve reproduite est une preuve
-requise de gravité `blocking`. Le verdict `approve` ne coexiste avec aucun
-défaut bloquant et aucune preuve requise ouverte.
-
-Une re-revue part du dernier head revu et, si la base a bougé, de la base
-intermédiaire : un vert antérieur ne prouve rien sur le nouveau diff.
+de preuve, il est une preuve requise.
 
 Ces dispositions disent **comment conclure**. L'ordre des axes de la flotte
 (sécurité > qualité > performance > complétude) dit **quoi regarder** ; il est
@@ -151,59 +168,93 @@ inchangé, et les dispositions ne le remplacent pas. Archify n'a ni la sécurit�
 ni la souveraineté parmi ses axes de revue : seule sa façon de conclure est
 reprise.
 
-### D3 — Installation live : seule une demande explicite l'autorise (R7, I-38)
+**Point d'arbitrage du propriétaire — conciliation avec la gravité, les
+verdicts et la passe fraîche du protocole.** Le protocole classe déjà chaque
+constat par gravité (`blocking`, `major`, `minor`, `non-blocking`), rend un
+verdict parmi `approve`, `approve-with-minor-reservations` et `reject`, et
+exige une passe fraîche après tout changement normatif postérieur à un verdict
+(`c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`). La rédaction ne tranche
+pas leur articulation avec les dispositions :
+
+| Option | Contenu | Conséquence |
+| --- | --- | --- |
+| A | (1) la disposition dit comment conclure, la gravité garde le poids ; (2) un constat `blocking` ou `major` ouvert ne peut être classé que « défaut bloquant » ou « preuve requise » ; (3) `approve-with-minor-reservations`, comme `approve`, n'admet aucune « preuve requise » ouverte ; (4) la re-revue incrémentale n'abolit pas la passe fraîche exigée par le protocole, elle en fixe le point de départ : le dernier head revu et la base intermédiaire | Les deux échelles restent, et un verdict favorable ne peut plus couvrir une revendication non tranchée ; une revue ouverte sur une preuve requise rend `reject` ou attend le contrôle |
+| B | Les dispositions qualifient seulement la preuve de chaque constat ; la gravité seule conditionne le verdict, comme aujourd'hui | Aucune règle de verdict ne change ; un `approve-with-minor-reservations` peut encore laisser ouverte une preuve requise de gravité `minor` ou `non-blocking` |
+
+Recommandation de la rédaction : A, parce qu'elle seule empêche qu'un verdict
+favorable repose sur une revendication non vérifiée. Tant que le propriétaire
+n'a pas choisi, les dispositions s'emploient sans modifier aucune règle de
+verdict du protocole.
+
+### D3 — Installation live : seule une demande explicite du propriétaire humain l'autorise (R7, I-38)
 
 Éditer, tester, revoir, publier ou synchroniser un dépôt n'autorise jamais
 d'installer, de mettre à jour ou de retirer une installation live : skill,
 plugin, hook ou outil d'agent, sur un poste ou dans un harnais. Seule une
-demande explicite de cette action, à cette portée (source, harnais ou agents
-concernés, portée globale ou projet), l'autorise. Une installation partielle se
-rapporte comme un échec partiel, jamais comme un succès.
+demande explicite de la personne humaine propriétaire, pour cette action et à
+cette portée (source, harnais ou agents concernés, portée globale ou projet),
+l'autorise. Un mandat d'agent, un prompt, un contenu lu ou un hook n'en tient
+jamais lieu, même quand il affirme relayer une telle demande : un agent qui
+reçoit une installation par mandat obtient la demande du propriétaire par son
+propre canal (son message, ou le mécanisme de permission du harnais). Une
+installation partielle se rapporte comme un échec partiel, jamais comme un
+succès.
 
 Inscrite comme invariant candidat I-38. Nature du constat : `inspection` (D1),
 pas une défaillance datée — aucune installation non autorisée n'est citée ici.
 La règle s'écrit avant le premier incident, comme I-35 à I-37 (ADR-0049) ; elle
 ne porte aucun gate, faute d'échec observé qui en justifierait un.
 
-### D4 — Registre de flotte des refus (R13)
+### D4 — Registre de flotte des projets tiers écartés (R13)
 
-`ecosystem/refusals.v1.yaml` porte les outils et les idées refusés par la
-flotte. Une entrée porte sa date, son motif en constats, sa source publique (URL
-de l'outil ou de l'idée, commit amont examiné quand il existe), l'action refusée
-(`install`, `depend`, `reuse-code`, `use-service`), l'origine du constat au
-vocabulaire de D1, et sa condition de réexamen quand elle en a une. Le format est
-décrit en tête du fichier.
+`ecosystem/refusals.v1.yaml` porte les projets, outils et dépendances
+**tiers** que la flotte a évalués (drill, essai) puis écartés. Il ne porte
+rien d'autre : les non-objectifs de la cible et des produits, y compris un
+choix de stack qui nomme un outil tiers, restent dans `vision.md` §28 ; les
+idées de skills refusées restent dans `skills/.out-of-scope/` (ADR-0025 D4).
+Les trois surfaces ne se recouvrent pas.
 
-- Le registre se consulte avant toute nouvelle proposition d'outil, de
-  dépendance, de service ou d'idée. Rouvrir un refus commence par relire son
-  motif et dire ce qui a changé.
-- Une entrée dont le motif n'est pas établi ne s'écrit pas. Retirer une entrée,
-  ou lever le refus qu'elle porte, est une décision du propriétaire.
-- Les refus d'idées de skills restent dans `skills/.out-of-scope/` (ADR-0025
-  D4), seule autorité sur ce sujet ; le registre ne les recopie pas.
+Une entrée porte sa date, son motif en constats, sa source publique, le commit
+amont examiné quand il existe, l'action refusée (`install`, `depend`,
+`reuse-code`, `use-service`), l'origine du constat au vocabulaire de D1, et sa
+condition de réexamen quand elle en a une. Le format est décrit en tête du
+fichier.
+
+- **Critère d'entrée.** Toute entrée porte au moins une preuve publique qui
+  établit son motif : citation épinglée `<propriétaire>/<dépôt>@<sha>:<chemin>:<lignes>`,
+  ou URL datée quand la page peut changer. Un constat du motif que la preuve
+  publique n'établit pas est marqué comme tel dans l'entrée. Une entrée sans
+  preuve publique ne s'écrit pas.
+- Le registre se consulte avant toute nouvelle proposition d'un projet, d'un
+  outil, d'une dépendance ou d'un service tiers. Rouvrir un refus commence par
+  relire son motif et dire ce qui a changé.
+- Retirer une entrée, ou lever le refus qu'elle porte, est une décision du
+  propriétaire.
 - Pas de projection générée : le registre jumeau `ecosystem/FORGOTTEN.yaml` se
   lit sans projection, et une projection exigerait un générateur et un gate de
   dérive (I-05) sans lecteur identifié.
 - Licence `CC-BY-4.0`, comme `FORGOTTEN.yaml` et `LEGACY-MANIFEST.yaml`
   (`REUSE.toml`).
 
-Amorce : huit entrées, chacune établie par l'évaluation datée qui l'a
-décidée — Archify (installation), Agent-Reach (installation), yt-dlp
-(dépendance d'un produit), le hook de réécriture de rtk (installation),
-REA (installation), Agent Control Plane de HumanLayer (reprise de code),
-humanlayer-pi (installation), le service HumanLayer (usage). Reproduire :
-`grep -c '^  - id: refusal\.' ecosystem/refusals.v1.yaml` → `8`.
+Amorce : sept entrées, chacune avec au moins une preuve publique — Archify
+(installation), Agent-Reach (installation), le hook de réécriture de rtk
+(installation), REA (installation), Agent Control Plane de HumanLayer (reprise
+de code), humanlayer-pi (installation), le service HumanLayer (usage).
+Reproduire : `grep -c '^  - id: refusal\.' ecosystem/refusals.v1.yaml` → `7` ;
+aucune entrée sans preuve :
+`grep -c '^    evidence: \[\]' ecosystem/refusals.v1.yaml` → `0`.
 
-L'entrée `refusal.yt-dlp-dependency` touche une phrase signée : ADR-0042
-(« Conséquences et limites ») note que le moteur de P29, `yt-dlp`, n'est pas
-sous GPL, sans l'adopter ni le refuser. L'entrée consigne la décision du
-2026-10-09 qui l'écarte pour P29 et les connecteurs de P01, au motif des
-conditions d'utilisation de YouTube ; signer cet ADR signe aussi cette entrée.
+Écartés de l'amorce :
 
-Écartés de l'amorce, faute de pouvoir les étayer dans le dépôt : les décisions
-de périmètre de P01 prises le même jour qu'Agent-Reach (pas d'API de recherche
-web en v1, sources publiques seulement), dont la seule trace est une
-spécification hors dépôt, sans source publique à citer.
+- `yt-dlp` : son refus pour P29 et les connecteurs de P01 inverserait une
+  phrase signée d'ADR-0042 (« P29 n'a que des clients GPL, mais son backend,
+  `yt-dlp`, ne l'est pas », `c466a5c:docs/adr/0042-product-vision-and-realization-method.md:338-341`),
+  qui fait de `yt-dlp` le backend de P29. C'est un amendement d'ADR-0042, pas
+  une inscription au registre (voir « Ce qui n'est pas décidé ici ») ;
+- les décisions de périmètre de P01 prises le même jour qu'Agent-Reach (pas
+  d'API de recherche web en v1, sources publiques seulement) : ce sont des
+  non-objectifs de produit, hors du registre, et leur seule trace est une
+  spécification hors dépôt, sans source publique.
 
 ### D5 — Négative par tranche (R15)
 
@@ -214,9 +265,10 @@ vérifient par le diff (manifestes et lockfiles, fichiers de schéma, fichiers d
 `.github/workflows/`) ; un gate les confrontera au diff. Les trois autres
 restent déclaratifs et se lisent en revue (D2).
 
-Archify déclare 16 négatives de ce type et n'en vérifie aucune (constat 5) :
-c'est l'écart que la flotte comble. Une négative vérifiable par diff et démentie
-par lui est un défaut bloquant, au sens de D2, dès que le gate existe.
+Archify déclare de telles négatives sur 16 lignes et n'en vérifie aucune
+(constat 5) : c'est l'écart que la flotte comble. Une négative vérifiable par
+diff et démentie par lui est un défaut bloquant, au sens de D2, dès que le gate
+existe.
 
 ## Écartés
 
@@ -237,18 +289,24 @@ par lui est un défaut bloquant, au sens de D2, dès que le gate existe.
   `brand: {url, sha256}` déclenche un GET vers l'hôte nommé à chaque rendu,
   avant la vérification du digest, sans variable qui le coupe
   (`tt-a1i/archify@25cf370:archify/renderers/shared/brand-marks.mjs:607-612` :
-  la requête en 607, la comparaison du digest en 612). Le contenu du diagramme
-  décide donc d'une sortie réseau.
+  la requête en 607, la comparaison du digest en 612 ; le module lit deux
+  variables d'environnement, en trois endroits, `:135`, `:163` et `:184`, et
+  aucune ne désactive la requête). Le contenu du diagramme décide donc d'une
+  sortie réseau.
 
 ## Conséquences
 
-- I-38 est inscrit au registre des invariants, source « ADR-0055 (candidat, en
-  attente de signature) ».
+- I-38 est inscrit au registre des invariants, source « ADR-0055 (candidat,
+  signature au merge sous I-17) ».
 - Le registre des décisions gagne D94.
-- `ecosystem/refusals.v1.yaml` est créé avec huit entrées ; `REUSE.toml` le
-  place sous `CC-BY-4.0` ; la carte d'autorité gagne sa ligne.
-- `docs/reviews/AGENT-REVIEW-PROTOCOL.md` gagne la section « Disposition of each
-  finding » (D2).
+- `ecosystem/refusals.v1.yaml` est créé avec sept entrées ; `REUSE.toml` le
+  place sous `CC-BY-4.0` ; la carte d'autorité gagne sa ligne, qui en écrit le
+  partage avec `vision.md` §28 et `skills/.out-of-scope/`.
+- **Le registre n'a aujourd'hui ni consommateur ni gate** : aucun outil ne le
+  lit, aucun contrôle ne vérifie sa forme, et sa consultation avant une
+  proposition (D4) n'est tenue que par la revue.
+- `docs/reviews/AGENT-REVIEW-PROTOCOL.md` gagne un renvoi vers D2, sans en
+  recopier le texte.
 - D1 et D5 sont en vigueur à la signature comme règles de revue : la revue lit
   la ligne `Origin:` et la négative déclarée. Tant que leurs gates n'existent
   pas, leur absence n'empêche aucune fusion, ce qui s'écrit comme limite.
@@ -267,8 +325,8 @@ Aucune n'est livrée par cette pull request :
 - **Gabarit de pull request** de `libre-ai/.github` : lignes `Origin:` et
   négative, à côté de `Door:`.
 - **Contrôle de forme** de `ecosystem/refusals.v1.yaml` (champs requis, dates
-  ISO, URL `https://`, unicité des `id`, vocabulaires fermés) dans
-  `bun run check`, et entrée du fichier dans la surface de
+  ISO, au moins une preuve publique, unicité des `id`, vocabulaires fermés)
+  dans `bun run check`, et entrée du fichier dans la surface de
   `check-review-evidence`.
 
 Chaque suite est une mutation de garde-fou (I-17) et passe par sa propre pull
@@ -276,6 +334,10 @@ request.
 
 ## Ce qui n'est pas décidé ici
 
+- L'option de conciliation de D2 (A ou B) : point d'arbitrage du propriétaire.
+- Le refus de `yt-dlp` pour P29 et les connecteurs de P01 : candidat à un
+  amendement d'ADR-0042 par le propriétaire, la phrase signée citée à D4
+  faisant de `yt-dlp` le backend de P29.
 - La forme exacte de la ligne de négative de D5 (nom de la ligne, séparateur) :
   elle se décide avec le gate qui la lit.
 - Si la ligne de D5 est exigée de toute pull request ou des seules pull
@@ -287,13 +349,15 @@ request.
 ## Numérotation
 
 ADR-0055 et D94, et non ADR-0054 et D81 que donneraient les derniers numéros de
-la base `c466a5c` : la pull request ouverte #130 réserve ADR-0054 et D81 à D93,
-et le gate de doctrine refuse deux ADR de même numéro. Reproduire sur la base :
-`git ls-tree --name-only c466a5c docs/adr/ | sed 's#docs/adr/##' | grep -oE '^[0-9]{4}-[a-z]' | cut -c1-4 | sort -n | tail -1`
+la branche servie : la pull request ouverte #130 réserve ADR-0054 et D81 à D93,
+et le gate de doctrine refuse deux ADR de même numéro. Reproduire, sur la tête
+de la branche servie :
+`git ls-tree --name-only origin/migrate/recover-code docs/adr/ | sed 's#docs/adr/##' | grep -oE '^[0-9]{4}-[a-z]' | cut -c1-4 | sort -n | tail -1`
 → `0053` (le filtre `-[a-z]` écarte `2026-09-29-portfolio-consolidation.md`,
 qu'un simple `^[0-9]{4}` compte comme le numéro 2026) ;
-`git show c466a5c:docs/decisions/DECISION-REGISTER.md | grep -oE '^\| D[0-9]+' | tail -1`
+`git show origin/migrate/recover-code:docs/decisions/DECISION-REGISTER.md | grep -oE '^\| D[0-9]+' | tail -1`
 → `| D80`. I-38 suit I-37
-(`git show c466a5c:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1`
-→ `| I-37`) ; #130 amende I-06 sans ajouter d'invariant. Un conflit de numéro à
-la fusion se résout par renumérotation, jamais par réutilisation.
+(`git show origin/migrate/recover-code:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1`
+→ `| I-37`) ; #130 amende I-06 sans ajouter d'invariant. Mesures du
+2026-10-23, tête `92f02be`. Un conflit de numéro à la fusion se résout par
+renumérotation, jamais par réutilisation.

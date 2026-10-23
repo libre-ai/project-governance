@@ -33,14 +33,7 @@ Identifiers are audit metadata; equality with authoring identifiers does not inv
 
 ## Disposition of each finding
 
-Authority: ADR-0055 D2, in force when that ADR is merged. Severity (above) says how much a finding weighs; the disposition says what is established. Each finding carries exactly one disposition:
-
-- **blocking defect** — its trigger, its impact and reproduced evidence;
-- **required evidence** — the claim at stake and the smallest check that would settle it; also used for a scope decision the review cannot take;
-- **suggestion** — an improvement that does not condition the merge;
-- **ready** — nothing on the reviewed scope stands against the merge.
-
-An unverified risk is never reported as a reproduced defect: without evidence it is required evidence, whatever its severity. `approve` coexists with no blocking defect and no open required evidence. A re-review starts from the last reviewed head and, when the base moved, from the intervening base changes: an earlier green proves nothing about the new diff. The axis order (security > quality > performance > completeness) still says what to look at; the dispositions only say how to conclude.
+Each finding also carries one disposition — blocking defect, required evidence, suggestion or ready — defined by `docs/adr/0055-method-origin-review-dispositions-live-install-refusals-negatives.md` D2, which is the only authority on them and is not restated here. How dispositions combine with the severity scale, the verdicts and the fresh pass above is an owner arbitration point of that ADR; until it is settled, no verdict rule of this protocol changes.
 
 ## Candidate integration
 
