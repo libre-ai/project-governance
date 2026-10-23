@@ -527,6 +527,12 @@ describe("scanText — bare and unqualified citations", () => {
       // Two forms glued into one segment are one refused candidate, and the
       // bare citation inside it is not counted a second time.
       ["docs/a.md:3,c466a5c:tools/x.ts", "is not a local pin"],
+      // A pin of another owner is judged on the same tail grammar, and the
+      // organisation written in another case is not another owner.
+      ["tt-a1i/archify@25cf370:<chemin>", "carries '<'"],
+      ["tt-a1i/archify@25cf370:a.md:3x", "is not a line spec"],
+      ["Libre-AI/live@abcdef1:a.md", "is the organisation written in another case"],
+      ["LIBRE-AI/live@abcdef1:a.md", "is the organisation written in another case"],
     ];
     for (const [written, reason] of cases) {
       const { local, localRejected, bare } = scanText(`see \`${written}\`.`, ORG, extensions);
@@ -729,6 +735,8 @@ let ambiguousCandidates: string[] = [];
 let trunkCommit = "";
 let sideCommit = "";
 let shadowedShort = "";
+let upstreamCommit = "";
+let danglingHeadCommit = "";
 let scratchCount = 0;
 
 /** A fast-import stream of `count` deterministic commits on one branch. */
@@ -829,6 +837,25 @@ beforeAll(async () => {
   await Bun.write(join(shadowed, "a.ts"), "one\ntwo\n");
   git(shadowed, ["commit", "--quiet", "-am", "second"]);
   git(shadowed, ["branch", shadowedShort]);
+
+  // A repository whose HEAD names a branch that does not exist: its bare clone
+  // has no served branch to hold a citation to.
+  const danglingHead = join(base, "dangling-head");
+  git(base, ["init", "--quiet", "-b", "trunk", danglingHead]);
+  await Bun.write(join(danglingHead, "a.ts"), "one\n");
+  git(danglingHead, ["add", "-A"]);
+  git(danglingHead, ["commit", "--quiet", "-m", "one"]);
+  danglingHeadCommit = git(danglingHead, ["rev-parse", "HEAD"]);
+  git(danglingHead, ["symbolic-ref", "HEAD", "refs/heads/nothere"]);
+
+  // A repository named `source` under a foreign owner, distinct from the
+  // organisation's `source`: the resolver must clone each on its own.
+  const upstream = join(base, "owners", "upstream-owner", "source");
+  git(base, ["init", "--quiet", "-b", "trunk", upstream]);
+  await Bun.write(join(upstream, "tool.ts"), "upstream\n");
+  git(upstream, ["add", "-A"]);
+  git(upstream, ["commit", "--quiet", "-m", "upstream"]);
+  upstreamCommit = git(upstream, ["rev-parse", "HEAD"]);
 });
 
 afterAll(() => {
@@ -839,7 +866,10 @@ function resolver(allowProtocol = "file", maxConcurrentGit = 4): CitationResolve
   scratchCount += 1;
   const scratch = mkdtempSync(join(base, `scratch-${scratchCount}-`));
   return new CitationResolver({
-    urlFor: (repository) => `file://${join(base, repository)}`,
+    urlFor: (repository, owner) =>
+      owner === null
+        ? `file://${join(base, repository)}`
+        : `file://${join(base, "owners", owner, repository)}`,
     allowProtocol,
     scratch,
     timeoutMs: 60_000,
@@ -883,6 +913,41 @@ describe("CitationResolver against local repositories", () => {
     expect(side.note).toContain("is not on trunk, the served branch of branched");
     // A pinned citation of another repository may still name any branch.
     expect((await ask(sideCommit.slice(0, 7), false)).verdict).toBe("resolved");
+  }, 60_000);
+
+  test("served-branch-unreadable: no served branch to hold a citation of this repository to", async () => {
+    const resolution = await resolver().resolve({
+      repository: "dangling-head",
+      sha: danglingHeadCommit,
+      path: "a.ts",
+      lines: null,
+      servedBranchOnly: true,
+    });
+    // The repository answered: this is not the network, so not `repository-unreachable`.
+    expect(resolution.verdict, resolution.note).toBe("served-branch-unreadable");
+    expect(resolution.note).toContain(
+      "is on the served branch of dangling-head could not be decided",
+    );
+  }, 60_000);
+
+  test("a foreign owner's repository is cloned apart from the organisation's of the same name", async () => {
+    const r = resolver();
+    const upstream = await r.resolve({
+      owner: "upstream-owner",
+      repository: "source",
+      sha: upstreamCommit.slice(0, 7),
+      path: "tool.ts",
+      lines: parseLineSpec("1"),
+    });
+    expect(upstream.verdict).toBe("resolved");
+    // The organisation's `source` does not carry that commit.
+    expect((await r.resolve(cite(upstreamCommit.slice(0, 7), "tool.ts"))).verdict).toBe(
+      "sha-not-found",
+    );
+    expect((await r.resolve(cite(newer, "src/a.ts"))).verdict).toBe("resolved");
+    expect(r.repositoriesAddressed).toBe(2);
+    const unsafe = await r.resolve({ ...cite(newer), owner: "../x" });
+    expect(unsafe.verdict).toBe("invalid-citation");
   }, 60_000);
 
   test("sha-ambiguous: a branch named like the cited short sha never answers for it", async () => {
@@ -1023,6 +1088,7 @@ const CONFIG: PinnedCitationsConfig = {
       because: "fictitious example",
     },
   ],
+  foreignOwners: [],
 };
 
 /** A resolver that answers from a table, so the verdict logic runs without git. */
@@ -1040,7 +1106,9 @@ function tableResolver(table: Record<string, Resolution>): TableResolver {
     asked,
     servedOnly,
     resolve: async (citation: Asked): Promise<Resolution> => {
-      const key = `${citation.repository}@${citation.sha}`;
+      // A foreign owner is part of the key: `<owner>/<repository>@<sha>`.
+      const owner = citation.owner ?? null;
+      const key = `${owner === null ? "" : `${owner}/`}${citation.repository}@${citation.sha}`;
       asked.push(key);
       servedOnly.push(citation.servedBranchOnly === true);
       return table[key] ?? { verdict: "sha-not-found", note: "absent from the table" };
@@ -1411,8 +1479,18 @@ describe("evaluateCitations", () => {
     expect(information[1]).toContain("2 unqualified pin(s)");
   });
 
-  test("local pins: asked of this repository above the threshold, counted below it", async () => {
-    const config: PinnedCitationsConfig = { ...CONFIG, exemptions: [] };
+  test("local and foreign pins: judged above the threshold, exempted by data, counted below it", async () => {
+    const config: PinnedCitationsConfig = {
+      ...CONFIG,
+      exemptions: [
+        {
+          file: "docs/adr/0011-new.md",
+          citation: "ed25519:AAAAC3NzaC1lZDI1NTE5",
+          because: "a key type written in prose, not a commit",
+        },
+      ],
+      foreignOwners: [{ owner: "tt-a1i", because: "upstream of a drill" }],
+    };
     const files = [
       {
         path: "docs/adr/0011-new.md",
@@ -1420,7 +1498,10 @@ describe("evaluateCitations", () => {
           "resolves: `c466a5c:AGENTS.md:80`",
           "not here: `abcdef9:docs/a.md`",
           "malformed: `c466a5c:AGENTS.md:9-3`",
-          "pinned: libre-ai/live@abcdef1; another owner: `tt-a1i/archify@25cf370:AGENTS.md:15`",
+          `pinned: libre-ai/live@abcdef1 and libre-ai/${SELF}@c466a5c:AGENTS.md`,
+          "listed owner: `tt-a1i/archify@25cf370:AGENTS.md:15`; unlisted: `someone/x@abcdef2:a.md`; listed, not there: `tt-a1i/archify@deadbee:AGENTS.md`",
+          "the organisation in another case: `Libre-AI/live@abcdef1:a.md`",
+          "a key type in prose: ed25519:AAAAC3NzaC1lZDI1NTE5",
         ].join("\n"),
       },
       {
@@ -1432,32 +1513,72 @@ describe("evaluateCitations", () => {
     const fake = tableResolver({
       "live@abcdef1": { verdict: "resolved", note: "ok" },
       [`${SELF}@c466a5c`]: { verdict: "resolved", note: "AGENTS.md:80 lies in its 80 line(s)" },
+      "tt-a1i/archify@25cf370": { verdict: "resolved", note: "AGENTS.md:15 lies in it" },
     });
     const { report, volume, information } = await evaluateCitations(
       { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
-    expect([volume.guardedLocal, volume.guardedLocalResolved, volume.guardedLocalFailed]).toEqual([
-      3, 1, 2,
-    ]);
+    expect(volume.guardedLocal).toEqual({ resolved: 1, exempted: 1, failed: 3 });
+    expect(volume.guardedForeign).toEqual({ resolved: 1, exempted: 0, failed: 2 });
     // The refused `C466A5C:x.ts` of the legacy ADR is counted too.
-    expect(volume.legacyLocal).toBe(3);
-    expect(volume.foreignPins).toBe(2);
-    // Only the guarded, well-formed local pins reach the resolver, each as this
-    // repository and on its served branch; the pinned citation keeps any branch.
-    expect(fake.asked).toEqual(["live@abcdef1", `${SELF}@c466a5c`, `${SELF}@abcdef9`]);
-    expect(fake.servedOnly).toEqual([false, true, true]);
+    expect([volume.legacyLocal, volume.legacyForeign]).toEqual([3, 1]);
+    // A citation of this repository, local or qualified, is held to the served
+    // branch; another repository's, of the organisation or a listed owner, is
+    // not. The unlisted owner and the refused candidates are never asked.
+    expect(fake.asked).toEqual([
+      "live@abcdef1",
+      `${SELF}@c466a5c`,
+      `${SELF}@c466a5c`,
+      `${SELF}@abcdef9`,
+      `${SELF}@ed25519`,
+      "tt-a1i/archify@25cf370",
+      "tt-a1i/archify@deadbee",
+    ]);
+    expect(fake.servedOnly).toEqual([false, true, true, true, true, false, false]);
     // A local pin is neither bare nor unqualified: no other counter sees it.
     expect([volume.guardedBare, volume.guardedUnqualified, volume.legacyBare]).toEqual([0, 0, 0]);
     expect(report.violations).toEqual([
       "docs/adr/0011-new.md:2 abcdef9:docs/a.md: local pin in an ADR above 10: sha-not-found: absent from the table",
-      "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: invalid local pin in an ADR above 10: '9-3' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
+      "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: invalid pin in an ADR above 10: '9-3' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
+      "docs/adr/0011-new.md:6 Libre-AI/live@abcdef1:a.md: invalid pin in an ADR above 10: 'Libre-AI' is the organisation written in another case: write libre-ai/live@…",
+      `docs/adr/0011-new.md:5 someone/x@abcdef2:a.md: pin of another owner in an ADR above 10: someone is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
+      // A listed owner is asked, and what it does not carry fails like any pin.
+      "docs/adr/0011-new.md:5 tt-a1i/archify@deadbee:AGENTS.md: pin of another owner in an ADR above 10: sha-not-found: absent from the table",
     ]);
     expect(report.volumeSummary).toContain(
-      `local pins (<sha>:<path>, asked of libre-ai/${SELF}) there: 3 examined = 1 resolved + 2 failed`,
+      `local pins (<sha>:<path>, asked of libre-ai/${SELF}; refused candidates included) there: ` +
+        "5 examined = 1 resolved + 1 exempted (with reason) + 3 failed",
+    );
+    expect(report.volumeSummary).toContain(
+      "pins of another owner there (1 owner(s) listed, 1 cited): 3 examined = 1 resolved + 0 exempted (with reason) + 2 failed",
     );
     expect(information[2]).toContain("3 local pin(s) (<sha>:<path>, repository implicit)");
-    expect(information[3]).toContain("2 pin(s) of another owner");
+    expect(information[3]).toContain("1 pin(s) of another owner");
+  });
+
+  test("an exempt local pin that resolves fails, and so does a listed owner nobody cites", async () => {
+    const config: PinnedCitationsConfig = {
+      ...CONFIG,
+      exemptions: [
+        { file: "docs/adr/0011-new.md", citation: "c466a5c:AGENTS.md:80", because: "was missing" },
+      ],
+      foreignOwners: [{ owner: "nobody-cites", because: "listed in advance" }],
+    };
+    const { report } = await evaluateCitations(
+      {
+        config,
+        files: [{ path: "docs/adr/0011-new.md", text: "`c466a5c:AGENTS.md:80`" }],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: SELF,
+      },
+      tableResolver({ [`${SELF}@c466a5c`]: { verdict: "resolved", note: "it resolves" } }),
+    );
+    expect(report.violations).toEqual([
+      'docs/adr/0011-new.md:1 c466a5c:AGENTS.md:80: exemption-now-resolves: it resolves — remove the exemption ("was missing")',
+      "foreignOwners: nobody-cites: listed foreign owner cited by no ADR — remove it, an unused permission is checked by nobody",
+    ]);
   });
 
   test("a local pin fails when the name of this repository could not be derived", async () => {
@@ -1473,7 +1594,7 @@ describe("evaluateCitations", () => {
       },
       fake,
     );
-    expect([volume.guardedLocal, volume.guardedLocalFailed]).toEqual([1, 1]);
+    expect(volume.guardedLocal).toEqual({ resolved: 0, exempted: 0, failed: 1 });
     expect(fake.asked).toEqual([]);
     expect(report.violations).toEqual([
       "docs/adr/0011-new.md:1 c466a5c:AGENTS.md:80: local pin in an ADR above 10: the name of this repository could not be derived from its origin remote, so no repository can be asked: write libre-ai/<repository>@c466a5c:AGENTS.md",
@@ -1544,6 +1665,31 @@ describe("validateConfig", () => {
     expect(() => validateConfig({ ...CONFIG, exemptions: [twice, twice] })).toThrow(
       "duplicate exemption",
     );
+  });
+
+  test("refuses a foreign owner without a reason, unsafe, the organisation, or listed twice", () => {
+    const owner = (name: string, because = "r") => ({
+      ...CONFIG,
+      foreignOwners: [{ owner: name, because }],
+    });
+    expect(() => validateConfig(owner("tt-a1i", " "))).toThrow("non-empty because");
+    expect(() => validateConfig(owner("../x"))).toThrow("GitHub owner name");
+    expect(() => validateConfig(owner("-x"))).toThrow("GitHub owner name");
+    expect(() => validateConfig({ ...CONFIG, foreignOwners: undefined })).toThrow("foreign owner");
+    // Owner names are case-insensitive on GitHub.
+    expect(() => validateConfig(owner("Libre-AI"))).toThrow("is the organisation itself");
+    expect(() =>
+      validateConfig({
+        ...CONFIG,
+        foreignOwners: [
+          { owner: "tt-a1i", because: "r" },
+          { owner: "TT-A1I", because: "r" },
+        ],
+      }),
+    ).toThrow("duplicate foreign owner");
+    expect(validateConfig(owner("tt-a1i")).foreignOwners).toEqual([
+      { owner: "tt-a1i", because: "r" },
+    ]);
   });
 
   test("refuses a scope that is not a list of directories", () => {

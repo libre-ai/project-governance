@@ -27,6 +27,17 @@
       "file": "docs/superpowers/specs/2026-07-28-multi-repo-activation-design.md",
       "citation": "libre-ai/governance/.github/...@<sha>",
       "because": "the shape `uses: libre-ai/governance/.github/...@<sha>` written as a template in the multi-repo activation design: a placeholder, naming no commit"
+    },
+    {
+      "file": "docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md",
+      "citation": "tt-a1i/archify@25cf370:<chemin>",
+      "because": "the form in which ADR-0056 cites the upstream drill, written as a template in its header: a placeholder path, naming no file"
+    }
+  ],
+  "foreignOwners": [
+    {
+      "owner": "tt-a1i",
+      "because": "upstream of the archify drill (MIT, public), cited pinned by ADR-0056 as the source of its five method rules"
     }
   ]
 }

@@ -39,13 +39,35 @@
  * same path-and-lines grammar as a pinned citation (owner arbitration
  * 2026-10-23), with one more condition: the commit must be on the served branch
  * of the remote, since this repository merges by squash and a commit of a work
- * branch disappears with it. The name of this repository is derived from its
- * `origin` remote, never written in data; a name that cannot be derived fails
- * every local pin. They are read closed by default (`LOCAL_CANDIDATE`): any
- * segment holding seven hexadecimal digits then `:` must be a local pin in
- * full, a pin of another owner (counted, never asked), or it is refused by
- * name. In ADRs at or below the threshold they are counted, not judged. They
- * are read in ADRs only, like bare citations, whatever the extension.
+ * branch disappears with it. The condition holds for a qualified pin of this
+ * repository too, or qualifying would get around it. The name of this
+ * repository is derived from its `origin` remote, never written in data; a name
+ * that cannot be derived fails every local pin. They are read closed by default
+ * (`LOCAL_CANDIDATE`): any segment holding seven hexadecimal digits then `:`
+ * then more text must be, once unwrapped, a local pin in full or a pin of
+ * another owner, or it is refused by name.
+ *
+ * PINS OF ANOTHER OWNER (`<owner>/<repository>@<sha>:<path>[:<lines>]`) of a
+ * guarded ADR are asked over git like the organisation's, on any branch or tag,
+ * when their owner is listed in `foreignOwners` with a reason (owner
+ * arbitration 2026-10-23); an owner not listed fails, so a pin no instrument
+ * checks cannot pass, and cloning stays bounded to the list. The organisation
+ * written in another case (`Libre-AI/…`) is refused: GitHub answers it.
+ *
+ * In ADRs at or below the threshold, both forms are counted, not judged. Both
+ * are read in ADRs only, like bare citations, whatever the extension, and an
+ * exemption in data covers them like a pinned citation (prose such as
+ * `ed25519:<key>` holds seven hex digits then `:`).
+ *
+ * NOT READ AS LOCAL PINS, by design: a sha then `:` then whitespace
+ * (`commit c466a5c: tools/x.ts` — prose; the path that follows is a bare
+ * citation, judged against this tree); a revision expression glued to the sha
+ * (`c466a5c~1:x`, `c466a5c^{tree}:x`), since no candidate is formed without
+ * seven hex digits directly before `:`; another owner's commit-only reference
+ * (`owner/repository@<sha>`, the shape of an action pin). The local reader has
+ * no independent walk like `listCandidateSegments`: its candidate test is the
+ * whole segment, so no parser can split one, and its coverage is held by tests
+ * and mutants.
  *
  * ACTION REFERENCES of the organisation (`libre-ai/<repository>/<path>@<sha>`, a
  * reusable workflow or a composite action) name a repository, a commit and a
@@ -56,8 +78,9 @@
  * Verdicts are named and distinct, and every one of them but `resolved` fails:
  * repository-not-found, repository-unreachable, sha-not-found, sha-ambiguous
  * (two commits, or a branch or tag named like the cited hex),
- * sha-not-on-served-branch (local pins), path-absent, line-range-outside-file,
- * invalid-citation, exemption-now-resolves.
+ * sha-not-on-served-branch and served-branch-unreadable (citations of this
+ * repository), path-absent, line-range-outside-file, invalid-citation,
+ * exemption-now-resolves.
  * An unreachable repository is not a missing one — the first is about the
  * network, the second about the citation — and neither is ever a zero.
  *
@@ -91,7 +114,8 @@
  * OUT OF DECLARED SCOPE — read by nothing, by design: a citation split by a
  * zero-width space (U+200B is not whitespace, so it stays inside one segment
  * the grammar then refuses — but `libre` U+200B `-ai/` is no candidate at all);
- * another case (`Libre-AI/`) or a homoglyph of the organisation; a GitHub
+ * another case (`Libre-AI/`) as a `libre-ai/` candidate — but with a sha then
+ * `:` it is a local-pin candidate and refused; a homoglyph of the organisation; a GitHub
  * permalink (`github.com/libre-ai/x/blob/<sha>/…`, no `@`); a markdown link
  * `[libre-ai/…@…](x)`, which is a candidate and is refused, never resolved.
  *
@@ -162,11 +186,22 @@ export interface AdrRule {
   readonly extensions: readonly string[];
 }
 
+/** An owner outside the organisation whose repositories a guarded ADR may cite. */
+export interface ForeignOwner extends Reasoned {
+  readonly owner: string;
+}
+
 export interface PinnedCitationsConfig {
   readonly organization: string;
   readonly scope: readonly string[];
   readonly adr: AdrRule;
   readonly exemptions: readonly CitationExemption[];
+  /**
+   * Owners whose pins a guarded ADR may carry; each is asked over git like the
+   * organisation (owner arbitration 2026-10-23). A pin of an owner not listed
+   * fails there, and an owner listed but cited by no ADR fails too.
+   */
+  readonly foreignOwners: readonly ForeignOwner[];
 }
 
 export const CONFIG_PATH: string = "tools/quality/pinned-citations.v1.json";
@@ -243,6 +278,27 @@ export function validateConfig(value: unknown): PinnedCitationsConfig {
     if (seen.has(key)) fail(`duplicate exemption ${entry.file}: ${entry.citation}`);
     seen.add(key);
   }
+  const foreignOwners = candidate.foreignOwners;
+  if (
+    !Array.isArray(foreignOwners) ||
+    !foreignOwners.every((entry: unknown) => {
+      if (!isReasoned(entry)) return false;
+      const owner = (entry as { owner?: unknown }).owner;
+      return typeof owner === "string" && OWNER_NAME.test(owner);
+    })
+  ) {
+    fail("every foreign owner needs a GitHub owner name and a non-empty because");
+  }
+  const owners = new Set<string>();
+  for (const entry of foreignOwners as ForeignOwner[]) {
+    // GitHub owner names are case-insensitive: `Libre-AI` is the organisation.
+    const folded = entry.owner.toLowerCase();
+    if (folded === organization.toLowerCase()) {
+      fail(`foreign owner ${entry.owner} is the organisation itself`);
+    }
+    if (owners.has(folded)) fail(`duplicate foreign owner ${entry.owner}`);
+    owners.add(folded);
+  }
   return value as PinnedCitationsConfig;
 }
 
@@ -294,9 +350,14 @@ export interface LocalPin {
   readonly line: number;
 }
 
-/** `<owner>/<repository>@<sha>[:…]` of another owner: counted, never asked. */
+/** `<owner>/<repository>@<sha>:<path>[:<lines>]` of another owner. */
 export interface ForeignPin {
   readonly text: string;
+  readonly owner: string;
+  readonly repository: string;
+  readonly sha: string;
+  readonly path: string;
+  readonly lines: readonly LineSpan[] | null;
   readonly line: number;
 }
 
@@ -318,6 +379,8 @@ const LINE_SPEC: RegExp = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
 const SHA: RegExp = /^[0-9a-f]{7,40}$/;
 const HEX_LIKE: RegExp = /^[0-9a-fA-F]+$/;
 const REPOSITORY_NAME: RegExp = /^[A-Za-z0-9._-]+$/;
+/** A GitHub user or organisation name: alphanumerics and inner hyphens. */
+const OWNER_NAME: RegExp = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const TRAILING_PUNCTUATION: RegExp = /[.,;:!?]+$/;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point.
 const CONTROL_CHARACTER: RegExp = /[\u0000-\u001f\u007f]/;
@@ -643,7 +706,7 @@ function barePattern(extensions: readonly string[]): RegExp {
 // `<owner>/<repository>@<sha>[:…]` (counted, never asked: this gate offers no
 // credential and addresses the organisation only), or it is refused by name.
 const LOCAL_CANDIDATE: RegExp = /[0-9a-fA-F]{7,}:\S/;
-const FOREIGN_PIN: RegExp = /^([A-Za-z0-9-]+)\/[A-Za-z0-9._-]+@[0-9a-f]{7,40}(?::\S*)?$/;
+const FOREIGN_PIN: RegExp = /^([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+)@([0-9a-f]{7,40}):(\S+)$/;
 
 /**
  * `unwrapSegment`, plus an opening parenthesis the segment does not close: a
@@ -679,8 +742,33 @@ export function parseLocalCandidate(
     rejection: { text: core, line, reason },
   });
   const foreign = FOREIGN_PIN.exec(core);
-  if (foreign !== null && foreign[1] !== organization) {
-    return { kind: "foreign", pin: { text: core, line } };
+  if (foreign !== null) {
+    const owner = foreign[1] ?? "";
+    const repository = foreign[2] ?? "";
+    // GitHub answers `Libre-AI/<repository>` for the organisation: written in
+    // another case, it would otherwise pass as another owner's pin.
+    if (owner.toLowerCase() === organization.toLowerCase()) {
+      return reject(
+        `'${owner}' is the organisation written in another case: write ${organization}/${repository}@…`,
+      );
+    }
+    if (!OWNER_NAME.test(owner) || repository === "." || repository === "..") {
+      return reject(`'${owner}/${repository}' is not a repository of an owner`);
+    }
+    const target = parsePathAndLines(foreign[4] ?? "");
+    if ("reason" in target) return reject(target.reason);
+    return {
+      kind: "foreign",
+      pin: {
+        text: core,
+        owner,
+        repository,
+        sha: foreign[3] ?? "",
+        path: target.path,
+        lines: target.lines,
+        line,
+      },
+    };
   }
   const colon = core.indexOf(":");
   const sha = colon === -1 ? core : core.slice(0, colon);
@@ -789,6 +877,8 @@ export type Verdict =
   | "sha-not-found"
   | "sha-ambiguous"
   | "sha-not-on-served-branch"
+  /** The repository answered, but its served branch could not be read: not the network. */
+  | "served-branch-unreadable"
   | "path-absent"
   | "line-range-outside-file"
   | "invalid-citation";
@@ -852,8 +942,11 @@ export function classifyRemoteFailure(stderr: string, timedOut: boolean): Verdic
 }
 
 export interface ResolverOptions {
-  /** The URL of a repository of the organisation. */
-  readonly urlFor: (repository: string) => string;
+  /**
+   * The URL of a repository: of the organisation when `owner` is null, else of
+   * that owner (a foreign owner listed in data).
+   */
+  readonly urlFor: (repository: string, owner: string | null) => string;
   /** The single transport git may use (`https` in the gate). */
   readonly allowProtocol: string;
   /** A fresh directory owned by the caller, removed by the caller. */
@@ -866,11 +959,13 @@ export interface ResolverOptions {
 /** What the resolver is asked: a citation, and whether its commit must be on the served branch. */
 export interface Asked extends Pick<PinnedCitation, "repository" | "sha" | "path" | "lines"> {
   /**
-   * True for a local pin: this repository merges by squash, so a commit
-   * reachable only from a work branch disappears with it. A pinned citation of
-   * another repository may name any branch or tag of it, as before.
+   * True for a citation of this repository, local or qualified: it merges by
+   * squash, so a commit reachable only from a work branch disappears with it.
+   * A citation of another repository may name any branch or tag of it.
    */
   readonly servedBranchOnly?: boolean;
+  /** Null or absent: the organisation. Otherwise a foreign owner listed in data. */
+  readonly owner?: string | null;
 }
 
 type RepositoryHandle =
@@ -941,16 +1036,22 @@ export class CitationResolver {
     }
   }
 
-  #open(repository: string): Promise<RepositoryHandle> {
-    const known = this.#repositories.get(repository);
+  #open(repository: string, owner: string | null): Promise<RepositoryHandle> {
+    // Owners are case-insensitive on GitHub: one clone per repository, however written.
+    const key = `${owner === null ? "" : owner.toLowerCase()}/${repository}`;
+    const known = this.#repositories.get(key);
     if (known !== undefined) return known;
-    const opened = this.#openUncached(repository, this.#repositories.size);
-    this.#repositories.set(repository, opened);
+    const opened = this.#openUncached(repository, owner, this.#repositories.size);
+    this.#repositories.set(key, opened);
     return opened;
   }
 
-  async #openUncached(repository: string, index: number): Promise<RepositoryHandle> {
-    const url = this.#options.urlFor(repository);
+  async #openUncached(
+    repository: string,
+    owner: string | null,
+    index: number,
+  ): Promise<RepositoryHandle> {
+    const url = this.#options.urlFor(repository, owner);
     const probe = await this.#git(["ls-remote", url, "HEAD"]);
     if (probe.code !== 0) {
       const verdict = classifyRemoteFailure(probe.stderr, probe.timedOut);
@@ -991,7 +1092,8 @@ export class CitationResolver {
 
   /** Resolves one citation; identical citations are resolved once. */
   resolve(citation: Asked): Promise<Resolution> {
-    const key = `${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
+    const owner = citation.owner ?? null;
+    const key = `${owner === null ? "" : owner.toLowerCase()}/${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
     const known = this.#citations.get(key);
     if (known !== undefined) return known;
     const resolved = this.#resolveUncached(citation);
@@ -1002,10 +1104,15 @@ export class CitationResolver {
   async #resolveUncached(citation: Asked): Promise<Resolution> {
     // Defence in depth: the parser already refused these, but this method is
     // exported and must not depend on its caller for what reaches git.
-    if (!/^[0-9a-f]{4,40}$/.test(citation.sha) || !REPOSITORY_NAME.test(citation.repository)) {
+    const owner = citation.owner ?? null;
+    if (
+      !/^[0-9a-f]{4,40}$/.test(citation.sha) ||
+      !REPOSITORY_NAME.test(citation.repository) ||
+      (owner !== null && !OWNER_NAME.test(owner))
+    ) {
       return {
         verdict: "invalid-citation",
-        note: "repository or sha outside the accepted alphabet",
+        note: "owner, repository or sha outside the accepted alphabet",
       };
     }
     if (citation.path !== null) {
@@ -1013,7 +1120,7 @@ export class CitationResolver {
       if (invalid !== null) return { verdict: "invalid-citation", note: invalid };
     }
 
-    const handle = await this.#open(citation.repository);
+    const handle = await this.#open(citation.repository, owner);
     if (handle.kind === "failed") return handle.resolution;
     const gitDir = handle.gitDir;
 
@@ -1054,7 +1161,7 @@ export class CitationResolver {
       const servedRef = served.stdout.trim();
       if (served.code !== 0 || !servedRef.startsWith("refs/heads/")) {
         return {
-          verdict: "repository-unreachable",
+          verdict: "served-branch-unreadable",
           note: `the served branch of ${citation.repository} could not be read: ${lastLine(served.stderr) || servedRef}`,
         };
       }
@@ -1074,7 +1181,7 @@ export class CitationResolver {
       }
       if (contained.code !== 0) {
         return {
-          verdict: "repository-unreachable",
+          verdict: "served-branch-unreadable",
           note: `whether ${full} is on the served branch of ${citation.repository} could not be decided: ${lastLine(contained.stderr)}`,
         };
       }
@@ -1193,18 +1300,18 @@ export interface CitationsVolume {
   readonly guardedUnqualified: number;
   /** Unqualified pins anywhere else in the scope: counted, not judged. */
   readonly unjudgedUnqualified: number;
-  /**
-   * Local-pin candidates of guarded ADRs, refused ones included:
-   * examined = resolved + failed.
-   */
-  readonly guardedLocal: number;
-  readonly guardedLocalResolved: number;
-  readonly guardedLocalFailed: number;
+  /** Local-pin candidates of guarded ADRs, refused ones included. */
+  readonly guardedLocal: Readonly<Record<Judged, number>>;
+  /** Pins of another owner in guarded ADRs: asked when the owner is listed, else failed. */
+  readonly guardedForeign: Readonly<Record<Judged, number>>;
   /** Local-pin candidates of ADRs at or below the threshold: counted, not judged. */
   readonly legacyLocal: number;
-  /** Pins of another owner in any ADR: counted, never asked. */
-  readonly foreignPins: number;
+  /** Pins of another owner in ADRs at or below the threshold: counted, not judged. */
+  readonly legacyForeign: number;
 }
+
+/** What became of one judged citation: the three parts every examined count sums to. */
+export type Judged = "resolved" | "exempted" | "failed";
 
 /**
  * The repository an `origin` URL names in `organization`, or null.
@@ -1308,6 +1415,27 @@ async function resolveLocal(
   };
 }
 
+/** A pin of a listed foreign owner, asked over git like the organisation, on any branch or tag. */
+async function resolveForeign(
+  pin: ForeignPin,
+  resolver: Pick<CitationResolver, "resolve">,
+): Promise<{ ok: boolean; note: string }> {
+  const resolution = await resolver.resolve({
+    owner: pin.owner,
+    repository: pin.repository,
+    sha: pin.sha,
+    path: pin.path,
+    lines: pin.lines,
+  });
+  return {
+    ok: resolution.verdict === "resolved",
+    note:
+      resolution.verdict === "resolved"
+        ? resolution.note
+        : `${resolution.verdict}: ${resolution.note}`,
+  };
+}
+
 /**
  * Null when the parser and the independent walk agree, else why not.
  *
@@ -1369,12 +1497,46 @@ export async function evaluateCitations(
   let legacyBareResolving = 0;
   let guardedUnqualified = 0;
   let unjudgedUnqualified = 0;
-  let guardedLocal = 0;
-  let guardedLocalResolved = 0;
-  let guardedLocalFailed = 0;
+  const local: Record<Judged, number> = { resolved: 0, exempted: 0, failed: 0 };
+  const foreign: Record<Judged, number> = { resolved: 0, exempted: 0, failed: 0 };
   let legacyLocal = 0;
-  let foreignPins = 0;
+  let legacyForeign = 0;
+  const foreignOwners = new Map(
+    config.foreignOwners.map((entry) => [entry.owner.toLowerCase(), entry.because]),
+  );
+  const usedForeignOwners = new Set<string>();
   const foundSegments: string[] = [];
+
+  /**
+   * One judged local or foreign pin of a guarded ADR, its exemption applied the
+   * way a pinned citation's is: an exempt citation that resolves again fails.
+   */
+  const judge = (
+    path: string,
+    text: string,
+    line: number,
+    outcome: { readonly ok: boolean; readonly note: string },
+    failure: string,
+  ): Judged => {
+    const item = `${path}:${line} ${text}`;
+    const key = exemptionKey(path, text);
+    const because = exemptions.get(key);
+    if (because !== undefined) {
+      usedExemptions.add(key);
+      if (outcome.ok) {
+        report.check(
+          item,
+          false,
+          `exemption-now-resolves: ${outcome.note} — remove the exemption ("${because}")`,
+        );
+        return "failed";
+      }
+      report.check(item, true, `exempt: ${because} (still: ${outcome.note})`);
+      return "exempted";
+    }
+    report.check(item, outcome.ok, outcome.ok ? outcome.note : `${failure}: ${outcome.note}`);
+    return outcome.ok ? "resolved" : "failed";
+  };
   const judgedSegments: string[] = [];
 
   if (input.files.length === 0) {
@@ -1436,7 +1598,14 @@ export async function evaluateCitations(
     // again (the repository restored, the example made real) is a permission
     // that no longer has a reason, and it fails like an unused one.
     const resolutions = await Promise.all(
-      scanned.pinned.map((citation) => resolver.resolve(citation)),
+      scanned.pinned.map((citation) =>
+        // A qualified pin of this repository is held to the served branch like
+        // a local one: otherwise qualifying it would get around the rule.
+        resolver.resolve({
+          ...citation,
+          servedBranchOnly: citation.repository === input.selfRepository,
+        }),
+      ),
     );
     for (const [index, citation] of scanned.pinned.entries()) {
       const item = `${file.path}:${citation.line} ${citation.text}`;
@@ -1484,28 +1653,34 @@ export async function evaluateCitations(
           `unqualified pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: write ${config.organization}/<repository>@<sha>:<path> so the repository can be asked`,
         );
       }
+      const above = `in an ADR above ${config.adr.bareCitationsGuardedAbove}`;
       for (const pin of scanned.local) {
-        guardedLocal += 1;
-        const item = `${file.path}:${pin.line} ${pin.text}`;
         const outcome = await resolveLocal(pin, input, resolver);
-        if (outcome.ok) guardedLocalResolved += 1;
-        else guardedLocalFailed += 1;
-        report.check(
-          item,
-          outcome.ok,
-          outcome.ok
-            ? outcome.note
-            : `local pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: ${outcome.note}`,
-        );
+        local[judge(file.path, pin.text, pin.line, outcome, `local pin ${above}`)] += 1;
       }
       for (const rejected of scanned.localRejected) {
-        guardedLocal += 1;
-        guardedLocalFailed += 1;
-        report.check(
-          `${file.path}:${rejected.line} ${rejected.text}`,
-          false,
-          `invalid local pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: ${rejected.reason}`,
+        const outcome = { ok: false, note: rejected.reason };
+        const counted = judge(
+          file.path,
+          rejected.text,
+          rejected.line,
+          outcome,
+          `invalid pin ${above}`,
         );
+        local[counted] += 1;
+      }
+      for (const pin of scanned.foreign) {
+        const listed = foreignOwners.get(pin.owner.toLowerCase());
+        if (listed !== undefined) usedForeignOwners.add(pin.owner.toLowerCase());
+        const outcome =
+          listed === undefined
+            ? {
+                ok: false,
+                note: `${pin.owner} is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
+              }
+            : await resolveForeign(pin, resolver);
+        foreign[judge(file.path, pin.text, pin.line, outcome, `pin of another owner ${above}`)] +=
+          1;
       }
       for (const citation of scanned.bare) {
         guardedBare += 1;
@@ -1523,15 +1698,29 @@ export async function evaluateCitations(
     } else {
       unjudgedUnqualified += scanned.unqualified.length;
     }
-    foreignPins += scanned.foreign.length;
     if (standing === "legacy") {
       legacyAdrs += 1;
       legacyLocal += scanned.local.length + scanned.localRejected.length;
+      legacyForeign += scanned.foreign.length;
+      // A listed owner cited only by older ADRs is still cited: its entry is not unused.
+      for (const pin of scanned.foreign) {
+        if (foreignOwners.has(pin.owner.toLowerCase()))
+          usedForeignOwners.add(pin.owner.toLowerCase());
+      }
       for (const citation of scanned.bare) {
         legacyBare += 1;
         if ((await resolveBare(citation, input)).ok) legacyBareResolving += 1;
       }
     }
+  }
+
+  for (const entry of config.foreignOwners) {
+    if (usedForeignOwners.has(entry.owner.toLowerCase())) continue;
+    report.check(
+      `foreignOwners: ${entry.owner}`,
+      false,
+      "listed foreign owner cited by no ADR — remove it, an unused permission is checked by nobody",
+    );
   }
 
   for (const entry of config.exemptions) {
@@ -1568,12 +1757,14 @@ export async function evaluateCitations(
     legacyBareUnverifiable: legacyBare - legacyBareResolving,
     guardedUnqualified,
     unjudgedUnqualified,
-    guardedLocal,
-    guardedLocalResolved,
-    guardedLocalFailed,
+    guardedLocal: { ...local },
+    guardedForeign: { ...foreign },
     legacyLocal,
-    foreignPins,
+    legacyForeign,
   };
+  const sum = (counts: Record<Judged, number>): string =>
+    `${counts.resolved + counts.exempted + counts.failed} examined = ${counts.resolved} resolved + ` +
+    `${counts.exempted} exempted (with reason) + ${counts.failed} failed`;
   const failures = Object.entries(byVerdict)
     .filter(([verdict]) => verdict !== "resolved")
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
@@ -1587,8 +1778,9 @@ export async function evaluateCitations(
       `${config.exemptions.length} exemption(s) declared, ${usedExemptions.size} matched; ` +
       `bare citations of ${guardedAdrs} ADR(s) above ${config.adr.bareCitationsGuardedAbove}: ${guardedBare} examined = ` +
       `${guardedBareResolved} resolved + ${guardedBareFailed} failed; ${guardedUnqualified} unqualified pin(s) there, all failed; ` +
-      `local pins (<sha>:<path>, asked of ${input.selfRepository === null ? "an underived repository" : `${config.organization}/${input.selfRepository}`}) there: ` +
-      `${guardedLocal} examined = ${guardedLocalResolved} resolved + ${guardedLocalFailed} failed`,
+      `local pins (<sha>:<path>, asked of ${input.selfRepository === null ? "an underived repository" : `${config.organization}/${input.selfRepository}`}; refused candidates included) there: ` +
+      `${sum(local)}; pins of another owner there (${config.foreignOwners.length} owner(s) listed, ` +
+      `${usedForeignOwners.size} cited): ${sum(foreign)}`,
   );
   const information = [
     `Pinned citations (information, not a pass): ${legacyAdrs} ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} ` +
@@ -1599,8 +1791,8 @@ export async function evaluateCitations(
       "outside the guarded ADRs — no repository to ask, so not verified.",
     `Pinned citations (information, not a pass): ${legacyLocal} local pin(s) (<sha>:<path>, repository implicit) ` +
       `in ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} — counted, not judged: the forward rule does not rewrite history.`,
-    `Pinned citations (information, not a pass): ${foreignPins} pin(s) of another owner (<owner>/<repository>@<sha>) in the ADRs ` +
-      `— counted, never asked: this gate addresses ${config.organization} only and offers no credential.`,
+    `Pinned citations (information, not a pass): ${legacyForeign} pin(s) of another owner (<owner>/<repository>@<sha>:<path>) ` +
+      `in ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} — counted, not judged: the forward rule does not rewrite history.`,
   ];
   return { report, volume, information };
 }
@@ -1644,7 +1836,8 @@ if (import.meta.main) {
   let peak: number;
   try {
     const resolver = new CitationResolver({
-      urlFor: (repository) => `https://github.com/${config.organization}/${repository}`,
+      urlFor: (repository, owner) =>
+        `https://github.com/${owner ?? config.organization}/${repository}`,
       allowProtocol: "https",
       scratch,
     });
