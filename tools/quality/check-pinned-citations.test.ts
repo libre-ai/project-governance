@@ -9,6 +9,7 @@ import {
   adrStanding,
   CitationResolver,
   CONFIG_PATH,
+  canonicalRepository,
   classifyRemoteFailure,
   countLines,
   evaluateCitations,
@@ -563,6 +564,20 @@ describe("scanText — bare and unqualified citations", () => {
   });
 });
 
+describe("canonicalRepository", () => {
+  test("folds the spellings GitHub resolves to one", () => {
+    for (const name of [
+      "project-governance",
+      "Project-Governance",
+      "project-governance.git",
+      "PROJECT-GOVERNANCE.GIT",
+    ]) {
+      expect(canonicalRepository(name)).toBe("project-governance");
+    }
+    expect(canonicalRepository("x.github.io")).toBe("x.github.io");
+  });
+});
+
 describe("repositoryFromRemote", () => {
   test("names the repository of the organisation in every form git is given it", () => {
     for (const url of [
@@ -945,6 +960,17 @@ describe("CitationResolver against local repositories", () => {
       "sha-not-found",
     );
     expect((await r.resolve(cite(newer, "src/a.ts"))).verdict).toBe("resolved");
+    expect(r.repositoriesAddressed).toBe(2);
+    // GitHub resolves an owner in any case and a repository with or without
+    // `.git`: one clone each, whatever the spelling.
+    const respelt = await r.resolve({
+      owner: "UPSTREAM-OWNER",
+      repository: "Source.git",
+      sha: upstreamCommit,
+      path: "tool.ts",
+      lines: null,
+    });
+    expect(respelt.verdict).toBe("resolved");
     expect(r.repositoriesAddressed).toBe(2);
     const unsafe = await r.resolve({ ...cite(newer), owner: "../x" });
     expect(unsafe.verdict).toBe("invalid-citation");
@@ -1577,8 +1603,79 @@ describe("evaluateCitations", () => {
     );
     expect(report.violations).toEqual([
       'docs/adr/0011-new.md:1 c466a5c:AGENTS.md:80: exemption-now-resolves: it resolves — remove the exemption ("was missing")',
-      "foreignOwners: nobody-cites: listed foreign owner cited by no ADR — remove it, an unused permission is checked by nobody",
+      "foreignOwners: nobody-cites: listed foreign owner cited by no ADR above 10 — remove it, an unused permission is checked by nobody",
     ]);
+  });
+
+  test("an exemption never lets an unlisted owner's pin pass, and an owner cited only below the threshold is unused", async () => {
+    const config: PinnedCitationsConfig = {
+      ...CONFIG,
+      exemptions: [
+        { file: "docs/adr/0011-new.md", citation: "octocat/x@abcdef1:a.md", because: "tried" },
+      ],
+      foreignOwners: [{ owner: "old-only", because: "cited by an older ADR" }],
+    };
+    const fake = tableResolver({});
+    const { report, volume } = await evaluateCitations(
+      {
+        config,
+        files: [
+          { path: "docs/adr/0011-new.md", text: "`octocat/x@abcdef1:a.md`" },
+          { path: "docs/adr/0010-old.md", text: "`old-only/x@abcdef1:a.md`" },
+        ],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: SELF,
+      },
+      fake,
+    );
+    expect(fake.asked).toEqual([]);
+    expect(volume.guardedForeign).toEqual({ resolved: 0, exempted: 0, failed: 1 });
+    expect(volume.legacyForeign).toBe(1);
+    expect(report.violations).toEqual([
+      `docs/adr/0011-new.md:1 octocat/x@abcdef1:a.md: pin of another owner in an ADR above 10: octocat is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
+      "foreignOwners: old-only: listed foreign owner cited by no ADR above 10 — remove it, an unused permission is checked by nobody",
+      "docs/adr/0011-new.md: octocat/x@abcdef1:a.md: exemption matches no citation in that file — remove it, an unused permission is checked by nobody",
+    ]);
+  });
+
+  test("this repository in any spelling is held to its served branch, and owners match in any case", async () => {
+    const asked: string[] = [];
+    const everything = {
+      resolve: async (citation: Asked): Promise<Resolution> => {
+        asked.push(
+          `${citation.owner ?? ""}/${citation.repository} served=${citation.servedBranchOnly === true}`,
+        );
+        return { verdict: "resolved", note: "ok" };
+      },
+    };
+    const { report } = await evaluateCitations(
+      {
+        config: { ...CONFIG, exemptions: [], foreignOwners: [{ owner: "tt-a1i", because: "r" }] },
+        files: [
+          {
+            path: "docs/adr/0011-new.md",
+            text: [
+              "`libre-ai/This-Repository@c466a5c:AGENTS.md`",
+              "`libre-ai/this-repository.git@c466a5c:AGENTS.md`",
+              "`libre-ai/other@c466a5c:AGENTS.md`",
+              "`TT-A1I/archify@25cf370:AGENTS.md:15`",
+            ].join("\n"),
+          },
+        ],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: SELF,
+      },
+      everything,
+    );
+    expect(asked).toEqual([
+      "/This-Repository served=true",
+      "/this-repository.git served=true",
+      "/other served=false",
+      "TT-A1I/archify served=false",
+    ]);
+    expect(report.violations).toEqual([]);
   });
 
   test("a local pin fails when the name of this repository could not be derived", async () => {
@@ -1690,6 +1787,12 @@ describe("validateConfig", () => {
     expect(validateConfig(owner("tt-a1i")).foreignOwners).toEqual([
       { owner: "tt-a1i", because: "r" },
     ]);
+    expect(() =>
+      validateConfig({
+        ...CONFIG,
+        foreignOwners: [{ owner: "tt-a1i", because: "r", host: "evil.example" }],
+      }),
+    ).toThrow("unknown key(s): host");
   });
 
   test("refuses a scope that is not a list of directories", () => {

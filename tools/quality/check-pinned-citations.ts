@@ -50,9 +50,14 @@
  * PINS OF ANOTHER OWNER (`<owner>/<repository>@<sha>:<path>[:<lines>]`) of a
  * guarded ADR are asked over git like the organisation's, on any branch or tag,
  * when their owner is listed in `foreignOwners` with a reason (owner
- * arbitration 2026-10-23); an owner not listed fails, so a pin no instrument
- * checks cannot pass, and cloning stays bounded to the list. The organisation
- * written in another case (`Libre-AI/…`) is refused: GitHub answers it.
+ * arbitration 2026-10-23); an owner not listed fails, exemption or not, so a pin
+ * no instrument checks cannot pass, and cloning stays bounded to the list. A
+ * listed owner that no guarded ADR cites fails: older ADRs are not asked. The
+ * organisation written in another case (`Libre-AI/…`) is refused: GitHub
+ * answers it. Repository names are compared and cached in the one spelling
+ * GitHub resolves them from (`canonicalRepository`: lower case, no `.git`), so
+ * `libre-ai/Project-Governance` is this repository and held to its served
+ * branch.
  *
  * In ADRs at or below the threshold, both forms are counted, not judged. Both
  * are read in ADRs only, like bare citations, whatever the extension, and an
@@ -291,6 +296,12 @@ export function validateConfig(value: unknown): PinnedCitationsConfig {
   }
   const owners = new Set<string>();
   for (const entry of foreignOwners as ForeignOwner[]) {
+    // Closed: a misspelt key (`hosts`, `url`) would otherwise be swallowed, and
+    // read as a setting by whoever edits the file next.
+    const unknown = Object.keys(entry).filter((key) => key !== "owner" && key !== "because");
+    if (unknown.length > 0) {
+      fail(`foreign owner ${entry.owner} carries unknown key(s): ${unknown.join(", ")}`);
+    }
     // GitHub owner names are case-insensitive: `Libre-AI` is the organisation.
     const folded = entry.owner.toLowerCase();
     if (folded === organization.toLowerCase()) {
@@ -379,6 +390,16 @@ const LINE_SPEC: RegExp = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/;
 const SHA: RegExp = /^[0-9a-f]{7,40}$/;
 const HEX_LIKE: RegExp = /^[0-9a-fA-F]+$/;
 const REPOSITORY_NAME: RegExp = /^[A-Za-z0-9._-]+$/;
+/**
+ * The one spelling of a repository name GitHub resolves it from: it answers
+ * `Project-Governance` and `project-governance.git` for `project-governance`,
+ * so a comparison or a cache key on the written form can be got around.
+ */
+export function canonicalRepository(name: string): string {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".git") ? lower.slice(0, -".git".length) : lower;
+}
+
 /** A GitHub user or organisation name: alphanumerics and inner hyphens. */
 const OWNER_NAME: RegExp = /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/;
 const TRAILING_PUNCTUATION: RegExp = /[.,;:!?]+$/;
@@ -1038,7 +1059,7 @@ export class CitationResolver {
 
   #open(repository: string, owner: string | null): Promise<RepositoryHandle> {
     // Owners are case-insensitive on GitHub: one clone per repository, however written.
-    const key = `${owner === null ? "" : owner.toLowerCase()}/${repository}`;
+    const key = `${owner === null ? "" : owner.toLowerCase()}/${canonicalRepository(repository)}`;
     const known = this.#repositories.get(key);
     if (known !== undefined) return known;
     const opened = this.#openUncached(repository, owner, this.#repositories.size);
@@ -1093,7 +1114,7 @@ export class CitationResolver {
   /** Resolves one citation; identical citations are resolved once. */
   resolve(citation: Asked): Promise<Resolution> {
     const owner = citation.owner ?? null;
-    const key = `${owner === null ? "" : owner.toLowerCase()}/${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
+    const key = `${owner === null ? "" : owner.toLowerCase()}/${canonicalRepository(citation.repository)}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
     const known = this.#citations.get(key);
     if (known !== undefined) return known;
     const resolved = this.#resolveUncached(citation);
@@ -1603,7 +1624,9 @@ export async function evaluateCitations(
         // a local one: otherwise qualifying it would get around the rule.
         resolver.resolve({
           ...citation,
-          servedBranchOnly: citation.repository === input.selfRepository,
+          servedBranchOnly:
+            input.selfRepository !== null &&
+            canonicalRepository(citation.repository) === canonicalRepository(input.selfRepository),
         }),
       ),
     );
@@ -1670,15 +1693,20 @@ export async function evaluateCitations(
         local[counted] += 1;
       }
       for (const pin of scanned.foreign) {
-        const listed = foreignOwners.get(pin.owner.toLowerCase());
-        if (listed !== undefined) usedForeignOwners.add(pin.owner.toLowerCase());
-        const outcome =
-          listed === undefined
-            ? {
-                ok: false,
-                note: `${pin.owner} is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
-              }
-            : await resolveForeign(pin, resolver);
+        if (!foreignOwners.has(pin.owner.toLowerCase())) {
+          // Never asked, so it can never "resolve again": an exemption would let
+          // a pin no instrument checks pass. It fails whatever the data says,
+          // and an exemption written for it stays unused, which fails too.
+          foreign.failed += 1;
+          report.check(
+            `${file.path}:${pin.line} ${pin.text}`,
+            false,
+            `pin of another owner ${above}: ${pin.owner} is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
+          );
+          continue;
+        }
+        usedForeignOwners.add(pin.owner.toLowerCase());
+        const outcome = await resolveForeign(pin, resolver);
         foreign[judge(file.path, pin.text, pin.line, outcome, `pin of another owner ${above}`)] +=
           1;
       }
@@ -1701,12 +1729,9 @@ export async function evaluateCitations(
     if (standing === "legacy") {
       legacyAdrs += 1;
       legacyLocal += scanned.local.length + scanned.localRejected.length;
+      // Not marked as citing a listed owner: older ADRs are not asked, so an
+      // owner cited only there is a permission nothing exercises.
       legacyForeign += scanned.foreign.length;
-      // A listed owner cited only by older ADRs is still cited: its entry is not unused.
-      for (const pin of scanned.foreign) {
-        if (foreignOwners.has(pin.owner.toLowerCase()))
-          usedForeignOwners.add(pin.owner.toLowerCase());
-      }
       for (const citation of scanned.bare) {
         legacyBare += 1;
         if ((await resolveBare(citation, input)).ok) legacyBareResolving += 1;
@@ -1719,7 +1744,7 @@ export async function evaluateCitations(
     report.check(
       `foreignOwners: ${entry.owner}`,
       false,
-      "listed foreign owner cited by no ADR — remove it, an unused permission is checked by nobody",
+      `listed foreign owner cited by no ADR above ${config.adr.bareCitationsGuardedAbove} — remove it, an unused permission is checked by nobody`,
     );
   }
 
