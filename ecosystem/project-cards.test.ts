@@ -7,6 +7,7 @@ import {
   renderStatusSection,
   STATUS_SECTION_BEGIN,
   STATUS_SECTION_END,
+  summariseDesktopShells,
   validateCard,
 } from "./project-cards";
 
@@ -462,5 +463,118 @@ describe("collectPathReferences", () => {
     expect(
       collectPathReferences(cardWithReference("https://github.com/libre-ai/libre-ai/pull/273")),
     ).toEqual([]);
+  });
+});
+
+/**
+ * ADR-0057 §4 (D98) — a product that ships a Tauri 2 shell writes the shell's
+ * resident-memory ceiling in its card BEFORE any measure. The expected strings
+ * come from the ADR text (the field names of issue #138 and « figé avant
+ * mesure »), not from the current output of the validator.
+ */
+function shellBlock(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    framework: "tauri-2",
+    memory_ceiling_mib: 512,
+    ceiling_fixed_on: "2026-10-23",
+    ...overrides,
+  };
+}
+
+function cardWithShell(shell: Record<string, unknown>): Record<string, unknown> {
+  return { ...minimalCard(), desktop_shell: shell };
+}
+
+describe("desktop_shell — resident-memory ceiling (ADR-0057 §4)", () => {
+  test("a card without a desktop shell stays valid: the object is optional", () => {
+    expect(validateCard(minimalCard())).toEqual([]);
+  });
+
+  test("accepts a Tauri 2 shell that fixes its ceiling and the date it was fixed", () => {
+    expect(validateCard(cardWithShell(shellBlock()))).toEqual([]);
+  });
+
+  test("accepts an own ceiling different from the 512 MiB default", () => {
+    // ADR-0057 §4: « les produits gardent le droit à un plafond propre ».
+    expect(validateCard(cardWithShell(shellBlock({ memory_ceiling_mib: 768 })))).toEqual([]);
+  });
+
+  test("refuses a Tauri shell without a ceiling, and the error names ADR-0057 §4", () => {
+    const { memory_ceiling_mib: _omitted, ...withoutCeiling } = shellBlock();
+    const errors = validateCard(cardWithShell(withoutCeiling));
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join("\n")).toContain("memory_ceiling_mib");
+    expect(errors.join("\n")).toContain("ADR-0057 §4");
+  });
+
+  test("refuses a ceiling without the date it was fixed: « avant mesure » needs a date", () => {
+    const { ceiling_fixed_on: _omitted, ...withoutDate } = shellBlock();
+    const errors = validateCard(cardWithShell(withoutDate));
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors.join("\n")).toContain("ceiling_fixed_on");
+    expect(errors.join("\n")).toContain("ADR-0057 §4");
+  });
+
+  test("refuses an empty shell object: declaring the shell is declaring its ceiling", () => {
+    expect(validateCard(cardWithShell({})).length).toBeGreaterThan(0);
+  });
+
+  test("refuses a ceiling that is not a positive integer number of MiB", () => {
+    for (const value of [0, -512, 512.5, "512", null]) {
+      expect(
+        validateCard(cardWithShell(shellBlock({ memory_ceiling_mib: value }))).length,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  test("refuses a shell framework other than Tauri 2 and any unknown key", () => {
+    expect(
+      validateCard(cardWithShell(shellBlock({ framework: "electron" }))).length,
+    ).toBeGreaterThan(0);
+    expect(validateCard(cardWithShell(shellBlock({ measured_mib: 413 }))).length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  test("refuses a ceiling fixed on a calendar-impossible or future date", () => {
+    for (const date of ["2026-02-30", "29/07/2026", "2099-01-01"]) {
+      expect(
+        validateCard(cardWithShell(shellBlock({ ceiling_fixed_on: date }))).length,
+      ).toBeGreaterThan(0);
+    }
+    expect(
+      validateCard(cardWithShell(shellBlock({ ceiling_fixed_on: "2099-01-01" }))).join("\n"),
+    ).toContain("futur");
+  });
+});
+
+describe("summariseDesktopShells — the counters the gate prints", () => {
+  test("counts cards, shells declared and ceilings fixed; the parts sum to the whole", () => {
+    const { memory_ceiling_mib: _omitted, ...withoutCeiling } = shellBlock();
+    const census = summariseDesktopShells([
+      minimalCard(),
+      cardWithShell(shellBlock()),
+      cardWithShell(shellBlock({ memory_ceiling_mib: 768 })),
+      cardWithShell(withoutCeiling),
+    ]);
+    expect(census).toEqual({
+      cards: 4,
+      withoutShell: 1,
+      declaringShell: 3,
+      withCeiling: 2,
+      withoutCeiling: 1,
+    });
+    expect(census.withoutShell + census.declaringShell).toBe(census.cards);
+    expect(census.withCeiling + census.withoutCeiling).toBe(census.declaringShell);
+  });
+
+  test("an empty list is zero everywhere, not an error", () => {
+    expect(summariseDesktopShells([])).toEqual({
+      cards: 0,
+      withoutShell: 0,
+      declaringShell: 0,
+      withCeiling: 0,
+      withoutCeiling: 0,
+    });
   });
 });
