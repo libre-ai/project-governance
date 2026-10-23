@@ -854,8 +854,13 @@ tree_pids() {
       found="$found $parent"
       next="$next $(pgrep -P "$parent" 2>/dev/null | tr '\n' ' ' || true)"
     done
+    # Le découpage en mots de `echo $next` est voulu : il écarte les blancs de
+    # tête, sans quoi une file « blanche » resterait non vide et la boucle ne
+    # s'arrêterait pas.
+    # shellcheck disable=SC2116,SC2086
     queue="$(echo $next)"
   done
+  # shellcheck disable=SC2086
   echo $found
 }
 PIDS="$(tree_pids "$ROOT_PID")"
