@@ -52,12 +52,13 @@
  * when their owner is listed in `foreignOwners` with a reason (owner
  * arbitration 2026-10-23); an owner not listed fails, exemption or not, so a pin
  * no instrument checks cannot pass, and cloning stays bounded to the list. A
- * listed owner that no guarded ADR cites fails: older ADRs are not asked. The
- * organisation written in another case (`Libre-AI/…`) is refused: GitHub
- * answers it. Repository names are compared and cached in the one spelling
- * GitHub resolves them from (`canonicalRepository`: lower case, no `.git`), so
- * `libre-ai/Project-Governance` is this repository and held to its served
- * branch.
+ * listed owner that no guarded ADR cites fails: older ADRs are not asked.
+ * Repository names are compared and their clones cached in the one spelling
+ * GitHub resolves them from (`canonicalRepository`: no lowercase `.git`, then
+ * lower case), so `libre-ai/Project-Governance` is this repository and held to
+ * its served branch. What is not measured: the old name of a renamed
+ * repository, which GitHub redirects, is not recognised as this repository —
+ * no instrument here knows the rename history.
  *
  * In ADRs at or below the threshold, both forms are counted, not judged. Both
  * are read in ADRs only, like bare citations, whatever the extension, and an
@@ -90,7 +91,10 @@
  * network, the second about the citation — and neither is ever a zero.
  *
  * CLOSED BY DEFAULT. A candidate is any whitespace-free segment holding
- * `libre-ai/` with an `@` after it — no delimiter list, no lookbehind. Two
+ * `libre-ai/`, in any ASCII case, with an `@` after it — no delimiter list, no
+ * lookbehind. The organisation in another case (`Libre-AI/…@…`, which GitHub
+ * serves as the organisation's) is refused by name, and no exemption applies to
+ * that refusal: it would let a repository GitHub serves pass unasked. Two
  * earlier forms of this gate had both, and each character in them was a way to
  * cut a citation short (`@<sha>*docs/x`, `:a.json(9999)` came out `resolved` on
  * the prefix) or to hide one (`_libre-ai/…_`, `see.libre-ai/…` were seen by
@@ -119,8 +123,7 @@
  * OUT OF DECLARED SCOPE — read by nothing, by design: a citation split by a
  * zero-width space (U+200B is not whitespace, so it stays inside one segment
  * the grammar then refuses — but `libre` U+200B `-ai/` is no candidate at all);
- * another case (`Libre-AI/`) as a `libre-ai/` candidate — but with a sha then
- * `:` it is a local-pin candidate and refused; a homoglyph of the organisation; a GitHub
+ * a homoglyph of the organisation, or a case fold outside ASCII; a GitHub
  * permalink (`github.com/libre-ai/x/blob/<sha>/…`, no `@`); a markdown link
  * `[libre-ai/…@…](x)`, which is a candidate and is refused, never resolved.
  *
@@ -335,6 +338,12 @@ export interface RejectedCitation {
   readonly text: string;
   readonly line: number;
   readonly reason: string;
+  /**
+   * True when the refused text is a spelling GitHub would serve (the
+   * organisation in another case): an exemption would let it pass unasked, so
+   * none applies.
+   */
+  readonly unexemptable?: boolean;
 }
 
 export interface BareCitation {
@@ -393,11 +402,24 @@ const REPOSITORY_NAME: RegExp = /^[A-Za-z0-9._-]+$/;
 /**
  * The one spelling of a repository name GitHub resolves it from: it answers
  * `Project-Governance` and `project-governance.git` for `project-governance`,
- * so a comparison or a cache key on the written form can be got around.
+ * so a comparison or a cache key on the written form can be got around. Only
+ * a lowercase `.git` is dropped, and before folding the case: measured
+ * 2026-10-23, `project-governance.GIT` does not answer, so it must not share a
+ * clone with the name that does.
  */
 export function canonicalRepository(name: string): string {
-  const lower = name.toLowerCase();
-  return lower.endsWith(".git") ? lower.slice(0, -".git".length) : lower;
+  const bare = name.endsWith(".git") ? name.slice(0, -".git".length) : name;
+  return bare.toLowerCase();
+}
+
+/**
+ * ASCII letters folded to lower case, nothing else: the length never changes,
+ * so an index found in the folded text is an index in the original. GitHub
+ * owner names are ASCII, and `String.prototype.toLowerCase` can lengthen a
+ * string (`İ` becomes two code units).
+ */
+function foldAscii(text: string): string {
+  return text.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
 }
 
 /** A GitHub user or organisation name: alphanumerics and inner hyphens. */
@@ -511,9 +533,13 @@ export function unwrapSegment(segment: string): string {
   }
 }
 
-/** The parser's test: whether a whitespace-free segment is a candidate citation. */
+/**
+ * The parser's test: whether a whitespace-free segment is a candidate citation.
+ * The organisation is matched in any case: GitHub serves `Libre-AI/<repository>`
+ * as the organisation's, so a citation written so must be seen, then refused.
+ */
 function isCandidate(segment: string, needle: string): boolean {
-  const at = segment.indexOf(needle);
+  const at = foldAscii(segment).indexOf(foldAscii(needle));
   return at !== -1 && segment.includes("@", at + needle.length);
 }
 
@@ -533,8 +559,18 @@ const WHITESPACE_CODE_POINTS: ReadonlySet<number> = new Set([
  * that called the parser's predicate would agree with any mistake in it.
  */
 function holdsOrganisationThenAt(segment: string, needle: string): boolean {
+  // Case-insensitive on ASCII letters, compared code unit by code unit.
+  const lowered = (unit: number): number => (unit >= 0x41 && unit <= 0x5a ? unit + 0x20 : unit);
+  const matchesAt = (start: number): boolean => {
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (lowered(segment.charCodeAt(start + offset)) !== lowered(needle.charCodeAt(offset))) {
+        return false;
+      }
+    }
+    return true;
+  };
   for (let start = 0; start + needle.length <= segment.length; start += 1) {
-    if (segment.slice(start, start + needle.length) !== needle) continue;
+    if (!matchesAt(start)) continue;
     for (let after = start + needle.length; after < segment.length; after += 1) {
       if (segment.charAt(after) === "@") return true;
     }
@@ -576,8 +612,23 @@ type ParsedPin =
 export function parseCandidate(organization: string, segment: string, line: number): ParsedPin {
   const core = unwrapSegment(segment);
   const prefix = `${organization}/`;
+  if (!core.startsWith(prefix) && foldAscii(core).startsWith(foldAscii(prefix))) {
+    // GitHub serves this spelling as the organisation's repository, so it is
+    // refused, and no exemption can make it pass unasked.
+    const written = core.slice(0, organization.length);
+    const repository = core.slice(prefix.length).split(/[@/]/)[0] ?? "";
+    return {
+      kind: "rejected",
+      rejection: {
+        text: core,
+        line,
+        reason: `'${written}' is the organisation written in another case: write ${organization}/${repository}@…`,
+        unexemptable: true,
+      },
+    };
+  }
   if (!core.startsWith(prefix)) {
-    const at = core.indexOf(prefix);
+    const at = foldAscii(core).indexOf(foldAscii(prefix));
     return {
       kind: "rejected",
       rejection: {
@@ -766,13 +817,9 @@ export function parseLocalCandidate(
   if (foreign !== null) {
     const owner = foreign[1] ?? "";
     const repository = foreign[2] ?? "";
-    // GitHub answers `Libre-AI/<repository>` for the organisation: written in
-    // another case, it would otherwise pass as another owner's pin.
-    if (owner.toLowerCase() === organization.toLowerCase()) {
-      return reject(
-        `'${owner}' is the organisation written in another case: write ${organization}/${repository}@…`,
-      );
-    }
+    // The organisation in another case never reaches here: `Libre-AI/…@…` is a
+    // candidate of the organisation (`isCandidate` folds the case), blanked
+    // before local pins are read, and refused there.
     if (!OWNER_NAME.test(owner) || repository === "." || repository === "..") {
       return reject(`'${owner}/${repository}' is not a repository of an owner`);
     }
@@ -1114,7 +1161,7 @@ export class CitationResolver {
   /** Resolves one citation; identical citations are resolved once. */
   resolve(citation: Asked): Promise<Resolution> {
     const owner = citation.owner ?? null;
-    const key = `${owner === null ? "" : owner.toLowerCase()}/${canonicalRepository(citation.repository)}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
+    const key = `${owner === null ? "" : owner.toLowerCase()}/${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
     const known = this.#citations.get(key);
     if (known !== undefined) return known;
     const resolved = this.#resolveUncached(citation);
@@ -1599,7 +1646,7 @@ export async function evaluateCitations(
 
     for (const rejected of scanned.rejected) {
       const key = exemptionKey(file.path, rejected.text);
-      const because = exemptions.get(key);
+      const because = rejected.unexemptable === true ? undefined : exemptions.get(key);
       if (because !== undefined) {
         usedExemptions.add(key);
         pinnedExempted += 1;

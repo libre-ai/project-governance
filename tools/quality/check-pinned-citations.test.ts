@@ -528,12 +528,9 @@ describe("scanText — bare and unqualified citations", () => {
       // Two forms glued into one segment are one refused candidate, and the
       // bare citation inside it is not counted a second time.
       ["docs/a.md:3,c466a5c:tools/x.ts", "is not a local pin"],
-      // A pin of another owner is judged on the same tail grammar, and the
-      // organisation written in another case is not another owner.
+      // A pin of another owner is judged on the same tail grammar.
       ["tt-a1i/archify@25cf370:<chemin>", "carries '<'"],
       ["tt-a1i/archify@25cf370:a.md:3x", "is not a line spec"],
-      ["Libre-AI/live@abcdef1:a.md", "is the organisation written in another case"],
-      ["LIBRE-AI/live@abcdef1:a.md", "is the organisation written in another case"],
     ];
     for (const [written, reason] of cases) {
       const { local, localRejected, bare } = scanText(`see \`${written}\`.`, ORG, extensions);
@@ -558,6 +555,36 @@ describe("scanText — bare and unqualified citations", () => {
     expect([local, localRejected, unqualified, bare]).toEqual([[], [], [], []]);
   });
 
+  test("the organisation in another case is a candidate of the organisation, refused unexemptably", () => {
+    // GitHub serves every one of these as the organisation's repository
+    // (measured 2026-10-23 with `git ls-remote`), with or without a path.
+    const written = [
+      `Libre-AI/project-governance@${SHA40}`,
+      "LIBRE-AI/project-governance/AGENTS.md@abcdef1",
+      "Libre-AI/live@abcdef1:a.md",
+      "_lIbRe-Ai/x@abcdef1_",
+    ];
+    const text = written.map((w) => `see \`${w}\`.`).join("\n");
+    const { pinned, rejected, local, localRejected, foreign, candidates } = scanText(
+      text,
+      ORG,
+      extensions,
+    );
+    expect([pinned, local, localRejected, foreign]).toEqual([[], [], [], []]);
+    expect(rejected.map((r) => [r.text, r.unexemptable === true])).toEqual([
+      [`Libre-AI/project-governance@${SHA40}`, true],
+      ["LIBRE-AI/project-governance/AGENTS.md@abcdef1", true],
+      ["Libre-AI/live@abcdef1:a.md", true],
+      ["lIbRe-Ai/x@abcdef1", true],
+    ]);
+    expect(rejected[0]?.reason).toBe(
+      "'Libre-AI' is the organisation written in another case: write libre-ai/project-governance@…",
+    );
+    // The independent walk folds the case too, so the reconciliation still sums.
+    expect(listCandidateSegments(text, ORG)).toEqual([...candidates]);
+    expect(candidates).toHaveLength(4);
+  });
+
   test("does not read local pins outside an ADR (no extension declared)", () => {
     const scanned = scanText("`c466a5c:AGENTS.md:80` `C466A5C:x.ts`", ORG, []);
     expect([scanned.local, scanned.localRejected, scanned.foreign]).toEqual([[], [], []]);
@@ -570,11 +597,17 @@ describe("canonicalRepository", () => {
       "project-governance",
       "Project-Governance",
       "project-governance.git",
-      "PROJECT-GOVERNANCE.GIT",
+      "PROJECT-GOVERNANCE.git",
     ]) {
       expect(canonicalRepository(name)).toBe("project-governance");
     }
     expect(canonicalRepository("x.github.io")).toBe("x.github.io");
+  });
+
+  test("keeps the spellings GitHub does not resolve apart", () => {
+    // Measured 2026-10-23: `.GIT` and `.git.git` do not answer.
+    expect(canonicalRepository("project-governance.GIT")).toBe("project-governance.git");
+    expect(canonicalRepository("project-governance.git.git")).toBe("project-governance.git");
   });
 });
 
@@ -1545,7 +1578,9 @@ describe("evaluateCitations", () => {
       { config, files, tracked: trackedHere, readTracked, selfRepository: SELF },
       fake,
     );
-    expect(volume.guardedLocal).toEqual({ resolved: 1, exempted: 1, failed: 3 });
+    expect(volume.guardedLocal).toEqual({ resolved: 1, exempted: 1, failed: 2 });
+    // `Libre-AI/…` is a candidate of the organisation, refused among the pinned.
+    expect([volume.pinned, volume.pinnedResolved, volume.pinnedFailed]).toEqual([3, 2, 1]);
     expect(volume.guardedForeign).toEqual({ resolved: 1, exempted: 0, failed: 2 });
     // The refused `C466A5C:x.ts` of the legacy ADR is counted too.
     expect([volume.legacyLocal, volume.legacyForeign]).toEqual([3, 1]);
@@ -1565,16 +1600,16 @@ describe("evaluateCitations", () => {
     // A local pin is neither bare nor unqualified: no other counter sees it.
     expect([volume.guardedBare, volume.guardedUnqualified, volume.legacyBare]).toEqual([0, 0, 0]);
     expect(report.violations).toEqual([
+      "docs/adr/0011-new.md:6 Libre-AI/live@abcdef1:a.md: invalid-citation: 'Libre-AI' is the organisation written in another case: write libre-ai/live@…",
       "docs/adr/0011-new.md:2 abcdef9:docs/a.md: local pin in an ADR above 10: sha-not-found: absent from the table",
       "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: invalid pin in an ADR above 10: '9-3' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
-      "docs/adr/0011-new.md:6 Libre-AI/live@abcdef1:a.md: invalid pin in an ADR above 10: 'Libre-AI' is the organisation written in another case: write libre-ai/live@…",
       `docs/adr/0011-new.md:5 someone/x@abcdef2:a.md: pin of another owner in an ADR above 10: someone is not a listed foreign owner: list it in foreignOwners of ${CONFIG_PATH} with a reason, so its repositories can be asked`,
       // A listed owner is asked, and what it does not carry fails like any pin.
       "docs/adr/0011-new.md:5 tt-a1i/archify@deadbee:AGENTS.md: pin of another owner in an ADR above 10: sha-not-found: absent from the table",
     ]);
     expect(report.volumeSummary).toContain(
       `local pins (<sha>:<path>, asked of libre-ai/${SELF}; refused candidates included) there: ` +
-        "5 examined = 1 resolved + 1 exempted (with reason) + 3 failed",
+        "4 examined = 1 resolved + 1 exempted (with reason) + 2 failed",
     );
     expect(report.volumeSummary).toContain(
       "pins of another owner there (1 owner(s) listed, 1 cited): 3 examined = 1 resolved + 0 exempted (with reason) + 2 failed",
@@ -1604,6 +1639,30 @@ describe("evaluateCitations", () => {
     expect(report.violations).toEqual([
       'docs/adr/0011-new.md:1 c466a5c:AGENTS.md:80: exemption-now-resolves: it resolves — remove the exemption ("was missing")',
       "foreignOwners: nobody-cites: listed foreign owner cited by no ADR above 10 — remove it, an unused permission is checked by nobody",
+    ]);
+  });
+
+  test("an exemption never lets the organisation in another case pass, in any file", async () => {
+    const written = "Libre-AI/project-governance@abcdef1:AGENTS.md";
+    const fake = tableResolver({});
+    const { report, volume } = await evaluateCitations(
+      {
+        config: {
+          ...CONFIG,
+          exemptions: [{ file: "docs/notes.md", citation: written, because: "tried" }],
+        },
+        files: [{ path: "docs/notes.md", text: `\`${written}\`` }],
+        tracked: trackedHere,
+        readTracked,
+        selfRepository: SELF,
+      },
+      fake,
+    );
+    expect(fake.asked).toEqual([]);
+    expect([volume.pinnedExempted, volume.pinnedFailed]).toEqual([0, 1]);
+    expect(report.violations).toEqual([
+      `docs/notes.md:1 ${written}: invalid-citation: 'Libre-AI' is the organisation written in another case: write libre-ai/project-governance@…`,
+      `docs/notes.md: ${written}: exemption matches no citation in that file — remove it, an unused permission is checked by nobody`,
     ]);
   });
 
