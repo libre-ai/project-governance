@@ -9,8 +9,8 @@ import {
   CitationResolver,
   CONFIG_PATH,
   classifyRemoteFailure,
+  countCandidateSegments,
   countLines,
-  countPinShapedTokens,
   evaluateCitations,
   HARDENING_FLAGS,
   hardenedGitEnvironment,
@@ -126,17 +126,181 @@ describe("scanText — pinned citations", () => {
     ]);
   });
 
-  test("does not read package specifiers, URLs, other organisations or repository mentions", () => {
+  test("reads neither other organisations nor a repository mentioned without '@'", () => {
     const text = [
-      "@libre-ai/ui@1.2.3 is a package, @libre-ai/ui@abcdef1 too",
-      "https://github.com/libre-ai/x@abcdef1 is a URL",
-      "other-org/x@abcdef1:a.ts:1 and xlibre-ai/x@abcdef1",
-      "libre-ai/project-governance names a repository and pins nothing",
+      "other-org/x@abcdef1:a.ts:1 and actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "libre-ai/project-governance names a repository and pins nothing, but libre-ai/x@ is a candidate",
+      "git@github.com:libre-ai/x.git puts its '@' before the organisation",
     ].join("\n");
     const { pinned, rejected } = scan(text);
     expect(pinned).toEqual([]);
+    expect(rejected.map((r) => r.text)).toEqual(["libre-ai/x@"]);
+    expect(countCandidateSegments(text, ORG)).toBe(1);
+  });
+
+  test("closed by default: anything written against the organisation is refused, never skipped", () => {
+    const text = [
+      "@libre-ai/ui@1.2.3 is a package specifier",
+      "https://github.com/libre-ai/x@abcdef1 is a URL",
+      "xlibre-ai/x@abcdef1 and see.libre-ai/nonexistent-repo-zz@abcdef1",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.line, r.reason])).toEqual([
+      [
+        1,
+        "'@' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
+      ],
+      [
+        2,
+        "'https://github.com/' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
+      ],
+      [
+        3,
+        "'x' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
+      ],
+      [
+        3,
+        "'see.' is written against libre-ai/: a citation is wrapped only in backticks, emphasis, brackets, parentheses or quotes",
+      ],
+    ]);
+    expect(countCandidateSegments(text, ORG)).toBe(4);
+  });
+
+  test("D1: a character glued to the sha or the path is part of the citation, never its end", () => {
+    // Each of these resolved on its prefix in the second form of the gate.
+    const text = [
+      "libre-ai/project-governance@c466a5c*docs/x.md",
+      "libre-ai/project-governance@c466a5c{~1}:package.json",
+      "libre-ai/project-governance@c466a5c[0]:package.json:9999",
+      "libre-ai/project-governance@c466a5c|docs/x.md",
+      "libre-ai/project-governance@c466a5c:package.json*:9999",
+      "libre-ai/project-governance@c466a5c:package.json(9999)",
+      "libre-ai/project-governance@c466a5c'#L9999",
+      "libre-ai/project-governance@c466a5c:package.json<9999>",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => [r.line, r.text, r.reason])).toEqual([
+      [
+        1,
+        "libre-ai/project-governance@c466a5c*docs/x.md",
+        "after the sha only ':' or the end of the citation may follow, found '*': 'c466a5c*docs/x.md' does not name a commit",
+      ],
+      [
+        2,
+        "libre-ai/project-governance@c466a5c{~1}:package.json",
+        "after the sha only ':' or the end of the citation may follow, found '{': 'c466a5c{~1}' does not name a commit",
+      ],
+      [
+        3,
+        "libre-ai/project-governance@c466a5c[0]:package.json:9999",
+        "after the sha only ':' or the end of the citation may follow, found '[': 'c466a5c[0]' does not name a commit",
+      ],
+      [
+        4,
+        "libre-ai/project-governance@c466a5c|docs/x.md",
+        "after the sha only ':' or the end of the citation may follow, found '|': 'c466a5c|docs/x.md' does not name a commit",
+      ],
+      [
+        5,
+        "libre-ai/project-governance@c466a5c:package.json*:9999",
+        "the path carries '*', a markdown or revision character no cited path is written with",
+      ],
+      [
+        6,
+        "libre-ai/project-governance@c466a5c:package.json(9999)",
+        "the path carries '(', a markdown or revision character no cited path is written with",
+      ],
+      [
+        7,
+        "libre-ai/project-governance@c466a5c'#L9999",
+        "after the sha only ':' or the end of the citation may follow, found ''': 'c466a5c'#L9999' does not name a commit",
+      ],
+      [
+        8,
+        "libre-ai/project-governance@c466a5c:package.json<9999>",
+        "the path carries '<', a markdown or revision character no cited path is written with",
+      ],
+    ]);
+    expect(countCandidateSegments(text, ORG)).toBe(8);
+  });
+
+  test("D2: emphasis and a glued point no longer hide a citation from either count", () => {
+    const text = [
+      "_libre-ai/project-governance@c466a5c:package.json:9999_",
+      "__libre-ai/nonexistent-repo-zz@abcdef1:x.md__",
+      "see.libre-ai/nonexistent-repo-zz@abcdef1",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned.map((c) => [c.line, c.text, c.repository, c.path])).toEqual([
+      [
+        1,
+        "libre-ai/project-governance@c466a5c:package.json:9999",
+        "project-governance",
+        "package.json",
+      ],
+      [2, "libre-ai/nonexistent-repo-zz@abcdef1:x.md", "nonexistent-repo-zz", "x.md"],
+    ]);
+    expect(rejected.map((r) => [r.line, r.text])).toEqual([
+      [3, "see.libre-ai/nonexistent-repo-zz@abcdef1"],
+    ]);
+    expect(countCandidateSegments(text, ORG)).toBe(3);
+  });
+
+  test("named wrappings are removed only when they enclose the citation", () => {
+    const text = [
+      "**libre-ai/x@abcdef1:a.ts:3**",
+      "*libre-ai/x@abcdef1:a.ts:3*,",
+      "(`libre-ai/x@abcdef1:a.ts:1-9`).",
+      "[libre-ai/x@abcdef1]",
+      '"libre-ai/x@abcdef1:a.ts",',
+      "`uses: libre-ai/x/.github/workflows/w.yml@abcdef1`)",
+      "**libre-ai/x@abcdef1:a.ts:3*",
+    ].join("\n");
+    const { pinned, rejected } = scan(text);
+    expect(pinned.map((c) => [c.line, c.text])).toEqual([
+      [1, "libre-ai/x@abcdef1:a.ts:3"],
+      [2, "libre-ai/x@abcdef1:a.ts:3"],
+      [3, "libre-ai/x@abcdef1:a.ts:1-9"],
+      [4, "libre-ai/x@abcdef1"],
+      [5, "libre-ai/x@abcdef1:a.ts"],
+      [6, "libre-ai/x/.github/workflows/w.yml@abcdef1"],
+    ]);
+    // An unpaired emphasis is not a wrapping: it is refused, not trimmed.
+    expect(rejected.map((r) => [r.line, r.text])).toEqual([[7, "*libre-ai/x@abcdef1:a.ts:3"]]);
+  });
+
+  test("an action reference of the organisation is resolved as <repository>@<sha>:<path>", () => {
+    const { pinned, rejected } = scan(
+      "libre-ai/project-governance/.github/workflows/ci.yml@0123456789abcdef0123456789abcdef01234567",
+    );
     expect(rejected).toEqual([]);
-    expect(countPinShapedTokens(text, ORG)).toBe(0);
+    expect(pinned.map((c) => [c.repository, c.sha, c.path, c.lines])).toEqual([
+      [
+        "project-governance",
+        "0123456789abcdef0123456789abcdef01234567",
+        ".github/workflows/ci.yml",
+        null,
+      ],
+    ]);
+  });
+
+  test("two citations glued into one segment are one invalid citation, counted once on both sides", () => {
+    const text = "libre-ai/x@abcdef1:a:1;libre-ai/y@abcdef2";
+    const { pinned, rejected } = scan(text);
+    expect(pinned).toEqual([]);
+    expect(rejected.map((r) => r.reason)).toEqual([
+      "'1;libre-ai/y@abcdef2' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
+    ]);
+    expect(countCandidateSegments(text, ORG)).toBe(1);
+  });
+
+  test("a suffix that opens with a digit is judged as a line spec", () => {
+    const { rejected } = scan("libre-ai/x@abcdef1:package.json:9999~");
+    expect(rejected.map((r) => r.reason)).toEqual([
+      "'9999~' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
+    ]);
   });
 
   test("judges the token whole: nothing but ':' or its end may follow the sha", () => {
@@ -174,13 +338,10 @@ describe("scanText — pinned citations", () => {
     const { pinned, rejected } = scan(text);
     expect(pinned).toEqual([]);
     expect(rejected.map((r) => [r.line, r.reason])).toEqual([
-      [
-        1,
-        "'../evil' is a path, not a repository: a pin is libre-ai/<repository>@<sha>[:<path>[:<lines>]]",
-      ],
+      [1, "'..' is not a repository name"],
       [
         2,
-        "'a/b' is a path, not a repository: a pin is libre-ai/<repository>@<sha>[:<path>[:<lines>]]",
+        "an action reference (libre-ai/<repository>/<path>@<sha>) ends at its sha, found ':README.md'",
       ],
       [
         3,
@@ -196,13 +357,8 @@ describe("scanText — pinned citations", () => {
       ],
       [5, "'' is not a sha: a pin names a commit, never a branch, a tag or a revision expression"],
     ]);
-    // The independent count sees exactly the tokens the parser judged.
-    expect(countPinShapedTokens(text, ORG)).toBe(rejected.length);
-  });
-
-  test("markdown emphasis ends a token", () => {
-    const { pinned } = scan("**libre-ai/x@abcdef1:a.ts:3**");
-    expect(pinned.map((c) => c.text)).toEqual(["libre-ai/x@abcdef1:a.ts:3"]);
+    // The independent count sees exactly the segments the parser judged.
+    expect(countCandidateSegments(text, ORG)).toBe(rejected.length);
   });
 
   test("refuses a sha that is not 7-40 lowercase hex, naming the reason", () => {
@@ -664,6 +820,7 @@ const CONFIG: PinnedCitationsConfig = {
   },
   exemptions: [
     {
+      file: "docs/specifications/S.md",
       citation: "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md",
       because: "fictitious example",
     },
@@ -735,35 +892,46 @@ describe("evaluateCitations", () => {
     expect(report.volumeSummary).toContain("4 pinned citation(s) examined in 1 tracked file(s)");
     expect(report.volumeSummary).toContain("= 1 resolved + 1 exempted (with reason) + 2 failed");
     expect(report.volumeSummary).toContain(
-      "against 4 libre-ai/…@… token(s) found by an independent count",
+      "against 4 candidate segment(s) found by an independent count",
     );
   });
 
   test("an invalid citation passes only when listed with a reason, and counts as exempted", async () => {
-    const written =
-      "libre-ai/governance/.github/workflows/reusable-licensing.yml@94fc054c6b16e047eb0736e12444a08d50728efc";
+    // A template, not a sha: invalid by the grammar, so only the exemption saves it.
+    const written = "libre-ai/governance/.github/...@<sha>";
     const config: PinnedCitationsConfig = {
       ...CONFIG,
-      exemptions: [{ citation: written, because: "action pin recorded as evidence" }],
+      exemptions: [
+        {
+          file: "docs/design.md",
+          citation: written,
+          because: "a placeholder for an action pin, naming no commit",
+        },
+      ],
     };
-    const files = [{ path: "docs/evidence.json", text: `"${written}"` }];
+    const files = [
+      { path: "docs/design.md", text: `pinned by sha (\`uses: ${written}\`) — a bump` },
+    ];
+    const fake = tableResolver({});
     const { report, volume } = await evaluateCitations(
       { config, files, tracked: trackedHere, readTracked },
-      tableResolver({}),
+      fake,
     );
     expect(report.outcome).toBe("pass");
     expect([volume.found, volume.pinned, volume.pinnedExempted, volume.pinnedFailed]).toEqual([
       1, 1, 1, 0,
     ]);
     expect(report.checks.map((check) => check.note)).toEqual([
-      "exempt: action pin recorded as evidence",
+      "exempt: a placeholder for an action pin, naming no commit",
     ]);
+    // An invalid citation never reaches git.
+    expect(fake.asked).toEqual([]);
   });
 
   test("a difference between found and examined is a failure, never a sum to itself", () => {
     expect(reconcileFound(6, 6, ORG)).toBeNull();
     expect(reconcileFound(6, 4, ORG)).toBe(
-      "6 libre-ai/…@… token(s) found by the independent count, 4 examined — 2 citation(s) neither resolved, exempted nor failed",
+      "6 candidate segment(s) holding libre-ai/…@… found by the independent count, 4 citation(s) examined — the parser and the count disagree on what a citation is",
     );
   });
 
@@ -783,8 +951,11 @@ describe("evaluateCitations", () => {
       { config, files, tracked: trackedHere, readTracked },
       tableResolver({ "live@abcdef1": { verdict: "resolved", note: "ok" } }),
     );
+    // 8 candidates: 2 resolve; `a/b@…` is a valid action reference the table does
+    // not know (sha-not-found); `@v2`, `@abcdef1q`, `#L3`, `@libre-ai/…` and
+    // `github.com/libre-ai/…` are invalid. The bare repository mention is no candidate.
     expect([volume.found, volume.pinned, volume.pinnedResolved, volume.pinnedFailed]).toEqual([
-      6, 6, 2, 4,
+      8, 8, 2, 6,
     ]);
     expect(report.violations.some((v) => v.includes("independent count"))).toBe(false);
   });
@@ -792,7 +963,9 @@ describe("evaluateCitations", () => {
   test("an exemption whose citation resolves again fails", async () => {
     const config: PinnedCitationsConfig = {
       ...CONFIG,
-      exemptions: [{ citation: "libre-ai/restored@abcdef1", because: "deleted 2026-09-16" }],
+      exemptions: [
+        { file: "docs/a.md", citation: "libre-ai/restored@abcdef1", because: "deleted 2026-09-16" },
+      ],
     };
     const { report, volume } = await evaluateCitations(
       {
@@ -826,7 +999,11 @@ describe("evaluateCitations", () => {
     const listed: PinnedCitationsConfig = {
       ...CONFIG,
       exemptions: [
-        { citation: "libre-ai/gone@abcdef2", because: "deleted 2026-09-16, kept as history" },
+        {
+          file: "docs/a.md",
+          citation: "libre-ai/gone@abcdef2",
+          because: "deleted 2026-09-16, kept as history",
+        },
       ],
     };
     const green = await evaluateCitations(
@@ -847,7 +1024,24 @@ describe("evaluateCitations", () => {
       fake,
     );
     expect(report.violations).toEqual([
-      "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md: exemption matches no citation in the scope — remove it, an unused permission is checked by nobody",
+      "docs/specifications/S.md: libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md: exemption matches no citation in that file — remove it, an unused permission is checked by nobody",
+    ]);
+  });
+
+  test("an exemption covers its own file only: the same citation elsewhere is judged", async () => {
+    const citation =
+      "libre-ai/ai-work-supervision@0123456789abcdef0123456789abcdef01234567:docs/prd.md";
+    const files = [
+      { path: "docs/specifications/S.md", text: citation },
+      { path: "docs/other.md", text: citation },
+    ];
+    const { report, volume } = await evaluateCitations(
+      { config: CONFIG, files, tracked: trackedHere, readTracked },
+      tableResolver({}),
+    );
+    expect([volume.pinnedExempted, volume.pinnedFailed]).toEqual([1, 1]);
+    expect(report.violations).toEqual([
+      `docs/other.md:1 ${citation}: sha-not-found: absent from the table`,
     ]);
   });
 
@@ -975,9 +1169,15 @@ describe("evaluateCitations", () => {
 describe("validateConfig", () => {
   test("refuses an exemption without a reason, or listed twice", () => {
     expect(() =>
-      validateConfig({ ...CONFIG, exemptions: [{ citation: "libre-ai/x@abcdef1", because: " " }] }),
+      validateConfig({
+        ...CONFIG,
+        exemptions: [{ file: "docs/a.md", citation: "libre-ai/x@abcdef1", because: " " }],
+      }),
     ).toThrow("non-empty because");
-    const twice = { citation: "libre-ai/x@abcdef1", because: "r" };
+    expect(() =>
+      validateConfig({ ...CONFIG, exemptions: [{ citation: "libre-ai/x@abcdef1", because: "r" }] }),
+    ).toThrow("needs a file");
+    const twice = { file: "docs/a.md", citation: "libre-ai/x@abcdef1", because: "r" };
     expect(() => validateConfig({ ...CONFIG, exemptions: [twice, twice] })).toThrow(
       "duplicate exemption",
     );
