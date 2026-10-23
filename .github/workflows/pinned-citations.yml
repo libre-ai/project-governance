@@ -27,9 +27,19 @@ on:
     # no verdict would be attached to a merged head of `migrate/recover-code`.
     branches: [main, migrate/recover-code]
   pull_request:
+  # A cited repository can be deleted while no pull request is open: the weekly
+  # run sees it anyway, at the slot the gate had in inventory-drift.yml. The
+  # manual run is the second look to take before declaring a deletion safe.
+  schedule:
+    - cron: "43 8 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
+  # The repeat-failure alert files and closes governance issues on the
+  # scheduled and dispatched runs only (see the event guard on its steps). The
+  # gate step itself is handed no token.
+  issues: write
 
 concurrency:
   group: pinned-citations-${{ github.ref }}
@@ -56,3 +66,23 @@ jobs:
       - name: Verify the exact Bun revision
         run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       - run: bun run check:pinned-citations
+      # A red scheduled run is only visible to someone who opens the Actions
+      # tab. One red run stays a run; two in a row file a deduplicated
+      # governance issue, and the next green run closes it. The push and
+      # pull_request runs belong to the CI gate and are excluded by the guard.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: pinned-citations
+          WORKFLOW_FILE: pinned-citations.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: pinned-citations
+          WORKFLOW_FILE: pinned-citations.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

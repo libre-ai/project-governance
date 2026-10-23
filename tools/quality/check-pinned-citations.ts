@@ -35,13 +35,17 @@
  * eleven on 2026-10-22, ten of them in ADRs 0028, 0045, 0048 and 0049.
  *
  * LOCAL PINS (`<sha>:<path>[:<lines>]`, the repository left implicit) of a
- * guarded ADR are asked of THIS repository, through the same resolver and with
- * the same verdicts as a pinned citation (owner arbitration 2026-10-23): a sha
- * this repository's remote does not carry fails, and the citation must then be
- * qualified. The name of this repository is derived from its `origin` remote,
- * never written in data; a name that cannot be derived fails every local pin.
- * In ADRs at or below the threshold they are counted, not judged. They are read
- * in ADRs only, like bare citations.
+ * guarded ADR are asked of THIS repository, through the same resolver and the
+ * same path-and-lines grammar as a pinned citation (owner arbitration
+ * 2026-10-23), with one more condition: the commit must be on the served branch
+ * of the remote, since this repository merges by squash and a commit of a work
+ * branch disappears with it. The name of this repository is derived from its
+ * `origin` remote, never written in data; a name that cannot be derived fails
+ * every local pin. They are read closed by default (`LOCAL_CANDIDATE`): any
+ * segment holding seven hexadecimal digits then `:` must be a local pin in
+ * full, a pin of another owner (counted, never asked), or it is refused by
+ * name. In ADRs at or below the threshold they are counted, not judged. They
+ * are read in ADRs only, like bare citations, whatever the extension.
  *
  * ACTION REFERENCES of the organisation (`libre-ai/<repository>/<path>@<sha>`, a
  * reusable workflow or a composite action) name a repository, a commit and a
@@ -50,8 +54,10 @@
  * owner (`actions/checkout@<sha>`) does not hold `libre-ai/` and is not read.
  *
  * Verdicts are named and distinct, and every one of them but `resolved` fails:
- * repository-not-found, repository-unreachable, sha-not-found, sha-ambiguous,
- * path-absent, line-range-outside-file, invalid-citation, exemption-now-resolves.
+ * repository-not-found, repository-unreachable, sha-not-found, sha-ambiguous
+ * (two commits, or a branch or tag named like the cited hex),
+ * sha-not-on-served-branch (local pins), path-absent, line-range-outside-file,
+ * invalid-citation, exemption-now-resolves.
  * An unreachable repository is not a missing one — the first is about the
  * network, the second about the citation — and neither is ever a zero.
  *
@@ -285,8 +291,12 @@ export interface LocalPin {
   readonly path: string;
   /** Null when no line is cited. */
   readonly lines: readonly LineSpan[] | null;
-  /** True when a line suffix is written but malformed (`:0`, `:9-3`). */
-  readonly malformedLines: boolean;
+  readonly line: number;
+}
+
+/** `<owner>/<repository>@<sha>[:…]` of another owner: counted, never asked. */
+export interface ForeignPin {
+  readonly text: string;
   readonly line: number;
 }
 
@@ -295,7 +305,11 @@ export interface ScannedText {
   readonly rejected: readonly RejectedCitation[];
   readonly bare: readonly BareCitation[];
   readonly unqualified: readonly UnqualifiedPin[];
+  /** Read in ADRs only, like bare citations. */
   readonly local: readonly LocalPin[];
+  /** Local-pin candidates that are not a local pin in full, with the reason. */
+  readonly localRejected: readonly RejectedCitation[];
+  readonly foreign: readonly ForeignPin[];
   /** The raw candidate segments the parser judged, in order: reconciled against the independent walk. */
   readonly candidates: readonly string[];
 }
@@ -557,6 +571,21 @@ export function parsePinToken(organization: string, raw: string, line: number): 
       citation: { text, repository, sha: ref, path: null, lines: null, line },
     };
   }
+  const target = parsePathAndLines(tail);
+  if ("reason" in target) return reject(target.reason);
+  return {
+    kind: "pinned",
+    citation: { text, repository, sha: ref, path: target.path, lines: target.lines, line },
+  };
+}
+
+/**
+ * What follows `<sha>:` in a pinned or a local pin, judged in full: a path,
+ * optionally `:<lines>`. Shared by both forms, so they refuse the same tails.
+ */
+function parsePathAndLines(
+  tail: string,
+): { readonly path: string; readonly lines: LineSpan[] | null } | { readonly reason: string } {
   let path = tail;
   let lines: LineSpan[] | null = null;
   const lastColon = tail.lastIndexOf(":");
@@ -567,12 +596,12 @@ export function parsePinToken(organization: string, raw: string, line: number): 
     path = tail.slice(0, lastColon);
     lines = parseLineSpec(suffix);
     if (lines === null) {
-      return reject(`'${suffix}' is not a line spec (L, a-b, a,b; 1-based, a <= b)`);
+      return { reason: `'${suffix}' is not a line spec (L, a-b, a,b; 1-based, a <= b)` };
     }
   }
   const invalid = validateCitedPath(path);
-  if (invalid !== null) return reject(invalid);
-  return { kind: "pinned", citation: { text, repository, sha: ref, path, lines, line } };
+  if (invalid !== null) return { reason: invalid };
+  return { path, lines };
 }
 
 // Measured 2026-10-22: eleven pins in docs omit the organisation
@@ -596,18 +625,77 @@ function barePattern(extensions: readonly string[]): RegExp {
   );
 }
 
-// Measured 2026-10-23: ADR-0056 carries nine `c466a5c:<path>:<lines>` citations,
-// a commit of this repository with the repository left implicit. The bare
-// pattern skips them (a `:` precedes the path) and the unqualified one needs an
-// `@`, so the gate counted them nowhere: "0 examined" above the threshold while
-// nine were written there. Owner arbitration of the same day: they are judged
-// against this repository, through the same resolver as a pinned citation, so
-// a sha this repository does not carry fails and must be qualified.
-function localPinPattern(extensions: readonly string[]): RegExp {
-  return new RegExp(
-    String.raw`(?<![A-Za-z0-9_./@:-])([0-9a-f]{7,40}):([A-Za-z0-9_./-]+\.(?:${extensions.join("|")}))(?::(\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*))?(?![0-9A-Za-z])`,
-    "g",
-  );
+// Measured 2026-10-23: ADR-0056 carries eleven `c466a5c:<path>[:<lines>]`
+// citations, a commit of this repository with the repository left implicit. The
+// bare pattern skips them (a `:` precedes the path) and the unqualified one
+// needs an `@`, so the gate counted them nowhere: "0 examined" above the
+// threshold while eleven were written there. Owner arbitration of the same day:
+// they are judged against this repository, through the same resolver as a
+// pinned citation, so a sha this repository does not carry fails.
+//
+// Closed by default, like the `libre-ai/` candidates and for the same reason: a
+// first form of this reader matched a pattern and stopped at a lookahead, so
+// `:3-9999999x` was judged on `:3`, `#L99999` on the bare path, and `_<sha>:…_`
+// or an uppercase sha were seen by nothing. A candidate is now any
+// whitespace-free segment holding a run of at least seven hexadecimal digits
+// followed by `:` and more text; once its named wrappings are removed it must
+// be `<sha>:<path>[:<lines>]` in full, or another owner's
+// `<owner>/<repository>@<sha>[:…]` (counted, never asked: this gate offers no
+// credential and addresses the organisation only), or it is refused by name.
+const LOCAL_CANDIDATE: RegExp = /[0-9a-fA-F]{7,}:\S/;
+const FOREIGN_PIN: RegExp = /^([A-Za-z0-9-]+)\/[A-Za-z0-9._-]+@[0-9a-f]{7,40}(?::\S*)?$/;
+
+/**
+ * `unwrapSegment`, plus an opening parenthesis the segment does not close: a
+ * parenthesis opened before a local pin is closed on a later line as often as
+ * not (`(\`<sha>:AGENTS.md:80\`` at the end of a line of ADR-0056).
+ */
+function unwrapLocalSegment(segment: string): string {
+  let core = segment;
+  for (;;) {
+    const before = core;
+    core = unwrapSegment(core);
+    if (core.startsWith("(") && occurrences(core, "(") > occurrences(core, ")")) {
+      core = core.slice(1);
+    }
+    if (core === before) return core;
+  }
+}
+
+type ParsedLocal =
+  | { readonly kind: "local"; readonly pin: LocalPin }
+  | { readonly kind: "foreign"; readonly pin: ForeignPin }
+  | { readonly kind: "rejected"; readonly rejection: RejectedCitation };
+
+/** A local-pin candidate segment judged whole. */
+export function parseLocalCandidate(
+  organization: string,
+  segment: string,
+  line: number,
+): ParsedLocal {
+  const core = unwrapLocalSegment(segment);
+  const reject = (reason: string): ParsedLocal => ({
+    kind: "rejected",
+    rejection: { text: core, line, reason },
+  });
+  const foreign = FOREIGN_PIN.exec(core);
+  if (foreign !== null && foreign[1] !== organization) {
+    return { kind: "foreign", pin: { text: core, line } };
+  }
+  const colon = core.indexOf(":");
+  const sha = colon === -1 ? core : core.slice(0, colon);
+  if (colon === -1 || !HEX_LIKE.test(sha)) {
+    return reject(
+      `'${core}' holds a sha followed by ':' but is not a local pin: write <sha>:<path>[:<lines>] alone, or ${organization}/<repository>@<sha>:<path>`,
+    );
+  }
+  if (!SHA.test(sha)) return reject("a pinned sha is 7 to 40 lowercase hexadecimal characters");
+  const target = parsePathAndLines(core.slice(colon + 1));
+  if ("reason" in target) return reject(target.reason);
+  return {
+    kind: "local",
+    pin: { text: core, sha, path: target.path, lines: target.lines, line },
+  };
 }
 
 /**
@@ -627,11 +715,11 @@ export function scanText(
   const bare: BareCitation[] = [];
   const unqualified: UnqualifiedPin[] = [];
   const local: LocalPin[] = [];
+  const localRejected: RejectedCitation[] = [];
+  const foreign: ForeignPin[] = [];
   const candidates: string[] = [];
   const needle = `${organization}/`;
   const bareRegExp: RegExp | null = bareExtensions.length > 0 ? barePattern(bareExtensions) : null;
-  const localRegExp: RegExp | null =
-    bareExtensions.length > 0 ? localPinPattern(bareExtensions) : null;
 
   for (const [index, sourceLine] of text.split("\n").entries()) {
     const line = index + 1;
@@ -652,23 +740,18 @@ export function scanText(
       unqualified.push({ text: match[0].replace(TRAILING_PUNCTUATION, ""), line });
     }
 
-    // Not blanked afterwards: the bare pattern already refuses a path preceded by ':'.
-    if (localRegExp !== null) {
-      for (const match of masked.matchAll(localRegExp)) {
-        const spec = match[3];
-        const lines = spec === undefined ? null : parseLineSpec(spec);
-        local.push({
-          text: match[0],
-          sha: match[1] ?? "",
-          path: match[2] ?? "",
-          lines,
-          malformedLines: spec !== undefined && lines === null,
-          line,
-        });
-      }
-    }
-
     if (bareRegExp === null) continue;
+    // Local pins are read in ADRs only, like bare citations, and before them: a
+    // candidate segment is blanked whole, so no bare citation is read inside it.
+    for (const match of masked.matchAll(SEGMENT)) {
+      const segment = match[0];
+      if (!LOCAL_CANDIDATE.test(segment)) continue;
+      masked = blank(masked, match.index ?? 0, segment.length);
+      const parsed = parseLocalCandidate(organization, segment, line);
+      if (parsed.kind === "local") local.push(parsed.pin);
+      else if (parsed.kind === "foreign") foreign.push(parsed.pin);
+      else localRejected.push(parsed.rejection);
+    }
     for (const match of masked.matchAll(bareRegExp)) {
       const path = match[1] ?? "";
       // A malformed spec (`:0`, `:9-3`) stays a bare citation: judged under the
@@ -676,7 +759,7 @@ export function scanText(
       bare.push({ text: match[0], path, lines: parseLineSpec(match[2] ?? ""), line });
     }
   }
-  return { pinned, rejected, bare, unqualified, local, candidates };
+  return { pinned, rejected, bare, unqualified, local, localRejected, foreign, candidates };
 }
 
 /** Lines in a text the way an editor numbers them: a final newline opens no line. */
@@ -705,6 +788,7 @@ export type Verdict =
   | "repository-unreachable"
   | "sha-not-found"
   | "sha-ambiguous"
+  | "sha-not-on-served-branch"
   | "path-absent"
   | "line-range-outside-file"
   | "invalid-citation";
@@ -777,6 +861,16 @@ export interface ResolverOptions {
   readonly timeoutMs?: number;
   /** At most this many git processes at once (default 4): a document citing many repositories must not fork-bomb the runner. */
   readonly maxConcurrentGit?: number;
+}
+
+/** What the resolver is asked: a citation, and whether its commit must be on the served branch. */
+export interface Asked extends Pick<PinnedCitation, "repository" | "sha" | "path" | "lines"> {
+  /**
+   * True for a local pin: this repository merges by squash, so a commit
+   * reachable only from a work branch disappears with it. A pinned citation of
+   * another repository may name any branch or tag of it, as before.
+   */
+  readonly servedBranchOnly?: boolean;
 }
 
 type RepositoryHandle =
@@ -896,10 +990,8 @@ export class CitationResolver {
   }
 
   /** Resolves one citation; identical citations are resolved once. */
-  resolve(
-    citation: Pick<PinnedCitation, "repository" | "sha" | "path" | "lines">,
-  ): Promise<Resolution> {
-    const key = `${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}`;
+  resolve(citation: Asked): Promise<Resolution> {
+    const key = `${citation.repository}@${citation.sha}:${citation.path ?? ""}:${citation.lines === null ? "" : renderSpans(citation.lines)}:${citation.servedBranchOnly === true ? "served" : "any"}`;
     const known = this.#citations.get(key);
     if (known !== undefined) return known;
     const resolved = this.#resolveUncached(citation);
@@ -907,9 +999,7 @@ export class CitationResolver {
     return resolved;
   }
 
-  async #resolveUncached(
-    citation: Pick<PinnedCitation, "repository" | "sha" | "path" | "lines">,
-  ): Promise<Resolution> {
+  async #resolveUncached(citation: Asked): Promise<Resolution> {
     // Defence in depth: the parser already refused these, but this method is
     // exported and must not depend on its caller for what reaches git.
     if (!/^[0-9a-f]{4,40}$/.test(citation.sha) || !REPOSITORY_NAME.test(citation.repository)) {
@@ -950,6 +1040,45 @@ export class CitationResolver {
       };
     }
     const full = commit.stdout.trim();
+    // `rev-parse` prefers a ref to an object: a branch or tag whose name is the
+    // cited hex would answer for it, and the pin would follow a moving ref.
+    if (!full.startsWith(citation.sha)) {
+      return {
+        verdict: "sha-ambiguous",
+        note: `${citation.sha} is also the name of a branch or tag of ${citation.repository}, which answers ${full}: cite the full sha`,
+      };
+    }
+    if (citation.servedBranchOnly === true) {
+      // The bare clone's HEAD is the remote's served branch.
+      const served = await this.#git(["--git-dir", gitDir, "symbolic-ref", "HEAD"]);
+      const servedRef = served.stdout.trim();
+      if (served.code !== 0 || !servedRef.startsWith("refs/heads/")) {
+        return {
+          verdict: "repository-unreachable",
+          note: `the served branch of ${citation.repository} could not be read: ${lastLine(served.stderr) || servedRef}`,
+        };
+      }
+      const contained = await this.#git([
+        "--git-dir",
+        gitDir,
+        "merge-base",
+        "--is-ancestor",
+        full,
+        servedRef,
+      ]);
+      if (contained.code === 1) {
+        return {
+          verdict: "sha-not-on-served-branch",
+          note: `${full} is not on ${servedRef.slice("refs/heads/".length)}, the served branch of ${citation.repository}: a commit of a branch that is squashed or deleted leaves the citation dangling — cite a commit of the served branch`,
+        };
+      }
+      if (contained.code !== 0) {
+        return {
+          verdict: "repository-unreachable",
+          note: `whether ${full} is on the served branch of ${citation.repository} could not be decided: ${lastLine(contained.stderr)}`,
+        };
+      }
+    }
     if (citation.path === null) {
       return {
         verdict: "resolved",
@@ -1064,12 +1193,17 @@ export interface CitationsVolume {
   readonly guardedUnqualified: number;
   /** Unqualified pins anywhere else in the scope: counted, not judged. */
   readonly unjudgedUnqualified: number;
-  /** Local pins (`<sha>:<path>[:<lines>]`) of guarded ADRs: examined = resolved + failed. */
+  /**
+   * Local-pin candidates of guarded ADRs, refused ones included:
+   * examined = resolved + failed.
+   */
   readonly guardedLocal: number;
   readonly guardedLocalResolved: number;
   readonly guardedLocalFailed: number;
-  /** Local pins of ADRs at or below the threshold: counted, not judged. */
+  /** Local-pin candidates of ADRs at or below the threshold: counted, not judged. */
   readonly legacyLocal: number;
+  /** Pins of another owner in any ADR: counted, never asked. */
+  readonly foreignPins: number;
 }
 
 /**
@@ -1143,18 +1277,15 @@ async function resolveBare(
 
 /**
  * A local pin, asked of this repository through the same resolver as a pinned
- * citation: the commit must be reachable from a branch or tag of the remote,
- * not merely present in the working clone, so a sha left on an unpushed or
- * squashed-away branch fails like any other.
+ * citation, with one more condition: the commit must be on the served branch
+ * of the remote. Present in the working clone is not enough, and neither is
+ * reachable from a work branch, which a squash merge leaves behind.
  */
 async function resolveLocal(
   pin: LocalPin,
   input: CitationsInput,
   resolver: Pick<CitationResolver, "resolve">,
 ): Promise<{ ok: boolean; note: string }> {
-  if (pin.malformedLines) {
-    return { ok: false, note: "malformed line spec (L, a-b, a,b; 1-based, a <= b)" };
-  }
   if (input.selfRepository === null) {
     return {
       ok: false,
@@ -1166,6 +1297,7 @@ async function resolveLocal(
     sha: pin.sha,
     path: pin.path,
     lines: pin.lines,
+    servedBranchOnly: true,
   });
   return {
     ok: resolution.verdict === "resolved",
@@ -1241,6 +1373,7 @@ export async function evaluateCitations(
   let guardedLocalResolved = 0;
   let guardedLocalFailed = 0;
   let legacyLocal = 0;
+  let foreignPins = 0;
   const foundSegments: string[] = [];
   const judgedSegments: string[] = [];
 
@@ -1365,6 +1498,15 @@ export async function evaluateCitations(
             : `local pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: ${outcome.note}`,
         );
       }
+      for (const rejected of scanned.localRejected) {
+        guardedLocal += 1;
+        guardedLocalFailed += 1;
+        report.check(
+          `${file.path}:${rejected.line} ${rejected.text}`,
+          false,
+          `invalid local pin in an ADR above ${config.adr.bareCitationsGuardedAbove}: ${rejected.reason}`,
+        );
+      }
       for (const citation of scanned.bare) {
         guardedBare += 1;
         const outcome = await resolveBare(citation, input);
@@ -1381,9 +1523,10 @@ export async function evaluateCitations(
     } else {
       unjudgedUnqualified += scanned.unqualified.length;
     }
+    foreignPins += scanned.foreign.length;
     if (standing === "legacy") {
       legacyAdrs += 1;
-      legacyLocal += scanned.local.length;
+      legacyLocal += scanned.local.length + scanned.localRejected.length;
       for (const citation of scanned.bare) {
         legacyBare += 1;
         if ((await resolveBare(citation, input)).ok) legacyBareResolving += 1;
@@ -1429,6 +1572,7 @@ export async function evaluateCitations(
     guardedLocalResolved,
     guardedLocalFailed,
     legacyLocal,
+    foreignPins,
   };
   const failures = Object.entries(byVerdict)
     .filter(([verdict]) => verdict !== "resolved")
@@ -1455,6 +1599,8 @@ export async function evaluateCitations(
       "outside the guarded ADRs — no repository to ask, so not verified.",
     `Pinned citations (information, not a pass): ${legacyLocal} local pin(s) (<sha>:<path>, repository implicit) ` +
       `in ADR(s) at or below ${config.adr.bareCitationsGuardedAbove} — counted, not judged: the forward rule does not rewrite history.`,
+    `Pinned citations (information, not a pass): ${foreignPins} pin(s) of another owner (<owner>/<repository>@<sha>) in the ADRs ` +
+      `— counted, never asked: this gate addresses ${config.organization} only and offers no credential.`,
   ];
   return { report, volume, information };
 }

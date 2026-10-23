@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   type AdrRule,
+  type Asked,
   adrStanding,
   CitationResolver,
   CONFIG_PATH,
@@ -468,34 +469,91 @@ describe("scanText — bare and unqualified citations", () => {
     expect(bare).toEqual([]);
   });
 
-  test("reads local pins <sha>:<path>[:<lines>], never as bare, never inside another form", () => {
+  test("reads local pins <sha>:<path>[:<lines>] whole, never as bare, never inside another form", () => {
     const text = [
       "(`c466a5c:AGENTS.md:80`, `c466a5c:docs/reviews/AGENT-REVIEW-PROTOCOL.md:28-29`)",
-      "a whole file: `abcdef1:docs/a.md`; a malformed spec: `abcdef1:docs/a.md:0`",
+      "a whole file: `abcdef1:docs/a.md`; any extension: c466a5c:Makefile:3.",
       "pinned `libre-ai/x@abcdef1:packages/core/src/a.ts:33` and unqualified `name@abcdef2:a.ts:2`",
-      "third party `tt-a1i/archify@25cf370:CONTRIBUTING.md:51`; not a sha: `zzzzzzz:docs/a.md:3`",
+      "not a sha: `zzzzzzz:docs/a.md:3`; prose: commit c466a5c: it moved",
+      // A parenthesis opened here and closed on the next line, as in ADR-0056.
+      "(`c466a5c:vision.md:544-561`,",
+      "emphasis _c466a5c:tools/x.ts:12_. and __c466a5c:tools/x.ts:13__ and *c466a5c:tools/x.ts:14*",
+      `forty: \`${SHA40}:tools/x.ts:1-2,5\``,
     ].join("\n");
-    const { local, bare, pinned, unqualified } = scanText(text, ORG, extensions);
-    expect(
-      local.map((pin) => [pin.line, pin.sha, pin.path, pin.lines, pin.malformedLines]),
-    ).toEqual([
-      [1, "c466a5c", "AGENTS.md", [{ start: 80, end: 80 }], false],
-      [1, "c466a5c", "docs/reviews/AGENT-REVIEW-PROTOCOL.md", [{ start: 28, end: 29 }], false],
-      [2, "abcdef1", "docs/a.md", null, false],
-      [2, "abcdef1", "docs/a.md", null, true],
+    const { local, localRejected, bare, pinned, unqualified } = scanText(text, ORG, extensions);
+    expect(local.map((pin) => [pin.line, pin.sha, pin.path, pin.lines])).toEqual([
+      [1, "c466a5c", "AGENTS.md", [{ start: 80, end: 80 }]],
+      [1, "c466a5c", "docs/reviews/AGENT-REVIEW-PROTOCOL.md", [{ start: 28, end: 29 }]],
+      [2, "abcdef1", "docs/a.md", null],
+      [2, "c466a5c", "Makefile", [{ start: 3, end: 3 }]],
+      [5, "c466a5c", "vision.md", [{ start: 544, end: 561 }]],
+      [6, "c466a5c", "tools/x.ts", [{ start: 12, end: 12 }]],
+      [6, "c466a5c", "tools/x.ts", [{ start: 13, end: 13 }]],
+      [6, "c466a5c", "tools/x.ts", [{ start: 14, end: 14 }]],
+      [
+        7,
+        SHA40,
+        "tools/x.ts",
+        [
+          { start: 1, end: 2 },
+          { start: 5, end: 5 },
+        ],
+      ],
     ]);
+    expect(localRejected).toEqual([]);
     expect(pinned).toHaveLength(1);
-    // Another owner's pin is outside the universe of this gate, by design: it
-    // is neither unqualified (it names its repository) nor local (the sha
-    // follows an '@').
     expect(unqualified.map((u) => u.text)).toEqual(["name@abcdef2:a.ts:2"]);
     // `zzzzzzz:` is not hex, so `docs/a.md:3` after it is no bare citation either:
     // the bare pattern refuses a path preceded by ':'.
     expect(bare).toEqual([]);
   });
 
-  test("does not read local pins when no extension is declared", () => {
-    expect(scanText("`c466a5c:AGENTS.md:80`", ORG, []).local).toEqual([]);
+  test("closed by default: a sha then ':' is a local pin in full, or refused by name", () => {
+    const cases: readonly (readonly [string, string])[] = [
+      // A suffix glued to the line spec or the path is part of the pin, never its end.
+      ["c466a5c:tools/quality/check-pr-door.ts:3-9999999x", "is not a line spec"],
+      ["c466a5c:tools/quality/check-pr-door.ts:99999abc", "is not a line spec"],
+      ["c466a5c:tools/quality/check-pr-door.ts#L99999", "carries '#'"],
+      ["c466a5c:tools/quality/check-pr-door.ts*docs/y.ts", "carries '*'"],
+      ["c466a5c:tools/quality/check-pr-door.ts~1", "carries '~'"],
+      ["c466a5c:tools/x.ts:0", "is not a line spec"],
+      ["c466a5c:../x.ts", "climbs out of the tree"],
+      // Written against the sha: nothing may precede it.
+      ["C466A5C:tools/x.ts:12", "7 to 40 lowercase hexadecimal"],
+      [`${SHA40}a:tools/x.ts:12`, "7 to 40 lowercase hexadecimal"],
+      ["@c466a5c:tools/x.ts:12", "is not a local pin"],
+      ["commit:c466a5c:tools/x.ts:12", "is not a local pin"],
+      ["--c466a5c:tools/x.ts:12", "is not a local pin"],
+      // Two forms glued into one segment are one refused candidate, and the
+      // bare citation inside it is not counted a second time.
+      ["docs/a.md:3,c466a5c:tools/x.ts", "is not a local pin"],
+    ];
+    for (const [written, reason] of cases) {
+      const { local, localRejected, bare } = scanText(`see \`${written}\`.`, ORG, extensions);
+      expect(local, written).toEqual([]);
+      expect(bare, written).toEqual([]);
+      expect(
+        localRejected.map((r) => r.text),
+        written,
+      ).toEqual([written]);
+      expect(localRejected[0]?.reason, written).toContain(reason);
+    }
+  });
+
+  test("a pin of another owner is counted apart, never as local", () => {
+    const text =
+      "(`tt-a1i/archify@25cf370:CONTRIBUTING.md:51`) and `tt-a1i/archify@25cf370:AGENTS.md:15`";
+    const { foreign, local, localRejected, unqualified, bare } = scanText(text, ORG, extensions);
+    expect(foreign.map((f) => f.text)).toEqual([
+      "tt-a1i/archify@25cf370:CONTRIBUTING.md:51",
+      "tt-a1i/archify@25cf370:AGENTS.md:15",
+    ]);
+    expect([local, localRejected, unqualified, bare]).toEqual([[], [], [], []]);
+  });
+
+  test("does not read local pins outside an ADR (no extension declared)", () => {
+    const scanned = scanText("`c466a5c:AGENTS.md:80` `C466A5C:x.ts`", ORG, []);
+    expect([scanned.local, scanned.localRejected, scanned.foreign]).toEqual([[], [], []]);
   });
 });
 
@@ -668,6 +726,9 @@ let lazyCommit = "";
 let brokenCommit = "";
 let ambiguousPrefix = "";
 let ambiguousCandidates: string[] = [];
+let trunkCommit = "";
+let sideCommit = "";
+let shadowedShort = "";
 let scratchCount = 0;
 
 /** A fast-import stream of `count` deterministic commits on one branch. */
@@ -742,6 +803,32 @@ beforeAll(async () => {
     ambiguousCandidates = shas;
     break;
   }
+
+  // A served branch `trunk` and a work branch `side` carrying one more commit:
+  // what a squash merge leaves behind.
+  const branched = join(base, "branched");
+  git(base, ["init", "--quiet", "-b", "trunk", branched]);
+  await Bun.write(join(branched, "a.ts"), "one\n");
+  git(branched, ["add", "-A"]);
+  git(branched, ["commit", "--quiet", "-m", "on trunk"]);
+  trunkCommit = git(branched, ["rev-parse", "HEAD"]);
+  git(branched, ["switch", "--quiet", "-c", "side"]);
+  await Bun.write(join(branched, "a.ts"), "one\ntwo\n");
+  git(branched, ["commit", "--quiet", "-am", "on side"]);
+  sideCommit = git(branched, ["rev-parse", "HEAD"]);
+  git(branched, ["switch", "--quiet", "trunk"]);
+
+  // A branch named like the short sha of the first commit, pointing at the
+  // second: `rev-parse` answers the ref, not the object.
+  const shadowed = join(base, "shadowed");
+  git(base, ["init", "--quiet", "-b", "trunk", shadowed]);
+  await Bun.write(join(shadowed, "a.ts"), "one\n");
+  git(shadowed, ["add", "-A"]);
+  git(shadowed, ["commit", "--quiet", "-m", "first"]);
+  shadowedShort = git(shadowed, ["rev-parse", "--short=7", "HEAD"]);
+  await Bun.write(join(shadowed, "a.ts"), "one\ntwo\n");
+  git(shadowed, ["commit", "--quiet", "-am", "second"]);
+  git(shadowed, ["branch", shadowedShort]);
 });
 
 afterAll(() => {
@@ -784,6 +871,29 @@ describe("CitationResolver against local repositories", () => {
       const resolution = await r.resolve(citation);
       expect(resolution.verdict, JSON.stringify([citation, resolution])).toBe("resolved");
     }
+  }, 60_000);
+
+  test("sha-not-on-served-branch: a local pin must name a commit of the served branch", async () => {
+    const r = resolver();
+    const ask = (sha: string, servedBranchOnly: boolean): Promise<Resolution> =>
+      r.resolve({ repository: "branched", sha, path: "a.ts", lines: null, servedBranchOnly });
+    expect((await ask(trunkCommit.slice(0, 7), true)).verdict).toBe("resolved");
+    const side = await ask(sideCommit.slice(0, 7), true);
+    expect(side.verdict).toBe("sha-not-on-served-branch");
+    expect(side.note).toContain("is not on trunk, the served branch of branched");
+    // A pinned citation of another repository may still name any branch.
+    expect((await ask(sideCommit.slice(0, 7), false)).verdict).toBe("resolved");
+  }, 60_000);
+
+  test("sha-ambiguous: a branch named like the cited short sha never answers for it", async () => {
+    const resolution = await resolver().resolve({
+      repository: "shadowed",
+      sha: shadowedShort,
+      path: "a.ts",
+      lines: null,
+    });
+    expect(resolution.verdict).toBe("sha-ambiguous");
+    expect(resolution.note).toContain("is also the name of a branch or tag of shadowed");
   }, 60_000);
 
   test("repository-not-found: the repository does not exist", async () => {
@@ -918,16 +1028,21 @@ const CONFIG: PinnedCitationsConfig = {
 /** A resolver that answers from a table, so the verdict logic runs without git. */
 interface TableResolver {
   readonly asked: string[];
-  readonly resolve: (citation: Cited) => Promise<Resolution>;
+  /** Whether each asked citation required the served branch, in the order asked. */
+  readonly servedOnly: boolean[];
+  readonly resolve: (citation: Asked) => Promise<Resolution>;
 }
 
 function tableResolver(table: Record<string, Resolution>): TableResolver {
   const asked: string[] = [];
+  const servedOnly: boolean[] = [];
   return {
     asked,
-    resolve: async (citation: Cited): Promise<Resolution> => {
+    servedOnly,
+    resolve: async (citation: Asked): Promise<Resolution> => {
       const key = `${citation.repository}@${citation.sha}`;
       asked.push(key);
+      servedOnly.push(citation.servedBranchOnly === true);
       return table[key] ?? { verdict: "sha-not-found", note: "absent from the table" };
     },
   };
@@ -1305,12 +1420,17 @@ describe("evaluateCitations", () => {
           "resolves: `c466a5c:AGENTS.md:80`",
           "not here: `abcdef9:docs/a.md`",
           "malformed: `c466a5c:AGENTS.md:9-3`",
+          "pinned: libre-ai/live@abcdef1; another owner: `tt-a1i/archify@25cf370:AGENTS.md:15`",
         ].join("\n"),
       },
-      { path: "docs/adr/0010-old.md", text: "`abcdef9:docs/a.md:3` and `c466a5c:x.ts`" },
+      {
+        path: "docs/adr/0010-old.md",
+        text: "`abcdef9:docs/a.md:3`, `c466a5c:x.ts`, `C466A5C:x.ts` and tt-a1i/archify@25cf370:README.md",
+      },
       { path: "docs/notes.md", text: "`abcdef9:docs/a.md:3` is not in an ADR" },
     ];
     const fake = tableResolver({
+      "live@abcdef1": { verdict: "resolved", note: "ok" },
       [`${SELF}@c466a5c`]: { verdict: "resolved", note: "AGENTS.md:80 lies in its 80 line(s)" },
     });
     const { report, volume, information } = await evaluateCitations(
@@ -1320,19 +1440,24 @@ describe("evaluateCitations", () => {
     expect([volume.guardedLocal, volume.guardedLocalResolved, volume.guardedLocalFailed]).toEqual([
       3, 1, 2,
     ]);
-    expect(volume.legacyLocal).toBe(2);
-    // Only the guarded, well-formed pins reach the resolver, each as this repository.
-    expect(fake.asked).toEqual([`${SELF}@c466a5c`, `${SELF}@abcdef9`]);
+    // The refused `C466A5C:x.ts` of the legacy ADR is counted too.
+    expect(volume.legacyLocal).toBe(3);
+    expect(volume.foreignPins).toBe(2);
+    // Only the guarded, well-formed local pins reach the resolver, each as this
+    // repository and on its served branch; the pinned citation keeps any branch.
+    expect(fake.asked).toEqual(["live@abcdef1", `${SELF}@c466a5c`, `${SELF}@abcdef9`]);
+    expect(fake.servedOnly).toEqual([false, true, true]);
     // A local pin is neither bare nor unqualified: no other counter sees it.
     expect([volume.guardedBare, volume.guardedUnqualified, volume.legacyBare]).toEqual([0, 0, 0]);
     expect(report.violations).toEqual([
       "docs/adr/0011-new.md:2 abcdef9:docs/a.md: local pin in an ADR above 10: sha-not-found: absent from the table",
-      "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: local pin in an ADR above 10: malformed line spec (L, a-b, a,b; 1-based, a <= b)",
+      "docs/adr/0011-new.md:3 c466a5c:AGENTS.md:9-3: invalid local pin in an ADR above 10: '9-3' is not a line spec (L, a-b, a,b; 1-based, a <= b)",
     ]);
     expect(report.volumeSummary).toContain(
       `local pins (<sha>:<path>, asked of libre-ai/${SELF}) there: 3 examined = 1 resolved + 2 failed`,
     );
-    expect(information[2]).toContain("2 local pin(s) (<sha>:<path>, repository implicit)");
+    expect(information[2]).toContain("3 local pin(s) (<sha>:<path>, repository implicit)");
+    expect(information[3]).toContain("2 pin(s) of another owner");
   });
 
   test("a local pin fails when the name of this repository could not be derived", async () => {
