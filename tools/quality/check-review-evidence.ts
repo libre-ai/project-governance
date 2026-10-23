@@ -60,6 +60,18 @@ import { concludeGate, GateReport } from "./gate-report";
  * in every tree, so citing them proves nothing about this change and they are
  * not admissible either.
  *
+ * In the diff, only the lines the pull request ADDS are evidence (2026-10-23).
+ * Before, the whole `git diff` text was scanned: a marker on a context line —
+ * already in the register, merged by an earlier pull request, shown only
+ * because it sits next to the changed line — counted the same as one this
+ * pull request writes, and so did a marker on a line the pull request
+ * REMOVES. Observed on #131 at c6cc66f: "9 candidate signal(s): 4 admissible,
+ * 5 rejected", the four admitted
+ * being `Owner-arbitration:` markers of decisions D91 to D93 printed as
+ * context around the added row. A hunk header (`@@ … @@ <function context>`)
+ * repeats a nearby line too, so it is not evidence either. The diff is parsed
+ * hunk by hunk and each added line is attached to its file.
+ *
  * Runs only on `pull_request` events: the diff against the PR's base and the
  * PR description both exist there. A `push` to `main` only ever happens
  * through a protected-branch merge that already passed this gate at PR time,
@@ -99,6 +111,83 @@ export interface EvidenceSignal {
   readonly source: "pr-body" | "diff";
   readonly kind: "review-artifact" | "owner-arbitration-marker";
   readonly text: string;
+  /** The gated file whose added line carries the signal; null for the PR body, which has none. */
+  readonly file: string | null;
+}
+
+/** One line the pull request adds, without its `+` prefix, attached to the file it is added to. */
+export interface AddedLine {
+  readonly file: string;
+  readonly text: string;
+}
+
+/**
+ * Every line of a unified diff, classified. The four counts sum to the number
+ * of lines of the diff, so what was not examined is said, not dropped.
+ */
+export interface DiffScan {
+  readonly added: readonly AddedLine[];
+  /** Unchanged lines shown around a change: already in the base, written by someone else. */
+  readonly context: number;
+  readonly removed: number;
+  /** `diff --git`, index, mode, `---`/`+++`, `@@` hunk headers, `\ No newline`: never content. */
+  readonly header: number;
+}
+
+/** `b/docs/x.md` or `"b/docs/x y.md"` → `docs/x.md`; `/dev/null` (a deleted file) → null. */
+function destinationPath(raw: string): string | null {
+  const unquoted = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+  if (unquoted === "/dev/null") return null;
+  return unquoted.startsWith("b/") ? unquoted.slice(2) : unquoted;
+}
+
+/**
+ * Pure parse of `git diff` output into the lines the change adds.
+ *
+ * Only a line INSIDE a hunk is content, so the parser tracks whether it is in
+ * one: `@@` opens a hunk, `diff --git` closes it and starts the next file.
+ * Inside a hunk every content line carries a one-character prefix, so a `+++`
+ * there is an added line whose text begins with `++` — only outside a hunk is
+ * it the destination header. A line outside any hunk is never added content,
+ * whatever it starts with: fail-closed on input that is not a git diff.
+ */
+export function extractAddedLines(diffText: string): DiffScan {
+  const added: AddedLine[] = [];
+  let context = 0;
+  let removed = 0;
+  let header = 0;
+  if (diffText === "") return { added, context, removed, header };
+
+  const lines = (diffText.endsWith("\n") ? diffText.slice(0, -1) : diffText).split("\n");
+  let file: string | null = null;
+  let inHunk = false;
+  for (const line of lines) {
+    if (line.startsWith("diff --git ")) {
+      inHunk = false;
+      file = null;
+      header += 1;
+    } else if (line.startsWith("@@")) {
+      inHunk = true;
+      header += 1;
+    } else if (!inHunk) {
+      if (line.startsWith("+++ ")) file = destinationPath(line.slice(4));
+      header += 1;
+    } else if (line.startsWith("+")) {
+      // A hunk always follows a `+++` header in git output; a file-less hunk
+      // is malformed input and its lines are not attributable, so not evidence.
+      if (file === null) header += 1;
+      else added.push({ file, text: line.slice(1) });
+    } else if (line.startsWith("-")) {
+      removed += 1;
+    } else if (line.startsWith("\\")) {
+      header += 1;
+    } else {
+      // A space-prefixed line, or an empty one where a tool stripped the
+      // trailing space of an empty context line: unchanged either way.
+      context += 1;
+    }
+  }
+  return { added, context, removed, header };
 }
 
 /** Files that live in `docs/reviews/` in every tree: citing them reviews nothing. */
@@ -111,17 +200,26 @@ export const STANDING_REVIEW_PATHS: readonly string[] = [
 export type PathExists = (path: string) => boolean;
 
 /** Pure scan over one text blob, so the two accepted forms are independently testable. */
-export function findEvidenceSignals(source: "pr-body" | "diff", text: string): EvidenceSignal[] {
+export function findEvidenceSignals(
+  source: "pr-body" | "diff",
+  text: string,
+  file: string | null,
+): EvidenceSignal[] {
   const signals: EvidenceSignal[] = [];
   for (const match of text.matchAll(REVIEW_ARTIFACT_PATTERN)) {
     // Sentence punctuation is not part of a path: "see docs/reviews/x.md." cites x.md.
     const path = match[0].replace(/[.,;:]+$/, "").replace(/\/+$/, "");
-    signals.push({ source, kind: "review-artifact", text: path });
+    signals.push({ source, kind: "review-artifact", text: path, file });
   }
   for (const match of text.matchAll(OWNER_ARBITRATION_PATTERN)) {
-    signals.push({ source, kind: "owner-arbitration-marker", text: match[0] });
+    signals.push({ source, kind: "owner-arbitration-marker", text: match[0], file });
   }
   return signals;
+}
+
+/** `pr-body`, or `diff <file>` — where a signal was read, as the report prints it. */
+function signalOrigin(signal: EvidenceSignal): string {
+  return signal.file === null ? signal.source : `${signal.source} ${signal.file}`;
 }
 
 /**
@@ -141,9 +239,10 @@ export function evaluateReviewEvidence(
     return report;
   }
 
+  const scan = extractAddedLines(diffText);
   const signals = [
-    ...findEvidenceSignals("pr-body", prBody),
-    ...findEvidenceSignals("diff", diffText),
+    ...findEvidenceSignals("pr-body", prBody, null),
+    ...scan.added.flatMap((line) => findEvidenceSignals("diff", line.text, line.file)),
   ];
   const admissible: EvidenceSignal[] = [];
   const rejected: string[] = [];
@@ -152,17 +251,22 @@ export function evaluateReviewEvidence(
       admissible.push(signal);
     } else if (STANDING_REVIEW_PATHS.includes(signal.text)) {
       rejected.push(
-        `${signal.text} (${signal.source}) is a standing file of docs/reviews/, not a review`,
+        `${signal.text} (${signalOrigin(signal)}) is a standing file of docs/reviews/, not a review`,
       );
     } else if (!pathExists(signal.text)) {
-      rejected.push(`${signal.text} (${signal.source}) does not exist in the tree under review`);
+      rejected.push(
+        `${signal.text} (${signalOrigin(signal)}) does not exist in the tree under review`,
+      );
     } else {
       admissible.push(signal);
     }
   }
 
+  const examined =
+    `${scan.added.length} added line(s) examined in the diff of the gated files ` +
+    `(${scan.context} context, ${scan.removed} removed and ${scan.header} header line(s) are not evidence)`;
   report.volume(
-    `${signals.length} candidate signal(s): ${admissible.length} admissible, ${rejected.length} rejected`,
+    `${examined}; ${signals.length} candidate signal(s): ${admissible.length} admissible, ${rejected.length} rejected`,
   );
   const ok = admissible.length > 0;
   const rejectedNote = rejected.length > 0 ? `; rejected references: ${rejected.join("; ")}` : "";
@@ -170,8 +274,8 @@ export function evaluateReviewEvidence(
     gated.join(", "),
     ok,
     ok
-      ? `evidence found: ${admissible.map((signal) => `${signal.kind} (${signal.source}): ${signal.text}`).join("; ")}${rejectedNote}`
-      : `neither the pull request description nor the diff of the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (${signals.length} candidate signal(s) examined${rejectedNote})`,
+      ? `evidence found: ${admissible.map((signal) => `${signal.kind} (${signalOrigin(signal)}): ${signal.text}`).join("; ")}${rejectedNote}`
+      : `neither the pull request description nor a line the pull request adds to the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (${examined}; ${signals.length} candidate signal(s) examined${rejectedNote})`,
   );
   return report;
 }
@@ -188,6 +292,23 @@ function sh(argv: string[]): { exitCode: number; stdout: string; stderr: string 
     stdout: new TextDecoder().decode(result.stdout),
     stderr: new TextDecoder().decode(result.stderr),
   };
+}
+
+/**
+ * Run one `git diff` of the gate and return its stdout, or exit 1.
+ *
+ * An unreadable diff is not an empty one: an empty path list reads as
+ * "touches none of the gated paths" and passes, an empty content diff reads
+ * as "no evidence" for a reason that is not the change. Both calls share this
+ * one exit, so a single probe (a head with no merge base) holds it.
+ */
+function gitDiffOrExit(argv: readonly string[], what: string): string {
+  const result: { exitCode: number; stdout: string; stderr: string } = sh(["git", ...argv]);
+  if (result.exitCode !== 0) {
+    console.error(`check-review-evidence: could not ${what}: ${result.stderr.trim()}`);
+    process.exit(1);
+  }
+  return result.stdout;
 }
 
 async function readPullRequestBody(): Promise<string> {
@@ -225,16 +346,54 @@ if (import.meta.main) {
       );
       process.exit(1);
     }
-    const names = sh(["git", "diff", "--name-only", `origin/${baseRef}...HEAD`]);
-    const changedPaths = names.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const diff = sh(["git", "diff", `origin/${baseRef}...HEAD`, "--", ...GATED_PATHSPECS]);
+    const range: string = `origin/${baseRef}...HEAD`;
+    // `--no-renames`: with rename detection, an ADR moved out of docs/adr is
+    // listed under its new name only, and the change "touches none" of the
+    // gated paths. Without it, the old path is listed, deleted. `-z`: paths
+    // come NUL-terminated and unquoted, so `core.quotePath` cannot turn a
+    // non-ASCII name into its quoted octal form (`"docs/adr/0004-na\303\257ve.md"`
+    // for U+00EF), which the gated patterns do not match.
+    const names: string = gitDiffOrExit(
+      ["diff", "--name-only", "-z", "--no-renames", range],
+      `list the paths changed in ${range}`,
+    );
+    const changedPaths: readonly string[] = names.split("\0").filter(Boolean);
+    // The parser reads git's own format, whatever the repository config says:
+    // - no colour: an escape sequence before `+` would hide an added line;
+    // - no external diff driver and no textconv: either replaces the text
+    //   git compares, so a driver could print an added marker the change
+    //   never wrote;
+    // Rename detection is pinned ON here (`--find-renames`, whatever
+    // `diff.renames` says), unlike the path list: without it, an ADR renamed inside docs/adr would print its whole
+    // body as added lines, and a marker an earlier pull request wrote in it
+    // would count as evidence. Detected, a pure rename adds no line; an ADR
+    // moved out of the gated paths shows as a deletion, because rename
+    // detection only pairs paths the pathspec kept.
+    // The `a/`/`b/` prefixes and `core.quotePath=false` only keep the file
+    // printed beside each signal readable: `destinationPath` already absorbs
+    // `diff.noprefix`, and the verdict never depends on the file name, so for
+    // the verdict these three are equivalent mutants and no test claims them.
+    const diff: string = gitDiffOrExit(
+      [
+        "-c",
+        "core.quotePath=false",
+        "diff",
+        "--no-color",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--find-renames",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        range,
+        "--",
+        ...GATED_PATHSPECS,
+      ],
+      `diff ${range}`,
+    );
     const prBody = await readPullRequestBody();
     concludeGate(
       "Review evidence",
-      evaluateReviewEvidence(changedPaths, prBody, diff.stdout, existsAtHead),
+      evaluateReviewEvidence(changedPaths, prBody, diff, existsAtHead),
     );
   }
 }

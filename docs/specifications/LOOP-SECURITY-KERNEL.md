@@ -134,8 +134,9 @@ merge is a signature"). The run's autonomous-merge authorization explicitly
 **Enforcement.** `tools/quality/check-review-evidence.ts` (merged, PR #37) is
 the mechanical backstop on pull requests: it fails a PR touching `docs/adr/**`,
 `docs/decisions/INVARIANTS.md` or `docs/decisions/DECISION-REGISTER.md` unless
-the PR body or diff carries a `docs/reviews/` artefact reference or a dated
-`Owner-arbitration:` marker. Its gated-path list does not (yet) cover CI
+the PR body or a line the PR adds to those files carries a `docs/reviews/`
+artefact reference or a dated `Owner-arbitration:` marker (context and
+removed lines of the diff are not evidence since 2026-10-23). Its gated-path list does not (yet) cover CI
 workflow files or the runtime revocation store this requirement also names —
 an honest gap, not claimed closed. Tool-state retrieval that feeds a guardrail
 mutation uses DNS-pinned transport (control-plane E10) with a timestamped
