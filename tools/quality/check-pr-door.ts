@@ -40,19 +40,25 @@ import { concludeGate, GateReport } from "./gate-report";
  *   column 0 is an HTML block that ends on its own line, so the next line
  *   opens a paragraph; nothing before that paragraph can still be open; and
  *   the blank line closes it.
- * - T2. No value can open a construct over the next line. Outside code spans
- *   and backslash escapes, a value pairs its backtick runs (every code span
- *   closes on the line), balances `[`/`]` and `(`/`)`, carries an even
- *   number of `"` and of `~~` runs, and carries no `<` except a complete
- *   autolink `<https://host...>` or `<http://host...>`. No HTML. A refused
- *   line fails the gate, and no line after it in the block is read: the
- *   construct it opens may hide them (a `<details>` collapses them).
+ * - T2' (re-review 4: modelling the end of a link, its `'` or `( )` title,
+ *   nested images, a backtick in a destination, failed). The syntax that can
+ *   hide text is removed instead of modelled. Code spans first, as CommonMark
+ *   on the line: a backtick run opens, and closes at the next run of the same
+ *   length on the same line; an unclosed run refuses the line. Inside a code
+ *   span everything is admitted. Outside, a value carries no `[` or `]` (no
+ *   link or image, inline or by reference, even escaped), no `~`, and no `<`
+ *   except a whole autolink `<https://host...>` or `<http://host...>`. No
+ *   HTML. A refused line fails the gate, and no line after it in the block is
+ *   read: the construct it opens may hide them (a `<details>` collapses them).
  * - T3. A key line at column 0 elsewhere in the body fails the gate by name,
  *   unless it sits in an HTML comment or a fence that opened at column 0, at
  *   the start of its line, right after a raw blank line (re-review 3, M1/M2:
  *   a `<!--` in a code span, or indented four spaces, opens no comment for
- *   GitHub, which then displays the key line). Nothing outside the block is
- *   ever read, so this rule can only refuse more or name fewer, never read.
+ *   GitHub, which then displays the key line). A comment closes on `-->` or
+ *   `--!>`, as HTML5 closes it. After a line that opens a type-1 HTML block
+ *   (`<pre`, `<script`, `<style`, `<textarea`), no line is exempt (re-review
+ *   4). Nothing outside the block is ever read, so this rule can only refuse
+ *   more or name fewer, never read.
  *
  * The values, then:
  *
@@ -116,9 +122,10 @@ import { concludeGate, GateReport } from "./gate-report";
  * for `Door:`. Like `Door:`, this proves a declaration exists, never that it
  * is true.
  *
- * The volume line is a partition of the body: lines examined plus lines
- * removed (inside a comment or a fence, nothing else left on them) equal the
- * lines of the body.
+ * The volume line prints lines examined plus lines removed (inside a comment
+ * or a fence, nothing else left on them). The partition holds by
+ * construction: lines examined are counted as the body's lines minus the
+ * removed ones, so the sum says nothing more than the removed count does.
  *
  * Runs on `pull_request` events (including `edited`, so fixing the
  * description re-runs it). Elsewhere it declares that it judged nothing. On a
@@ -165,9 +172,14 @@ const BOM = String.fromCodePoint(0xfeff);
 const BLANK_LINE = /^[ \t]*$/;
 const FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/;
 const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+const COMMENT_CLOSE = /--!?>/;
+/** CommonMark HTML block type 1, at the start of a line, any case. */
+const RAW_TEXT_BLOCK_OPEN = /^ {0,3}<(?:pre|script|style|textarea)(?:[\s>]|$)/i;
 /** T2: a complete autolink, read at a `<`; its URL holds nothing that opens a construct. */
 const AUTOLINK_AT = /<https?:\/\/[^\s<>"`[\]()/?#]+[^\s<>"`[\]()]*>/y;
 const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
+/** T2': refused outside code spans; `<` too, unless it opens a whole autolink. */
+const REFUSED_OUTSIDE_CODE: ReadonlySet<string> = new Set(["[", "]", "~", "<"]);
 
 const DOOR_VALUES = new Set(["one-way", "two-way"]);
 const PLACEHOLDER = /^(?:n\/?a|none|tbd|todo|-+|\.+)$/i;
@@ -214,9 +226,9 @@ function splitLines(body: string): { readonly lines: string[]; readonly finalNew
 }
 
 /**
- * Remove HTML comments and fenced code blocks with their CommonMark extent,
- * keeping the line layout, and say for each line whether it starts inside one.
- * Used only for T3 (best effort) and the volume line, never to read a value.
+ * Remove HTML comments and fenced code blocks, best effort, keeping the line
+ * layout, and say for each line whether it starts inside one. Used only for
+ * T3 exemptions and the volume line, never to read a value.
  */
 export function stripNonDeclarations(body: string): StrippedBody {
   const { lines: source, finalNewline } = splitLines(body);
@@ -229,12 +241,17 @@ export function stripNonDeclarations(body: string): StrippedBody {
   let inComment = false;
   // Whether the construct open at the start of the current line opened clean.
   let openedClean = false;
+  // A type-1 HTML block (`<pre`, `<script`, `<style`, `<textarea`) runs to its
+  // closing tag through blank lines, and holds raw text a fence does not
+  // hide: after a line that opens one, no exemption holds to the end.
+  let afterRawTextBlock = false;
 
   source.forEach((line, index) => {
     // The body start reads as a raw blank line above (source[-1] is absent).
     const afterBlank = BLANK_LINE.test(source[index - 1] ?? "");
     inside.push(fence !== null || inComment);
-    insideClean.push((fence !== null || inComment) && openedClean);
+    insideClean.push((fence !== null || inComment) && openedClean && !afterRawTextBlock);
+    if (RAW_TEXT_BLOCK_OPEN.test(line)) afterRawTextBlock = true;
     if (fence !== null) {
       const run = FENCE_CLOSE.exec(line)?.[1] ?? "";
       if (run[0] === fence.marker && run.length >= fence.length) fence = null;
@@ -262,10 +279,11 @@ export function stripNonDeclarations(body: string): StrippedBody {
     for (;;) {
       if (inComment) {
         touched = true;
-        const end = rest.indexOf("-->");
+        // HTML5 closes a comment on `-->` or on `--!>`, whichever comes first.
+        const close = COMMENT_CLOSE.exec(rest);
         // Unclosed on this line: nothing of it is kept, the comment goes on.
-        if (end === -1) break;
-        rest = rest.slice(end + 3);
+        if (close === null) break;
+        rest = rest.slice(close.index + close[0].length);
         inComment = false;
         continue;
       }
@@ -298,18 +316,23 @@ export function stripNonDeclarations(body: string): StrippedBody {
 }
 
 /**
- * T2: the reason a value could open a construct over the next line, or null.
+ * T2': the reason a value could open a construct over the next line, or null.
  * Scanned left to right as CommonMark does: a backslash escapes ASCII
- * punctuation, a backtick run opens a code span closed by the next run of the
- * same length (raw text inside, no escape), a `<` must start a whole autolink.
+ * punctuation, and a backtick run opens a code span closed by the next run of
+ * the same length on the line (raw text inside, everything admitted there).
+ * Outside code spans the syntax that can hide text is removed, not modelled:
+ * no `[` or `]` (no link, no image, even escaped), no `~`, and no `<` except a
+ * whole http(s) autolink. Parentheses and quotes are then inert.
  */
 export function constructOpenedBy(value: string): string | null {
-  let outside = "";
   let index = 0;
   while (index < value.length) {
     const character = value[index] ?? "";
     if (character === "\\" && ASCII_PUNCTUATION.test(value[index + 1] ?? "")) {
-      outside += "  ";
+      const escaped = value[index + 1] ?? "";
+      // An escape keeps a backtick from opening a span; a refused character
+      // stays refused escaped, so the rule needs no model of escapes.
+      if (REFUSED_OUTSIDE_CODE.has(escaped)) return `carries '${escaped}' (escaped or not)`;
       index += 2;
       continue;
     }
@@ -332,7 +355,6 @@ export function constructOpenedBy(value: string): string | null {
         close += length;
       }
       if (!closed) return `opens a code span (a run of ${run} backtick(s)) that it does not close`;
-      outside += " ";
       index = close + run;
       continue;
     }
@@ -340,27 +362,14 @@ export function constructOpenedBy(value: string): string | null {
       AUTOLINK_AT.lastIndex = index;
       const autolink = AUTOLINK_AT.exec(value);
       if (autolink === null) return "carries '<' that is not a complete http(s) autolink";
-      outside += " ";
       index += autolink[0].length;
       continue;
     }
-    outside += character;
+    if (REFUSED_OUTSIDE_CODE.has(character)) {
+      return `carries '${character}' (no link, image or strikethrough outside a code span)`;
+    }
     index += 1;
   }
-  for (const [open, close] of [
-    ["[", "]"],
-    ["(", ")"],
-  ] as const) {
-    let depth = 0;
-    for (const character of outside) {
-      if (character === open) depth += 1;
-      if (character === close) depth -= 1;
-      if (depth < 0) return `closes a '${close}' it did not open`;
-    }
-    if (depth !== 0) return `leaves ${depth} '${open}' open`;
-  }
-  if ((outside.match(/"/g) ?? []).length % 2 !== 0) return `carries an odd number of '"'`;
-  if ((outside.match(/~{2,}/g) ?? []).length % 2 !== 0) return "carries an unpaired '~~'";
   return null;
 }
 
@@ -373,7 +382,10 @@ export interface BlockRefusal {
 export interface OutsideKeyLine {
   readonly key: DeclarationKey;
   readonly line: number;
-  /** Inside a comment or a fence according to stripNonDeclarations (best effort, T3). */
+  /**
+   * Exempt from T3: inside a comment or a fence opened at column 0 right after
+   * a raw blank line, before any type-1 HTML block (StrippedBody.insideClean).
+   */
   readonly inside: boolean;
 }
 

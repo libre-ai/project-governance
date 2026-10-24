@@ -148,22 +148,66 @@ describe("T1 — the declaration block opens the description", () => {
   });
 });
 
-describe("T2 — no value opens a construct over the next line", () => {
+describe("T2' — no value opens a construct over the next line", () => {
   test.each([
     ["a closed code span", "Second-instrument: `git ls-remote` over 25 repositories"],
     ["two-backtick code spans", "Second-instrument: ``a`b`` and ``c``"],
     ["a longer run inside a code span", "Second-instrument: ``a```b`` measured"],
-    ["construct characters inside a code span", 'Second-instrument: `<details> [ ( " ~~` read'],
+    ["refused characters inside a code span", 'Second-instrument: `<details> [ ( " ~~ ]` read'],
     ["an escaped backtick", "Second-instrument: a \\` literal backtick"],
-    ["escaped brackets and quote", 'Second-instrument: \\[ \\( \\" \\< \\~~ escaped'],
-    ["a link", "Second-instrument: see [doc](https://example.com/a)"],
-    ["nested brackets", "Second-instrument: [[a]] ((b))"],
-    ["paired quotes", 'Second-instrument: the "two" quotes'],
-    ["a paired strikethrough", "Second-instrument: ~~was~~ is"],
-    ["a single tilde", "Second-instrument: about ~25 repositories"],
+    ["escaped inert punctuation", 'Second-instrument: \\( \\" \\* \\_ escaped'],
+    ["parentheses, even unbalanced", "Second-instrument: (see (a) and (b"],
+    ["quotes, even odd", 'Second-instrument: the "two" quotes and "one'],
     ["an autolink", "Second-instrument: <https://example.com/x?y=1> and <http://example.org>"],
   ])("admitted: %s", (_name, line) => {
     expect(passes(withBoth(line))).toBe(true);
+  });
+
+  // Re-review 4, verbatim: GitHub hides Door, Origin or Second-instrument in
+  // a link title or an image alt; each passed ce7248e's successor 109438b.
+  const SPDX_LINES =
+    "<!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->\n<!-- SPDX-License-Identifier: CC-BY-4.0 -->\n";
+  test.each([
+    [
+      "E1",
+      `${SPDX_LINES}Not-added: hosted-service [a](https://h.example ')\nDoor: two-way\nOrigin: proposal\nNot-added: (x')\n\n## Summary\n\nBody.\n`,
+    ],
+    [
+      "E2",
+      `${SPDX_LINES}Not-added: hosted-service [a](https://h.example\` "x\`)\nDoor: two-way\nOrigin: proposal\nNot-added: (") "\n`,
+    ],
+    [
+      "E3",
+      `${SPDX_LINES}Not-added: hosted-service ![x [a](https://h.example "]")\nDoor: two-way\nOrigin: proposal\nNot-added: [b](https://h.example "[") ](https://h.example/i.png)\n`,
+    ],
+    [
+      "E4",
+      `${SPDX_LINES}Door: one-way\nNot-added: hosted-service [a](https://h.example ')\nSecond-instrument: none was taken at all here\nNot-added: (x')\nOrigin: proposal\n`,
+    ],
+    [
+      "E5",
+      `${SPDX_LINES}Second-instrument: see [the run](https://h.example ')\nDoor: two-way\nOrigin: proposal\nSecond-instrument: (x')\n`,
+    ],
+    [
+      "E6",
+      `${SPDX_LINES}Second-instrument: ![x [a](https://h.example "]")\nDoor: two-way\nOrigin: proposal\nSecond-instrument: [b](https://h.example "[") ](https://h.example/i.png)\n`,
+    ],
+  ])("re-review 4 %s fails: a link or image is refused, and nothing after it is read", (_name, body) => {
+    expect(passes(body)).toBe(false);
+    expect(violations(body)).toContain("value carries '[' (no link, image or strikethrough");
+  });
+
+  // With no link, title or HTML, nothing on the line can be hidden, so the
+  // length a Second-instrument shows is the length it has.
+  test("a Second-instrument cannot reach its minimum length with hidden text", () => {
+    for (const value of [
+      "n/a [ ](https://h.example 'a long hidden title')",
+      "n/a <span title='a long hidden title'></span>",
+      "n/a ![a long hidden alt](https://h.example/i.png)",
+    ]) {
+      expect(passes(withDoor(`Door: one-way\nSecond-instrument: ${value}`))).toBe(false);
+    }
+    expect(passes(withDoor("Door: one-way\nSecond-instrument: `n/a`"))).toBe(false);
   });
 
   test.each([
@@ -175,11 +219,17 @@ describe("T2 — no value opens a construct over the next line", () => {
       "Second-instrument: `a``b``",
       "opens a code span",
     ],
-    ["an open bracket", "Second-instrument: see [doc", "leaves 1 '[' open"],
-    ["a stray closing bracket", "Second-instrument: doc] here", "closes a ']' it did not open"],
-    ["an open parenthesis", "Second-instrument: (see", "leaves 1 '(' open"],
-    ["an odd quote", 'Second-instrument: the "one', "an odd number of '\"'"],
-    ["an unpaired strikethrough (S1)", "Second-instrument: ~~gone", "an unpaired '~~'"],
+    ["an open bracket", "Second-instrument: see [doc", "carries '['"],
+    ["a closing bracket", "Second-instrument: doc] here", "carries ']'"],
+    ["a link", "Second-instrument: see [doc](https://example.com/a)", "carries '['"],
+    ["a reference link", "Second-instrument: see [doc] or [doc][1]", "carries '['"],
+    ["an image", "Second-instrument: ![a](https://example.com/i.png)", "carries '['"],
+    ["an escaped bracket", "Second-instrument: \\[ not a link", "carries '[' (escaped or not)"],
+    ["a strikethrough (S1)", "Second-instrument: ~~gone", "carries '~'"],
+    ["a paired strikethrough", "Second-instrument: ~~was~~ is", "carries '~'"],
+    ["a single tilde", "Second-instrument: about ~25 repositories", "carries '~'"],
+    ["an escaped tilde", "Second-instrument: about \\~25", "carries '~' (escaped or not)"],
+    ["an escaped less-than", "Second-instrument: \\<details>", "carries '<' (escaped or not)"],
     ["a tag", "Second-instrument: <b>x</b>", "carries '<'"],
     ["details", "Second-instrument: <details>", "carries '<'"],
     ["a bare less-than", "Second-instrument: a < b", "carries '<'"],
@@ -236,9 +286,16 @@ describe("T2 — no value opens a construct over the next line", () => {
     expect(passes("Door: two-way\nSecond-instrument: see `x\nOrigin: `<details>`\n")).toBe(false);
   });
 
-  test("an Origin source may carry a code span or a link (re-review 3)", () => {
+  test("an Origin source may carry a code span or an autolink, not a link (T2')", () => {
     expect(
       passes(withOrigin("Origin: observed 2026-10-07 `tools/quality/check-pr-door.ts:61`")),
+    ).toBe(true);
+    expect(
+      passes(
+        withOrigin(
+          "Origin: observed 2026-10-07 <https://github.com/libre-ai/project-governance/pull/123>",
+        ),
+      ),
     ).toBe(true);
     expect(
       passes(
@@ -246,7 +303,7 @@ describe("T2 — no value opens a construct over the next line", () => {
           "Origin: observed 2026-10-07 [#123](https://github.com/libre-ai/project-governance/pull/123)",
         ),
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   // Regression measured by re-review 3 on the 139 pull requests of the repository.
@@ -363,6 +420,35 @@ describe("T3 — key lines elsewhere in the body", () => {
     ["a fence opened after a non-blank line", "x\n```\nDoor: one-way\n```\n"],
   ])("a key line in %s is not exempt", (_name, after) => {
     expect(violations(`${B}\n${after}`)).toContain("a `Door:` line outside the declaration block");
+  });
+
+  // Re-review 4, finding 2, verbatim: HTML5 closes the comment on `--!>`, and
+  // GitHub displays the key line after it.
+  test("re-review 4: a comment closed by --!> exempts nothing after it", () => {
+    const body = "Door: two-way\nOrigin: proposal\n\n<!-- x --!>\nOwner-arbitration: tk1q\n-->\n";
+    expect(passes(body)).toBe(false);
+    expect(violations(body)).toContain(
+      "line 5: a `Owner-arbitration:` line outside the declaration block",
+    );
+    expect(stripNonDeclarations(body).inside[4]).toBe(false);
+  });
+
+  test.each([
+    "<pre>",
+    "<PRE class=x>",
+    "<script>",
+    "<style>",
+    "<textarea>",
+    "   <pre",
+  ])("re-review 4: after a type-1 HTML block opener %p, no key line is exempt", (opener) => {
+    const body = `${B}\n${opener}\n\n\`\`\`\nDoor: one-way\n\`\`\`\n\n<!--\nDoor: one-way\n-->\n`;
+    const text = violations(body);
+    expect(text).toContain("line 7: a `Door:` line outside the declaration block");
+    expect(text).toContain("line 11: a `Door:` line outside the declaration block");
+  });
+
+  test("a tag that only starts like a type-1 opener exempts as before", () => {
+    expect(passes(`${B}\n<preview>\n\n\`\`\`\nDoor: one-way\n\`\`\`\n`)).toBe(true);
   });
 
   test.each([
