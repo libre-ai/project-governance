@@ -1,8 +1,9 @@
 # ADR-0059 — Amendement d'ADR-0056 : bloc de déclaration, ligne `Not-added:`, citations locales, checks requis
 
 - **Statut :** accepted — arbitrages du propriétaire des 2026-10-23 et
-  2026-10-24 en chat ; les points (a) à (f) et D102 sont en vigueur à la
-  fusion.
+  2026-10-24 en chat, et, pour le principe de la surface non touchée (c), un
+  principe de l'orchestrateur accepté par le propriétaire par la fusion de
+  #144 ; les points (a) à (g) et D102 sont en vigueur à la fusion.
 - **Arbitrage :** Owner-arbitration: 2026-10-24 — décisions du propriétaire en
   chat les 2026-10-23 et 2026-10-24, consignées sur la consigne « go all » du
   2026-10-24, qui a autorisé l'agent à écrire cette ligne et la pull request.
@@ -12,7 +13,8 @@
 - **Portée :** forme de la description d'une pull request de ce dépôt (D1 et
   D5 d'ADR-0056), sens d'une négative vérifiable, lecture des citations
   locales par le gate de citations épinglées, checks requis de la branche
-  servie, et la liste « Ce qui n'est pas décidé ici » d'ADR-0056.
+  servie, la liste « Ce qui n'est pas décidé ici » d'ADR-0056, et une
+  exception à ADR-0050 D1 limitée à une seule skill (g).
 - **Amende :** ADR-0056 D1, la « forme proposée » de la ligne `Origin:`
   (`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:142-144`),
   remplacée par le bloc de déclaration ; ADR-0056 D5, « un gate les confrontera
@@ -25,7 +27,11 @@
   request #134 ne touche que son propre fichier et le registre des décisions).
 - **Ne modifie pas :** ADR-0042 (le point (f) n'en amende aucune phrase) ;
   ADR-0056 D2, D3 et D4 ; la gravité `blocking` d'une négative démentie par le
-  diff (ADR-0056 D5) ; ADR-0050.
+  diff (ADR-0056 D5) ; ADR-0050, hors l'exception à D1 consignée en (g) :
+  une seule dérogation, dont la portée est la mise à jour de
+  `skills/pr-body/SKILL.md` vers le contrat du bloc de (a) (pull request
+  #155). Ce n'est pas une clause générale : D1 reste entier pour toute autre
+  skill et pour toute autre modification de celle-ci.
 - **Applique :** I-17 (surface à touche humaine fermée : un check requis et un
   gate sont des mutations de garde-fou).
 - **Invariants :** aucun invariant modifié ; entrée D102 de
@@ -38,9 +44,9 @@
 
 ADR-0056 a fixé, le 2026-10-23, la règle de D1 (déclarer l'origine) et celle
 de D5 (déclarer ce qu'une pull request n'ajoute pas), et a laissé leur forme et
-leur portée aux gates qui les liraient. Ces gates ont fusionné depuis, chacun
-sur un arbitrage du propriétaire pris en chat et écrit dans son en-tête, pas
-dans un ADR :
+leur portée aux gates qui les liraient. Ces gates ont fusionné depuis, sur des
+arbitrages du propriétaire pris en chat et écrits dans leur en-tête ou dans
+leur pull request, pas dans un ADR :
 
 - `tools/quality/check-pr-door.ts`, pull request #141 (`0fe0a63`, 2026-10-24),
   lit le bloc de déclaration et la ligne `Origin:` ;
@@ -54,22 +60,26 @@ dans un ADR :
 Le texte signé d'ADR-0056 décrit donc encore une forme que le code ne lit pas
 (« une ligne `Origin:` à côté de `Door:` », ligne 142) et laisse ouverts trois
 points que le code ou le propriétaire ont tranchés. Cet ADR consigne ces
-arbitrages et ne décrit que ce que le code fusionné applique. Toutes les
-citations de code ci-dessous sont épinglées sur `066ef49`, tête de la branche
-servie au moment de la rédaction ; chacune se rejoue par `git show` du
-fichier à ce commit, suivi de `sed -n` sur les lignes citées.
+arbitrages et ne décrit que ce que le code fusionné applique. La date de
+chaque point est celle de la réponse du propriétaire en chat, l'heure en UTC,
+relevée dans le transcript de session, qui n'est pas versionné ; le point (c)
+fait seul exception, et le dit. Toutes les citations de code ci-dessous sont
+épinglées sur `066ef49`, tête de la branche servie au moment de la rédaction ;
+chacune se rejoue par `git show` du fichier à ce commit, suivi de `sed -n` sur
+les lignes citées.
 
 ## Décisions
 
 ### (a) 2026-10-24 — Les déclarations forment un bloc en tête de la description
 
-Ce point remplace la « forme proposée » de D1. Les déclarations sont les
-premières lignes de la description, et seules ces lignes sont lues
-(`066ef49:tools/quality/check-pr-door.ts:17-19`). Le bloc reçoit cinq clés,
-`Door`, `Second-instrument`, `Origin`, `Owner-arbitration` et `Not-added`
-(`066ef49:tools/quality/check-pr-door.ts:162-168`) ; les deux dernières
-appartiennent au bloc et sont jugées par d'autres gates. Trois règles, telles
-que le code les applique :
+Arbitrage du propriétaire du 2026-10-24 à 01:17 UTC : le contrat « bloc en
+tête du corps ». Ce point remplace la « forme proposée » de D1. Les
+déclarations sont les premières lignes de la description, et seules ces lignes
+sont lues (`066ef49:tools/quality/check-pr-door.ts:17-19`). Le bloc reçoit
+cinq clés, `Door`, `Second-instrument`, `Origin`, `Owner-arbitration` et
+`Not-added` (`066ef49:tools/quality/check-pr-door.ts:162-168`) ; les deux
+dernières appartiennent au bloc et sont jugées par d'autres gates. Trois
+règles, telles que le code les applique :
 
 - **T1 — le bloc.** Après le retrait d'un BOM initial et la normalisation des
   fins de ligne, la description s'ouvre par zéro ou plusieurs lignes d'en-tête,
@@ -109,8 +119,10 @@ marqueur d'arbitrage s'écrit donc dans le bloc de tête.
 
 ### (b) 2026-10-23 — La ligne `Not-added:` est unique, séparée par des virgules, facultative
 
-Ce point tranche les deux premiers points ouverts d'ADR-0056 (forme et portée
-de la ligne de D5). La ligne est une ligne du bloc de (a), sous la clé
+Arbitrage du propriétaire du 2026-10-23 à 19:51 UTC : la forme de D5 est une
+ligne `Not-added:`, et seule la pull request qui la déclare la porte. Ce point
+tranche les deux premiers points ouverts d'ADR-0056 (forme et portée de la
+ligne de D5). La ligne est une ligne du bloc de (a), sous la clé
 `Not-added:` ; sa valeur passe T2' et porte des valeurs du vocabulaire fermé
 de D5, séparées par des virgules, chacune une fois ; deux lignes sont
 refusées (`066ef49:tools/quality/check-pr-negatives.ts:23-36` ; code :
@@ -130,39 +142,67 @@ ce qu'elle n'ajoute pas ; aucun gate ne l'exige, puisqu'un gate ne sait pas ce
 qu'est une capacité (ADR-0056, « Ce qui n'est pas décidé ici ») : cette
 attente reste une règle de revue.
 
-### (c) 2026-10-24 — Une négative vérifiable ne tient que si sa surface n'est pas touchée
+### (c) Une négative vérifiable ne tient que si sa surface n'est pas touchée
+
+Principe de l'orchestrateur (2026-10-23), accepté par le propriétaire par la
+fusion de #144 (2026-10-24)
+(`066ef49:tools/quality/check-pr-negatives.ts:38-39`).
 
 Ce point précise le « un gate les confrontera au diff » de D5. Une négative
 vérifiable nomme une **surface**, écrite en donnée dans
-`tools/quality/pr-negatives.v1.json`, et tout contact du diff avec cette
-surface rend la négative invérifiable : le check échoue en nommant le chemin
-(« cannot verify: <chemin> … changed — remove "<valeur>" from Not-added: »).
-Le gate ne lit ni manifestes, ni provenance, ni `uses:`
+`tools/quality/pr-negatives.v1.json` ; le gate ne lit ni manifestes, ni
+provenance, ni `uses:`, et un contact du diff avec la surface rend la négative
+invérifiable : le check échoue en nommant le chemin (« cannot verify: <chemin>
+… changed — remove "<valeur>" from Not-added: »)
 (`066ef49:tools/quality/check-pr-negatives.ts:38-47` ; code : `:822-837`).
-`dependency` signifie donc « ne touche pas la surface de dépendance », plus
-fort que « n'ajoute pas de dépendance » : une montée de version, un
-rafraîchissement de verrou ou un retrait la touchent aussi
-(`066ef49:tools/quality/check-pr-negatives.ts:49-52`).
+Ce qui compte comme contact dépend de la négative, telle que le code la
+définit :
 
-Les règles sont celles de la base : le fichier de données est lu au merge base
-de la pull request par `git cat-file blob`, jamais depuis sa tête ; absent ou
-illisible à cet endroit, chaque négative vérifiable échoue fermée
-(`066ef49:tools/quality/check-pr-negatives.ts:115-118` ; code : `:858-863`,
-`:870-888`). Une pull request ne peut donc pas élargir ou rétrécir la surface
-qui la juge.
+- **`dependency` : tout contact avec la surface.** Tout chemin de la surface,
+  par nom ou par motif, quel que soit son statut (ajout, modification,
+  suppression, changement de type, les deux côtés d'un renommage) ; tout
+  gitlink ; tout lien symbolique du diff ; tout fichier ajouté ou modifié qui
+  porte un bloc PEP 723 ; tout lien symbolique de l'un ou l'autre arbre dont le
+  chemin est sur la surface (`066ef49:tools/quality/check-pr-negatives.ts:49-52`
+  et `:76-87` ; code : `:589-626`). `dependency` signifie donc « ne touche pas
+  la surface de dépendance », plus fort que « n'ajoute pas de dépendance » : une
+  montée de version, un rafraîchissement de verrou ou un retrait la touchent
+  aussi.
+- **`workflow` : chemins ajoutés ou de type changé seulement.** Un chemin
+  ajouté ou de type changé sous `.github/workflows` (un renommage compte comme
+  un ajout), et tout lien symbolique sous `.github`, dans le diff ou dans l'un
+  ou l'autre arbre (`066ef49:tools/quality/check-pr-negatives.ts:88-90` ;
+  code : `:635-643`, `:644-660` ; donnée : le `because` de
+  `066ef49:tools/quality/pr-negatives.v1.json:6`). Un workflow modifié ou
+  supprimé ne touche donc pas la surface, et la négative passe.
+- **`schema` : les suppressions sont ignorées.** Un chemin supprimé n'est pas
+  examiné (`066ef49:tools/quality/check-pr-negatives.ts:701`) ; un chemin
+  ajouté, modifié ou de type changé touche la surface par son nom ou, pour un
+  `.json`, `.jsonc`, `.json5`, `.yaml` ou `.yml`, par son contenu brut, et un
+  lien symbolique par son nom ou sa cible
+  (`066ef49:tools/quality/check-pr-negatives.ts:91-105`).
 
-L'en-tête du gate attribue ce sens à une décision de l'orchestrateur prise
-après la deuxième revue du 2026-10-23
-(`066ef49:tools/quality/check-pr-negatives.ts:38-39`) ; le propriétaire l'a
-arbitré le 2026-10-24, et c'est cet arbitrage qui est consigné ici. Une
-négative démentie par le diff reste, comme ADR-0056 D5 le fixe, un défaut de
-gravité `blocking` ; le gate en fait un check rouge.
+Les surfaces sont lues au merge base de la pull request par `git cat-file
+blob`, jamais depuis sa tête ; absentes ou illisibles à cet endroit, chaque
+négative vérifiable échoue fermée
+(`066ef49:tools/quality/check-pr-negatives.ts:115-117` ; code : `:858-863`,
+`:870-888`). Le code du gate, lui, s'exécute depuis la tête de la pull
+request, comme tout gate de ce dépôt
+(`066ef49:tools/quality/check-pr-negatives.ts:117-118`). C'est une limite
+déclarée, et l'objet de l'issue #152 et d'ADR-0060 (proposé, pull request
+#158).
 
-### (d) 2026-10-23 — Citations locales jugées contre ce dépôt, sur sa branche servie ; propriétaires étrangers listés
+Une négative démentie par le diff reste, comme ADR-0056 D5 le fixe, un défaut
+de gravité `blocking` ; le gate en fait un check rouge.
+
+### (d) 2026-10-23 — Citations locales jugées contre ce dépôt ; propriétaires étrangers interrogés s'ils sont listés
 
 Ces arbitrages précisent le gate de #133 ; ils sont vérifiés dans son code.
-Dans un ADR numéroté au-dessus du seuil en donnée (`bareCitationsGuardedAbove`,
-53 au 2026-10-24 : `jq .adr.bareCitationsGuardedAbove tools/quality/pinned-citations.v1.json`) :
+Arbitrages du propriétaire du 2026-10-23 : à 09:08 UTC, les citations locales
+sont jugées contre ce dépôt ; à 09:59 UTC, un propriétaire étranger est
+interrogé s'il est listé. Dans un ADR numéroté au-dessus du seuil en donnée
+(`bareCitationsGuardedAbove`, 53 au 2026-10-24 :
+`jq .adr.bareCitationsGuardedAbove tools/quality/pinned-citations.v1.json`) :
 
 - une citation locale `<sha>:<chemin>[:<lignes>]` est demandée à **ce dépôt**,
   par le même résolveur et la même grammaire qu'une citation épinglée, avec une
@@ -182,10 +222,25 @@ Dans un ADR numéroté au-dessus du seuil en donnée (`bareCitationsGuardedAbove
   `:1749-1766`, `:1796-1803` ; donnée :
   `066ef49:tools/quality/pinned-citations.v1.json:37-42`).
 
-La pull request #133 consigne ces deux choix comme les points 2 et 4 de
-l'arbitrage du propriétaire du 2026-10-23, pris par questions structurées.
+La pull request #133 consigne les deux arbitrages comme les points 2 (citations
+locales jugées contre ce dépôt) et 4 (propriétaires étrangers interrogés s'ils
+sont listés) de sa section « Governance ». La condition de branche servie ne
+vient pas d'un de ces points : elle répond à la constatation 4 de la revue des
+citations locales de #133 (« a commit of a work branch resolved »), corrigée
+par le verdict `sha-not-on-served-branch`.
 
-### (e) 2026-10-24 — « Negatives declaration » et « Every pinned code citation of the documents resolves » sont des checks requis
+### (e) 2026-10-23 et 2026-10-24 — « Every pinned code citation of the documents resolves » et « Negatives declaration » sont des checks requis
+
+Chacun est daté par son arbitrage :
+
+- « Every pinned code citation of the documents resolves » est requis depuis le
+  2026-10-23 : à 09:08 UTC, le propriétaire a retenu un job dédié et requis
+  (point 1 de la section « Governance » de #133 : « a dedicated job, made
+  required ») ; à 11:00 UTC, #133 a été fusionnée et le check rendu requis ;
+- « Negatives declaration » est requis depuis le 2026-10-24 : à 06:21 UTC, le
+  propriétaire a décidé qu'il serait requis une fois #144 fusionnée ; à
+  08:18 UTC, il a retenu la fusion de #151, #154 et #144 et l'ajout du check
+  requis.
 
 Les deux checks sont requis sur la branche servie, à côté de « Door
 declaration » et « Bun quality ». Ce sont les noms des jobs
@@ -196,18 +251,17 @@ declaration » et « Bun quality ». Ce sont les noms des jobs
 `forge-reviewed-recovery-admission`
 (`gh api repos/libre-ai/project-governance/rulesets/24161111/history`) date
 l'ajout de « Every pinned code citation of the documents resolves » du
-2026-10-23 à 13:00 (+02:00), sur l'arbitrage du même jour (point 1 de #133 :
-« a dedicated job, made required »), et celui de « Negatives declaration » du
-2026-10-24 à 10:28 (+02:00). Le propriétaire a confirmé les deux le
-2026-10-24.
+2026-10-23 à 13:00 (+02:00) et celui de « Negatives declaration » du
+2026-10-24 à 10:28 (+02:00).
 
 ### (f) 2026-10-24 — Le point `yt-dlp` est retiré de « Ce qui n'est pas décidé ici »
 
-ADR-0056 laissait ouvert « le refus de `yt-dlp` pour P29 et les connecteurs de
-P01 : candidat à un amendement d'ADR-0042 »
+Arbitrage du propriétaire du 2026-10-24 à 09:18 UTC. ADR-0056 laissait ouvert
+« le refus de `yt-dlp` pour P29 et les connecteurs de P01 : candidat à un
+amendement d'ADR-0042 »
 (`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:382-384`).
-Aucun motif de refus n'est écrit dans ce dépôt : `git grep -il yt-dlp` ne
-trouve que la phrase d'ADR-0042 qui fait de `yt-dlp` le backend de P29
+Aucun motif de refus n'est écrit dans ce dépôt : `git grep -il yt-dlp 066ef49`
+ne trouve que la phrase d'ADR-0042 qui fait de `yt-dlp` le backend de P29
 (`docs/adr/0042-product-vision-and-realization-method.md:339-340`), ADR-0056 et
 l'entrée D95 du registre, et `ecosystem/refusals.v1.yaml` n'en porte aucune
 entrée. Sans motif, il n'y a pas de refus. Le point est retiré, `yt-dlp` n'est
@@ -215,11 +269,29 @@ pas inscrit au registre des refus, et ADR-0042 reste inchangé. Une proposition
 future de refus commencerait par écrire son motif en constats, avec une preuve
 publique (ADR-0056 D4).
 
+### (g) 2026-10-24 — Exception à ADR-0050 D1, limitée à la mise à jour de la skill `pr-body`
+
+Arbitrage du propriétaire du 2026-10-24 à 09:18 UTC. ADR-0050 D1 n'admet la
+modification d'une skill admise que si le changeset cite un échec observé,
+daté et cité (`docs/adr/0050-amend-adr-0025-observed-failure-working-signs-collision-replay.md:69-72`).
+Le propriétaire a arbitré une exception à cette condition pour une seule
+modification : la mise à jour de `skills/pr-body/SKILL.md` vers le contrat du
+bloc de (a), portée par la pull request #155. Motif écrit dans #155 : quand un
+check requis change de contrat, la skill est fausse par construction, sans
+qu'il faille attendre un échec observé ; l'origine de #155 est donc
+`inspection`.
+
+Ce n'est pas une clause générale. L'exception ne couvre ni une autre skill, ni
+une autre modification de `pr-body`, ni le prochain changement de contrat d'un
+check requis : chacun de ces cas reste soumis à ADR-0050 D1, ou à un nouvel
+arbitrage du propriétaire.
+
 ## Conséquences
 
 - Les trois premiers points de « Ce qui n'est pas décidé ici » d'ADR-0056 sont
   tranchés : la forme de la ligne de D5 (b), sa portée (b) et `yt-dlp` (f). Le
   quatrième, les autres règles extraites par le drill, reste ouvert.
+- ADR-0050 D1 porte une seule exception nommée, celle de (g).
 - Le registre des décisions gagne D102.
 - La description de toute pull request de ce dépôt porte ses déclarations dans
   le bloc de tête ; les checks « Door declaration » et « Negatives
@@ -235,6 +307,10 @@ publique (ADR-0056 D4).
   il n'est pas touché.
 - L'application de ces gates à d'autres dépôts de la flotte : aucun autre dépôt
   ne les exécute aujourd'hui.
+- L'exécution des gates depuis la tête de la pull request qu'ils jugent (limite
+  déclarée en (c)) : le propriétaire a arbitré l'issue #152 le 2026-10-24 à
+  09:18 UTC en « plan et ADR proposé » ; cet ADR proposé est ADR-0060, porté
+  par la pull request #158, et rien n'en est décidé ici.
 
 ## Numérotation
 
