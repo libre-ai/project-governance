@@ -69,6 +69,20 @@ CARGO_SIBLING_SOURCES = {
 }
 
 
+# Targets whose checks read an offline OSV advisory database (a ~3 minute,
+# ~200 MB network fetch). `lock` is the lockfile whose ecosystems select the
+# database, `cacheDirectory` where the target's gate reads it; both relative to
+# the target checkout. Static for the reason CARGO_SIBLING_SOURCES is: the
+# target's own files do not get to ask the runner for a download. Any other
+# target pays nothing.
+OFFLINE_ADVISORY_DATABASES = {
+    "execution-continuity-evaluator": {
+        "lock": "tools/review/bun.lock",
+        "cacheDirectory": ".cache/osv-advisory-db",
+    },
+}
+
+
 def cargo_sources(manifest, target, selected):
     sources = []
     for source in CARGO_SIBLING_SOURCES.get(target, ()):
@@ -161,6 +175,7 @@ def prepare(manifest, target, target_revision=None):
         "target": target,
         "checkouts": checkouts,
         "cargoSources": cargo_sources(manifest, target, selected),
+        "advisoryDatabase": OFFLINE_ADVISORY_DATABASES.get(target),
         "install": install,
         "setup": setup,
         "checks": [{"cwd": target, "argv": argv} for argv in checks(target)],
