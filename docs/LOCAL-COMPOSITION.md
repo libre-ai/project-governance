@@ -64,10 +64,11 @@ Sur **Linux x86_64** :
 bash "$WORKSPACE/tooling/.github/composition/install-toolchains.sh" \
   "$WORKSPACE/tooling/toolchains/bun.json" \
   "$WORKSPACE/tooling/toolchains/notebook-qualification.json" \
-  "$WORKSPACE/tooling/toolchains/cargo-deny.json"
+  "$WORKSPACE/tooling/toolchains/cargo-deny.json" \
+  "$WORKSPACE/tooling/toolchains/osv-scanner.json"
 ```
 
-Cet installateur fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
+Cet installateur fournit aussi osv-scanner `2.7.0` (binaire vérifié contre `toolchains/osv-scanner.json`, chemin dans `LIBRE_AI_OSV_SCANNER`) ; la base d’avis hors ligne qu’il lit se télécharge à part, voir `docs/toolchain/OSV-ADVISORY-DATABASE.md`. Il fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
 
 Sur **macOS ARM64**, réutilisez l’installateur Notebook au commit qualifié, sans ajouter ses paquets à la composition. Son empreinte est vérifiée avant exécution :
 
