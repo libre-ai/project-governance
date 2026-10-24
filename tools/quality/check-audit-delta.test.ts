@@ -30,8 +30,10 @@ import { join } from "node:path";
  * so each child gets only what it needs.
  *
  * WHAT THE FIXTURE CLONE DELIBERATELY LACKS: a manifest and a lockfile. Every
- * probe must conclude BEFORE `bun audit` is reached; if one ever reaches it, the
- * audit cannot run and the probe goes red rather than quietly passing.
+ * probe on the gate's verdict must conclude BEFORE `bun audit` is reached; if
+ * one ever reaches it, the audit cannot run and the probe goes red rather than
+ * quietly passing. The one probe that runs further, the moved base (#146),
+ * judges the clone the gate leaves behind, never the gate's verdict.
  */
 
 const GATE = join(import.meta.dir, "check-audit-delta.ts");
@@ -45,7 +47,8 @@ interface Run {
   readonly stderr: string;
 }
 
-function git(cwd: string, argv: readonly string[]): Run {
+/** A git call whose failure is an answer, not a broken fixture. */
+function gitRun(cwd: string, argv: readonly string[]): Run {
   const result = Bun.spawnSync(["git", ...argv], {
     cwd,
     stdout: "pipe",
@@ -60,11 +63,15 @@ function git(cwd: string, argv: readonly string[]): Run {
       GIT_COMMITTER_EMAIL: "probe@invalid",
     },
   });
-  const run = {
+  return {
     exitCode: result.exitCode ?? 1,
     stdout: new TextDecoder().decode(result.stdout),
     stderr: new TextDecoder().decode(result.stderr),
   };
+}
+
+function git(cwd: string, argv: readonly string[]): Run {
+  const run = gitRun(cwd, argv);
   if (run.exitCode !== 0) {
     throw new Error(`fixture setup failed: git ${argv.join(" ")} — ${run.stderr.trim()}`);
   }
@@ -72,9 +79,9 @@ function git(cwd: string, argv: readonly string[]): Run {
 }
 
 /** Run the gate in the fixture clone with exactly the variables a probe declares. */
-function runGate(overrides: Readonly<Record<string, string>>): Run {
+function runGate(overrides: Readonly<Record<string, string>>, cwd: string = clone): Run {
   const result = Bun.spawnSync(["bun", GATE], {
-    cwd: clone,
+    cwd,
     stdout: "pipe",
     stderr: "pipe",
     env: {
@@ -124,8 +131,9 @@ beforeAll(() => {
   writeFileSync(join(upstream, "README.md"), "fixture\n");
   git(upstream, ["add", "README.md"]);
   git(upstream, ["commit", "--quiet", "--no-gpg-sign", "-m", "fixture base"]);
-  // `file://` and not a plain path: a local-path clone silently ignores
-  // `--depth`, and the gate fetches shallow.
+  // `file://` and not a plain path: a local-path clone takes shortcuts a
+  // remote never does (it silently ignores `--depth`, for one), and the gate
+  // must be measured against a transport that behaves like GitHub's.
   git(workspace, ["clone", "--quiet", `file://${upstream}`, clone]);
   headSha = git(clone, ["rev-parse", "HEAD"]).stdout.trim();
 });
@@ -211,5 +219,81 @@ describe("the declared-empty branch concludes once and stops", () => {
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toContain("verified nothing, as declared");
     expect(run.stderr).not.toContain("bun audit");
+  });
+});
+
+describe("the base fetch never shortens the clone the next gates read (#146)", () => {
+  // ci.yml checks out with `fetch-depth: 0`, then this gate fetches the base,
+  // then check-review-evidence diffs `origin/<base>...HEAD`. When the served
+  // branch moved between checkout and fetch, a `--depth=1` fetch brought the
+  // new tip in as a shallow boundary without its parents, and that diff
+  // answered "no merge base" (three red `Bun quality` runs, 2026-10-23/24).
+  // Each probe builds its own fixture: the shared one must not see a moved
+  // branch, and a shallow boundary left by one probe must not reach another.
+
+  interface PullRequestClone {
+    readonly upstream: string;
+    readonly checkout: string;
+    /** The base the pull request was checked out against. */
+    readonly baseAtCheckout: string;
+  }
+
+  function emptyCommit(cwd: string, message: string): void {
+    git(cwd, ["commit", "--quiet", "--allow-empty", "--no-gpg-sign", "-m", message]);
+  }
+
+  /** A full clone, as ci.yml makes it, sitting on a change over a two-commit base. */
+  function pullRequestClone(prefix: string): PullRequestClone {
+    const root = mkdtempSync(join(workspace, prefix));
+    const upstream = join(root, "upstream");
+    const checkout = join(root, "clone");
+    git(root, ["init", "--quiet", "-b", FIXTURE_BRANCH, upstream]);
+    // Two base commits, so there is history BELOW the base tip to lose.
+    emptyCommit(upstream, "older base");
+    emptyCommit(upstream, "base at checkout");
+    git(root, ["clone", "--quiet", `file://${upstream}`, checkout]);
+    const baseAtCheckout = git(checkout, ["rev-parse", "HEAD"]).stdout.trim();
+    git(checkout, ["switch", "--quiet", "-c", "probe/change"]);
+    emptyCommit(checkout, "the change");
+    return { upstream, checkout, baseAtCheckout };
+  }
+
+  const pullRequestEvent = { GITHUB_EVENT_NAME: "pull_request", GITHUB_BASE_REF: FIXTURE_BRANCH };
+
+  test("a base that does not move leaves the whole history readable", () => {
+    const { checkout } = pullRequestClone("still-base-");
+    const commitsBefore = git(checkout, ["rev-list", "--count", "HEAD"]).stdout.trim();
+
+    const run = runGate(pullRequestEvent, checkout);
+
+    expect(run.stderr).not.toContain("could not fetch the base");
+    // `--depth=1` marks the base tip shallow even when it is already present,
+    // and every commit below it vanishes from the gates that run next.
+    expect(gitRun(checkout, ["rev-parse", "--is-shallow-repository"]).stdout.trim()).toBe("false");
+    expect(git(checkout, ["rev-list", "--count", "HEAD"]).stdout.trim()).toBe(commitsBefore);
+  });
+
+  test("a base that moves after the checkout keeps its merge base with the head", () => {
+    const { upstream, checkout, baseAtCheckout } = pullRequestClone("moved-base-");
+    // The served branch moves while the run is in flight.
+    emptyCommit(upstream, "merged meanwhile");
+    const movedTip = git(upstream, ["rev-parse", "HEAD"]).stdout.trim();
+
+    const run = runGate(pullRequestEvent, checkout);
+
+    // The gate did fetch, and fetched the moved tip: without this the probe
+    // below would judge a clone the gate never touched.
+    expect(run.stderr).not.toContain("could not fetch the base");
+    expect(gitRun(checkout, ["rev-parse", "FETCH_HEAD"]).stdout.trim()).toBe(movedTip);
+    // The clone is still complete.
+    expect(gitRun(checkout, ["rev-parse", "--is-shallow-repository"]).stdout.trim()).toBe("false");
+    // What check-review-evidence does next: fetch the base, take the range.
+    git(checkout, ["fetch", "--quiet", "origin", FIXTURE_BRANCH]);
+    const mergeBase = gitRun(checkout, ["merge-base", `origin/${FIXTURE_BRANCH}`, "HEAD"]);
+    expect(mergeBase.exitCode).toBe(0);
+    expect(mergeBase.stdout.trim()).toBe(baseAtCheckout);
+    const range = gitRun(checkout, ["diff", "--name-only", `origin/${FIXTURE_BRANCH}...HEAD`]);
+    expect(range.stderr).not.toContain("no merge base");
+    expect(range.exitCode).toBe(0);
   });
 });
