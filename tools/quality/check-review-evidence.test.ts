@@ -1,16 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import {
-  auditLooseningClass,
   evaluateReviewEvidence,
   extractAddedLines,
   findEvidenceSignals,
   GATED_PATH_PATTERNS,
   GATED_PATHSPECS,
-  NOT_GATED_LOOSENING,
   type PathExists,
-  type ReadText,
   STANDING_REVIEW_PATHS,
   touchesGatedPaths,
 } from "./check-review-evidence";
@@ -182,7 +180,42 @@ describe("touchesGatedPaths", () => {
         "x/crates/ecosystem-engine/deny.toml",
       ],
     ],
-    ["bunfig.toml", ["bunfig.toml.bak", "packages/x/bunfig.toml", "bun.lock", "x/bunfig.toml"]],
+    [
+      "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt",
+      [
+        "distribution/templates/langgraph-gates/langgraph-advisory-floor.v2.txt",
+        "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt.bak",
+        "tools/quality/langgraph-advisory-floor.v1.txt",
+        "distribution/templates/langgraph-gates/check-langgraph-advisory-floor.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/project.v1.schema.json",
+      [
+        "ecosystem/schemas/project.v2.schema.json",
+        "ecosystem/schemas/project.v1.schema.json.bak",
+        "docs/ecosystem/schemas/project.v1.schema.json",
+        "ecosystem/project-cards.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/knowledge-object.schema.json",
+      [
+        "ecosystem/schemas/knowledge-object.v2.schema.json",
+        "ecosystem/schemas/knowledge-object.schema.json.bak",
+        "docs/ecosystem/schemas/knowledge-object.schema.json",
+        "tools/quality/validate-knowledge-objects.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/knowledge-projection.schema.json",
+      [
+        "ecosystem/schemas/knowledge-projection.v2.schema.json",
+        "ecosystem/schemas/knowledge-projection.schema.json.bak",
+        "docs/ecosystem/schemas/knowledge-projection.schema.json",
+        "ecosystem/knowledge-projection.ts",
+      ],
+    ],
   ];
   for (const [path, neighbours] of loosening) {
     test(`matches ${path} exactly, not its neighbours`, () => {
@@ -190,130 +223,74 @@ describe("touchesGatedPaths", () => {
     });
   }
 
-  test("every gated pattern has a pathspec whose diff is searched for evidence", () => {
+  // NB-1 of the review of #159: check-release-age.ts reads every tracked
+  // bunfig.toml, so every one is gated, at any depth; a near-miss name is not.
+  test("matches bunfig.toml at every depth, not a near-miss name", () => {
+    expect(
+      touchesGatedPaths([
+        "bunfig.toml",
+        "packages/x/bunfig.toml",
+        "x/y/z/bunfig.toml",
+        "bunfig.toml.bak",
+        "xbunfig.toml",
+        "packages/x/my-bunfig.toml",
+        "bun.lock",
+      ]),
+    ).toEqual(["bunfig.toml", "packages/x/bunfig.toml", "x/y/z/bunfig.toml"]);
+  });
+
+  test("every gated pattern has a pathspec", () => {
     expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
-    for (const pathspec of GATED_PATHSPECS) {
-      const sample = /\.(md|yaml|json|toml)$/.test(pathspec) ? pathspec : `${pathspec}/x.md`;
-      expect(touchesGatedPaths([sample])).toEqual([sample]);
-    }
-  });
-});
-
-// #153: the loosening class is closed. Every tracked file the class matches is
-// either gated or declared in NOT_GATED_LOOSENING with its reason, so a new
-// allowlist cannot sit beside the others unguarded and unsaid.
-describe("the loosening class", () => {
-  const root: string = join(import.meta.dir, "..", "..");
-  const listed = Bun.spawnSync(["git", "ls-files", "-z"], { cwd: root });
-  // An unreadable index is a failure, never an empty class.
-  const tracked: string[] = new TextDecoder()
-    .decode(listed.stdout)
-    .split("\0")
-    .filter((path) => path.length > 0);
-  // A tracked file the key rule cannot read fails the test: never "no key".
-  const readTracked: ReadText = (path) => readFileSync(join(root, path), "utf8");
-
-  test("every tracked member is gated or declared, and the counts sum to the members", () => {
-    expect(listed.exitCode).toBe(0);
-    const audit = auditLooseningClass(tracked, readTracked);
-    // An empty class would pass every assertion below; it is the tree that was not read.
-    expect(audit.members.length).toBeGreaterThan(0);
-    expect(audit.undeclared).toEqual([]);
-    expect(audit.contradictory).toEqual([]);
-    expect(audit.stale).toEqual([]);
-    expect(audit.gated.length + audit.declared.length).toBe(audit.members.length);
-    // The members that are not declared are exactly the gated ones.
-    const declared = new Set(audit.declared);
-    expect(audit.members.filter((path) => !declared.has(path)).sort()).toEqual(
-      [...audit.gated].sort(),
-    );
   });
 
-  // The other direction: a gated data file the class does not recognise would
-  // mean the class no longer describes the surface, and a sibling of that file
-  // would escape. The doctrine registers are gated for another reason (I-17's
-  // registers and ADRs), so they are not members.
-  test("the gated members are exactly the gated surface outside the doctrine registers", () => {
-    const doctrine: readonly string[] = [
-      "docs/adr",
+  // The diff the evidence is searched in is selected by the pathspecs, the
+  // verdict by the patterns. Asked to git itself, in a throwaway repository
+  // holding every gated sample and every neighbour above, both must select
+  // exactly the same files, or a gated change would have its diff unread.
+  test("git selects with the pathspecs exactly the files the patterns gate", () => {
+    const samples = [
+      ...loosening.flatMap(([path, neighbours]) => [path, ...neighbours]),
+      "docs/adr/0001-x.md",
+      "docs/adrx/0001-x.md",
       "docs/decisions/INVARIANTS.md",
       "docs/decisions/DECISION-REGISTER.md",
       "docs/decisions/LEXICON.md",
+      "docs/decisions/README.md",
       "ecosystem/FORGOTTEN.yaml",
       "ecosystem/refusals.v1.yaml",
+      "tools/quality/refusals-exemptions.v1.json",
+      "bunfig.toml",
+      "packages/x/bunfig.toml",
+      "x/y/z/bunfig.toml",
+      "xbunfig.toml",
     ];
-    const audit = auditLooseningClass(tracked, readTracked);
-    expect([...audit.gated].sort()).toEqual(
-      GATED_PATHSPECS.filter((pathspec) => !doctrine.includes(pathspec)).sort(),
-    );
-  });
-
-  test("every gated pathspec names a tracked path, so no pattern guards a file that is gone", () => {
-    for (const pathspec of GATED_PATHSPECS) {
-      expect(
-        tracked.some((path) => path === pathspec || path.startsWith(`${pathspec}/`)),
-      ).toBeTrue();
+    const repository = mkdtempSync(join(tmpdir(), "review-evidence-pathspecs-"));
+    try {
+      const git = (...argv: string[]) =>
+        Bun.spawnSync(["git", "-C", repository, ...argv], { stdout: "pipe", stderr: "pipe" });
+      expect(git("init", "-q").exitCode).toBe(0);
+      for (const path of samples) {
+        mkdirSync(dirname(join(repository, path)), { recursive: true });
+        writeFileSync(join(repository, path), "x\n");
+      }
+      expect(git("add", "--all").exitCode).toBe(0);
+      const selected = git("ls-files", "-z", "--", ...GATED_PATHSPECS);
+      expect(selected.exitCode).toBe(0);
+      const byPathspec = new TextDecoder()
+        .decode(selected.stdout)
+        .split("\0")
+        .filter((path) => path.length > 0)
+        .sort();
+      const tracked = new TextDecoder()
+        .decode(git("ls-files", "-z").stdout)
+        .split("\0")
+        .filter((path) => path.length > 0);
+      expect(tracked.length).toBe(new Set(samples).size);
+      expect(byPathspec.length).toBeGreaterThan(0);
+      expect(byPathspec).toEqual(touchesGatedPaths(tracked).sort());
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
     }
-  });
-
-  test("every declaration carries a reason", () => {
-    for (const entry of NOT_GATED_LOOSENING) {
-      expect(entry.because.length).toBeGreaterThan(0);
-    }
-  });
-
-  // Probes on an injected tree: each rule of the class, alone, turns a new
-  // ungated file into a finding.
-  const noKey: ReadText = () => "";
-  test("a new file whose path names a loosening is undeclared until gated or declared", () => {
-    const audit = auditLooseningClass(["ecosystem/new-allowlist.v1.yaml", "README.md"], noKey, []);
-    expect(audit.members).toEqual(["ecosystem/new-allowlist.v1.yaml"]);
-    expect(audit.undeclared).toEqual(["ecosystem/new-allowlist.v1.yaml"]);
-  });
-
-  test("a new data file of tools/quality is undeclared, its code and its tests are not members", () => {
-    const audit = auditLooseningClass(
-      ["tools/quality/new-gate.v1.json", "tools/quality/check-new.ts", "tools/quality/check.sh"],
-      noKey,
-      [],
-    );
-    expect(audit.undeclared).toEqual(["tools/quality/new-gate.v1.json"]);
-  });
-
-  test("a data file carrying an exemption key is undeclared; the same text in code is not read", () => {
-    const texts: Record<string, string> = {
-      "ecosystem/policy.v1.yaml": "schema: x\nexempt:\n  bot: y\n",
-      "ecosystem/rules.json": '{\n  "exemptions": []\n}\n',
-      "x/bunfig.toml": "[install]\nminimumReleaseAgeExcludes = []\n",
-      "ecosystem/plain.v1.yaml": "schema: x\nentries: []\n",
-      "ecosystem/tool.ts": "exempt: true\n",
-    };
-    const audit = auditLooseningClass(Object.keys(texts), (path) => texts[path] ?? null, []);
-    expect(audit.undeclared).toEqual([
-      "ecosystem/policy.v1.yaml",
-      "ecosystem/rules.json",
-      "x/bunfig.toml",
-    ]);
-  });
-
-  test("a gated member is not undeclared; a declared one is not either", () => {
-    const audit = auditLooseningClass(
-      ["ecosystem/sql-construction-allowlist.v1.yaml", "docs/x-baseline.md"],
-      noKey,
-      [{ path: "docs/x-baseline.md", because: "a document" }],
-    );
-    expect(audit.gated).toEqual(["ecosystem/sql-construction-allowlist.v1.yaml"]);
-    expect(audit.declared).toEqual(["docs/x-baseline.md"]);
-    expect(audit.undeclared).toEqual([]);
-  });
-
-  test("a declaration of a gated file is contradictory, one of no member is stale", () => {
-    const audit = auditLooseningClass(["deny.toml"], () => 'allow = ["MIT"]\n', [
-      { path: "deny.toml", because: "contradicts the surface" },
-      { path: "ecosystem/gone-allowlist.v1.yaml", because: "the file was removed" },
-    ]);
-    expect(audit.contradictory).toEqual(["deny.toml"]);
-    expect(audit.stale).toEqual(["ecosystem/gone-allowlist.v1.yaml"]);
   });
 });
 
