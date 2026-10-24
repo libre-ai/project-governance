@@ -280,7 +280,7 @@ describe("T2 — no value opens a construct over the next line", () => {
   });
 });
 
-describe("T3 — key lines elsewhere in the body (best effort)", () => {
+describe("T3 — key lines elsewhere in the body", () => {
   test("a key line at column 0 after the block fails by name", () => {
     expect(
       violations("Door: two-way\nOrigin: proposal\n\nBody.\nOrigin: observed 2026-10-07 x\n"),
@@ -307,27 +307,70 @@ describe("T3 — key lines elsewhere in the body (best effort)", () => {
     expect(blocks.values.Door).toEqual(["two-way"]);
   });
 
-  // Re-review 3, verbatim: GitHub displays no declaration in either body.
-  test("re-review 3: `<!--` in a code span before a fence and a comment", () => {
-    expect(passes("`<!--`\n\n```\n-->\n\nDoor: two-way\nOrigin: proposal\n```\n")).toBe(false);
+  // Re-review 3, verbatim as the reviewer wrote them (B is the block).
+  const B = "Door: two-way\nOrigin: proposal\n";
+  test.each([
+    ["E1", "<br>\n```\n\n```\n\n" + B],
+    ["E1b", "<hr>\n```\n\n```\n\n" + B],
+    ["E1c", "<img src=x>\n~~~\n\n~~~\n\n" + B],
+    ["E2", "`<!--`\n\n```\n-->\n\n" + B],
+    ["E3", "<!-- a --> <!-- b\n\nx -->\n\n" + B],
+    ["E3b", "<!-- a --> <!-- b\n\n`-->`\n\n" + B],
+    ["E5", "<hr>\n```\n\n<!--\n```\n\n" + B],
+    ["E6", "\\`<details>`\n\n" + B],
+    ["E7", "a `\nx` <details> `y`\n\n" + B],
+    ["E11", "<br>\n<!--\n\n-->\n\n" + B],
+  ])("re-review 3 %s fails: declarations must be the first lines", (_name, body) => {
+    expect(passes(body)).toBe(false);
+    expect(violations(body)).toContain("declarations must be the first lines of the description");
   });
 
-  test("re-review 3: a void tag before two fences", () => {
-    expect(passes("<br>\n```\n\n```\n\nDoor: two-way\nOrigin: proposal\n")).toBe(false);
+  test("re-review 3 I1: the whole verdict of evaluateDoor fails", () => {
+    const body = "`<!--`\n\n```\n-->\n\n" + B + "```\n";
+    expect(evaluate(body).outcome).toBe("violations");
+    expect(violations(body)).toContain("declarations must be the first lines of the description");
   });
 
-  test("re-review 3, M1 as given: no block at the top, so nothing is read", () => {
-    expect(passes("`<!--`\n\nDoor: one-way\n\n-->\n")).toBe(false);
-    expect(readDeclarationBlocks("`<!--`\n\nDoor: one-way\n\n-->\n").block).toBeNull();
+  test("re-review 3 I2: the whole verdict of evaluateDoor fails on the E1 form", () => {
+    const body = "<br>\n```\n\n```\n\n" + B;
+    expect(evaluate(body).outcome).toBe("violations");
+    expect(violations(body)).toContain("declarations must be the first lines of the description");
   });
 
-  // The limit T3 declares: after a valid block, a key line that the simple
-  // cleaner wrongly places inside a comment goes unnamed. It is never read:
-  // the verdict is the block's.
-  test("re-review 3, M1 after a block: the declared T3 limit, never a read", () => {
-    const body = "Door: two-way\nOrigin: proposal\n\n`<!--`\n\nDoor: one-way\n\n-->\n";
-    expect(passes(body)).toBe(true);
+  // M1/M2: GitHub displays `Door: two-way` and `Door: one-way`. A key line
+  // outside the block is ignored only in a comment or fence opened at column
+  // 0, at the start of its line, right after a raw blank line.
+  test.each([
+    [
+      "M1, a `<!--` in a code span",
+      "Door: two-way\nOrigin: proposal\n\n`<!--`\n\nDoor: one-way\n\n-->\n",
+    ],
+    [
+      "M2, a comment indented four spaces",
+      "Door: two-way\nOrigin: proposal\n\n    <!--\n\nDoor: one-way\n\n-->\n",
+    ],
+  ])("re-review 3 %s: the Door line elsewhere fails", (_name, body) => {
+    expect(passes(body)).toBe(false);
+    expect(violations(body)).toContain("line 6: a `Door:` line outside the declaration block");
     expect(readDeclarationBlocks(body).values.Door).toEqual(["two-way"]);
+  });
+
+  test.each([
+    ["a comment opened mid-line", "x <!--\nDoor: one-way\n-->\n"],
+    ["a comment opened after a non-blank line", "x\n<!--\nDoor: one-way\n-->\n"],
+    ["a second comment of its line", "<!-- a --><!-- b\nDoor: one-way\n-->\n"],
+    ["a fence indented three spaces", "   ```\nDoor: one-way\n```\n"],
+    ["a fence opened after a non-blank line", "x\n```\nDoor: one-way\n```\n"],
+  ])("a key line in %s is not exempt", (_name, after) => {
+    expect(violations(`${B}\n${after}`)).toContain("a `Door:` line outside the declaration block");
+  });
+
+  test.each([
+    ["a comment", "<!--\nDoor: one-way\n-->\n"],
+    ["a backtick fence", "```\nDoor: one-way\n```\n"],
+    ["a tilde fence", "~~~\nDoor: one-way\n~~~\n"],
+  ])("a key line in %s opened at column 0 after a blank line is exempt", (_name, after) => {
+    expect(passes(`${B}\n${after}`)).toBe(true);
   });
 
   test("readDeclarationBlocks keeps its name and .values for #144", () => {

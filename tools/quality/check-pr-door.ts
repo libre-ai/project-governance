@@ -47,11 +47,12 @@ import { concludeGate, GateReport } from "./gate-report";
  *   autolink `<https://host...>` or `<http://host...>`. No HTML. A refused
  *   line fails the gate, and no line after it in the block is read: the
  *   construct it opens may hide them (a `<details>` collapses them).
- * - T3, best effort. A key line at column 0 elsewhere in the body fails the
- *   gate by name, unless stripNonDeclarations finds it inside an HTML comment
- *   or a fence. That finding is a heuristic: a wrong one can only let a
- *   displayed key line outside the block go unnamed. It can never make one
- *   read, because nothing outside the block is ever read.
+ * - T3. A key line at column 0 elsewhere in the body fails the gate by name,
+ *   unless it sits in an HTML comment or a fence that opened at column 0, at
+ *   the start of its line, right after a raw blank line (re-review 3, M1/M2:
+ *   a `<!--` in a code span, or indented four spaces, opens no comment for
+ *   GitHub, which then displays the key line). Nothing outside the block is
+ *   ever read, so this rule can only refuse more or name fewer, never read.
  *
  * The values, then:
  *
@@ -195,6 +196,12 @@ export interface StrippedBody {
   readonly removedLines: number;
   /** Per line: it starts inside a comment or a fence (a fence's closing line included). */
   readonly inside: readonly boolean[];
+  /**
+   * Per line: it starts inside a comment or a fence that opened at column 0,
+   * at the start of its line, right after a raw blank line or the body start.
+   * Only such a construct exempts a key line from T3.
+   */
+  readonly insideClean: readonly boolean[];
 }
 
 function splitLines(body: string): { readonly lines: string[]; readonly finalNewline: boolean } {
@@ -215,19 +222,25 @@ export function stripNonDeclarations(body: string): StrippedBody {
   const { lines: source, finalNewline } = splitLines(body);
   const lines: string[] = [];
   const inside: boolean[] = [];
+  const insideClean: boolean[] = [];
   let removedBlocks = 0;
   let removedLines = 0;
   let fence: { readonly marker: string; readonly length: number } | null = null;
   let inComment = false;
+  // Whether the construct open at the start of the current line opened clean.
+  let openedClean = false;
 
-  for (const line of source) {
+  source.forEach((line, index) => {
+    // The body start reads as a raw blank line above (source[-1] is absent).
+    const afterBlank = BLANK_LINE.test(source[index - 1] ?? "");
     inside.push(fence !== null || inComment);
+    insideClean.push((fence !== null || inComment) && openedClean);
     if (fence !== null) {
       const run = FENCE_CLOSE.exec(line)?.[1] ?? "";
       if (run[0] === fence.marker && run.length >= fence.length) fence = null;
       lines.push("");
       removedLines += 1;
-      continue;
+      return;
     }
     if (!inComment) {
       const open = FENCE_OPEN.exec(line);
@@ -235,10 +248,11 @@ export function stripNonDeclarations(body: string): StrippedBody {
       const info = open === null ? "" : line.slice(open[0].length);
       if (open !== null && !(run[0] === "`" && info.includes("`"))) {
         fence = { marker: run[0] ?? "", length: run.length };
+        openedClean = line.startsWith(run) && afterBlank;
         removedBlocks += 1;
         lines.push("");
         removedLines += 1;
-        continue;
+        return;
       }
     }
 
@@ -270,15 +284,17 @@ export function stripNonDeclarations(body: string): StrippedBody {
         rest = after.slice(2);
       } else {
         inComment = true;
+        // Clean only if this comment is the first thing of its line.
+        openedClean = start === 0 && rest === line && afterBlank;
         rest = after;
       }
     }
     lines.push(kept);
     if (touched && BLANK_LINE.test(kept)) removedLines += 1;
-  }
+  });
 
   const text = lines.join("\n") + (finalNewline ? "\n" : "");
-  return { text, removedBlocks, lines, removedLines, inside };
+  return { text, removedBlocks, lines, removedLines, inside, insideClean };
 }
 
 /**
@@ -438,7 +454,7 @@ export function readDeclarationBlocks(body: string): DeclarationBlocks {
       outsideKeyLines.push({
         key: match[1] as DeclarationKey,
         line: lineIndex + 1,
-        inside: stripped.inside[lineIndex] ?? false,
+        inside: stripped.insideClean[lineIndex] ?? false,
       });
     }
   });
