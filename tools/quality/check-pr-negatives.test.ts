@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { evaluateDoor, readDeclarationBlocks } from "./check-pr-door";
 import {
   type BlobReader,
   type ChangeContext,
@@ -234,11 +235,16 @@ describe("the seam with the declaration block (readDeclarationLines, #141)", () 
 
   test("the values come from what the block admits, not from a second parse of the text", () => {
     const read = readNegativesDeclaration("Not-added: schema", () => ({
-      text: "Not-added: schema",
-      removedBlocks: 0,
+      raw: ["Not-added: schema"],
+      visible: ["Not-added: schema"],
+      insideClean: [false],
       admitted: [" workflow"],
       leftToDoor: 0,
       doorRefusedLines: new Set<number>(),
+      totalLines: 1,
+      linesExamined: 1,
+      removedLines: 0,
+      removedBlocks: 0,
     }));
     expect(read.kind === "declared" && read.values).toEqual(["workflow"]);
   });
@@ -631,9 +637,9 @@ describe("the verdict", () => {
     expect(report.outcome).toBe("pass");
     expect(rendered).toContain(
       "rules read at the merge base; diff: 2 changed path(s) examined, 1 tree entries read for symlinks; " +
-        "dependency: 0 contact(s), 2 blob(s) read for content, 0 file(s) skipped by extension, " +
-        "schema: 0 contact(s), 0 blob(s) read for content, 2 file(s) skipped by extension, " +
-        "workflow: 0 contact(s), 0 blob(s) read for content, 0 file(s) skipped by extension",
+        "dependency: 0 contact(s), 2 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s), " +
+        "schema: 0 contact(s), 0 blob(s) read for content, 2 file(s) skipped by extension, 0 deleted path(s), " +
+        "workflow: 0 contact(s), 0 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s)",
     );
   });
 
@@ -705,5 +711,119 @@ describe("the workflow", () => {
     );
     expect(checkouts.length).toBe(1);
     expect(checkouts[0]?.with?.["persist-credentials"]).toBe(false);
+  });
+});
+
+// Fifth review: the verdict that matters is the COMBINED one — the Door gate,
+// then this gate. A line GitHub displays (outside a comment or fence the Door
+// gate exempts) must never leave both gates green with "absent".
+describe("the combined verdict (evaluateDoor, then this gate)", () => {
+  const BLOCK = "Door: two-way\nOrigin: proposal\n\n";
+  const combined = (body: string) => ({
+    // A fixed date: `Origin: proposal` carries none, so the date changes nothing here.
+    door: evaluateDoor(body, "PR #0 description", null, new Date("2026-10-24T00:00:00Z")).outcome,
+    negatives: readNegativesDeclaration(body),
+  });
+  const neverBothSilent = (body: string) => {
+    const { door, negatives } = combined(body);
+    expect(door === "violations" || negatives.kind !== "absent").toBe(true);
+  };
+
+  // Fifth review, point 1: a removed comment makes the key appear at column 0.
+  test.each([
+    `${BLOCK}<!-- c -->Not-added: dependency\n`,
+    `${BLOCK}Not<!-- c -->-added: dependency\n`,
+    `${BLOCK}<!---->Not-added: dependency\n`,
+  ])("point 1: %j is refused here, Door passing", (body) => {
+    const { door, negatives } = combined(body);
+    expect([door, negatives.kind]).toEqual(["pass", "refused"]);
+  });
+
+  test("point 1: the Not<!-- x -->-added line is refused, its ignored counter at zero", () => {
+    const read = readNegativesDeclaration(`${BLOCK}Not<!-- x -->-added: dependency\n`);
+    expect([read.kind, read.ignoredInBlocks]).toEqual(["refused", 0]);
+  });
+
+  // Point 2: a U+2028 inside the line; Door's KEY_LINE has the `s` flag.
+  test("point 2: a key line outside the block, with U+2028, is the Door gate's only", () => {
+    const body = `${BLOCK}Not-added: dependency${cp(0x2028)}\n`;
+    const { door, negatives } = combined(body);
+    expect([door, negatives.kind, negatives.leftToDoor]).toEqual(["violations", "absent", 1]);
+  });
+
+  test("point 2: a block line with U+2028 is admitted by both, and no count goes below zero", () => {
+    const body = `Door: two-way\nOrigin: proposal\nNot-added: dependency${cp(0x2028)}\n\n`;
+    const { door, negatives } = combined(body);
+    expect([door, negatives.kind, negatives.leftToDoor]).toEqual(["pass", "declared", 0]);
+  });
+
+  // Point 3: the misplaced forms are judged on RAW lines; only a clean
+  // comment or fence (column 0, after a blank line) hides them.
+  const OPENERS: readonly (readonly [string, string])[] = [
+    ["no opener", ""],
+    ["an opener in a code span", "text `<!--`\n"],
+    ["an opener mid-line", "text <!--\n"],
+    ["an opener indented four spaces", "    <!--\n\n"],
+  ];
+  const LINES: readonly string[] = [
+    "> Not-added: dependency",
+    "# Not-added: dependency",
+    "- Not-added: dependency",
+    "**Not-added:** dependency",
+    "<!-- c -->Not-added: dependency",
+    "Not<!-- c -->-added: dependency",
+    `${cp(0x2800)}Not-added: dependency`,
+    `${cp(0x3164)}Not-added: dependency`,
+    `${cp(0x115f)}${cp(0x1160)}${cp(0xffa0)}Not-added: dependency`,
+  ];
+  const corpus = OPENERS.flatMap(([name, opener]) =>
+    LINES.map(
+      (line) =>
+        [`${name}, then ${JSON.stringify(line)}`, `${BLOCK}${opener}${line}\n-->\n`] as const,
+    ),
+  );
+
+  test("the corpus holds 36 displayed lines", () => {
+    expect(corpus.length).toBe(36);
+  });
+
+  test.each(corpus)("point 3: %s is never silent", (_, body) => {
+    neverBothSilent(body);
+  });
+
+  test("control: the same line in a clean comment (column 0, after a blank line) is hidden, and absent", () => {
+    const { door, negatives } = combined(`${BLOCK}<!--\n> Not-added: dependency\n-->\n`);
+    expect([door, negatives.kind]).toEqual(["pass", "absent"]);
+  });
+
+  // Point 4: one BOM, as the Door gate removes it, never two.
+  test("point 4: two BOMs: this gate reads the block Door reads, i.e. none", () => {
+    const body = `${cp(0xfeff)}${cp(0xfeff)}Door: two-way\nOrigin: proposal\nNot-added: dependency\n\n`;
+    const read = readNegativesDeclaration(body);
+    expect(read.declarationLines).toBe(readDeclarationBlocks(body).values["Not-added"].length);
+    expect(read.kind).not.toBe("declared");
+  });
+
+  test("point 4: the line partition is the Door gate's, in its words", () => {
+    const body = `${BLOCK}<!--\nhidden\n-->\nshown\n`;
+    const blocks = readDeclarationBlocks(body);
+    const { rendered } = verdict(body);
+    expect(rendered).toContain(
+      `${blocks.totalLines} description line(s) = ${blocks.linesExamined} examined + ${blocks.removedLines} removed in ${blocks.removedBlocks} comment/code block(s)`,
+    );
+  });
+
+  // Point 6: letters that render as blank, before the key.
+  test.each([
+    0x2800, 0x3164, 0x115f, 0x1160, 0xffa0,
+  ])("point 6: U+%s before the key is removed", (codePoint) => {
+    expect(renderedLineStart(`${cp(codePoint)}Not-added: x`)).toBe("not-added: x");
+  });
+});
+
+describe("the schema partition counts deleted paths (fifth review, point 5)", () => {
+  test("a deleted path is counted, not read", () => {
+    const scan = schemaScan(context([file("D", "a.json"), file("M", "b.json")]));
+    expect([scan.deleted, scan.blobsRead]).toEqual([1, 1]);
   });
 });

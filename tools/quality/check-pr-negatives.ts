@@ -156,8 +156,16 @@ const VOCABULARY: ReadonlySet<string> = new Set([
 ]);
 const VERIFIABLE: ReadonlySet<string> = new Set(VERIFIABLE_NEGATIVES);
 const NEGATIVES_KEY = "Not-added:";
-/** The one valid form: the exact key at column 0. */
-const DECLARATION_LINE = /^Not-added:(.*)$/;
+/**
+ * Letters that render as blank and are not `\p{Cf}`: the braille blank
+ * U+2800 and the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 (fifth
+ * review). Built from code points, so the source carries no invisible
+ * character.
+ */
+const BLANK_LETTERS = new RegExp(
+  `[${String.fromCodePoint(0x2800, 0x115f, 0x1160, 0x3164, 0xffa0)}]`,
+  "gu",
+);
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
 /** Markup a line may start with before the key still renders first. */
@@ -178,7 +186,7 @@ export function renderedLineStart(line: string): string {
   // characters; NORMALISED_KEY accepts no separator at all, so `Not` U+00AD
   // `added:` still reads as the key. Mapping it to `-` first was measured as
   // an equivalent mutant on 2026-10-23, and removed.
-  text = text.replace(/\p{Cf}/gu, "");
+  text = text.replace(/\p{Cf}/gu, "").replace(BLANK_LETTERS, "");
   text = text.toLowerCase();
   for (
     let prefix = text.match(MARKUP_PREFIX);
@@ -191,12 +199,15 @@ export function renderedLineStart(line: string): string {
 }
 
 export interface NegativesLines {
+  /** The Door gate's partition, verbatim: totalLines = linesExamined + removedLines. */
+  readonly totalLines: number;
   readonly linesExamined: number;
+  readonly removedLines: number;
   readonly removedBlocks: number;
-  /** Key mentions inside the removed comments and code blocks: not declarations. */
+  /** Lines whose key mention a comment or code block hides: not declarations. */
   readonly ignoredInBlocks: number;
   readonly declarationLines: number;
-  /** Visible lines whose start renders as the key without being a declaration: refused. */
+  /** Displayed lines whose start renders as the key without being a declaration: refused. */
   readonly misplacedLines: number;
   /** `Not-added:` lines the Door gate refuses (T2', T3): named, never refused twice. */
   readonly leftToDoor: number;
@@ -213,17 +224,29 @@ function quote(text: string): string {
   return JSON.stringify(trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed);
 }
 
-/** Pure parse of the declaration of a pull request description. */
+/** Does this RAW line hold the exact key at column 0 (the Door gate's T1-T3)? */
+function isKeyLine(line: string): boolean {
+  return line.startsWith(NEGATIVES_KEY);
+}
+
 export interface DeclarationLines {
-  /** The visible text: comments and code blocks removed, with the body's line layout. */
-  readonly text: string;
-  readonly removedBlocks: number;
+  /** The body's lines exactly as the Door gate splits them: one BOM removed, CRLF and CR normalised. */
+  readonly raw: readonly string[];
+  /** The same lines once comments and fences are blanked (stripNonDeclarations.lines). */
+  readonly visible: readonly string[];
+  /** Per line: inside a comment or fence the Door gate exempts (StrippedBody.insideClean). */
+  readonly insideClean: readonly boolean[];
   /** The value of every `Not-added:` line the declaration block admits, text after the key. */
   readonly admitted: readonly string[];
   /** `Not-added:` lines the Door gate refuses itself: T2' in the block, T3 outside it. */
   readonly leftToDoor: number;
   /** 1-based lines the Door gate already refuses (T1 end of block, T2'): not refused again. */
   readonly doorRefusedLines: ReadonlySet<number>;
+  /** The Door gate's line partition, as it prints it. */
+  readonly totalLines: number;
+  readonly linesExamined: number;
+  readonly removedLines: number;
+  readonly removedBlocks: number;
 }
 
 /**
@@ -236,76 +259,98 @@ export interface DeclarationLines {
  * no `<` but a whole autolink, no HTML; a refused line also stops the lines
  * after it in the block from being read.
  *
+ * The body is handed to check-pr-door UNCHANGED: it removes one BOM and
+ * normalises line ends itself, and `raw` repeats exactly that, never more (a
+ * second BOM removed here would read a block Door says does not exist).
+ *
  * NEVER REFUSED TWICE (decided here, 2026-10-24). The Door gate, a required
  * check, already fails a `Not-added:` line it refuses: a value refused by
  * T2' in the block, a key line at column 0 outside it (T3, unless it sits in
  * a comment or fence opened at column 0 after a blank line, which GitHub does
  * not display), and the line that ends the block without a blank one (T1).
  * This gate does not refuse those again: it counts them as left to the Door
- * gate and prints the count. What stays here is what the grammar does not
- * provide: a line whose START RENDERS as the key without being one at column
- * 0 (`> Not-added:`, `**Not-added:**`, `not-added:`, an escaped dash…). The
- * two never overlap: T3 judges the exact key at column 0, this gate every
- * other rendering, and a line the Door gate refuses (T1) is skipped here.
+ * gate and prints the count. Both the count and the skip read the RAW line,
+ * as T3 does (fifth review): a line where a removed comment makes the key
+ * appear at column 0 (`<!-- c -->Not-added:`) is not the Door gate's, and is
+ * judged here. What stays here is what the grammar does not provide: a
+ * displayed line whose START RENDERS as the key without being the exact key
+ * at column 0 (`> Not-added:`, `**Not-added:**`, `not-added:`, an escaped
+ * dash…). The two never overlap: T3 judges the exact raw key at column 0,
+ * this gate every other rendering, and a line the Door gate refuses (T1) is
+ * skipped here.
  */
 export function readDeclarationLines(body: string): DeclarationLines {
   const blocks = readDeclarationBlocks(body);
-  const { text, removedBlocks } = stripNonDeclarations(body);
-  const raw = body.replace(/\r\n?/g, "\n").split("\n");
-  const inBlock =
+  const withoutBom = body.startsWith(BYTE_ORDER_MARK) ? body.slice(BYTE_ORDER_MARK.length) : body;
+  const stripped = stripNonDeclarations(withoutBom);
+  const normalized = withoutBom.replace(/\r\n?/g, "\n");
+  const raw = normalized === "" ? [] : normalized.split("\n");
+  if (normalized.endsWith("\n")) raw.pop();
+  const refusedLines = new Set(blocks.refusals.map((refusal) => refusal.line));
+  // Counted line by line, never as a difference, so no count goes below zero:
+  // the block's key lines the Door gate refused (T2', or after a refused one),
+  // plus the key lines outside the block it judges (T3, not exempt).
+  const refusedInBlock =
     blocks.block === null
       ? 0
-      : raw
-          .slice(blocks.block.first - 1, blocks.block.last)
-          .filter((line) => DECLARATION_LINE.test(line)).length;
-  const admitted = blocks.values["Not-added"];
+      : raw.filter(
+          (line, index) =>
+            index + 1 >= (blocks.block?.first ?? 0) &&
+            index + 1 <= (blocks.block?.last ?? 0) &&
+            isKeyLine(line) &&
+            refusedLines.has(index + 1),
+        ).length;
   const outside = blocks.outsideKeyLines.filter(
     (keyLine) => keyLine.key === "Not-added" && !keyLine.inside,
   ).length;
   return {
-    text,
-    removedBlocks,
-    admitted,
-    leftToDoor: inBlock - admitted.length + outside,
-    doorRefusedLines: new Set(blocks.refusals.map((refusal) => refusal.line)),
+    raw,
+    visible: stripped.lines,
+    insideClean: stripped.insideClean,
+    admitted: blocks.values["Not-added"],
+    leftToDoor: refusedInBlock + outside,
+    doorRefusedLines: refusedLines,
+    totalLines: blocks.totalLines,
+    linesExamined: blocks.linesExamined,
+    removedLines: blocks.removedLines,
+    removedBlocks: blocks.removedBlocks,
   };
 }
 
+/** Pure parse of the declaration of a pull request description. */
 export function readNegativesDeclaration(
   body: string,
   readLines: (body: string) => DeclarationLines = readDeclarationLines,
 ): NegativesDeclaration {
-  const unmarked = body.startsWith(BYTE_ORDER_MARK) ? body.slice(BYTE_ORDER_MARK.length) : body;
-  const normalized = unmarked.replace(/\r\n?/g, "\n");
-  const { text, removedBlocks, admitted, leftToDoor, doorRefusedLines } = readLines(normalized);
-  const visible = text.split("\n");
+  const read = readLines(body);
   const misplaced: string[] = [];
-  visible.forEach((line, index) => {
-    // The exact key at column 0 is the Door gate's (T1-T3), and so is a line
-    // it already refuses: neither is judged here.
-    if (DECLARATION_LINE.test(line) || doorRefusedLines.has(index + 1)) return;
+  read.raw.forEach((line, index) => {
+    // Judged on the RAW line, as GitHub displays it (fifth review): skipped
+    // only when the Door gate owns it (the exact key at column 0, or a line it
+    // refuses) or when it sits in a comment or fence the Door gate exempts —
+    // opened at column 0 after a blank line, before any unclosed HTML block.
+    if (isKeyLine(line) || read.doorRefusedLines.has(index + 1)) return;
+    if (read.insideClean[index] === true) return;
     if (NORMALISED_KEY.test(renderedLineStart(line))) {
       misplaced.push(
         `line ${index + 1} ${quote(line)} — write it as "${NEGATIVES_KEY}" at the start of its own line`,
       );
     }
   });
-  const declarations = [...admitted];
+  const declarations = [...read.admitted];
   const lines: NegativesLines = {
-    // A final newline ends the last line; it opens no line (as the Door gate counts).
-    linesExamined: text === "" ? 0 : visible.length - (text.endsWith("\n") ? 1 : 0),
-    removedBlocks,
-    // Counted directly, never as a difference of two totals (which went to -1
-    // on `Not<!-- x -->-added:`, where removing the comment CREATES a key): a
-    // line is counted when it mentions the key before stripping and no longer
-    // does after. `stripNonDeclarations` keeps the line count.
-    ignoredInBlocks: normalized
-      .split("\n")
-      .filter((line, index) => KEY_ANYWHERE.test(line) && !KEY_ANYWHERE.test(visible[index] ?? ""))
-      .length,
+    totalLines: read.totalLines,
+    linesExamined: read.linesExamined,
+    removedLines: read.removedLines,
+    removedBlocks: read.removedBlocks,
+    // Counted directly, never as a difference of two totals: a line counts
+    // when its raw text mentions the key and the stripped one no longer does.
+    ignoredInBlocks: read.raw.filter(
+      (line, index) => KEY_ANYWHERE.test(line) && !KEY_ANYWHERE.test(read.visible[index] ?? ""),
+    ).length,
     declarationLines: declarations.length,
     misplacedLines: misplaced.length,
-    leftToDoor,
+    leftToDoor: read.leftToDoor,
   };
   const refusals = [...misplaced];
   if (declarations.length > 1) {
@@ -505,7 +550,12 @@ export interface SurfaceScan {
   readonly blobsRead: number;
   /** Changed files not read, their extension being outside the content rule. */
   readonly skippedByExtension: number;
+  /** Changed paths deleted by the pull request: nothing at the head to read. */
+  readonly deleted: number;
 }
+
+const deletedIn = (entries: readonly ChangedPath[]): number =>
+  entries.filter((entry) => entry.status === "D").length;
 
 /** Pure: is this path, whatever its modes, on the dependency surface by name? */
 function onDependencySurfaceByName(path: string, config: NegativesConfig): string | null {
@@ -572,7 +622,7 @@ export function dependencyContacts(context: ChangeContext): SurfaceScan {
       contacts.push({ path, status: present.join("+"), why: "a symlink", present });
     }
   }
-  return { contacts, blobsRead, skippedByExtension: 0 };
+  return { contacts, blobsRead, skippedByExtension: 0, deleted: deletedIn(context.entries) };
 }
 
 /** Pure: every contact of the change set with the workflow surface. */
@@ -608,7 +658,7 @@ export function workflowContacts(context: ChangeContext): SurfaceScan {
       present,
     });
   }
-  return { contacts, blobsRead: 0, skippedByExtension: 0 };
+  return { contacts, blobsRead: 0, skippedByExtension: 0, deleted: deletedIn(context.entries) };
 }
 
 const SCHEMA_DIRECTORY = /(?:^|\/)schemas?(?:\/|$)/i;
@@ -697,7 +747,7 @@ export function schemaContacts(context: ChangeContext): SurfaceScan {
     const why = schemaLinkReason(path, present[0] ?? "head", context);
     if (why !== null) contacts.push({ path, status: present.join("+"), why, present });
   }
-  return { contacts, blobsRead, skippedByExtension };
+  return { contacts, blobsRead, skippedByExtension, deleted: deletedIn(context.entries) };
 }
 
 const CONTACTS: Readonly<Record<VerifiableNegative, (context: ChangeContext) => SurfaceScan>> = {
@@ -719,8 +769,10 @@ export function evaluateNegatives(
       ? `; ${declaration.ignoredInBlocks} line(s) mentioning Not-added inside them ignored, not declarations`
       : "";
   const lines =
-    `${declaration.linesExamined} description line(s) examined after removing ` +
-    `${declaration.removedBlocks} comment/code block(s)${ignored}; ${declaration.declarationLines} Not-added line(s), ` +
+    // The Door gate's partition, in its words: total = examined + removed.
+    `${declaration.totalLines} description line(s) = ${declaration.linesExamined} examined + ` +
+    `${declaration.removedLines} removed in ${declaration.removedBlocks} comment/code block(s)${ignored}; ` +
+    `${declaration.declarationLines} Not-added line(s), ` +
     `${declaration.misplacedLines} misplaced key(s), ` +
     `${declaration.leftToDoor} Not-added line(s) left to the Door gate (T2', T3)`;
 
@@ -768,7 +820,7 @@ export function evaluateNegatives(
   const examined = context.entries.length;
   const surfaces: string[] = [];
   for (const value of verifiable) {
-    const { contacts, blobsRead, skippedByExtension } = CONTACTS[value](context);
+    const { contacts, blobsRead, skippedByExtension, deleted } = CONTACTS[value](context);
     const remove = `remove "${value}" from ${NEGATIVES_KEY}`;
     report.check(
       `${label} — Not-added ${value}`,
@@ -784,7 +836,7 @@ export function evaluateNegatives(
             .join("; "),
     );
     surfaces.push(
-      `${value}: ${contacts.length} contact(s), ${blobsRead} blob(s) read for content, ${skippedByExtension} file(s) skipped by extension`,
+      `${value}: ${contacts.length} contact(s), ${blobsRead} blob(s) read for content, ${skippedByExtension} file(s) skipped by extension, ${deleted} deleted path(s)`,
     );
   }
   report.volume(
