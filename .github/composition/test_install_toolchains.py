@@ -41,6 +41,29 @@ class InstallerTests(unittest.TestCase):
    with self.assertRaises(ValueError):self.ns['validate_cargo_deny'](altered)
   altered=json.loads(json.dumps(deny));altered['version']='0.19.4'
   with self.assertRaises(ValueError):self.ns['validate_cargo_deny'](altered)
+ def test_osv_scanner_policy_is_the_pinned_release(self):
+  root=SCRIPT.parents[2]
+  osv=json.loads((root/'toolchains/osv-scanner.json').read_text())
+  asset=self.ns['validate_osv_scanner'](osv)
+  self.assertEqual(asset['binarySha256'],'160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b')
+  self.assertEqual(asset['binaryUrl'],'https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64')
+  for field,bad in [('binaryUrl',asset['binaryUrl'].replace('google','attacker')),('binaryUrl',asset['binaryUrl'].replace('v2.7.0','v2.6.0')),('binarySha256','0'),('binarySha256','A'*64),('binaryName','osv-scanner_linux_arm64')]:
+   altered=json.loads(json.dumps(osv));altered['platforms']['linux-x64'][field]=bad
+   with self.assertRaises(ValueError,msg=field+' '+bad):self.ns['validate_osv_scanner'](altered)
+  altered=json.loads(json.dumps(osv));altered['version']='2.6.0'
+  with self.assertRaises(ValueError):self.ns['validate_osv_scanner'](altered)
+  with self.assertRaises(ValueError):self.ns['validate_osv_scanner']({})
+ def test_osv_scanner_policy_pins_every_published_platform(self):
+  root=SCRIPT.parents[2]
+  osv=json.loads((root/'toolchains/osv-scanner.json').read_text())
+  names={'darwin-arm64':'osv-scanner_darwin_arm64','darwin-x64':'osv-scanner_darwin_amd64','linux-arm64':'osv-scanner_linux_arm64','linux-x64':'osv-scanner_linux_amd64'}
+  self.assertEqual(set(osv['platforms']),set(names))
+  for key,name in names.items():
+   row=osv['platforms'][key]
+   self.assertEqual(row['binaryName'],name)
+   self.assertEqual(row['binaryUrl'],'https://github.com/google/osv-scanner/releases/download/v2.7.0/'+name)
+   self.assertRegex(row['binarySha256'],r'^[a-f0-9]{64}$')
+  self.assertEqual(len({row['binarySha256'] for row in osv['platforms'].values()}),4)
  def test_gzip_archive_member_is_extracted(self):
   with tempfile.TemporaryDirectory() as d:
    root=pathlib.Path(d);a=root/'cargo-deny.tar.gz'
@@ -50,7 +73,7 @@ class InstallerTests(unittest.TestCase):
    self.assertEqual((root/'cargo-deny').read_bytes(),b'deny')
  def test_activation_waits_for_all_digests_and_versions(self):
   with tempfile.TemporaryDirectory() as d:
-   root=pathlib.Path(d).resolve();z=root/'fixture.zip';t=root/'fixture.tar.xz';g=root/'fixture.tar.gz'
+   root=pathlib.Path(d).resolve();z=root/'fixture.zip';t=root/'fixture.tar.xz';g=root/'fixture.tar.gz';o=root/'osv-scanner_linux_amd64';o.write_bytes(b'osv')
    with zipfile.ZipFile(z,'w') as out:out.writestr('bun-linux-x64/bun',b'bun')
    with tarfile.open(t,'w:xz') as out:
     entry=tarfile.TarInfo('node-v26.5.0-linux-x64/bin/node');entry.size=4;out.addfile(entry,io.BytesIO(b'node'))
@@ -58,23 +81,35 @@ class InstallerTests(unittest.TestCase):
    with tarfile.open(g,'w:gz') as out:
     entry=tarfile.TarInfo(member);entry.size=4;out.addfile(entry,io.BytesIO(b'deny'))
    digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
-   bp=root/'bun.json';np=root/'node.json';dp=root/'cargo-deny.json';gp=root/'path';ge=root/'env';gp.write_text('');ge.write_text('')
+   bp=root/'bun.json';np=root/'node.json';dp=root/'cargo-deny.json';op=root/'osv-scanner.json';gp=root/'path';ge=root/'env';gp.write_text('');ge.write_text('')
    bun={'revision':'1.4.0-canary.1+57f349f63','assets':{'linux-x64':{'sha256':digest(z)}},'durableRelease':{'linuxX64Asset':'https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip'}}
    node={'node':{'version':'26.5.0','platforms':{'linux-x64':{'archiveUrl':'https://nodejs.org/dist/v26.5.0/node-v26.5.0-linux-x64.tar.xz','archiveSha256':digest(t),'executableSha256':'0'*64,'executableRelativePath':'bin/node'}}}}
    deny={'tool':'cargo-deny','version':'0.19.5','platforms':{'linux-x64':{'triple':'x86_64-unknown-linux-musl','archiveUrl':'https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.5/cargo-deny-0.19.5-x86_64-unknown-linux-musl.tar.gz','archiveSha256':digest(g),'executableRelativePath':member,'executableSha256':hashlib.sha256(b'deny').hexdigest()}}}
-   bp.write_text(json.dumps(bun));np.write_text(json.dumps(node));dp.write_text(json.dumps(deny))
+   osv={'tool':'osv-scanner','version':'2.7.0','platforms':{'linux-x64':{'binaryName':'osv-scanner_linux_amd64','binaryUrl':'https://github.com/google/osv-scanner/releases/download/v2.7.0/osv-scanner_linux_amd64','binarySha256':'0'*64}}}
+   bp.write_text(json.dumps(bun));np.write_text(json.dumps(node));dp.write_text(json.dumps(deny));op.write_text(json.dumps(osv))
    def download(args,**kwargs):
-    url=args[-1];shutil.copyfile(z if url.endswith('.zip') else g if url.endswith('.tar.gz') else t,args[args.index('--output')+1])
+    url=args[-1];shutil.copyfile(z if url.endswith('.zip') else g if url.endswith('.tar.gz') else o if url.endswith('_linux_amd64') else t,args[args.index('--output')+1])
    env={'RUNNER_TEMP':str(root),'GITHUB_PATH':str(gp),'GITHUB_ENV':str(ge)}
-   versions=[b'1.4.0-canary.1+57f349f63',b'v26.5.0',b'cargo-deny 0.19.5']
-   with patch.dict(os.environ,env),patch('sys.argv',['script',str(bp),str(np),str(dp)]),patch('platform.system',return_value='Linux'),patch('platform.machine',return_value='x86_64'),patch('subprocess.run',side_effect=download),patch('subprocess.check_output',side_effect=versions*2):
+   outputs={'bun':b'1.4.0-canary.1+57f349f63','node':b'v26.5.0','cargo-deny':b'cargo-deny 0.19.5','osv-scanner':b'osv-scanner version: 2.7.0\nosv-scalibr version: 0.5.3\ncommit: fixture\n'}
+   version=lambda args,**kwargs:outputs[pathlib.Path(args[0]).name]
+   with patch.dict(os.environ,env),patch('sys.argv',['script',str(bp),str(np),str(dp),str(op)]),patch('platform.system',return_value='Linux'),patch('platform.machine',return_value='x86_64'),patch('subprocess.run',side_effect=download),patch('subprocess.check_output',side_effect=version):
     with self.assertRaises(ValueError):self.ns['main']()
     self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
     node['node']['platforms']['linux-x64']['executableSha256']=hashlib.sha256(b'node').hexdigest();np.write_text(json.dumps(node))
     deny['platforms']['linux-x64']['executableSha256']='0'*64;dp.write_text(json.dumps(deny))
     with self.assertRaises(ValueError):self.ns['main']()
     self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
-    deny['platforms']['linux-x64']['executableSha256']=hashlib.sha256(b'deny').hexdigest();dp.write_text(json.dumps(deny));self.ns['main']()
+    deny['platforms']['linux-x64']['executableSha256']=hashlib.sha256(b'deny').hexdigest();dp.write_text(json.dumps(deny))
+    with self.assertRaises(ValueError):self.ns['main']()
+    self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
+    osv['platforms']['linux-x64']['binarySha256']=digest(o);op.write_text(json.dumps(osv))
+    outputs['osv-scanner']=b'osv-scanner version: 2.6.0\nosv-scalibr version: 0.5.3\n'
+    with self.assertRaises(ValueError):self.ns['main']()
+    self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
+    outputs['osv-scanner']=b'osv-scanner version: 2.7.0\nosv-scalibr version: 0.5.3\ncommit: fixture\n';self.ns['main']()
    self.assertIn('libre-ai-toolchains-',gp.read_text());self.assertIn('NOTEBOOK_QUALIFICATION_NODE=',ge.read_text())
    self.assertIn('LIBRE_AI_CARGO_DENY='+str(pathlib.Path(gp.read_text().strip())/'cargo-deny')+'\n',ge.read_text())
+   self.assertIn('LIBRE_AI_OSV_SCANNER='+str(pathlib.Path(gp.read_text().strip())/'osv-scanner')+'\n',ge.read_text())
+   self.assertEqual((pathlib.Path(gp.read_text().strip())/'osv-scanner').read_bytes(),b'osv')
+   self.assertTrue(os.access(pathlib.Path(gp.read_text().strip())/'osv-scanner',os.X_OK))
 if __name__=='__main__':unittest.main()
