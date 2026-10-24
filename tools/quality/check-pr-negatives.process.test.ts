@@ -34,6 +34,8 @@ const LINKED_BASE = "probe/served-linked";
 const DIRLINK_BASE = "probe/served-dirlink";
 /** A base with a symlink inside `.github/workflows` (third review, point 5). */
 const WFLINK_BASE = "probe/served-wflink";
+/** A base whose `contracts/schemas` is a symlink to a plain directory (fourth review, C5). */
+const SCHLINK_BASE = "probe/served-schlink";
 const SHA_A = "a".repeat(40);
 
 const BASE_PACKAGE = `${JSON.stringify(
@@ -59,6 +61,9 @@ const BASE_FILES: Readonly<Record<string, string>> = {
   "config/app.yaml": "name: probe\n",
   "data/plain.json": '{ "a": 1 }\n',
   "docs/readme.md": "probe\n",
+  ".github/composition/manifest.json":
+    '{ "targets": { "probe": { "repository": "libre-ai/probe", "ref": "aaaa" } } }\n',
+  "other/x.json": '{ "a": 1 }\n',
 };
 
 interface Run {
@@ -225,6 +230,10 @@ beforeAll(() => {
       symlinkSync("../../config/shared.yml", join(upstream, ".github/workflows/shared.yml"));
     },
   );
+  commitBase(SCHLINK_BASE, { ...BASE_FILES, [DATA_PATH]: data }, () => {
+    mkdirSync(join(upstream, "contracts"), { recursive: true });
+    symlinkSync("../other", join(upstream, "contracts/schemas"));
+  });
   git(workspace, ["clone", "--quiet", `file://${upstream}`, clone]);
 });
 
@@ -382,7 +391,7 @@ describe("third review, point 1: a directory symlink at a surface path", () => {
     );
     expectFails(
       runGate("Not-added: dependency", DIRLINK_BASE),
-      "cannot verify: .cargo (base, a symlink in the base tree)",
+      "cannot verify: .cargo (a symlink) present in the base and head trees",
     );
   });
 });
@@ -452,7 +461,7 @@ describe("third review, point 5: workflow symlinks in either tree", () => {
     branchWith(() => write("config/shared.yml", "name: shared\non: push\n"), WFLINK_BASE);
     expectFails(
       runGate("Not-added: workflow", WFLINK_BASE),
-      "cannot verify: .github/workflows/shared.yml (base, a symlink under .github in the base tree)",
+      "cannot verify: .github/workflows/shared.yml (a symlink under .github) present in the base and head trees",
     );
   });
 });
@@ -467,7 +476,7 @@ describe("third review, point 6: escaped or bare schema content", () => {
     branchWith(() => write(path, text));
     expectFails(
       runGate("Not-added: schema"),
-      `cannot verify: ${path} (${status}, content carries ${marker})`,
+      `cannot verify: ${path} (${status}, content carries ${JSON.stringify(marker)})`,
     );
   });
 });
@@ -482,6 +491,90 @@ describe("third review, point 8: more markup prefixes", () => {
     expectFails(
       runGate(`Door: two-way\n${line}`),
       'write it as "Not-added:" at the start of its own line',
+    );
+  });
+});
+
+describe("fourth review, C1: data files CI reads to fetch and run code", () => {
+  test.each([
+    [
+      ".github/composition/manifest.json",
+      '{ "targets": { "evil": { "repository": "attacker/evil", "ref": "bbbb" } } }\n',
+      "M",
+    ],
+    ["ecosystem/fleet-pins.v1.yaml", "generations: []\n", "A"],
+    ["ecosystem/repositories.v1.yaml", "repositories: [attacker/evil]\n", "A"],
+  ])("%s changed: `dependency` cannot be verified", (path, text, status) => {
+    branchWith(() => write(path, text));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (${status},`);
+  });
+});
+
+describe("fourth review, C2: folded and identity-escaped spellings of $schema", () => {
+  test.each([
+    ["config/app.yaml", '"$sch\\\nema": x\n', "M", "\\\n"],
+    ["data/x.json5", '{ "$\\s\\c\\h\\e\\m\\a": 1 }\n', "A", "\\"],
+  ])("%s: `schema` cannot be verified", (path, text, status, marker) => {
+    branchWith(() => write(path, text));
+    expectFails(
+      runGate("Not-added: schema"),
+      `cannot verify: ${path} (${status}, content carries ${JSON.stringify(marker)})`,
+    );
+  });
+});
+
+describe("fourth review, C3: environment files Bun reads a registry from", () => {
+  test.each([
+    ".env",
+    ".env.local",
+    ".env.production",
+    "app/.env.development",
+  ])("%s added: `dependency` cannot be verified", (path) => {
+    branchWith(() => write(path, "BUN_CONFIG_REGISTRY=http://127.0.0.1:9/\n"));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (A,`);
+  });
+
+  test("control: .env.example, which no tool reads, is not a contact", () => {
+    branchWith(() => write(".env.example", "BUN_CONFIG_REGISTRY=\n"));
+    expectPasses(runGate("Not-added: dependency"), "the dependency surface is not touched");
+  });
+});
+
+describe("fourth review, C4: uv's version file and PEP 723 scripts of any name", () => {
+  test.each([
+    [".python-versions", "3.12\n"],
+    [
+      "scripts/run",
+      "#!/usr/bin/env -S uv run --script\n# /// script\n# dependencies = []\n# ///\n",
+    ],
+    ["scripts/run.pyw", "# /// script\n# ///\n"],
+    ["scripts/run.lock", "version = 1\n"],
+  ])("%s added: `dependency` cannot be verified", (path, text) => {
+    branchWith(() => write(path, text));
+    expectFails(runGate("Not-added: dependency"), `cannot verify: ${path} (A,`);
+  });
+});
+
+describe("fourth review, C5: schema symlinks in either tree", () => {
+  test("a schema directory linked at the base, whose target changes: `schema` cannot be verified", () => {
+    branchWith(() => write("other/x.json", '{ "a": 2 }\n'), SCHLINK_BASE);
+    expectFails(
+      runGate("Not-added: schema", SCHLINK_BASE),
+      "cannot verify: contracts/schemas (a link named as a schema directory) present in the base and head trees",
+    );
+  });
+});
+
+describe("fourth review, C6: labels and counters", () => {
+  test("the ignored lines are counted as lines, and the content reads are printed", () => {
+    branchWith(() => write("docs/readme.md", "changed\n"));
+    expectPasses(
+      runGate(
+        "Door: two-way\n<!-- Not-added: dependency -->\nNot-added: dependency, schema, workflow",
+      ),
+      "1 line(s) mentioning Not-added inside them ignored, not declarations",
+      "dependency: 0 contact(s), 1 blob(s) read for content, 0 file(s) skipped by extension",
+      "schema: 0 contact(s), 0 blob(s) read for content, 1 file(s) skipped by extension",
     );
   });
 });
@@ -571,7 +664,7 @@ describe("the change set is git's own", () => {
       withConfig({ "diff.hide.textconv": driver }, () => {
         expectFails(
           runGate("Not-added: schema"),
-          "cannot verify: data/plain.json (M, content carries schema)",
+          'cannot verify: data/plain.json (M, content carries "schema")',
         );
       });
     } finally {
@@ -601,10 +694,14 @@ describe("the change set is git's own", () => {
       () => write("linked/real.json", '{ "dependencies": { "evil": "1" } }\n'),
       LINKED_BASE,
     );
+    const run = runGate("Not-added: dependency", LINKED_BASE);
+    // Fourth review, C6: one contact for a link present in both trees, and it
+    // is said present, not changed — the pull request does not touch it.
     expectFails(
-      runGate("Not-added: dependency", LINKED_BASE),
-      "cannot verify: linked/package.json (base, a symlink in the base tree)",
+      run,
+      'cannot verify: linked/package.json (a symlink) present in the base and head trees — remove "dependency" from Not-added:',
     );
+    expect(run.stderr.split("cannot verify: linked/package.json").length - 1).toBe(1);
   });
 
   test("a head with no merge base fails instead of reading as an empty change", () => {

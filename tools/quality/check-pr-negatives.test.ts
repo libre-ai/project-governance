@@ -5,15 +5,15 @@ import {
   type BlobReader,
   type ChangeContext,
   type ContextRead,
-  dependencyContacts,
+  dependencyContacts as dependencyScan,
   evaluateNegatives,
   type NegativesConfig,
   readDeclarationLines,
   readNegativesDeclaration,
   renderedLineStart,
-  schemaContacts,
+  schemaContacts as schemaScan,
   validateConfig,
-  workflowContacts,
+  workflowContacts as workflowScan,
 } from "./check-pr-negatives";
 import { renderGateReport } from "./gate-report";
 import type { ChangedPath, TreeEntry } from "./git-diff";
@@ -51,14 +51,19 @@ const file = (
   newMode: status === "D" ? "000000" : newMode,
 });
 
+/** A blob value the test reader refuses to read, as git would on a missing object. */
+const UNREADABLE = "<<unreadable blob>>";
+
 function context(
   entries: readonly ChangedPath[],
   blobs: Readonly<Record<string, string>> = {},
   trees: { base?: readonly TreeEntry[]; head?: readonly TreeEntry[] } = {},
 ): ChangeContext {
-  const readBlob: BlobReader = (path) => {
-    const text = blobs[path];
-    return text === undefined ? { ok: false, reason: `no blob for ${path}` } : { ok: true, text };
+  // Keyed by path for the head, `base:<path>` for the merge base. A path with
+  // no entry reads as an empty file; UNREADABLE makes git fail on it.
+  const readBlob: BlobReader = (path, side = "head") => {
+    const text = blobs[side === "base" ? `base:${path}` : path] ?? "";
+    return text === UNREADABLE ? { ok: false, reason: `no blob for ${path}` } : { ok: true, text };
   };
   return {
     entries,
@@ -83,6 +88,12 @@ function verdict(body: string, readContext: () => ContextRead = NEVER_READ) {
 }
 
 const paths = (contacts: readonly { path: string }[]) => contacts.map((contact) => contact.path);
+
+// The surface checks return a scan (contacts and the content they read); most
+// assertions are about the contacts alone.
+const dependencyContacts = (change: ChangeContext) => dependencyScan(change).contacts;
+const workflowContacts = (change: ChangeContext) => workflowScan(change).contacts;
+const schemaContacts = (change: ChangeContext) => schemaScan(change).contacts;
 
 /** A character by code point: an escape a formatter could inline would leave it invisible in the source. */
 const cp = (codePoint: number): string => String.fromCodePoint(codePoint);
@@ -195,7 +206,9 @@ describe("the declaration", () => {
       changes([file("A", ".github/workflows/x.yml")]),
     );
     expect(report.outcome).toBe("pass");
-    expect(rendered).toContain("1 Not-added mention(s) inside them ignored, not declarations");
+    expect(rendered).toContain(
+      "1 line(s) mentioning Not-added inside them ignored, not declarations",
+    );
   });
 
   test("declarative negatives are validated, said unverified, and the diff is not read", () => {
@@ -291,8 +304,57 @@ describe("the dependency surface", () => {
       ),
     );
     expect(contacts).toEqual([
-      { path: "linked/package.json", status: "head", why: "a symlink in the head tree" },
+      { path: "linked/package.json", status: "head", why: "a symlink", present: ["head"] },
     ]);
+  });
+
+  test("a link in the diff and in a tree is one contact, the changed one (C6)", () => {
+    // A path ON the surface (`.cargo`), so the tree pass would add a second
+    // contact if it did not skip what the diff already named.
+    const contacts = dependencyContacts(
+      context(
+        [file("A", ".cargo", "000000", "120000")],
+        {},
+        { head: [{ mode: "120000", path: ".cargo" }] },
+      ),
+    );
+    expect(contacts).toEqual([{ path: ".cargo", status: "A", why: "symlink" }]);
+  });
+
+  test("a link present in both trees is one contact, named with both trees (C6)", () => {
+    const link = { mode: "120000", path: "linked/package.json" };
+    const contacts = dependencyContacts(
+      context([file("M", "linked/real.json")], {}, { base: [link], head: [link] }),
+    );
+    expect(contacts).toEqual([
+      {
+        path: "linked/package.json",
+        status: "base+head",
+        why: "a symlink",
+        present: ["base", "head"],
+      },
+    ]);
+  });
+
+  test.each([
+    "scripts/run",
+    "scripts/run.pyw",
+    "tools/x.sh",
+    "docs/notes.md",
+  ])("a PEP 723 block makes %s a contact, whatever its extension (C4)", (path) => {
+    const contacts = dependencyContacts(
+      context([file("A", path)], {
+        [path]: "#!/usr/bin/env -S uv run --script\n# /// script\n# ///\n",
+      }),
+    );
+    expect(contacts).toEqual([{ path, status: "A", why: "content carries # /// script" }]);
+  });
+
+  test("the dependency scan counts the blobs it read for content (C6)", () => {
+    const scan = dependencyScan(
+      context([file("M", "package.json"), file("M", "docs/a.md"), file("D", "docs/b.md")]),
+    );
+    expect(scan.blobsRead).toBe(1);
   });
 
   test.each([
@@ -305,7 +367,7 @@ describe("the dependency surface", () => {
     const contacts = dependencyContacts(
       context([file("M", "docs/readme.md")], {}, { base: [{ mode: "120000", path }] }),
     );
-    expect(contacts).toEqual([{ path, status: "base", why: "a symlink in the base tree" }]);
+    expect(contacts).toEqual([{ path, status: "base", why: "a symlink", present: ["base"] }]);
   });
 
   test("a .py carrying a PEP 723 block is a contact by content; one without it is not", () => {
@@ -319,7 +381,7 @@ describe("the dependency surface", () => {
   });
 
   test("an unreadable .py is a contact: its content cannot be told apart", () => {
-    expect(dependencyContacts(context([file("M", "x.py")]))[0]?.why).toBe(
+    expect(dependencyContacts(context([file("M", "x.py")], { "x.py": UNREADABLE }))[0]?.why).toBe(
       "unreadable: no blob for x.py",
     );
   });
@@ -365,14 +427,18 @@ describe("the workflow surface", () => {
     expect(paths(contacts)).toEqual([".github/workflows/x.yml"]);
   });
 
-  test("a workflow modified or deleted, an action added, a symlink removed: no contact", () => {
+  test("a workflow modified or deleted, an action added: no contact", () => {
     const entries = [
       file("M", ".github/workflows/ci.yml"),
       file("D", ".github/workflows/old.yml"),
       file("A", ".github/actions/setup/action.yml"),
-      file("D", ".github/link", "120000", "000000"),
     ];
     expect(workflowContacts(context(entries))).toEqual([]);
+  });
+
+  test("a symlink removed under .github is a contact: it was present at the base", () => {
+    const contacts = workflowContacts(context([file("D", ".github/link", "120000", "000000")]));
+    expect(contacts).toEqual([{ path: ".github/link", status: "D", why: "symlink under .github" }]);
   });
 });
 
@@ -396,7 +462,7 @@ describe("the schema surface", () => {
     const contacts = schemaContacts(
       context([file("M", "data/x.yaml")], { "data/x.yaml": text.toUpperCase() }),
     );
-    expect(contacts[0]?.why).toBe(`content carries ${marker}`);
+    expect(contacts[0]?.why).toBe(`content carries ${JSON.stringify(marker)}`);
   });
 
   test("a deleted schema, a JSON without the marker, a markdown file: no contact", () => {
@@ -410,12 +476,100 @@ describe("the schema surface", () => {
 
   test("a linked or unreadable JSON is a contact: its content cannot be read", () => {
     const contacts = schemaContacts(
-      context([file("A", "a.jsonc", "000000", "120000"), file("M", "b.yml")]),
+      context([file("A", "a.jsonc", "000000", "120000"), file("M", "b.yml")], {
+        "b.yml": UNREADABLE,
+      }),
     );
     expect(contacts.map((contact) => contact.why)).toEqual([
       "a link, whose content cannot be read",
       "unreadable: no blob for b.yml",
     ]);
+  });
+
+  test.each([
+    // The marker each case must be caught by, as raw characters.
+    ["a backslash before LF (a YAML fold)", "data/x.yaml", '"$sch\\\nema": x', "\\\n"],
+    ["a backslash before CR", "data/x.yaml", '"$sch\\\rema": x', "\\\r"],
+    [
+      "any backslash in a .json5 (identity escape)",
+      "data/x.json5",
+      '{ "$\\s\\c\\h\\e\\m\\a": 1 }',
+      "\\",
+    ],
+  ])("C2: %s is a contact", (_, path, text, marker) => {
+    const contacts = schemaContacts(context([file("M", path)], { [path]: text }));
+    expect(contacts).toEqual([
+      { path, status: "M", why: `content carries ${JSON.stringify(marker)}` },
+    ]);
+  });
+
+  test("C2: a backslash in a .json that escapes no letter is not a contact", () => {
+    expect(
+      schemaContacts(context([file("M", "a.json")], { "a.json": '{"a": "\\"q\\""}' })),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      "named as a schema directory",
+      "contracts/schemas",
+      "elsewhere",
+      "a link named as a schema directory",
+    ],
+    [
+      // A DIRECTORY target: no file-name rule matches `../schemas`, only the
+      // schema-directory test does.
+      "pointing into a schemas/ directory",
+      "data/defs",
+      "../schemas",
+      'a link into a schema location ("../schemas")',
+    ],
+    [
+      "pointing at a schema file",
+      "data/link",
+      "../a.schema.yaml",
+      'a link into a schema location ("../a.schema.yaml")',
+    ],
+  ])("C5: a tree symlink %s is a contact, present in the tree", (_, path, target, why) => {
+    const contacts = schemaContacts(
+      context([], { [`base:${path}`]: target }, { base: [{ mode: "120000", path }] }),
+    );
+    expect(contacts).toEqual([{ path, status: "base", why, present: ["base"] }]);
+  });
+
+  test("C5: a symlink added in the diff, pointing into schemas/, is a contact that changed", () => {
+    // Present in the head tree as well: one contact, the changed one.
+    const contacts = schemaContacts(
+      context(
+        [file("A", "data/pointer", "000000", "120000")],
+        { "data/pointer": "../schemas/x.json" },
+        { head: [{ mode: "120000", path: "data/pointer" }] },
+      ),
+    );
+    expect(contacts).toEqual([
+      {
+        path: "data/pointer",
+        status: "A",
+        why: 'a link into a schema location ("../schemas/x.json")',
+      },
+    ]);
+  });
+
+  test("C5: a tree symlink elsewhere is not a contact", () => {
+    expect(
+      schemaContacts(
+        context(
+          [],
+          { "base:docs/l": "../readme.md" },
+          { base: [{ mode: "120000", path: "docs/l" }] },
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  test("C6: the schema scan counts blobs read and files skipped by extension", () => {
+    const scan = schemaScan(context([file("M", "a.json"), file("M", "b.md"), file("M", "c.ts")]));
+    expect([scan.blobsRead, scan.skippedByExtension]).toEqual([1, 2]);
   });
 });
 
@@ -442,7 +596,10 @@ describe("the verdict", () => {
     );
     expect(report.outcome).toBe("pass");
     expect(rendered).toContain(
-      "rules read at the merge base; diff: 2 changed path(s) examined, 1 tree entries read for symlinks; dependency: 0 contact(s), schema: 0 contact(s), workflow: 0 contact(s)",
+      "rules read at the merge base; diff: 2 changed path(s) examined, 1 tree entries read for symlinks; " +
+        "dependency: 0 contact(s), 2 blob(s) read for content, 0 file(s) skipped by extension, " +
+        "schema: 0 contact(s), 0 blob(s) read for content, 2 file(s) skipped by extension, " +
+        "workflow: 0 contact(s), 0 blob(s) read for content, 0 file(s) skipped by extension",
     );
   });
 

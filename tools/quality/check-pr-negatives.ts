@@ -58,34 +58,52 @@ import {
  *   `gradle/wrapper/`); third-party code and its patches (`node_modules/`,
  *   `vendor/`, `third_party/`, `patches/`); `.github/workflows/`,
  *   `.github/actions/` and every `action.yml|yaml`, where `uses:` lives;
- *   `Dockerfile*` and `Containerfile*`; `.gitmodules`. By mode: any gitlink
- *   (160000) on either side, and any symlink (120000) added, modified or
- *   deleted anywhere — a link can bring an existing manifest into a
- *   workspace. By content: any `.py` added or modified that carries a PEP 723
- *   block (`# /// script`), a byte search. Any status counts, and a rename
- *   counts on both sides (the list is read with `--no-renames`). A symlink in
- *   either TREE, in the diff or not, whose path or path-as-a-directory (`path`
- *   and `path/`) is on the surface counts too: its target can change without
- *   the link changing, and a directory link named `.cargo` holds what
- *   `.cargo/` would.
+ *   `Dockerfile*` and `Containerfile*`; `.gitmodules`; every `*.lock` (uv
+ *   locks a PEP 723 script as `<script>.lock`, whatever the script's name);
+ *   `.python-versions` as well as `.python-version` (uv reads both); `.env`
+ *   and every `.env.*` except `.env.example` (Bun reads a registry from
+ *   them, measured — the data file carries the measure); and the data files
+ *   CI reads to fetch and run other code: `.github/composition/` (the
+ *   composition manifest pins fleet repositories at a ref, and
+ *   run-composition.py fetches and runs them), `ecosystem/fleet-pins.v1.yaml`
+ *   (it picks the generation whose manifest CI replays and installs) and
+ *   `ecosystem/repositories.v1.yaml` (the repositories CI clones and scans).
+ *   By mode: any gitlink (160000) on either side, and any symlink (120000)
+ *   added, modified or deleted anywhere — a link can bring an existing
+ *   manifest into a workspace. By content: ANY file added or modified that
+ *   carries a PEP 723 block (`# /// script`), whatever its extension, by byte
+ *   search — uv runs such a block from a `.pyw` or from a script without
+ *   extension; reading every changed file was measured affordable on
+ *   2026-10-24 (763 tracked files, about 7.5 MB, 3.7 s, one `cat-file` per
+ *   file). Any status counts, and a rename counts on both sides (the list is
+ *   read with `--no-renames`). A symlink in either TREE, in the diff or not,
+ *   whose path or path-as-a-directory (`path` and `path/`) is on the surface
+ *   counts too, once: its target can change without the link changing, and a
+ *   directory link named `.cargo` holds what `.cargo/` would.
  * - `workflow`: no path added or type-changed at or under `.github/workflows`
- *   (a rename is an addition), and no symlink at or under `.github`, added or
- *   modified in the diff, or present in either tree.
+ *   (a rename is an addition), and no symlink at or under `.github` in the
+ *   diff, whatever its status, or present in either tree.
+ * - `schema`: no path added, modified or type-changed matching the schema name
+ *   rules; no `.json`, `.jsonc`, `.json5`, `.yaml` or `.yml` added, modified
+ *   or type-changed whose raw content contains, in any case, `schema`, an
+ *   escape opener (backslash `u`, backslash `x`) or a backslash followed by a
+ *   line break (a YAML double-quoted scalar folds `"$sch\` + newline + `ema"`
+ *   into `$schema`), and, in a `.json5`, any backslash at all (JSON5 accepts
+ *   identity escapes such as `\s` and line continuations) — a byte search, no
+ *   parse, deliberately wide and failing closed. A backslash before a line
+ *   break never occurs in valid JSON, so that marker costs JSON nothing. No
+ *   symlink, in the diff or in either tree, named as a schema directory
+ *   (tested as `path/x.json`) or pointing into a `schema/` or `schemas/`
+ *   directory or at a schema file. What this covers: the escapes, folds and
+ *   continuations of JSON, JSONC, JSON5 and YAML known to spell `$schema`. A
+ *   file that merely says `schema`, or escapes anything, makes the negative
+ *   unverifiable: do not declare it.
  *
  * STRUCTURAL LIMITS, not enumerable by path and therefore not verified: a
  * script already referenced (a `postinstall`, a build script) that installs
  * at run time; `npm:` or `https:` imports written in source code; a change of
  * behaviour of an already-vendored dependency living outside the listed
  * paths. A reviewer reads those; the negative does not cover them.
- * - `schema`: no path added, modified or type-changed matching the schema name
- *   rules; and no `.json`, `.jsonc`, `.json5`, `.yaml` or `.yml` added,
- *   modified or type-changed whose raw content contains, in any case, the
- *   substring `schema` or an escape sequence opener (backslash `u`, backslash
- *   `x`) — a byte search, no parse. The rule is DELIBERATELY WIDE and fails
- *   closed: every escaped spelling of `$schema` needs one of those openers, so
- *   no spelling is missed, and a file that merely says `schema`, or escapes
- *   anything, makes the negative unverifiable. That is acceptable: do not
- *   declare it.
  *
  * All path comparisons are case-insensitive: macOS and Windows checkouts are.
  *
@@ -298,10 +316,11 @@ export interface NegativesConfig {
   readonly schemaPatterns: readonly RegExp[];
   readonly schemaContentExtensions: readonly string[];
   readonly schemaContentMarkers: readonly string[];
+  /** Markers searched only in files of one extension (any backslash in `.json5`). */
+  readonly schemaExtensionMarkers: ReadonlyMap<string, readonly string[]>;
   readonly dependencyBasenames: ReadonlySet<string>;
   readonly dependencyPatterns: readonly RegExp[];
-  /** Files whose CONTENT puts them on the surface (a PEP 723 block in a `.py`). */
-  readonly dependencyContentExtensions: readonly string[];
+  /** Markers whose presence in ANY file added or modified puts it on the surface (PEP 723). */
   readonly dependencyContentMarkers: readonly string[];
 }
 
@@ -354,19 +373,30 @@ export function validateConfig(value: unknown): ConfigRead {
     !isRecord(schema) ||
     !isStrings(schema.pathPatterns) ||
     !isStrings(schema.contentExtensions) ||
-    !isStrings(schema.contentMarkers)
+    !isStrings(schema.contentMarkers) ||
+    !isRecord(schema.contentMarkersByExtension) ||
+    !Object.values(schema.contentMarkersByExtension).every((markers) => isStrings(markers))
   ) {
-    return fail("schema needs pathPatterns, contentExtensions and contentMarkers");
+    return fail(
+      "schema needs pathPatterns, contentExtensions, contentMarkers and contentMarkersByExtension",
+    );
   }
   if (
     !isRecord(dependency) ||
     !isStrings(dependency.basenames) ||
     !isStrings(dependency.pathPatterns) ||
-    !isStrings(dependency.contentExtensions) ||
     !isStrings(dependency.contentMarkers)
   ) {
-    return fail("dependency needs basenames, pathPatterns, contentExtensions and contentMarkers");
+    return fail("dependency needs basenames, pathPatterns and contentMarkers");
   }
+  const byExtension = new Map<string, readonly string[]>(
+    Object.entries(schema.contentMarkersByExtension as Record<string, string[]>).map(
+      ([extension, markers]) => [
+        extension.toLowerCase(),
+        markers.map((marker) => marker.toLowerCase()),
+      ],
+    ),
+  );
   const schemaPatterns = compile(schema.pathPatterns, "schema.pathPatterns");
   if (typeof schemaPatterns === "string") return fail(schemaPatterns);
   const dependencyPatterns = compile(dependency.pathPatterns, "dependency.pathPatterns");
@@ -379,11 +409,9 @@ export function validateConfig(value: unknown): ConfigRead {
       schemaPatterns,
       schemaContentExtensions: schema.contentExtensions.map((extension) => extension.toLowerCase()),
       schemaContentMarkers: schema.contentMarkers.map((marker) => marker.toLowerCase()),
+      schemaExtensionMarkers: byExtension,
       dependencyBasenames: new Set(dependency.basenames.map((name) => name.toLowerCase())),
       dependencyPatterns,
-      dependencyContentExtensions: dependency.contentExtensions.map((extension) =>
-        extension.toLowerCase(),
-      ),
       dependencyContentMarkers: dependency.contentMarkers.map((marker) => marker.toLowerCase()),
     },
   };
@@ -396,8 +424,8 @@ export type BlobRead =
   | { readonly ok: true; readonly text: string }
   | { readonly ok: false; readonly reason: string };
 
-/** Reads a file at the head of the pull request. */
-export type BlobReader = (path: string) => BlobRead;
+/** Reads a file at the head of the pull request, or at its merge base. */
+export type BlobReader = (path: string, side?: "base" | "head") => BlobRead;
 
 export interface ChangeContext {
   readonly entries: readonly ChangedPath[];
@@ -421,11 +449,25 @@ const atOrUnder = (path: string, directory: string): boolean => {
   return lower === directory || lower.startsWith(`${directory}/`);
 };
 
-/** A surface contact: the path, its status, and why it is on the surface. */
+/**
+ * A surface contact. `status` is the diff status of a changed path. A link the
+ * pull request does not touch carries `present`, the trees it is present in,
+ * and is never said to have "changed".
+ */
 export interface Contact {
   readonly path: string;
   readonly status: string;
   readonly why: string;
+  readonly present?: readonly ("base" | "head")[];
+}
+
+/** What a surface check read: its contacts, and how much content it read to say so. */
+export interface SurfaceScan {
+  readonly contacts: readonly Contact[];
+  /** Blobs read for their content. */
+  readonly blobsRead: number;
+  /** Changed files not read, their extension being outside the content rule. */
+  readonly skippedByExtension: number;
 }
 
 /** Pure: is this path, whatever its modes, on the dependency surface by name? */
@@ -438,55 +480,71 @@ function onDependencySurfaceByName(path: string, config: NegativesConfig): strin
   return null;
 }
 
+/** Every symlink of the two trees, ONCE per path, with the trees it is present in. */
+function treeLinks(context: ChangeContext): Map<string, ("base" | "head")[]> {
+  const links = new Map<string, ("base" | "head")[]>();
+  for (const side of ["base", "head"] as const) {
+    for (const entry of context.trees[side]) {
+      if (entry.mode !== SYMLINK_MODE) continue;
+      links.set(entry.path, [...(links.get(entry.path) ?? []), side]);
+    }
+  }
+  return links;
+}
+
+/** The first marker the raw content carries, compared case-insensitively. */
+function markerIn(text: string, markers: readonly string[]): string | undefined {
+  const content = text.toLowerCase();
+  return markers.find((candidate) => content.includes(candidate));
+}
+
 /** Pure: every contact of the change set with the dependency surface. */
-export function dependencyContacts(context: ChangeContext): Contact[] {
+export function dependencyContacts(context: ChangeContext): SurfaceScan {
+  const contacts: Contact[] = [];
+  const inDiff = new Set<string>();
+  let blobsRead = 0;
+  for (const entry of context.entries) {
+    inDiff.add(entry.path);
+    let why = isGitlink(entry)
+      ? "gitlink"
+      : isSymlink(entry)
+        ? "symlink"
+        : onDependencySurfaceByName(entry.path, context.config);
+    // By content, in EVERY file added or modified, whatever its extension:
+    // uv runs a PEP 723 block from a script without extension
+    // (`#!/usr/bin/env -S uv run --script`) or from a `.pyw` as well.
+    if (why === null && entry.status !== "D") {
+      blobsRead += 1;
+      const blob = context.readBlob(entry.path);
+      const marker = blob.ok
+        ? markerIn(blob.text, context.config.dependencyContentMarkers)
+        : undefined;
+      if (!blob.ok) why = `unreadable: ${blob.reason}`;
+      else if (marker !== undefined) why = `content carries ${marker}`;
+    }
+    if (why !== null) contacts.push({ path: entry.path, status: entry.status, why });
+  }
+  for (const [path, present] of treeLinks(context)) {
+    if (inDiff.has(path)) continue;
+    // A link is tested as a file AND as a directory: the directory patterns
+    // end with `/`, and a link named `.cargo` holds what `.cargo/` would.
+    if (
+      onDependencySurfaceByName(path, context.config) !== null ||
+      onDependencySurfaceByName(`${path}/`, context.config) !== null
+    ) {
+      contacts.push({ path, status: present.join("+"), why: "a symlink", present });
+    }
+  }
+  return { contacts, blobsRead, skippedByExtension: 0 };
+}
+
+/** Pure: every contact of the change set with the workflow surface. */
+export function workflowContacts(context: ChangeContext): SurfaceScan {
+  const { workflowDirectory, workflowSymlinkRoot } = context.config;
   const contacts: Contact[] = [];
   const inDiff = new Set<string>();
   for (const entry of context.entries) {
     inDiff.add(entry.path);
-    const why = isGitlink(entry)
-      ? "gitlink"
-      : isSymlink(entry)
-        ? "symlink"
-        : (onDependencySurfaceByName(entry.path, context.config) ??
-          dependencyContent(entry, context));
-    if (why !== null) contacts.push({ path: entry.path, status: entry.status, why });
-  }
-  for (const side of ["base", "head"] as const) {
-    for (const entry of context.trees[side]) {
-      if (entry.mode !== SYMLINK_MODE || inDiff.has(entry.path)) continue;
-      // A link is tested as a file AND as a directory: the directory patterns
-      // end with `/`, and a link named `.cargo` holds what `.cargo/` would.
-      if (
-        onDependencySurfaceByName(entry.path, context.config) !== null ||
-        onDependencySurfaceByName(`${entry.path}/`, context.config) !== null
-      ) {
-        contacts.push({ path: entry.path, status: side, why: `a symlink in the ${side} tree` });
-      }
-    }
-  }
-  return contacts;
-}
-
-/** A file put on the surface by its content: a PEP 723 block in a `.py`, by byte search. */
-function dependencyContent(entry: ChangedPath, context: ChangeContext): string | null {
-  const { dependencyContentExtensions, dependencyContentMarkers } = context.config;
-  if (entry.status === "D") return null;
-  const lower = entry.path.toLowerCase();
-  if (!dependencyContentExtensions.some((extension) => lower.endsWith(extension))) return null;
-  const blob = context.readBlob(entry.path);
-  if (!blob.ok) return `unreadable: ${blob.reason}`;
-  const content = blob.text.toLowerCase();
-  const marker = dependencyContentMarkers.find((candidate) => content.includes(candidate));
-  return marker === undefined ? null : `content carries ${marker}`;
-}
-
-/** Pure: every contact of the change set with the workflow surface. */
-export function workflowContacts(context: ChangeContext): Contact[] {
-  const { workflowDirectory, workflowSymlinkRoot } = context.config;
-  const contacts: Contact[] = [];
-  for (const entry of context.entries) {
-    if (entry.status === "D") continue;
     if (
       (entry.status === "A" || entry.status === "T") &&
       atOrUnder(entry.path, workflowDirectory)
@@ -496,7 +554,7 @@ export function workflowContacts(context: ChangeContext): Contact[] {
         status: entry.status,
         why: "workflow file added or type-changed",
       });
-    } else if (entry.newMode === SYMLINK_MODE && atOrUnder(entry.path, workflowSymlinkRoot)) {
+    } else if (isSymlink(entry) && atOrUnder(entry.path, workflowSymlinkRoot)) {
       contacts.push({
         path: entry.path,
         status: entry.status,
@@ -504,58 +562,108 @@ export function workflowContacts(context: ChangeContext): Contact[] {
       });
     }
   }
-  const named = new Set(contacts.map((contact) => contact.path));
-  for (const side of ["base", "head"] as const) {
-    for (const entry of context.trees[side]) {
-      if (entry.mode !== SYMLINK_MODE || named.has(entry.path)) continue;
-      if (atOrUnder(entry.path, workflowSymlinkRoot)) {
-        named.add(entry.path);
-        contacts.push({
-          path: entry.path,
-          status: side,
-          why: `a symlink under ${workflowSymlinkRoot} in the ${side} tree`,
-        });
-      }
-    }
+  for (const [path, present] of treeLinks(context)) {
+    if (inDiff.has(path) || !atOrUnder(path, workflowSymlinkRoot)) continue;
+    contacts.push({
+      path,
+      status: present.join("+"),
+      why: `a symlink under ${workflowSymlinkRoot}`,
+      present,
+    });
   }
-  return contacts;
+  return { contacts, blobsRead: 0, skippedByExtension: 0 };
+}
+
+const SCHEMA_DIRECTORY = /(?:^|\/)schemas?(?:\/|$)/i;
+
+/**
+ * Why a symlink touches the schema surface, or null. Tested as a directory
+ * (a link named `schemas` holds schema files), by its target (a link that
+ * points into a `schema/` or `schemas/` directory, or at a schema file).
+ */
+function schemaLinkReason(
+  path: string,
+  side: "base" | "head",
+  context: ChangeContext,
+): string | null {
+  const { schemaPatterns } = context.config;
+  if (schemaPatterns.some((pattern) => pattern.test(`${path}/x.json`))) {
+    return "a link named as a schema directory";
+  }
+  const target = context.readBlob(path, side);
+  if (!target.ok) return `a link whose target is unreadable: ${target.reason}`;
+  if (
+    SCHEMA_DIRECTORY.test(target.text) ||
+    schemaPatterns.some((pattern) => pattern.test(target.text))
+  ) {
+    return `a link into a schema location (${quote(target.text)})`;
+  }
+  return null;
 }
 
 /** Pure: every contact of the change set with the schema surface. */
-export function schemaContacts(context: ChangeContext): Contact[] {
-  const { schemaPatterns, schemaContentExtensions, schemaContentMarkers } = context.config;
+export function schemaContacts(context: ChangeContext): SurfaceScan {
+  const { schemaPatterns, schemaContentExtensions, schemaContentMarkers, schemaExtensionMarkers } =
+    context.config;
   const contacts: Contact[] = [];
+  const inDiff = new Set<string>();
+  let blobsRead = 0;
+  let skippedByExtension = 0;
   for (const entry of context.entries) {
+    inDiff.add(entry.path);
     if (entry.status === "D") continue;
     if (schemaPatterns.some((pattern) => pattern.test(entry.path))) {
       contacts.push({ path: entry.path, status: entry.status, why: "schema file name" });
       continue;
     }
     const lower = entry.path.toLowerCase();
-    if (!schemaContentExtensions.some((extension) => lower.endsWith(extension))) continue;
-    if (isSymlink(entry) || isGitlink(entry)) {
+    const extension = schemaContentExtensions.find((candidate) => lower.endsWith(candidate));
+    if (entry.newMode === SYMLINK_MODE) {
+      const why =
+        extension !== undefined
+          ? "a link, whose content cannot be read"
+          : schemaLinkReason(entry.path, "head", context);
+      if (why !== null) contacts.push({ path: entry.path, status: entry.status, why });
+      continue;
+    }
+    if (extension === undefined) {
+      skippedByExtension += 1;
+      continue;
+    }
+    if (isGitlink(entry)) {
       contacts.push({
         path: entry.path,
         status: entry.status,
-        why: "a link, whose content cannot be read",
+        why: "a gitlink, whose content cannot be read",
       });
       continue;
     }
+    blobsRead += 1;
     const blob = context.readBlob(entry.path);
     if (!blob.ok) {
       contacts.push({ path: entry.path, status: entry.status, why: `unreadable: ${blob.reason}` });
       continue;
     }
-    const content = blob.text.toLowerCase();
-    const marker = schemaContentMarkers.find((candidate) => content.includes(candidate));
+    const markers = [...schemaContentMarkers, ...(schemaExtensionMarkers.get(extension) ?? [])];
+    const marker = markerIn(blob.text, markers);
     if (marker !== undefined) {
-      contacts.push({ path: entry.path, status: entry.status, why: `content carries ${marker}` });
+      contacts.push({
+        path: entry.path,
+        status: entry.status,
+        // Not `quote`: it trims, and a marker can be a backslash before a line break.
+        why: `content carries ${JSON.stringify(marker)}`,
+      });
     }
   }
-  return contacts;
+  for (const [path, present] of treeLinks(context)) {
+    if (inDiff.has(path)) continue;
+    const why = schemaLinkReason(path, present[0] ?? "head", context);
+    if (why !== null) contacts.push({ path, status: present.join("+"), why, present });
+  }
+  return { contacts, blobsRead, skippedByExtension };
 }
 
-const CONTACTS: Readonly<Record<VerifiableNegative, (context: ChangeContext) => Contact[]>> = {
+const CONTACTS: Readonly<Record<VerifiableNegative, (context: ChangeContext) => SurfaceScan>> = {
   dependency: dependencyContacts,
   schema: schemaContacts,
   workflow: workflowContacts,
@@ -571,7 +679,7 @@ export function evaluateNegatives(
   const declaration = readNegativesDeclaration(body);
   const ignored =
     declaration.ignoredInBlocks > 0
-      ? `; ${declaration.ignoredInBlocks} Not-added mention(s) inside them ignored, not declarations`
+      ? `; ${declaration.ignoredInBlocks} line(s) mentioning Not-added inside them ignored, not declarations`
       : "";
   const lines =
     `${declaration.linesExamined} description line(s) examined after removing ` +
@@ -622,20 +730,24 @@ export function evaluateNegatives(
   const examined = context.entries.length;
   const surfaces: string[] = [];
   for (const value of verifiable) {
-    const contacts = CONTACTS[value](context);
+    const { contacts, blobsRead, skippedByExtension } = CONTACTS[value](context);
+    const remove = `remove "${value}" from ${NEGATIVES_KEY}`;
     report.check(
       `${label} — Not-added ${value}`,
       contacts.length === 0,
       contacts.length === 0
         ? `the ${value} surface is not touched by any of ${examined} changed path(s)`
         : contacts
-            .map(
-              (contact) =>
-                `cannot verify: ${contact.path} (${contact.status}, ${contact.why}) changed — remove "${value}" from ${NEGATIVES_KEY}`,
+            .map((contact) =>
+              contact.present === undefined
+                ? `cannot verify: ${contact.path} (${contact.status}, ${contact.why}) changed — ${remove}`
+                : `cannot verify: ${contact.path} (${contact.why}) present in the ${contact.present.join(" and ")} tree${contact.present.length > 1 ? "s" : ""} — ${remove}`,
             )
             .join("; "),
     );
-    surfaces.push(`${value}: ${contacts.length} contact(s)`);
+    surfaces.push(
+      `${value}: ${contacts.length} contact(s), ${blobsRead} blob(s) read for content, ${skippedByExtension} file(s) skipped by extension`,
+    );
   }
   report.volume(
     `${lines}; ${negatives}; rules read at the merge base; diff: ${examined} changed path(s) examined, ` +
@@ -684,8 +796,11 @@ function readPullRequestContext(baseRef: string): ContextRead {
   }
   const config = validateConfig(parsed);
   if (!config.ok) return { ok: false, reason: `at the merge base: ${config.reason}` };
-  const readBlob: BlobReader = (path) => {
-    const read = readGit(["cat-file", "blob", `HEAD:${path}`], `read ${path} at the head`);
+  const readBlob: BlobReader = (path, side = "head") => {
+    const read = readGit(
+      ["cat-file", "blob", `${side === "base" ? base : "HEAD"}:${path}`],
+      `read ${path} at the ${side}`,
+    );
     return read.ok ? { ok: true, text: read.stdout } : read;
   };
   return {
