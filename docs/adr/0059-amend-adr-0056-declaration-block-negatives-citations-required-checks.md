@@ -6,8 +6,8 @@
   #144 ; les points (a) à (g) et D102 sont en vigueur à la fusion.
 - **Arbitrage :** Owner-arbitration: 2026-10-24 — décisions du propriétaire en
   chat les 2026-10-23 et 2026-10-24, consignées sur la consigne « go all » du
-  2026-10-24, qui a autorisé l'agent à écrire cette ligne et la pull request.
-  La trace datée de l'arbitrage est portée par le corps de la pull request ;
+  propriétaire, 2026-10-24 08:57 UTC, en réponse à la recommandation d'un ADR
+  d'amendement qui consigne ses arbitrages. La trace datée de l'arbitrage est portée par le corps de la pull request ;
   elle n'est pas recopiée ici au-delà de cette ligne.
 - **Date de rédaction :** 2026-10-24
 - **Portée :** forme de la description d'une pull request de ce dépôt (D1 et
@@ -22,7 +22,8 @@
   (`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:303`
   et `:309-310`), précisés ; ADR-0056, « Ce qui n'est pas décidé ici »
   (`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:380-391`),
-  dont les trois premiers points sont tranchés. Le texte d'ADR-0056 n'est pas
+  dont les trois premiers points sont tranchés ; ADR-0050 D1 (une dérogation
+  nommée, (g)). Le texte d'ADR-0056 n'est pas
   édité : ADR-0055, qui amende ADR-0042, ne l'a pas édité non plus (sa pull
   request #134 ne touche que son propre fichier et le registre des décisions).
 - **Ne modifie pas :** ADR-0042 (le point (f) n'en amende aucune phrase) ;
@@ -66,7 +67,13 @@ relevée dans le transcript de session, qui n'est pas versionné ; le point (c)
 fait seul exception, et le dit. Toutes les citations de code ci-dessous sont
 épinglées sur `066ef49`, tête de la branche servie au moment de la rédaction ;
 chacune se rejoue par `git show` du fichier à ce commit, suivi de `sed -n` sur
-les lignes citées.
+les lignes citées. Le gate de citations épinglées juge la citation complète
+qui ouvre chaque groupe ; les continuations `:N-M` qui la suivent, sur le même
+fichier au même commit, ne sont pas jugées par lui. Elles ont été relevées à la
+main sur `066ef49` le 2026-10-24 : la plus haute ligne de continuation est 707
+dans `check-pr-door.ts` (869 lignes), 888 dans `check-pr-negatives.ts`
+(947 lignes) et 1911 dans `check-pinned-citations.ts` (1943 lignes), longueurs
+données par `git show` du fichier suivi de `wc -l`.
 
 ## Décisions
 
@@ -75,10 +82,13 @@ les lignes citées.
 Arbitrage du propriétaire du 2026-10-24 à 01:17 UTC : le contrat « bloc en
 tête du corps ». Ce point remplace la « forme proposée » de D1. Les
 déclarations sont les premières lignes de la description, et seules ces lignes
-sont lues (`066ef49:tools/quality/check-pr-door.ts:17-19`). Le bloc reçoit
-cinq clés, `Door`, `Second-instrument`, `Origin`, `Owner-arbitration` et
-`Not-added` (`066ef49:tools/quality/check-pr-door.ts:162-168`) ; les deux
-dernières appartiennent au bloc et sont jugées par d'autres gates. Trois
+sont lues (`066ef49:tools/quality/check-pr-door.ts:17-19`). Le code admet
+dans le bloc cinq clés, `Door`, `Second-instrument`, `Origin`,
+`Owner-arbitration` et `Not-added`
+(`066ef49:tools/quality/check-pr-door.ts:162-168`) ; les deux dernières sont
+jugées par d'autres gates. L'arbitrage de 01:17 UTC en nomme quatre :
+`Owner-arbitration:` dans le bloc a été accepté par la fusion de #141
+(2026-10-24), comme le principe du point (c) l'a été par celle de #144. Trois
 règles, telles que le code les applique :
 
 - **T1 — le bloc.** Après le retrait d'un BOM initial et la normalisation des
@@ -112,7 +122,7 @@ D1, `observed` avec sa date ISO et sa source
 `IMPLICIT_TWO_WAY_AUTHORS` (Dependabot) sans ligne `Door:` ni `Origin:` en est
 dispensé (`066ef49:tools/quality/check-pr-door.ts:85-94` et `:129-131`).
 
-Conséquence écrite par #141 : une ligne `Owner-arbitration:` en colonne 0 hors
+Conséquence écrite par #141, et acceptée par sa fusion : une ligne `Owner-arbitration:` en colonne 0 hors
 du bloc fait désormais échouer le check « Door declaration » (T3), alors que
 `check-review-evidence` reconnaît le marqueur partout dans la description. Le
 marqueur d'arbitrage s'écrit donc dans le bloc de tête.
@@ -121,8 +131,10 @@ marqueur d'arbitrage s'écrit donc dans le bloc de tête.
 
 Arbitrage du propriétaire du 2026-10-23 à 19:51 UTC : la forme de D5 est une
 ligne `Not-added:`, et seule la pull request qui la déclare la porte. Ce point
-tranche les deux premiers points ouverts d'ADR-0056 (forme et portée de la
-ligne de D5). La ligne est une ligne du bloc de (a), sous la clé
+tranche les deuxième et troisième points ouverts d'ADR-0056, la forme et la
+portée de la ligne de D5 (le premier est `yt-dlp`, tranché en (f) :
+`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:382-389`).
+La ligne est une ligne du bloc de (a), sous la clé
 `Not-added:` ; sa valeur passe T2' et porte des valeurs du vocabulaire fermé
 de D5, séparées par des virgules, chacune une fois ; deux lignes sont
 refusées (`066ef49:tools/quality/check-pr-negatives.ts:23-36` ; code :
@@ -137,10 +149,12 @@ imprimées comme non vérifiées par le gate, à lire en revue
 Ce point remplace la phrase de D5 « l'absence de déclaration n'est pas
 bloquante tant que le gate de D5 n'existe pas » : le gate existe, et
 l'absence de déclaration reste non bloquante, par la facultativité de la
-ligne. ADR-0056 D5 disait qu'une pull request qui ajoute une capacité déclare
-ce qu'elle n'ajoute pas ; aucun gate ne l'exige, puisqu'un gate ne sait pas ce
-qu'est une capacité (ADR-0056, « Ce qui n'est pas décidé ici ») : cette
-attente reste une règle de revue.
+ligne. La première phrase de D5 (« Une pull request qui ajoute une capacité
+déclare ce qu'elle **n'ajoute pas** »,
+`docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md:299-300`)
+n'est pas amendée ici : aucun gate ne l'exige, puisqu'un gate ne sait pas ce
+qu'est une capacité (ADR-0056, « Ce qui n'est pas décidé ici »), et elle reste
+une règle de revue.
 
 ### (c) Une négative vérifiable ne tient que si sa surface n'est pas touchée
 
@@ -178,9 +192,13 @@ définit :
 - **`schema` : les suppressions sont ignorées.** Un chemin supprimé n'est pas
   examiné (`066ef49:tools/quality/check-pr-negatives.ts:701`) ; un chemin
   ajouté, modifié ou de type changé touche la surface par son nom ou, pour un
-  `.json`, `.jsonc`, `.json5`, `.yaml` ou `.yml`, par son contenu brut, et un
-  lien symbolique par son nom ou sa cible
-  (`066ef49:tools/quality/check-pr-negatives.ts:91-105`).
+  `.json`, `.jsonc`, `.json5`, `.yaml` ou `.yml`, par son contenu brut
+  (`066ef49:tools/quality/check-pr-negatives.ts:91-105`). À cette extension,
+  un gitlink, dont le contenu ne peut pas être lu, touche la surface
+  (`:720-726`), et un blob illisible aussi (`:730-731`). Un lien symbolique la
+  touche par son nom ou sa cible, dans le diff ou dans l'un ou l'autre arbre
+  (`066ef49:tools/quality/check-pr-negatives.ts:100-102` ; code : `:708-714`,
+  `:745-749`).
 
 Les surfaces sont lues au merge base de la pull request par `git cat-file
 blob`, jamais depuis sa tête ; absentes ou illisibles à cet endroit, chaque
