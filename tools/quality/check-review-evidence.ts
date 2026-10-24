@@ -52,6 +52,18 @@ import { concludeGate, GateReport } from "./gate-report";
  * the rule. It was left out when the surface was drawn; #102 amended it under
  * this gate's blind spot.
  *
+ * `ecosystem/refusals.v1.yaml` joined the gated surface on 2026-10-23, as
+ * ADR-0056 names it ("Suites nommées": the shape check of the register, "et
+ * entrée du fichier dans la surface de `check-review-evidence`"). Removing an
+ * entry, or lifting the refusal it carries, is an owner decision (ADR-0056
+ * D4), and an entry written without its review would be read by the next
+ * session as a settled refusal. Like FORGOTTEN.yaml, the file is gated
+ * exactly, not its neighbours; its shape is checked by `check-refusals.ts`.
+ * `tools/quality/refusals-exemptions.v1.json` joined with it: an exemption
+ * relaxes that shape gate for one evidence, which is a guardrail mutation
+ * (I-17) in the same way as editing the register. The other data files under
+ * `tools/quality/` that relax a gate are an earlier class, not gated here.
+ *
  * A review-artefact reference counts only if it names a path that exists in
  * the tree under review (2026-10-14). Before, any string shaped like
  * `docs/reviews/…` passed — a reference to a dossier that was never written
@@ -84,6 +96,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^docs\/decisions\/DECISION-REGISTER\.md$/,
   /^docs\/decisions\/LEXICON\.md$/,
   /^ecosystem\/FORGOTTEN\.yaml$/,
+  /^ecosystem\/refusals\.v1\.yaml$/,
+  /^tools\/quality\/refusals-exemptions\.v1\.json$/,
 ];
 
 /**
@@ -97,6 +111,8 @@ export const GATED_PATHSPECS: readonly string[] = [
   "docs/decisions/DECISION-REGISTER.md",
   "docs/decisions/LEXICON.md",
   "ecosystem/FORGOTTEN.yaml",
+  "ecosystem/refusals.v1.yaml",
+  "tools/quality/refusals-exemptions.v1.json",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */

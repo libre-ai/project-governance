@@ -54,11 +54,38 @@ describe("touchesGatedPaths", () => {
     ).toEqual(["ecosystem/FORGOTTEN.yaml"]);
   });
 
+  // ADR-0056 "Suites nommées" (2026-10-23): the refusals register enters the
+  // surface — exactly that file, not a sibling version or a copy elsewhere.
+  test("matches ecosystem/refusals.v1.yaml exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "ecosystem/refusals.v1.yaml",
+        "ecosystem/refusals.v2.yaml",
+        "ecosystem/refusals.v1.yaml.bak",
+        "docs/ecosystem/refusals.v1.yaml",
+      ]),
+    ).toEqual(["ecosystem/refusals.v1.yaml"]);
+  });
+
+  // Review of #142 (2026-10-23): an exemption relaxes the refusals gate, so
+  // its file is gated like the register — exactly that file. The other
+  // ungated data files of tools/quality are an earlier class, out of scope.
+  test("matches tools/quality/refusals-exemptions.v1.json exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "tools/quality/refusals-exemptions.v1.json",
+        "tools/quality/refusals-exemptions.v2.json",
+        "tools/quality/refusals-exemptions.v1.json.bak",
+        "tools/quality/pinned-citations.v1.json",
+        "tools/quality/check-refusals.ts",
+      ]),
+    ).toEqual(["tools/quality/refusals-exemptions.v1.json"]);
+  });
+
   test("every gated pattern has a pathspec whose diff is searched for evidence", () => {
     expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
     for (const pathspec of GATED_PATHSPECS) {
-      const sample =
-        pathspec.endsWith(".md") || pathspec.endsWith(".yaml") ? pathspec : `${pathspec}/x.md`;
+      const sample = /\.(md|yaml|json)$/.test(pathspec) ? pathspec : `${pathspec}/x.md`;
       expect(touchesGatedPaths([sample])).toEqual([sample]);
     }
   });
@@ -463,6 +490,33 @@ describe("evaluateReviewEvidence", () => {
     expect(report.violations[0]).toContain(
       "docs/reviews/never-written.md (diff ecosystem/FORGOTTEN.yaml) does not exist in the tree under review",
     );
+  });
+
+  test("a refusals.v1.yaml change with neither signal fails", () => {
+    const diff = gitDiff("ecosystem/refusals.v1.yaml", [
+      "+  - id: refusal.example-install",
+      "+    decided_on: 2026-10-23",
+    ]);
+    const report = evaluateReviewEvidence(
+      ["ecosystem/refusals.v1.yaml"],
+      "chore: register a refusal",
+      diff,
+      TREE,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toStartWith(
+      "ecosystem/refusals.v1.yaml: neither the pull request description nor a line the pull request adds",
+    );
+  });
+
+  test("a refusals.v1.yaml change with an Owner-arbitration marker in the PR body passes", () => {
+    const report = evaluateReviewEvidence(
+      ["ecosystem/refusals.v1.yaml"],
+      "Owner-arbitration: 2026-10-23",
+      "",
+      TREE,
+    );
+    expect(report.outcome).toBe("pass");
   });
 
   test("several gated paths in one run are reported as a single item", () => {
