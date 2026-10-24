@@ -79,13 +79,20 @@ jobs:
       # (toolchains/cargo-deny.json, Y47): the installer exports its path as
       # LIBRE_AI_CARGO_DENY, and tools/quality/check-dependency-policy.ts uses
       # that binary and refuses to download another one.
-      - name: Install verified Bun, Node and cargo-deny toolchains
+      #
+      # osv-scanner (toolchains/osv-scanner.json, project-governance#147) is
+      # installed by the same step and exported as LIBRE_AI_OSV_SCANNER. Its
+      # policy is read from the pinned tooling checkout, not from the composed
+      # project-governance: the composed ref moves in a later pull request, and
+      # a path absent from it fails every consumer (check-composed-paths.py).
+      - name: Install verified Bun, Node, cargo-deny and osv-scanner toolchains
         shell: bash
         run: |
           bash tooling/.github/composition/install-toolchains.sh \
             "$GITHUB_WORKSPACE/composition/project-governance/toolchains/bun.json" \
             "$GITHUB_WORKSPACE/composition/project-governance/toolchains/notebook-qualification.json" \
-            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/cargo-deny.json"
+            "$GITHUB_WORKSPACE/composition/project-governance/toolchains/cargo-deny.json" \
+            "$GITHUB_WORKSPACE/tooling/toolchains/osv-scanner.json"
 
       # docs/security/ADVISORY-WAIVER-POLICY.md: every waived advisory is dated,
       # referenced and bounded, verified by a required gate. Run on the target's
@@ -113,6 +120,20 @@ jobs:
       - name: Install licensing checker
         shell: bash
         run: pipx install reuse==6.2.0
+
+      # docs/toolchain/OSV-ADVISORY-DATABASE.md: a target whose gate reads the
+      # offline OSV advisory database (OFFLINE_ADVISORY_DATABASES in
+      # prepare-composition.py) gets it here, once per job, after the
+      # toolchains and before its checks. The step deletes the previous file,
+      # downloads over the network and fails the job if the file is absent,
+      # empty or not written by this run; any other target does nothing.
+      - name: Download the offline advisory database for the targets that require it
+        shell: bash
+        run: |
+          python3 -B tooling/.github/composition/download-advisory-database.py \
+            --target "$INPUT_TARGET" --revision "$INPUT_TARGET_REF" \
+            --root "$GITHUB_WORKSPACE/composition" \
+            --policy "$GITHUB_WORKSPACE/tooling/toolchains/osv-scanner.json"
 
       - name: Install frozen composition, build UI and run target root checks
         shell: bash

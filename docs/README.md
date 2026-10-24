@@ -47,5 +47,6 @@ docs/
 ├── method/          méthode : écriture des skills, gabarits, conception, refactor
 ├── reviews/         preuves immuables, non normatives
 ├── specifications/  standards et locks G1
+├── toolchain/       notes d'outillage de la composition (osv-scanner et base d'avis hors ligne, bump de flotte)
 └── transformation/  refondation : programme, manifests, séquencement (historique)
 ```
