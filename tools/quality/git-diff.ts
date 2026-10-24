@@ -103,7 +103,7 @@ export function parseRawDiff(output: string): ChangedPathsRead {
   for (let index = 0; index < fields.length; index += 2) {
     const header = fields[index] ?? "";
     const path = fields[index + 1] ?? "";
-    const match = RAW_HEADER.exec(header);
+    const match = header.match(RAW_HEADER);
     if (match === null) {
       return { ok: false, reason: `unexpected raw diff record "${header}" for path "${path}"` };
     }
@@ -148,7 +148,7 @@ export function parseTree(output: string): TreeRead {
     return { ok: false, reason: "ls-tree output does not end with a NUL" };
   const entries: TreeEntry[] = [];
   for (const record of output.slice(0, -1).split("\0")) {
-    const match = TREE_RECORD.exec(record);
+    const match = record.match(TREE_RECORD);
     if (match === null) return { ok: false, reason: `unexpected ls-tree record "${record}"` };
     entries.push({ mode: match[1] ?? "", path: match[2] ?? "" });
   }

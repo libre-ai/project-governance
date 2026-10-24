@@ -160,9 +160,10 @@ describe("the declaration", () => {
     [`Not${cp(0x200b)}-added: schema`],
     [`${cp(0xfeff)}Not-added: schema`],
   ])("a visible line whose start renders as the key, %j, is refused by name", (line) => {
-    const { report, rendered } = verdict(`Door: two-way\n${line}`);
+    // After the block and its blank line, as the contract wants (owner, 2026-10-24).
+    const { report, rendered } = verdict(`Door: two-way\n\n${line}`);
     expect(report.outcome).toBe("violations");
-    expect(rendered).toContain("line 2 ");
+    expect(rendered).toContain("line 3 ");
     expect(rendered).toContain('write it as "Not-added:" at the start of its own line');
   });
 
@@ -174,7 +175,7 @@ describe("the declaration", () => {
     ["inline code mid-line", "The `Not-added:` line is optional."],
     ["a homoglyph, out of reach and declared so", `N${cp(0x043e)}t-added: schema`],
   ])("%s is not refused", (_, line) => {
-    const { report, rendered } = verdict(`Door: two-way\n${line}`);
+    const { report, rendered } = verdict(`Door: two-way\n\n${line}`);
     expect(report.outcome).toBe("pass");
     expect(rendered).toContain("0 Not-added line(s), 0 misplaced key(s)");
   });
@@ -202,7 +203,7 @@ describe("the declaration", () => {
     ["an HTML comment", "<!-- Not-added: workflow -->"],
   ])("a line inside %s is not a declaration: ignored, and named as ignored", (_, block) => {
     const { report, rendered } = verdict(
-      `Door: two-way\n${block}\n`,
+      `Door: two-way\n\n${block}\n`,
       changes([file("A", ".github/workflows/x.yml")]),
     );
     expect(report.outcome).toBe("pass");
@@ -219,36 +220,69 @@ describe("the declaration", () => {
   });
 });
 
-describe("the seam with the declaration grammar (readDeclarationLines)", () => {
-  test("today it admits every key line at column 0 of the visible text", () => {
-    expect(readDeclarationLines("Door: two-way\nNot-added: schema\n<!-- Not-added: x -->")).toEqual(
-      {
-        text: "Door: two-way\nNot-added: schema\n",
-        removedBlocks: 1,
-        admitted: [" schema"],
-      },
+describe("the seam with the declaration block (readDeclarationLines, #141)", () => {
+  test("it admits the block's Not-added line, and only it", () => {
+    const read = readDeclarationLines(
+      "Door: two-way\nNot-added: schema\n\n<!--\nNot-added: x\n-->\n",
     );
+    expect([read.admitted, read.leftToDoor, [...read.doorRefusedLines]]).toEqual([
+      ["schema"],
+      0,
+      [],
+    ]);
   });
 
-  test("the values come from what the grammar admits, not from a second parse of the text", () => {
+  test("the values come from what the block admits, not from a second parse of the text", () => {
     const read = readNegativesDeclaration("Not-added: schema", () => ({
       text: "Not-added: schema",
       removedBlocks: 0,
       admitted: [" workflow"],
+      leftToDoor: 0,
+      doorRefusedLines: new Set<number>(),
     }));
     expect(read.kind === "declared" && read.values).toEqual(["workflow"]);
   });
 
-  test("a key line the grammar does not admit is refused, never silently absent", () => {
-    // The shape #141's grammar refuses: a value carrying `<`.
-    const read = readNegativesDeclaration("Not-added: schema <b>", () => ({
-      text: "Not-added: schema <b>",
-      removedBlocks: 0,
-      admitted: [],
-    }));
-    expect(read.kind === "refused" && read.reasons).toEqual([
-      "1 Not-added line(s) not admitted by the declaration grammar — see check-pr-door",
-    ]);
+  test.each([
+    ["refused by T2' in the block (a `[`)", "Door: two-way\nNot-added: schema [x](y)\n\nbody\n"],
+    ["refused by T2' (a `$`)", "Not-added: $schema$\n\nbody\n"],
+    ["refused by T2' (HTML)", "Not-added: <b>schema</b>\n\nbody\n"],
+    ["a key line outside the block (T3)", "Door: two-way\n\nNot-added: schema\n"],
+    [
+      "a key line after the block, no blank line (T3)",
+      "Door: two-way\nOrigin: proposal\nx\nNot-added: schema\n",
+    ],
+  ])("a Not-added line %s is left to the Door gate: counted, never refused twice", (_, body) => {
+    const read = readNegativesDeclaration(body);
+    expect([read.kind, read.leftToDoor, read.misplacedLines]).toEqual(["absent", 1, 0]);
+  });
+
+  test("a line that ends the block without a blank line is the Door gate's (T1): not refused here", () => {
+    const read = readNegativesDeclaration("Door: two-way\n> Not-added: schema\n");
+    expect([read.kind, read.misplacedLines]).toEqual(["absent", 0]);
+  });
+
+  test("the same misplaced line after the blank line is refused here, by name", () => {
+    const read = readNegativesDeclaration("Door: two-way\n\n> Not-added: schema\n");
+    expect([read.kind, read.misplacedLines]).toEqual(["refused", 1]);
+  });
+
+  test("a Not-added line in a comment opened at column 0 after a blank line is exempt (not T3)", () => {
+    const read = readNegativesDeclaration("Door: two-way\n\n<!--\nNot-added: x\n-->\n");
+    expect([read.kind, read.leftToDoor, read.ignoredInBlocks]).toEqual(["absent", 0, 1]);
+  });
+
+  test.each([
+    ["Door: two-way\n", 1],
+    ["Door: two-way\n\nbody", 3],
+    ["Door: two-way\n\nbody\n", 3],
+  ])("%j has %i line(s), counted as the Door gate counts them", (body, lines) => {
+    expect(readNegativesDeclaration(body).linesExamined).toBe(lines);
+  });
+
+  test("the count left to the Door gate is printed", () => {
+    const { rendered } = verdict("Door: two-way\n\nNot-added: schema\n");
+    expect(rendered).toContain("1 Not-added line(s) left to the Door gate (T2', T3)");
   });
 });
 

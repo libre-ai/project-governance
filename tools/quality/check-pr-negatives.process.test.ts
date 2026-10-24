@@ -310,8 +310,9 @@ describe("second review, N5: escaped forms of the key that GitHub renders", () =
     ["a list item with an entity", "- Not&#x2D;added: workflow"],
   ])("%s is refused by name", (_, line) => {
     branchWith(addWorkflow);
+    // After the block and its blank line (contract of 2026-10-24).
     expectFails(
-      runGate(`Door: two-way\n${line}`),
+      runGate(`Door: two-way\n\n${line}`),
       'write it as "Not-added:" at the start of its own line',
     );
   });
@@ -329,7 +330,7 @@ describe("second review, N6: prose that mentions the key in the middle of a line
   test("the sentence #143 and #145 were refused for passes", () => {
     branchWith(() => write("docs/readme.md", "changed\n"));
     const body =
-      "Door: two-way\n- `langsmith` reads variables which neither ADR-0058 section 3.4 nor the ticket lists. Not added: the gate refuses exactly the list of them.\n";
+      "Door: two-way\n\n- `langsmith` reads variables which neither ADR-0058 section 3.4 nor the ticket lists. Not added: the gate refuses exactly the list of them.\n";
     expectPasses(runGate(body), "0 Not-added line(s), 0 misplaced key(s)");
   });
 });
@@ -489,7 +490,7 @@ describe("third review, point 8: more markup prefixes", () => {
   ])("%s is refused by name", (line) => {
     branchWith(() => write("docs/readme.md", "changed\n"));
     expectFails(
-      runGate(`Door: two-way\n${line}`),
+      runGate(`Door: two-way\n\n${line}`),
       'write it as "Not-added:" at the start of its own line',
     );
   });
@@ -569,8 +570,9 @@ describe("fourth review, C6: labels and counters", () => {
   test("the ignored lines are counted as lines, and the content reads are printed", () => {
     branchWith(() => write("docs/readme.md", "changed\n"));
     expectPasses(
+      // A whole-line header comment, then the block, then its blank line.
       runGate(
-        "Door: two-way\n<!-- Not-added: dependency -->\nNot-added: dependency, schema, workflow",
+        "<!-- Not-added: dependency -->\nDoor: two-way\nNot-added: dependency, schema, workflow\n\nbody\n",
       ),
       "1 line(s) mentioning Not-added inside them ignored, not declarations",
       "dependency: 0 contact(s), 1 blob(s) read for content, 0 file(s) skipped by extension",

@@ -1,5 +1,5 @@
 import { decodeHTML } from "entities";
-import { readPullRequestEvent, stripNonDeclarations } from "./check-pr-door";
+import { readDeclarationBlocks, readPullRequestEvent, stripNonDeclarations } from "./check-pr-door";
 import { concludeGate, GateReport } from "./gate-report";
 import {
   type ChangedPath,
@@ -21,12 +21,17 @@ import {
  * declaration.
  *
  * THE FORM (owner decisions in chat on 2026-10-23, which ADR-0056 left to the
- * gate): one line that starts exactly with the key, like `Door:`,
+ * gate; the block, owner decision of 2026-10-24): one line of the
+ * declaration block at the top of the description, read by check-pr-door's
+ * `readDeclarationBlocks` — zero or more whole-line HTML comments, then the
+ * block (`Door:`, `Origin:`, this line…), ended by a blank line:
  *
+ *     Door: two-way
+ *     Origin: proposal
  *     Not-added: dependency, schema, telemetry
  *
- * outside HTML comments and fenced code blocks (removed first by
- * check-pr-door's own `stripNonDeclarations`); values from the closed
+ * Its value passes T2' (outside a code span: no `[`, `]`, `~`, `$`, no `<`
+ * but a whole autolink, no HTML), and holds values from the closed
  * vocabulary, comma-separated, each once; at most one such line. The line is
  * OPTIONAL: absent, the gate passes and says so.
  *
@@ -128,11 +133,12 @@ import {
  * the Latin `o`) is not normalised, so such a
  * line is neither a declaration nor refused.
  *
- * What this depends on in check-pr-door, which #141 is rewriting: only that
- * `stripNonDeclarations` returns `text` (comments and code removed, split by
- * `\n`) and `removedBlocks`. Which key lines count as declarations is read in
- * one function, `readDeclarationLines`, the only one to change when #141's
- * `readDeclarationBlocks` lands. Line numbers in refusals follow `text`.
+ * What this depends on in check-pr-door: `readDeclarationBlocks` (the
+ * admitted values, the block's range, the refusals, the key lines outside
+ * the block) and `stripNonDeclarations` (`text` with the body's line layout,
+ * `removedBlocks`), read in one function, `readDeclarationLines`. A key line
+ * the Door gate refuses is never refused twice (see that function). Line
+ * numbers in refusals are lines of the body.
  *
  * Runs on `pull_request` events (including `edited`). Elsewhere it declares
  * that it judged nothing. An event payload absent or unreadable on a
@@ -174,7 +180,11 @@ export function renderedLineStart(line: string): string {
   // an equivalent mutant on 2026-10-23, and removed.
   text = text.replace(/\p{Cf}/gu, "");
   text = text.toLowerCase();
-  for (let prefix = MARKUP_PREFIX.exec(text); prefix !== null; prefix = MARKUP_PREFIX.exec(text)) {
+  for (
+    let prefix = text.match(MARKUP_PREFIX);
+    prefix !== null;
+    prefix = text.match(MARKUP_PREFIX)
+  ) {
     text = text.slice(prefix[0].length);
   }
   return text;
@@ -188,6 +198,8 @@ export interface NegativesLines {
   readonly declarationLines: number;
   /** Visible lines whose start renders as the key without being a declaration: refused. */
   readonly misplacedLines: number;
+  /** `Not-added:` lines the Door gate refuses (T2', T3): named, never refused twice. */
+  readonly leftToDoor: number;
 }
 
 export type NegativesDeclaration =
@@ -203,31 +215,60 @@ function quote(text: string): string {
 
 /** Pure parse of the declaration of a pull request description. */
 export interface DeclarationLines {
-  /** The visible text: comments and code blocks removed, one line per `\n`. */
+  /** The visible text: comments and code blocks removed, with the body's line layout. */
   readonly text: string;
   readonly removedBlocks: number;
-  /** The value of every key line the declaration grammar admits, text after the key. */
+  /** The value of every `Not-added:` line the declaration block admits, text after the key. */
   readonly admitted: readonly string[];
+  /** `Not-added:` lines the Door gate refuses itself: T2' in the block, T3 outside it. */
+  readonly leftToDoor: number;
+  /** 1-based lines the Door gate already refuses (T1 end of block, T2'): not refused again. */
+  readonly doorRefusedLines: ReadonlySet<number>;
 }
 
 /**
- * THE ONE SEAM with the declaration grammar of check-pr-door. When #141
- * merges, this function alone changes: `text` and `removedBlocks` keep
- * coming from `stripNonDeclarations`, and `admitted` becomes
- * `readDeclarationBlocks(body).values["Not-added"]`, which adds a real
- * boundary before the block, values free of `<>[]` and backquote and double
- * quote, and nothing after unclosed raw HTML. Everything else of this gate
- * stays: the misplaced-key detection (the grammar does not provide it), and
- * the refusal of a key line the grammar does not admit, which is dormant
- * today because both readings coincide.
+ * THE ONE SEAM with the declaration grammar of check-pr-door (#141, merged
+ * in 0fe0a63). The owner decided on 2026-10-24 that declarations form a
+ * block at the top of the description: zero or more whole-line HTML comments,
+ * then the block, ended by a blank line (T1). `admitted` is
+ * `readDeclarationBlocks(body).values["Not-added"]`: the block's `Not-added:`
+ * lines whose value passes T2' — outside a code span, no `[`, `]`, `~`, `$`,
+ * no `<` but a whole autolink, no HTML; a refused line also stops the lines
+ * after it in the block from being read.
+ *
+ * NEVER REFUSED TWICE (decided here, 2026-10-24). The Door gate, a required
+ * check, already fails a `Not-added:` line it refuses: a value refused by
+ * T2' in the block, a key line at column 0 outside it (T3, unless it sits in
+ * a comment or fence opened at column 0 after a blank line, which GitHub does
+ * not display), and the line that ends the block without a blank one (T1).
+ * This gate does not refuse those again: it counts them as left to the Door
+ * gate and prints the count. What stays here is what the grammar does not
+ * provide: a line whose START RENDERS as the key without being one at column
+ * 0 (`> Not-added:`, `**Not-added:**`, `not-added:`, an escaped dash…). The
+ * two never overlap: T3 judges the exact key at column 0, this gate every
+ * other rendering, and a line the Door gate refuses (T1) is skipped here.
  */
 export function readDeclarationLines(body: string): DeclarationLines {
+  const blocks = readDeclarationBlocks(body);
   const { text, removedBlocks } = stripNonDeclarations(body);
-  const admitted = text.split("\n").flatMap((line) => {
-    const declaration = DECLARATION_LINE.exec(line);
-    return declaration === null ? [] : [declaration[1] ?? ""];
-  });
-  return { text, removedBlocks, admitted };
+  const raw = body.replace(/\r\n?/g, "\n").split("\n");
+  const inBlock =
+    blocks.block === null
+      ? 0
+      : raw
+          .slice(blocks.block.first - 1, blocks.block.last)
+          .filter((line) => DECLARATION_LINE.test(line)).length;
+  const admitted = blocks.values["Not-added"];
+  const outside = blocks.outsideKeyLines.filter(
+    (keyLine) => keyLine.key === "Not-added" && !keyLine.inside,
+  ).length;
+  return {
+    text,
+    removedBlocks,
+    admitted,
+    leftToDoor: inBlock - admitted.length + outside,
+    doorRefusedLines: new Set(blocks.refusals.map((refusal) => refusal.line)),
+  };
 }
 
 export function readNegativesDeclaration(
@@ -236,13 +277,14 @@ export function readNegativesDeclaration(
 ): NegativesDeclaration {
   const unmarked = body.startsWith(BYTE_ORDER_MARK) ? body.slice(BYTE_ORDER_MARK.length) : body;
   const normalized = unmarked.replace(/\r\n?/g, "\n");
-  const { text, removedBlocks, admitted } = readLines(normalized);
+  const { text, removedBlocks, admitted, leftToDoor, doorRefusedLines } = readLines(normalized);
   const visible = text.split("\n");
-  let keyLines = 0;
   const misplaced: string[] = [];
   visible.forEach((line, index) => {
-    if (DECLARATION_LINE.test(line)) keyLines += 1;
-    else if (NORMALISED_KEY.test(renderedLineStart(line))) {
+    // The exact key at column 0 is the Door gate's (T1-T3), and so is a line
+    // it already refuses: neither is judged here.
+    if (DECLARATION_LINE.test(line) || doorRefusedLines.has(index + 1)) return;
+    if (NORMALISED_KEY.test(renderedLineStart(line))) {
       misplaced.push(
         `line ${index + 1} ${quote(line)} — write it as "${NEGATIVES_KEY}" at the start of its own line`,
       );
@@ -250,7 +292,8 @@ export function readNegativesDeclaration(
   });
   const declarations = [...admitted];
   const lines: NegativesLines = {
-    linesExamined: text === "" ? 0 : visible.length,
+    // A final newline ends the last line; it opens no line (as the Door gate counts).
+    linesExamined: text === "" ? 0 : visible.length - (text.endsWith("\n") ? 1 : 0),
     removedBlocks,
     // Counted directly, never as a difference of two totals (which went to -1
     // on `Not<!-- x -->-added:`, where removing the comment CREATES a key): a
@@ -262,15 +305,9 @@ export function readNegativesDeclaration(
       .length,
     declarationLines: declarations.length,
     misplacedLines: misplaced.length,
+    leftToDoor,
   };
   const refusals = [...misplaced];
-  // A key line at column 0 that the grammar does not admit would otherwise be
-  // neither a declaration nor a refusal: the author's negative, silently gone.
-  if (keyLines > declarations.length) {
-    refusals.push(
-      `${keyLines - declarations.length} Not-added line(s) not admitted by the declaration grammar — see check-pr-door`,
-    );
-  }
   if (declarations.length > 1) {
     refusals.push(`${declarations.length} Not-added lines — declare at most one`);
   }
@@ -684,7 +721,8 @@ export function evaluateNegatives(
   const lines =
     `${declaration.linesExamined} description line(s) examined after removing ` +
     `${declaration.removedBlocks} comment/code block(s)${ignored}; ${declaration.declarationLines} Not-added line(s), ` +
-    `${declaration.misplacedLines} misplaced key(s)`;
+    `${declaration.misplacedLines} misplaced key(s), ` +
+    `${declaration.leftToDoor} Not-added line(s) left to the Door gate (T2', T3)`;
 
   if (declaration.kind === "absent") {
     report.check(
