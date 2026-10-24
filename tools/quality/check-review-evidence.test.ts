@@ -216,6 +216,24 @@ describe("touchesGatedPaths", () => {
         "ecosystem/knowledge-projection.ts",
       ],
     ],
+    [
+      "distribution/templates/dependabot/cargo.yml",
+      [
+        "distribution/templates/dependabot/cargo.yaml",
+        "distribution/templates/dependabot/cargo.yml.bak",
+        ".github/dependabot.yml",
+        "x/distribution/templates/dependabot/cargo.yml",
+      ],
+    ],
+    [
+      "distribution/templates/dependabot/github-actions.yml",
+      [
+        "distribution/templates/dependabot/github-actions.yaml",
+        "distribution/templates/dependabot/github-actions.yml.bak",
+        "distribution/templates/dependabot/npm.yml",
+        "ecosystem/check-dependabot-conformance.ts",
+      ],
+    ],
   ];
   for (const [path, neighbours] of loosening) {
     test(`matches ${path} exactly, not its neighbours`, () => {

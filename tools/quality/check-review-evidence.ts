@@ -81,13 +81,17 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * fails on any other: a new data file is a decision, gated or declared, never
  * a silent addition.
  *
- * LIMIT, not decided here (#152, ADR-0060 proposed in #158). The surface is
- * written in code that is itself outside the surface: this file, its test, the
- * inventory and `check-empty-allowances.ts` (whose DECLARED_ALLOWANCES is an
- * allowlist kept in code). A pull request that drops a pattern below, declares
- * the file in the inventory and adjusts the tests passes every gate with no
- * review evidence, because the gate it weakens is the one that judges it.
- * Guarding these files is an owner decision.
+ * LIMITS, not decided here (#152, ADR-0060 proposed in #158). The surface is
+ * written in code that is itself outside the surface: this file, its test and
+ * the inventory. A pull request that drops a pattern below, declares the file
+ * in the inventory and adjusts the tests passes every gate with no review
+ * evidence, because the gate it weakens is the one that judges it. The same
+ * holds for the allowlists kept in the code of other gates, for the CI
+ * definitions under `.github/workflows/`, for Markdown a gate reads as data,
+ * and for the configuration files declared as awaiting owner arbitration. The
+ * full list, with the command that finds the code allowlists, is the LIMITS
+ * section of `check-data-inventory.ts`. Guarding any of them is an owner
+ * decision.
  *
  * A review-artefact reference counts only if it names a path that exists in
  * the tree under review (2026-10-14). Before, any string shaped like
@@ -155,6 +159,9 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/schemas\/project\.v1\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
+  // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
+  /^distribution\/templates\/dependabot\/cargo\.yml$/,
+  /^distribution\/templates\/dependabot\/github-actions\.yml$/,
 ];
 
 /**
@@ -187,6 +194,8 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/schemas/project.v1.schema.json",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
+  "distribution/templates/dependabot/cargo.yml",
+  "distribution/templates/dependabot/github-actions.yml",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */
