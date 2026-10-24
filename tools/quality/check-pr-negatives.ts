@@ -129,18 +129,32 @@ import {
  * and that the Door gate does not refuse is refused by name ("write it as
  * `Not-added:` at the start of its own line") when its START, once
  * normalised, reads as the key. Normalisation: backslash escapes removed;
- * HTML comments removed whole (`-->`, `--!>`, the short forms, or open to
- * the end of the line), then tags, their quoted attribute values read whole;
+ * complete HTML comments removed (`-->`, `--!>`, the short forms `<!-->` and
+ * `<!--->`), then tags, their quoted attribute values read whole;
  * entities decoded; every `\p{Pd}` dash read as `-`; every
  * `\p{Default_Ignorable_Code_Point}` removed, with the braille blank U+2800
  * and the Hangul fillers (the key pattern needs no separator, so the key
- * split by an invisible still matches); case folded; the emphasis and code
- * markers `*`, `_` and the backquote removed wherever they sit; then markup
+ * split by an invisible still matches); case folded; the markers `*` and the
+ * backquote removed wherever they sit, `_` only at a word's edge (GitHub
+ * displays `Not_added` as written); then markup
  * prefixes stripped: white space, a task box `[ ]` or `[x]`, `>`, `-`, `+`,
  * `#`, `[`, `~`, a number followed by `.` or `)`. Where the line starts
  * inside a comment or fence the Door gate exempts, what is judged is what
  * follows its close on that line (GitHub displays it); a line wholly inside
- * one is not displayed and not judged.
+ * one is not displayed and not judged. Where it starts inside a comment that
+ * is not exempt, both the raw line and what follows the close are judged
+ * (see `displayedForms`).
+ *
+ * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-24) on 58
+ * bodies: the 15 cases of the seventh review, the 36 bodies of the fifth
+ * review's point 3, 4 underscore cases and 3 short-form comments. The
+ * combined verdict (Door, then this gate) differs from what GitHub displays
+ * on 8 of them, all refusals of a key GitHub does not display at a line
+ * start, none the reverse: a `<!--` in a code span or mid-line followed, on
+ * a later line, by `-->` and the key (2); a mid-line `<!--` whose comment
+ * GitHub really opens over the next line (5, kept refused since the fifth
+ * review); and a comment closed then reopened on the same line, which the
+ * Door gate refuses by T3 (1).
  *
  * What the detection does NOT recognise, declared and not coded: a visual
  * line break inside one source line (`<br>`, a `<p>` or the end of a
@@ -188,14 +202,23 @@ const RENDERS_AS_NOTHING = new RegExp(
   "gu",
 );
 /**
- * An HTML comment on the line: complete (`-->` or `--!>`, as HTML5 closes
- * it), a short form (`<!-->`, `<!--->`), or left open to the end of the line.
+ * A complete HTML comment on the line: closed by `-->` or `--!>`, as HTML5
+ * closes it, or a short form (`<!-->`, `<!--->`). A comment left open to the
+ * end of the line is not removed: everything after its opener is inside it,
+ * so the line cannot start with the key either way (a `|$` branch was an
+ * equivalent mutant, seventh review).
  */
-const HTML_COMMENT = /<!--(?:-?>|[\s\S]*?(?:--!?>|$))/g;
+const HTML_COMMENT = /<!--(?:-?>|[\s\S]*?--!?>)/g;
 /** An HTML tag, its quoted attribute values read whole: `<span title=">">`. */
 const HTML_TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|[^'">])*>/g;
-/** Emphasis and code markers, removed wherever they sit (`N*ot*-added`, `Not-`added``). */
-const EMPHASIS_MARKERS = /[*_`]/g;
+/**
+ * Emphasis and code markers. `*` and the backquote are removed wherever they
+ * sit (`N*ot*-added`, `Not-`added``): GitHub reads both inside a word. `_` is
+ * removed only where it can be emphasis, at a word's edge (`__Not-added:__`),
+ * never inside a word: GitHub displays `Not_added` with its underscore
+ * (measured on POST /markdown, seventh review).
+ */
+const EMPHASIS_MARKERS = /[*`]|(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu;
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
 /** Markup a line may start with before the key still renders first; a task box first. */
@@ -257,6 +280,14 @@ function quote(text: string): string {
   return JSON.stringify(trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed);
 }
 
+/** Is this 1-based line one of the declaration block's? */
+function inBlock(
+  block: { readonly first: number; readonly last: number } | null,
+  lineNumber: number,
+): boolean {
+  return block !== null && lineNumber >= block.first && lineNumber <= block.last;
+}
+
 /** Does this RAW line hold the exact key at column 0 (the Door gate's T1-T3)? */
 function isKeyLine(line: string): boolean {
   return line.startsWith(NEGATIVES_KEY);
@@ -269,6 +300,10 @@ export interface DeclarationLines {
   readonly visible: readonly string[];
   /** Per line: inside a comment or fence the Door gate exempts (StrippedBody.insideClean). */
   readonly insideClean: readonly boolean[];
+  /** Per line: it starts inside any comment or fence, clean or not (StrippedBody.inside). */
+  readonly inside: readonly boolean[];
+  /** 1-based first and last lines of the declaration block, or null when there is none. */
+  readonly block: { readonly first: number; readonly last: number } | null;
   /** The value of every `Not-added:` line the declaration block admits, text after the key. */
   readonly admitted: readonly string[];
   /** `Not-added:` lines the Door gate refuses itself: T2' in the block, T3 outside it. */
@@ -329,9 +364,9 @@ export function readDeclarationLines(body: string): DeclarationLines {
   const leftToDoorLines = new Set<number>();
   raw.forEach((line, index) => {
     const lineNumber = index + 1;
-    const inBlock =
-      blocks.block !== null && lineNumber >= blocks.block.first && lineNumber <= blocks.block.last;
-    if (inBlock && isKeyLine(line) && refusedLines.has(lineNumber)) leftToDoorLines.add(lineNumber);
+    if (inBlock(blocks.block, lineNumber) && isKeyLine(line) && refusedLines.has(lineNumber)) {
+      leftToDoorLines.add(lineNumber);
+    }
   });
   for (const keyLine of blocks.outsideKeyLines) {
     if (keyLine.key === "Not-added" && !keyLine.inside) leftToDoorLines.add(keyLine.line);
@@ -340,6 +375,8 @@ export function readDeclarationLines(body: string): DeclarationLines {
     raw,
     visible: stripped.lines,
     insideClean: stripped.insideClean,
+    inside: stripped.inside,
+    block: blocks.block,
     admitted: blocks.values["Not-added"],
     leftToDoor: leftToDoorLines.size,
     leftToDoorLines,
@@ -349,6 +386,32 @@ export function readDeclarationLines(body: string): DeclarationLines {
     removedLines: blocks.removedLines,
     removedBlocks: blocks.removedBlocks,
   };
+}
+
+/**
+ * What GitHub may display of a raw line, judged by the misplaced-key check.
+ * Measured against GitHub's own rendering (POST /markdown, gfm) on the
+ * seventh review's bench, 2026-10-24:
+ *
+ * - a line inside a comment or fence the Door gate exempts (clean): only what
+ *   follows the close (`visible`), since GitHub hides the rest (sixth review);
+ * - a line inside a comment that is NOT clean: the raw line AND what follows
+ *   the close. `stripNonDeclarations` reads a `<!--` in a code span, or one
+ *   cmark ignores, as an opener, so `visible` alone would hide lines GitHub
+ *   displays (19 of the 36 point-3 bodies went silent that way); the raw
+ *   line alone would miss a key GitHub shows after a real comment closes
+ *   (after a paragraph, an indented opener, a `<pre>` block). The cost, also
+ *   measured: a key right after `-->` on a line that is in fact prose (the
+ *   opener in a code span, or mid-line) is refused while GitHub shows it
+ *   after other text;
+ * - any other line: the raw line.
+ */
+function displayedForms(read: DeclarationLines, index: number): readonly string[] {
+  const line = read.raw[index] ?? "";
+  const visible = read.visible[index] ?? "";
+  if (read.insideClean[index] === true) return [visible];
+  if (read.inside[index] === true) return [line, visible];
+  return [line];
 }
 
 /** Pure parse of the declaration of a pull request description. */
@@ -363,13 +426,9 @@ export function readNegativesDeclaration(
     // The Door gate owns the exact key at column 0 of the RAW line, and the
     // lines it refuses: neither is judged here.
     if (isKeyLine(line) || read.doorRefusedLines.has(index + 1)) return;
-    // A line the Door gate exempts (it starts inside a comment or fence
-    // opened at column 0 after a blank line) is not skipped whole: the
-    // comment may close on it, and GitHub displays what follows the close
-    // (sixth review). What is judged there is the line once the exempt part
-    // is removed (`visible`); elsewhere, the raw line, as GitHub displays it.
-    const shown = read.insideClean[index] === true ? (read.visible[index] ?? "") : line;
-    if (NORMALISED_KEY.test(renderedLineStart(shown))) {
+    if (
+      displayedForms(read, index).some((shown) => NORMALISED_KEY.test(renderedLineStart(shown)))
+    ) {
       misplacedLines.add(index + 1);
       misplaced.push(
         `line ${index + 1} ${quote(line)} — write it as "${NEGATIVES_KEY}" at the start of its own line`,
@@ -386,10 +445,14 @@ export function readNegativesDeclaration(
     // when its raw text mentions the key and the stripped one no longer does,
     // and it is neither refused here nor left to the Door gate — the three
     // counters are disjoint, so their sum never exceeds the lines (sixth review).
+    // A line of the declaration block is never ignored: the block is read by
+    // the Door gate on raw lines, so a `<!--` in a code span above a
+    // `Not-added:` line does not hide it (seventh review, minor-3).
     ignoredInBlocks: read.raw.filter(
       (line, index) =>
         KEY_ANYWHERE.test(line) &&
         !KEY_ANYWHERE.test(read.visible[index] ?? "") &&
+        !inBlock(read.block, index + 1) &&
         !misplacedLines.has(index + 1) &&
         !read.leftToDoorLines.has(index + 1),
     ).length,

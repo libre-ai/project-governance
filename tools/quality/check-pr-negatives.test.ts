@@ -189,6 +189,11 @@ describe("the declaration", () => {
       "Door: two-way\n\nThe Not-added: line is optional.\n",
       0,
     ],
+    [
+      "a key hidden in a comment beside a visible one",
+      "Not-added: schema <!-- Not-added: x -->",
+      0,
+    ],
     ["two lines hidden in a code block", "```\nNot-added: a\nNot-added: b\n```", 2],
   ])("the ignored-mention counter never goes below zero: %s", (_, body, expected) => {
     expect(readNegativesDeclaration(body).ignoredInBlocks).toBe(expected);
@@ -238,6 +243,8 @@ describe("the seam with the declaration block (readDeclarationLines, #141)", () 
       raw: ["Not-added: schema"],
       visible: ["Not-added: schema"],
       insideClean: [false],
+      inside: [false],
+      block: { first: 1, last: 1 },
       admitted: [" workflow"],
       leftToDoor: 0,
       leftToDoorLines: new Set<number>(),
@@ -917,5 +924,64 @@ describe("sixth review, on the combined verdict", () => {
     expect(
       scan.deleted + byName + scan.links + scan.skippedByExtension + gitlinks + scan.blobsRead,
     ).toBe(entries.length);
+  });
+});
+
+// Seventh review (2026-10-24). Every expected verdict below is GitHub's
+// rendering of the body (POST /markdown, mode gfm): "refused" where GitHub
+// displays the key at the start of a line, "absent" where it does not.
+describe("seventh review, against GitHub's rendering", () => {
+  const B = "Door: two-way\nOrigin: proposal\n\n";
+  const NOW = new Date("2026-10-24T00:00:00Z");
+  const combined = (body: string) => [
+    evaluateDoor(body, "PR #0 description", null, NOW).outcome,
+    readNegativesDeclaration(body).kind,
+  ];
+
+  // minor-2: every way HTML5 closes a comment, and the short forms.
+  test.each([
+    `${B}<!-- a --!>Not-added: dependency\n`,
+    `${B}<!-->Not-added: dependency\n`,
+    `${B}<!--->Not-added: dependency\n`,
+  ])("minor-2: %j shows the key, refused here, Door passing", (body) => {
+    expect(combined(body)).toEqual(["pass", "refused"]);
+  });
+
+  // minor-1: a comment that is not the Door gate's exempt kind, closed on
+  // the line, shows what follows the close.
+  test.each([
+    ["b7, after a paragraph", `${B}para\n<!--\nx -->Not-added: dependency\n`],
+    ["b9, an indented opener", `${B}  <!--\nx -->Not-added: dependency\n`],
+    ["b14, after a <pre> block", `${B}<pre>\nx\n</pre>\n\n<!--\nx -->Not-added: dependency\n`],
+  ])("minor-1: %s shows the key, refused here, Door passing", (_, body) => {
+    expect(combined(body)).toEqual(["pass", "refused"]);
+  });
+
+  test("minor-1 control: b3, the key after prose and a comment, is prose", () => {
+    expect(combined(`${B}<!--\nx -->prose <!-- c -->Not-added: dependency\n`)).toEqual([
+      "pass",
+      "absent",
+    ]);
+  });
+
+  // An underscore inside a word is displayed; at a word's edge it is emphasis.
+  const UNDERSCORES: readonly (readonly [string, "absent" | "refused"])[] = [
+    ["Not_added: dependency", "absent"],
+    ["not_added: is a variable name", "absent"],
+    ["__Not-added:__ dependency", "refused"],
+    ["_Not-added:_ dependency", "refused"],
+  ];
+  test.each(UNDERSCORES)("underscore: %j is %s", (line, kind) => {
+    expect(combined(`${B}${line}\n`)).toEqual(["pass", kind]);
+  });
+
+  test("minor-3: a block line is never ignored, so the counters sum on the block", () => {
+    const body =
+      "Door: two-way\nOrigin: proposal\nOwner-arbitration: see `<!--` below\nNot-added: hosted-service\n\nbody\n";
+    const read = readNegativesDeclaration(body);
+    expect([read.kind, read.declarationLines, read.ignoredInBlocks]).toEqual(["declared", 1, 0]);
+    expect(
+      read.declarationLines + read.ignoredInBlocks + read.misplacedLines + read.leftToDoor,
+    ).toBe(1);
   });
 });
