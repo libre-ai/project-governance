@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: EUPL-1.2
 set -euo pipefail
-if [[ $# -ne 3 ]]; then
-  echo 'Usage: install-toolchains.sh ABSOLUTE_BUN_POLICY ABSOLUTE_NOTEBOOK_POLICY ABSOLUTE_CARGO_DENY_POLICY' >&2
+if [[ $# -ne 4 ]]; then
+  echo 'Usage: install-toolchains.sh ABSOLUTE_BUN_POLICY ABSOLUTE_NOTEBOOK_POLICY ABSOLUTE_CARGO_DENY_POLICY ABSOLUTE_OSV_SCANNER_POLICY' >&2
   exit 2
 fi
 python3 - "$@" <<'PYTHON'
@@ -80,6 +80,29 @@ def validate_cargo_deny(policy):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete cargo-deny policy') from error
 
+OSV_SCANNER_VERSION = '2.7.0'
+OSV_SCANNER_ASSET = 'osv-scanner_linux_amd64'
+
+def validate_osv_scanner(policy):
+    # Consumers of the LangGraph advisory gate need this binary on PATH and in
+    # LIBRE_AI_OSV_SCANNER; the release publishes raw binaries, not archives.
+    try:
+        if policy['tool'] != 'osv-scanner' or policy['version'] != OSV_SCANNER_VERSION:
+            raise ValueError('Unexpected osv-scanner version')
+        d = policy['platforms']['linux-x64']
+        if d['binaryName'] != OSV_SCANNER_ASSET:
+            raise ValueError('Unexpected osv-scanner asset name')
+        if d['binaryUrl'] != 'https://github.com/google/osv-scanner/releases/download/v' + OSV_SCANNER_VERSION + '/' + OSV_SCANNER_ASSET:
+            raise ValueError('Unexpected osv-scanner binary URL')
+        if not isinstance(d['binarySha256'], str) or not re.fullmatch(r'[a-f0-9]{64}', d['binarySha256']):
+            raise ValueError('Invalid policy digest')
+        return d
+    except (KeyError, TypeError) as error:
+        raise ValueError('Incomplete osv-scanner policy') from error
+
+def fetch(url, destination):
+    subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '15', '--max-time', '120', '--max-filesize', str(LIMIT), '--output', str(destination), url], check=True, timeout=125)
+
 def safe_member(name):
     path = PurePosixPath(name)
     if path.is_absolute() or '..' in path.parts or '\\' in name:
@@ -126,6 +149,7 @@ def policy(path):
 def main():
     bu, bh, node = validate_policies(policy(sys.argv[1]), policy(sys.argv[2]))
     deny = validate_cargo_deny(policy(sys.argv[3]))
+    osv = validate_osv_scanner(policy(sys.argv[4]))
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise ValueError('This installer supports Linux x64 only')
     parent = Path(os.environ['RUNNER_TEMP']).resolve(strict=True)
@@ -139,23 +163,29 @@ def main():
         (deny['archiveUrl'], deny['archiveSha256'], 'cargo-deny.tar.gz', deny['executableRelativePath'], False, 'r:gz', 'cargo-deny'),
     ]:
         archive = root / filename
-        subprocess.run(['curl', '--fail', '--silent', '--show-error', '--location', '--proto', '=https', '--proto-redir', '=https', '--connect-timeout', '15', '--max-time', '120', '--max-filesize', str(LIMIT), '--output', str(archive), url], check=True, timeout=125)
+        fetch(url, archive)
         verify_digest(archive, digest)
         extract_binary(archive, member, root / binary, zipped, tar_mode)
+    # osv-scanner ships as a raw binary: the verified download is the executable.
+    fetch(osv['binaryUrl'], root / 'osv-scanner')
+    verify_digest(root / 'osv-scanner', osv['binarySha256'])
+    (root / 'osv-scanner').chmod(0o755)
     verify_digest(root / 'node', node['executableSha256'])
     verify_digest(root / 'cargo-deny', deny['executableSha256'])
-    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0'), ('cargo-deny', '--version', 'cargo-deny ' + CARGO_DENY_VERSION)]:
-        version = subprocess.check_output([str(root / binary), flag], timeout=10, env={'PATH': '/usr/bin:/bin'}).decode().strip()
+    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0'), ('cargo-deny', '--version', 'cargo-deny ' + CARGO_DENY_VERSION), ('osv-scanner', '--version', 'osv-scanner version: ' + OSV_SCANNER_VERSION)]:
+        # osv-scanner prints three lines (scanner, library, commit): the first names the release.
+        version = subprocess.check_output([str(root / binary), flag], timeout=10, env={'PATH': '/usr/bin:/bin'}).decode().strip().split('\n')[0]
         if version != expected:
             raise ValueError('Extracted toolchain version mismatch')
-    # Activate only after every archive, the Node and cargo-deny binaries and
-    # every version pass.
+    # Activate only after every archive, the Node, cargo-deny and osv-scanner
+    # binaries and every version pass.
     with outputs[0].open('a') as stream:
         stream.write(str(root) + '\n')
     with outputs[1].open('a') as stream:
         stream.write('NOTEBOOK_QUALIFICATION_NODE=' + str(root / 'node') + '\n')
         stream.write('LIBRE_AI_CARGO_DENY=' + str(root / 'cargo-deny') + '\n')
-    print('Bun, Node and cargo-deny ' + CARGO_DENY_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')
+        stream.write('LIBRE_AI_OSV_SCANNER=' + str(root / 'osv-scanner') + '\n')
+    print('Bun, Node, cargo-deny ' + CARGO_DENY_VERSION + ' and osv-scanner ' + OSV_SCANNER_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')
 
 if __name__ == '__main__':
     main()

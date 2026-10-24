@@ -1,0 +1,29 @@
+# Advisory floor for the LangGraph JS packages — ADR-0058 section 3, condition 1.
+#
+# One line per advisory fix: <package> <minimum version> <advisory id>. A resolved version below the
+# minimum fails check-langgraph-advisory-floor.ts. The list is read on the advisories, it is not
+# frozen: an advisory published after the date below is a new line, reviewed like any edit.
+#
+# Read on 2026-10-23. Source of every minimum: the advisories the publisher publishes on its own
+# repositories (the global advisory database carries only GHSA-r399-636x-v7f6 of the six):
+#   gh api repos/langchain-ai/langgraphjs/security-advisories --jq '.[] | {ghsa_id, v: [.vulnerabilities[] | {p: .package.name, r: .vulnerable_version_range, f: .patched_versions}]}'
+#   gh api repos/langchain-ai/langchainjs/security-advisories   (same shape; GHSA-r399-636x-v7f6)
+# Origin of the rows: the four of the governance ticket, plus those the first consumer's
+# specification lists on the same date (section 8.4 of the execution-continuity-evaluator
+# cahier des charges). Replay both before relying on this file.
+#
+# The two persistence-package rows (GHSA-8p8h-xj5r-m5wf) are unreachable in a repository that passes
+# check-langgraph-persistence.ts; they stay so the floor is the union of the two lists.
+#
+# The floor is a minimum. GHSA-432w-3h3v-2pv4 also lists @langchain/langgraph-sdk 2.0.0 with no
+# fixed version: no row can express that, and the vulnerability database is the instrument for it.
+
+@langchain/core 1.1.8 GHSA-r399-636x-v7f6
+@langchain/langgraph 1.4.12 GHSA-j87f-x5h5-gr75
+@langchain/langgraph 1.4.21 GHSA-432w-3h3v-2pv4
+@langchain/langgraph 1.4.21 GHSA-wp87-994x-j95x
+@langchain/langgraph-checkpoint 1.1.4 GHSA-j87f-x5h5-gr75
+@langchain/langgraph-checkpoint-postgres 1.0.6 GHSA-8p8h-xj5r-m5wf
+@langchain/langgraph-checkpoint-redis 1.0.12 GHSA-8p8h-xj5r-m5wf
+@langchain/langgraph-sdk 1.12.2 GHSA-r3xm-q2gp-xjjg
+@langchain/langgraph-sdk 1.12.3 GHSA-432w-3h3v-2pv4

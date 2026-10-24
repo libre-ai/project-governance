@@ -24,9 +24,29 @@ const ajv = new Ajv2020({ allErrors: true, strict: true });
 addFormats(ajv);
 const validate = ajv.compile(schema);
 
+const SHELL_CEILING_FIELDS: ReadonlySet<string> = new Set([
+  "memory_ceiling_mib",
+  "ceiling_fixed_on",
+]);
+
+/**
+ * A missing ceiling field is a drift with a name, not an anonymous « must have
+ * required property »: the operator reads which ADR rule the card breaks.
+ */
+function isMissingShellCeiling(error: ErrorObject): boolean {
+  return (
+    error.keyword === "required" &&
+    error.instancePath === "/desktop_shell" &&
+    SHELL_CEILING_FIELDS.has(String((error.params as { missingProperty?: string }).missingProperty))
+  );
+}
+
 function safeError(error: ErrorObject): string {
   const message = error.message ?? "invalid";
-  return `${error.instancePath || "/"}: ${message} (${error.keyword})`;
+  const base = `${error.instancePath || "/"}: ${message} (${error.keyword})`;
+  return isMissingShellCeiling(error)
+    ? `${base} — ADR-0057 §4: a desktop shell fixes its resident-memory ceiling in the card before any measure`
+    : base;
 }
 
 /**
@@ -55,6 +75,11 @@ function futureDateErrors(value: unknown): string[] {
       `/freshness/last_verified_on: ${card.freshness.last_verified_on} est dans le futur (borne : ${latest})`,
     );
   }
+  if (card.desktop_shell && card.desktop_shell.ceiling_fixed_on > latest) {
+    errors.push(
+      `/desktop_shell/ceiling_fixed_on: ${card.desktop_shell.ceiling_fixed_on} est dans le futur (borne : ${latest})`,
+    );
+  }
   for (const phase of card.phases) {
     for (const criterion of phase.exit_criteria) {
       if (criterion.evidence && criterion.evidence.date > latest) {
@@ -81,6 +106,47 @@ export function validateCard(value: unknown): string[] {
   return futureDateErrors(value);
 }
 
+export interface DesktopShellCensus {
+  readonly cards: number;
+  readonly withoutShell: number;
+  readonly declaringShell: number;
+  readonly withCeiling: number;
+  readonly withoutCeiling: number;
+}
+
+/**
+ * The counters of ADR-0057 §4, for a gate to print: a green run over zero
+ * shells reads the same as one over twelve unless the number is said out loud.
+ * Counts what the cards DECLARE, whether or not they validate — it takes raw
+ * parsed values, so a shell whose ceiling is missing is counted as such rather
+ * than silently dropped. `schema` stays the authority on validity.
+ * The parts sum to the whole: withoutShell + declaringShell = cards, and
+ * withCeiling + withoutCeiling = declaringShell.
+ */
+export function summariseDesktopShells(values: readonly unknown[]): DesktopShellCensus {
+  let declaringShell = 0;
+  let withCeiling = 0;
+  for (const value of values) {
+    const shell = (value as { desktop_shell?: unknown } | null)?.desktop_shell;
+    if (shell === undefined || shell === null) continue;
+    declaringShell += 1;
+    const fields = shell as { memory_ceiling_mib?: unknown; ceiling_fixed_on?: unknown };
+    if (
+      Number.isInteger(fields.memory_ceiling_mib) &&
+      typeof fields.ceiling_fixed_on === "string"
+    ) {
+      withCeiling += 1;
+    }
+  }
+  return {
+    cards: values.length,
+    withoutShell: values.length - declaringShell,
+    declaringShell,
+    withCeiling,
+    withoutCeiling: declaringShell - withCeiling,
+  };
+}
+
 interface ExitCriterion {
   readonly id: string;
   readonly weight: number;
@@ -93,7 +159,14 @@ interface Phase {
   readonly exit_criteria: readonly ExitCriterion[];
 }
 
+interface DesktopShell {
+  readonly framework: "tauri-2";
+  readonly memory_ceiling_mib: number;
+  readonly ceiling_fixed_on: string;
+}
+
 interface CardShape {
+  readonly desktop_shell?: DesktopShell;
   readonly scope_stability: "stable" | "unstable";
   readonly phases: readonly Phase[];
   readonly maturity: string;

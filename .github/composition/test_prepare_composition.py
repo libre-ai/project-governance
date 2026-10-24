@@ -104,6 +104,27 @@ class CompositionTests(unittest.TestCase):
         moved["repositories"]["schemas-and-contracts"]["ref"] = "b" * 40
         self.assertEqual(module.prepare(moved, "execution-sandbox")["cargoSources"][0]["rev"], "b" * 40)
 
+    def test_only_the_declared_target_requires_the_offline_advisory_database(self):
+        # The database is a ~3 minute network fetch: a target that does not
+        # consume it must not pay for it. The table is static, like
+        # CARGO_SIBLING_SOURCES, so a target's own files cannot request it.
+        plan = module.prepare(self.manifest, "execution-continuity-evaluator")
+        self.assertEqual(plan["advisoryDatabase"], {
+            "lock": "tools/review/bun.lock",
+            "cacheDirectory": ".cache/osv-advisory-db",
+        })
+        for target in module.ORDER:
+            if target != "execution-continuity-evaluator":
+                self.assertIsNone(module.prepare(self.manifest, target)["advisoryDatabase"], target)
+
+    def test_advisory_database_paths_are_relative_and_confined(self):
+        for target, row in module.OFFLINE_ADVISORY_DATABASES.items():
+            self.assertIn(target, module.ORDER)
+            self.assertEqual(set(row), {"lock", "cacheDirectory"})
+            for value in row.values():
+                self.assertRegex(value, r"^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$")
+                self.assertNotIn("..", value.split("/"))
+
     def test_cli_emits_argv_only_and_rejects_duplicate_json(self):
         result = subprocess.run([sys.executable, str(HERE / "prepare-composition.py"), "--target", "database-policy-inspector"], capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)

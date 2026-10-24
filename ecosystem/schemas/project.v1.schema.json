@@ -247,6 +247,29 @@
         }
       ]
     },
+    "desktop_shell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framework", "memory_ceiling_mib", "ceiling_fixed_on"],
+      "description": "Optional: present when the product ships a macOS desktop shell (ADR-0057 §1). Declaring the shell is declaring its resident-memory ceiling: ADR-0057 §4 requires the ceiling to be written in the card before any measure, so a shell without a ceiling is refused by construction (512 MiB when the product has no value of its own, D92). Reference template of the shell: docs/method/TAURI-SHELL.md.",
+      "properties": {
+        "framework": {
+          "const": "tauri-2",
+          "description": "The shell technology of every catalogue product (ADR-0057 §1)."
+        },
+        "memory_ceiling_mib": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Resident-memory ceiling of the shell in steady state, in MiB. A measured excess at qualification is a surface decision (return to a native shell for this product), never a revision of this number (ADR-0057 §4)."
+        },
+        "ceiling_fixed_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+          "description": "Date the ceiling was written, which must precede its first measure (I-08). Real calendar date (ajv-formats full mode); the validator additionally refuses future dates."
+        }
+      }
+    },
     "scope_stability": {
       "enum": ["stable", "unstable"],
       "description": "unstable \u2192 the aggregator reports \u00ab Avancement non calculable \u2014 p\u00e9rim\u00e8tre \u00e0 clarifier \u00bb instead of a ratio. Information, not a defect."
