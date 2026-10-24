@@ -135,8 +135,9 @@ import {
  * `\p{Default_Ignorable_Code_Point}` removed, with the braille blank U+2800
  * and the Hangul fillers (the key pattern needs no separator, so the key
  * split by an invisible still matches); case folded; the markers `*` and the
- * backquote removed wherever they sit, `_` only at a word's edge (GitHub
- * displays `Not_added` as written); then markup
+ * backquote removed wherever they sit, `_` only at a word's edge and when
+ * the line holds two such runs, a pair approximated by a count (GitHub
+ * displays `Not_added` and a lone `Not_-added` as written); then markup
  * prefixes stripped: white space, a task box `[ ]` or `[x]`, `>`, `-`, `+`,
  * `#`, `[`, `~`, a number followed by `.` or `)`. Where the line starts
  * inside a comment or fence the Door gate exempts, what is judged is what
@@ -145,9 +146,9 @@ import {
  * is not exempt, both the raw line and what follows the close are judged
  * (see `displayedForms`).
  *
- * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-24) on 58
+ * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-24) on 60
  * bodies: the 15 cases of the seventh review, the 36 bodies of the fifth
- * review's point 3, 4 underscore cases and 3 short-form comments. The
+ * review's point 3, 6 underscore cases and 3 short-form comments. The
  * combined verdict (Door, then this gate) differs from what GitHub displays
  * on 8 of them, all refusals of a key GitHub does not display at a line
  * start, none the reverse: a `<!--` in a code span or mid-line followed, on
@@ -213,12 +214,24 @@ const HTML_COMMENT = /<!--(?:-?>|[\s\S]*?--!?>)/g;
 const HTML_TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|[^'">])*>/g;
 /**
  * Emphasis and code markers. `*` and the backquote are removed wherever they
- * sit (`N*ot*-added`, `Not-`added``): GitHub reads both inside a word. `_` is
- * removed only where it can be emphasis, at a word's edge (`__Not-added:__`),
- * never inside a word: GitHub displays `Not_added` with its underscore
- * (measured on POST /markdown, seventh review).
+ * sit (`N*ot*-added`, `Not-`added``): GitHub reads both inside a word.
  */
-const EMPHASIS_MARKERS = /[*`]|(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu;
+const EMPHASIS_MARKERS = /[*`]/g;
+/**
+ * `_` runs at a word's edge, where GitHub can read emphasis (`__Not-added:__`,
+ * `_Not_-added:`), never inside a word: GitHub displays `Not_added` with its
+ * underscore. Emphasis needs a pair, so the runs are removed only when the
+ * line holds at least two of them: a lone `Not_-added:` is displayed as
+ * written (measured on POST /markdown, seventh review). Pairing is
+ * approximated by that count, not modelled.
+ */
+const EDGE_UNDERSCORES = /(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu;
+
+/** The line without the `_` runs GitHub would read as emphasis (see EDGE_UNDERSCORES). */
+function withoutUnderscoreEmphasis(text: string): string {
+  const runs = text.match(EDGE_UNDERSCORES) ?? [];
+  return runs.length >= 2 ? text.replace(EDGE_UNDERSCORES, "") : text;
+}
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
 /** Markup a line may start with before the key still renders first; a task box first. */
@@ -243,7 +256,7 @@ export function renderedLineStart(line: string): string {
   // NORMALISED_KEY accepts no separator at all, so `Not` U+00AD `added:`
   // still reads as the key.
   text = text.replace(RENDERS_AS_NOTHING, "");
-  text = text.toLowerCase().replace(EMPHASIS_MARKERS, "");
+  text = withoutUnderscoreEmphasis(text.toLowerCase().replace(EMPHASIS_MARKERS, ""));
   for (
     let prefix = text.match(MARKUP_PREFIX);
     prefix !== null;

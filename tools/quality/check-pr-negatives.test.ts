@@ -970,6 +970,8 @@ describe("seventh review, against GitHub's rendering", () => {
     ["not_added: is a variable name", "absent"],
     ["__Not-added:__ dependency", "refused"],
     ["_Not-added:_ dependency", "refused"],
+    ["_Not_-added: dependency", "refused"],
+    ["Not_-added: dependency", "absent"],
   ];
   test.each(UNDERSCORES)("underscore: %j is %s", (line, kind) => {
     expect(combined(`${B}${line}\n`)).toEqual(["pass", kind]);
