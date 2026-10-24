@@ -42,8 +42,8 @@ installed for every target; it is the one fixed cost, and a 55 MB file.
 
 ## What a consumer does
 
-Move the pin of `libre-ai/project-governance/.github/workflows/validate-composition.yml@<sha>`
-and its `tooling_ref` input to a commit that contains this change. Both name the
+Move the commit pin of the reusable workflow `validate-composition.yml` (the
+`uses:` line) and its `tooling_ref` input to a commit that contains this change. Both name the
 same commit, because the installer, the downloader and `toolchains/osv-scanner.json`
 are read from the tooling checkout, not from the composed `project-governance`
 (whose ref moves in a later pull request). Nothing else is needed: the consumer
