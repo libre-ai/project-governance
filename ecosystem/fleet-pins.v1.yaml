@@ -258,3 +258,40 @@ generations:
       before another generation is declared, or the next declaration turns the
       pins gate red on all of them. Merging this entry runs fleet-bump.yml;
       with no FLEET_BUMP_TOKEN secret (none is set) it plans only.
+  - sha: 75d6ea085b18cb15d450d7f0f5b1ba9d69645800
+    added_on: 2026-10-24
+    note: >-
+      osv-scanner 2.7.0 (toolchains/osv-scanner.json, sha256 verified) and
+      the offline OSV advisory database are provided to the composition
+      (#149): .github/composition/download-advisory-database.py and the
+      matching steps of validate-composition.yml, for the one target whose
+      gate reads the database (execution-continuity-evaluator, advisory gate
+      of the LangGraph review fan-out, second instrument of CA-18); any other
+      target runs the step and pays nothing. The composition manifest and
+      the four reusable-*.yml templates are unchanged from 1cebcb49 (`git
+      diff 1cebcb49 75d6ea08 -- .github/composition/manifest.json
+      '.github/workflows/reusable-*.yml'` is empty), so every composed ref
+      is the one R declared, and no tool called by a reusable-*.yml changed.
+      The rest of the range is not read by a pin surface: governance's own
+      gates (pinned-citations #133, review evidence #135, inventory-drift.yml
+      comment only), the optional desktop_shell field of
+      project.v1.schema.json (#140, additive), the LangGraph entry-gate
+      templates under distribution/templates/ (#145, copied by a consumer,
+      not pinned), ADR-0055 to ADR-0058 and docs; package.json gains one
+      script and no dependency, so no bun.lock resolution changes. Generation
+      coherence at 75d6ea08 (replayed with
+      `check-generation-coherence.py --declaration 75d6ea08`): 16 declared,
+      15 verified, 0 failed, 1 not applicable (database-policy-inspector), 20
+      gate roots replayed, 20 passed. Declared by owner decision of
+      2026-10-23, followed at once by a bump wave
+      (tools/fleet/bump-generation.ts). Grace window, measured by the dry run
+      of that tool to this sha: 17 consumers are on R (0db2e10e), 1
+      (ai-work-supervision) on b0a5ff0c, 0 on 1cebcb49, 2 repositories
+      without a pin surface (.github, pi-harness-challenger); 18 to bump, 0
+      refused, 0 unreadable. R becomes three generations behind, beyond the
+      grace limit: the Inventory drift job of governance reports 16 of the
+      17 pins red (check-fleet-pins.ts replayed on this register: 16 of 17
+      assertions fail; product-research is private and outside that gate)
+      from this declaration until the wave lands. The R note's condition
+      (every consumer moves before another declaration) is not met; the owner
+      accepted it knowingly. No generation is retired here.
