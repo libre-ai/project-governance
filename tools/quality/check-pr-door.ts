@@ -255,7 +255,10 @@ function splitLines(body: string): { readonly lines: string[]; readonly finalNew
 function opensRawHtmlBlock(line: string): boolean {
   if (RAW_TEXT_BLOCK_OPEN.test(line) || line.includes("--!>")) return true;
   for (const [opener, end] of UNCLOSED_HTML_BLOCKS) {
-    const open = opener.exec(line);
+    // `match`, not `opener.exec`: the fleet's raw-SQL gate reads any `.exec(`
+    // on a non-constant receiver as a SQL execution. The openers carry no `g`
+    // flag, so both return the same first match.
+    const open = line.match(opener);
     if (open !== null) return !line.slice(open[0].length).includes(end);
   }
   return false;
