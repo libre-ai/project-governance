@@ -1,0 +1,9 @@
+{
+  "exemptions": [
+    {
+      "id": "refusal.rea-install",
+      "evidence": "morluto/rea@33d5ae0:.github/workflows/",
+      "because": "divergence between the register header and its data, left to the owner: the header (and ADR-0056 D4) writes a pinned citation as <owner>/<repository>@<sha>:<path>:<lines>, while this evidence pins a directory without lines; its reason counts the 88 action references of that directory with a git grep. Resolving it is either rewriting the evidence as file:line citations or amending the format to admit a pinned path without lines; either removes this exemption"
+    }
+  ]
+}

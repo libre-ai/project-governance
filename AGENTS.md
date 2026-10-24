@@ -59,8 +59,9 @@ forgotten**.
 ## Quality gates
 
 Run `bun run check` (Bun floor, source policy, retired names, forgetting
-register, project cards, knowledge objects, objectives, specification locks,
-licences, dead code, lint, typecheck, tests). Never hide a red test.
+register, refusals register, project cards, knowledge objects, objectives,
+specification locks, licences, dead code, lint, typecheck, tests). Never hide
+a red test.
 
 ## Agents
 
