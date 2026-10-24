@@ -3,9 +3,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  constructOpenedBy,
   evaluateDoor,
   isIsoCalendarDate,
   judgeOrigin,
+  readDeclarationBlocks,
   readPullRequestEvent,
   stripNonDeclarations,
 } from "./check-pr-door";
@@ -18,42 +20,338 @@ const evaluate = (
   author: string | null = null,
   now: Date = NOW,
 ) => evaluateDoor(body, label, author, now);
+const passes = (body: string, author: string | null = null): boolean =>
+  evaluate(body, "d", author).outcome === "pass";
+const violations = (body: string, author: string | null = null): string =>
+  evaluate(body, "d", author).violations.join("\n");
 
-// The Door cases below carry a valid Origin line, so each verdict is the Door
-// verdict alone: without it every Door case would fail on the missing Origin,
-// and a broken Door rule would hide behind that failure. It comes first,
-// followed by a blank line, so the case under test starts a block of its own.
-const VALID_ORIGIN = "Origin: proposal";
-const okOf = (body: string): boolean => evaluate(`${VALID_ORIGIN}\n\n${body}`).outcome === "pass";
-// The converse for the Origin cases: a valid Door line, the Origin line under test.
-const originOk = (originBody: string, author: string | null = null): boolean =>
-  evaluate(`Door: two-way\n${originBody}\n`, "d", author).outcome === "pass";
+// Invisible characters are written by code point: a literal one cannot be read in review.
+const BOM = String.fromCodePoint(0xfeff);
+const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
+const WORD_JOINER = String.fromCodePoint(0x2060);
+const LINE_SEPARATOR = String.fromCodePoint(0x2028);
+const HANGUL_FILLERS = [0x115f, 0x1160, 0x3164, 0xffa0].map((code) => String.fromCodePoint(code));
 
-describe("evaluateDoor", () => {
-  test("a two-way door passes alone", () => {
-    expect(okOf("## Summary\nA fix.\n\nDoor: two-way\n")).toBe(true);
+const SPDX =
+  "<!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->\n<!-- SPDX-License-Identifier: CC-BY-4.0 -->\n";
+// The fleet template once the coordinator moves the block to the top (2026-10-24).
+const TEMPLATE = (block: string): string =>
+  `${SPDX}${block}\n<!--\nguidance…\n\nSecond-instrument: <instrument, what it measured, and its result>\nNot-added: dependency, schema\nOwner-arbitration: YYYY-MM-DD <where>\n-->\n\n## Summary\n`;
+// A block with the line(s) under test, the other judged keys valid around them.
+const withOrigin = (originLine: string): string => `Door: two-way\n${originLine}\n\nBody.\n`;
+const withDoor = (doorLines: string): string => `${doorLines}\nOrigin: proposal\n\nBody.\n`;
+const withBoth = (line: string): string => `Door: two-way\n${line}\nOrigin: proposal\n\nBody.\n`;
+
+describe("T1 — the declaration block opens the description", () => {
+  test("the fleet template, filled, passes, and the block is a check of its own", () => {
+    const report = evaluate(TEMPLATE("Door: two-way\nOrigin: proposal\n"), "d");
+    expect(report.outcome).toBe("pass");
+    expect(report.checks.find((check) => check.item === "d — declaration block")?.note).toBe(
+      "declaration block: lines 3-4",
+    );
   });
 
+  test("the fleet template, unfilled, fails on its two placeholders", () => {
+    const report = evaluate(
+      TEMPLATE(
+        "Door: one-way | two-way\nOrigin: observed YYYY-MM-DD <source> | inspection | synthetic | proposal\n",
+      ),
+    );
+    expect(report.outcome).toBe("violations");
+    const text = report.violations.join("\n");
+    expect(text).toContain('Door value "one-way | two-way" is neither');
+    expect(text).toContain(
+      "line 4: the Origin value carries '<' that is not a complete http(s) autolink",
+    );
+  });
+
+  test("the fleet template, one-way, with its Second-instrument in the block, passes", () => {
+    expect(
+      passes(
+        TEMPLATE(
+          "Door: one-way\nSecond-instrument: git ls-remote over the 25 repositories, 0 references left\nOrigin: proposal\n",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  test("no header line is needed, and a block that ends the body needs no blank line", () => {
+    expect(passes("Door: two-way\nOrigin: proposal")).toBe(true);
+    expect(passes("Door: two-way\nOrigin: proposal\n")).toBe(true);
+  });
+
+  test("a BOM before the body is removed", () => {
+    expect(passes(`${BOM}Door: two-way\nOrigin: proposal\n\nBody.\n`)).toBe(true);
+    expect(passes(`${BOM}${SPDX}Door: two-way\nOrigin: proposal\n\nBody.\n`)).toBe(true);
+  });
+
+  test("CRLF and CR line endings are read", () => {
+    expect(passes("Door: two-way\r\nOrigin: proposal\r\n\r\nBody.\r\n")).toBe(true);
+    expect(passes("Door: two-way\rOrigin: proposal\r\rBody.\r")).toBe(true);
+  });
+
+  test.each([
+    ["a summary first", "## Summary\n\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["a blank line before the block", "\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["a blank line after the headers", `${SPDX}\nDoor: two-way\nOrigin: proposal\n`, 3],
+    ["an indented key", "  Door: two-way\nOrigin: proposal\n", 1],
+    ["a lowercase key", "door: two-way\nOrigin: proposal\n", 1],
+    ["the short comment <!-->", "<!-->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["the short comment <!--->", "<!--->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["text after a comment", "<!-- a --> x\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["two comments on a line", "<!-- a --><!-- b -->\nDoor: two-way\nOrigin: proposal\n", 1],
+    [
+      "a comment closed before the line ends",
+      "<!-- a --> b -->\nDoor: two-way\nOrigin: proposal\n",
+      1,
+    ],
+    ["a comment opened twice", "<!-- a <!-- b -->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["text after <!-->", "<!-->x-->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["text after <!--->", "<!--->x-->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["an indented comment", " <!-- a -->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["a comment closed early by --!>", "<!-- a --!> b -->\nDoor: two-way\nOrigin: proposal\n", 1],
+    ["a multi-line comment", "<!--\na\n-->\nDoor: two-way\nOrigin: proposal\n", 1],
+  ])("a body that does not open with declarations is refused by name: %s", (_name, body, line) => {
+    const text = violations(body);
+    expect(text).toContain("declarations must be the first lines of the description");
+    expect(text).toContain(
+      `line ${line} is the first line that is neither a header comment nor a declaration`,
+    );
+  });
+
+  test("a key line after a non-opening body is also named outside the block", () => {
+    expect(violations("## Summary\n\nDoor: two-way\nOrigin: proposal\n")).toContain(
+      "line 3: a `Door:` line outside the declaration block",
+    );
+  });
+
+  test("the block must end with a blank line", () => {
+    expect(violations("Door: two-way\nOrigin: proposal\nSummary\n")).toContain(
+      "the declaration block must end with a blank line: line 3 is not a declaration",
+    );
+    expect(violations("Door: two-way\nOrigin: proposal\n  Second-instrument: x\n")).toContain(
+      "line 3 is not a declaration (a declaration starts at column 0)",
+    );
+  });
+
+  test("a blank line made of spaces ends the block", () => {
+    expect(passes("Door: two-way\nOrigin: proposal\n   \nBody.\n")).toBe(true);
+  });
+
+  test("<!----> is a complete comment, and a header", () => {
+    expect(passes("<!---->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
+  });
+
+  test("an empty description names that it holds nothing", () => {
+    expect(violations("")).toContain("the description holds no line after its header comments");
+    expect(violations(SPDX)).toContain("the description holds no line after its header comments");
+  });
+});
+
+describe("T2 — no value opens a construct over the next line", () => {
+  test.each([
+    ["a closed code span", "Second-instrument: `git ls-remote` over 25 repositories"],
+    ["two-backtick code spans", "Second-instrument: ``a`b`` and ``c``"],
+    ["a longer run inside a code span", "Second-instrument: ``a```b`` measured"],
+    ["construct characters inside a code span", 'Second-instrument: `<details> [ ( " ~~` read'],
+    ["an escaped backtick", "Second-instrument: a \\` literal backtick"],
+    ["escaped brackets and quote", 'Second-instrument: \\[ \\( \\" \\< \\~~ escaped'],
+    ["a link", "Second-instrument: see [doc](https://example.com/a)"],
+    ["nested brackets", "Second-instrument: [[a]] ((b))"],
+    ["paired quotes", 'Second-instrument: the "two" quotes'],
+    ["a paired strikethrough", "Second-instrument: ~~was~~ is"],
+    ["a single tilde", "Second-instrument: about ~25 repositories"],
+    ["an autolink", "Second-instrument: <https://example.com/x?y=1> and <http://example.org>"],
+  ])("admitted: %s", (_name, line) => {
+    expect(passes(withBoth(line))).toBe(true);
+  });
+
+  test.each([
+    ["an unclosed code span", "Second-instrument: see `x", "opens a code span"],
+    ["a run with no run of its length", "Second-instrument: ``a` b", "opens a code span"],
+    ["a run followed only by a longer run", "Second-instrument: `a`` b", "opens a code span"],
+    [
+      "a run whose only partners are longer runs",
+      "Second-instrument: `a``b``",
+      "opens a code span",
+    ],
+    ["an open bracket", "Second-instrument: see [doc", "leaves 1 '[' open"],
+    ["a stray closing bracket", "Second-instrument: doc] here", "closes a ']' it did not open"],
+    ["an open parenthesis", "Second-instrument: (see", "leaves 1 '(' open"],
+    ["an odd quote", 'Second-instrument: the "one', "an odd number of '\"'"],
+    ["an unpaired strikethrough (S1)", "Second-instrument: ~~gone", "an unpaired '~~'"],
+    ["a tag", "Second-instrument: <b>x</b>", "carries '<'"],
+    ["details", "Second-instrument: <details>", "carries '<'"],
+    ["a bare less-than", "Second-instrument: a < b", "carries '<'"],
+    ["an autolink without host", "Second-instrument: <https://>", "carries '<'"],
+    ["an autolink of another scheme", "Second-instrument: <ftp://example.com>", "carries '<'"],
+    ["a backtick inside an autolink", "Second-instrument: <https://example.com/`x>", "carries '<'"],
+    ["an unclosed autolink", "Second-instrument: <https://example.com", "carries '<'"],
+    // Reconstructed from re-review 3: a <details> behind an escaped backtick.
+    ["details behind an escaped backtick", "Second-instrument: \\`<details>`", "carries '<'"],
+  ])("refused by name: %s", (_name, line, reason) => {
+    const text = violations(withBoth(line));
+    expect(text).toContain("line 2: the Second-instrument value");
+    expect(text).toContain(reason);
+  });
+
+  test.each([
+    "Owner-arbitration",
+    "Not-added",
+    "Door",
+    "Origin",
+  ])("T2 applies to every key: %s", (key) => {
+    expect(violations(`${key}: x <b>\n\nBody.\n`)).toContain(
+      `line 1: the ${key} value carries '<'`,
+    );
+  });
+
+  test("probes B1-B3 of review 2 are refused", () => {
+    expect(
+      passes(
+        'Door: two-way\nSecond-instrument: n/a <span title="\nOrigin: proposal\n"\\>x</span>\n',
+      ),
+    ).toBe(false);
+    expect(
+      passes(
+        'Door: two-way\nSecond-instrument: see [doc](https://example.com "\nOrigin: proposal\n")\n',
+      ),
+    ).toBe(false);
+    expect(passes("Door: two-way\nSecond-instrument: see `x\nOrigin: proposal\n`\n")).toBe(false);
+  });
+
+  // Measured by this round's differential: GitHub collapses the Origin line
+  // under the <details> of the refused line above it.
+  test("a refused line stops the block: nothing after it is read", () => {
+    const body = "Door: two-way\nSecond-instrument: \\`<details>`\nOrigin: proposal\n\nBody.\n";
+    expect(readDeclarationBlocks(body).values.Origin).toEqual([]);
+    expect(readDeclarationBlocks(body).values["Second-instrument"]).toEqual([]);
+    expect(violations(body)).toContain(
+      "line 3: the Origin value is not read: it follows line 2, refused",
+    );
+  });
+
+  // Reconstructed from re-review 3: a code span opened on the previous line.
+  test("a code span opened on one block line cannot close on the next", () => {
+    expect(passes("Door: two-way\nSecond-instrument: see `x\nOrigin: `<details>`\n")).toBe(false);
+  });
+
+  test("an Origin source may carry a code span or a link (re-review 3)", () => {
+    expect(
+      passes(withOrigin("Origin: observed 2026-10-07 `tools/quality/check-pr-door.ts:61`")),
+    ).toBe(true);
+    expect(
+      passes(
+        withOrigin(
+          "Origin: observed 2026-10-07 [#123](https://github.com/libre-ai/project-governance/pull/123)",
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  // Regression measured by re-review 3 on the 139 pull requests of the repository.
+  test.each([
+    [
+      108,
+      "scan of the candidate's complete history (15 commits, 193 git objects counted on 2026-10-14 with `git cat-file --batch-all-objects --batch-check`; `gitleaks git` reports 14 commits scanned on a rerun, 1 fewer than 15, unexplained: hypothesis, the commit without tree change has no diff to scan; the attestation must reconcile it) by a second tool, `gitleaks 8.30.1` in `git` mode over all commits and in `dir` mode over the tree, result no leaks; plus an object-level read of every object (`git cat-file --batch-all-objects`) for the local path prefix, the local user name, the former personal address and the local working-directory name, result 0 occurrence each, where the first instrument was a pattern scan of `git log -p --all` (private-key headers, `.p12`, token formats) whose only hit is a shell variable reference `pass:$transport` with no value. The scans exclude by construction anything outside the candidate clone: the signing keychain directory, which was not read, and the former local source repository, which is unchanged.",
+    ],
+    [
+      113,
+      "mirror fetch of libre-ai/square-control into a fresh repo with `git fetch '+refs/*:refs/*'` on 2026-10-14. `git for-each-ref` returns 4 refs (`refs/heads/dependabot/cargo/cargo-minor-and-patch-c3be8eb6fd` f192917b, `refs/heads/main` 95e1bcea, `refs/pull/1/head` f192917b, `refs/pull/1/merge` b583cc52); `git ls-remote` returns the same 4 refs plus HEAD; `git rev-list --objects --all | wc -l` = 205; `git rev-list --objects --all --not refs/heads/main | wc -l` = 12; `git rev-parse --is-shallow-repository` = false.",
+    ],
+    [
+      114,
+      "the manifest is rederived by four implementations that share no code (the owner's shell `manifest()` run, my re-run of it, a TypeScript `buildManifest`, a standalone Python `canonicalize.py derive`): byte-equal, 87,173 bytes, sha256 765fd6e932f826843c9fa2def6b965742287136abe0a8ce884fc5ff52459dca9, re-fetched after the freeze; ref set equal in `git ls-remote` and the provider API; gitleaks 8.30.1 finds no leak and its 14-versus-15 commit count is reconciled by a cat-file object read.",
+    ],
+    [
+      116,
+      'source of the scanner, not the attestation prose. `tools/attestation/git-attestation.ts`: `IdentityScope = "anywhere" | "forge-added-only"` (l. 57); `stripAllowedAddresses` skips a `forge-added-only` identity unless the commit is forge-added (l. 484-485, `neutralise:strip-scope`); `checkPerson` admits only `anywhere` identities on a commit the trusted ref reaches (l. 791-793). `evidence/identity-allowlist.json` of the square-control dossier: owner `anywhere`; `dependabot[bot]` noreply, `GitHub <noreply@github.com>` and `dependabot[bot] <support@github.com>` all `forge-added-only`.',
+    ],
+    [
+      123,
+      "not required on a two-way door; reverting the squash removes the added files and the one `package.json` script line.",
+    ],
+  ])("the real Second-instrument value of #%p is admitted", (number, value) => {
+    expect(constructOpenedBy(value)).toBeNull();
+    const door = number === 123 ? "two-way" : "one-way";
+    expect(passes(`Door: ${door}\nSecond-instrument: ${value}\nOrigin: proposal\n\nBody.\n`)).toBe(
+      true,
+    );
+  });
+});
+
+describe("T3 — key lines elsewhere in the body (best effort)", () => {
+  test("a key line at column 0 after the block fails by name", () => {
+    expect(
+      violations("Door: two-way\nOrigin: proposal\n\nBody.\nOrigin: observed 2026-10-07 x\n"),
+    ).toContain("line 5: a `Origin:` line outside the declaration block");
+  });
+
+  test("key lines inside comments and fences after the block are counted, never failing", () => {
+    const report = evaluate(TEMPLATE("Door: two-way\nOrigin: proposal\n"));
+    expect(report.outcome).toBe("pass");
+    expect(report.volumeSummary).toContain(
+      "3 key line(s) outside the block (3 inside comments or code)",
+    );
+    expect(passes("Door: two-way\nOrigin: proposal\n\n```\nDoor: one-way\n```\n")).toBe(true);
+  });
+
+  test("an indented key line elsewhere is neither read nor refused", () => {
+    expect(passes("Door: two-way\nOrigin: proposal\n\n    Door: one-way\n")).toBe(true);
+  });
+
+  test("only the block is read, whatever follows it", () => {
+    const blocks = readDeclarationBlocks(
+      "Door: two-way\nOrigin: proposal\n\n<details>\n\nDoor: one-way\n\n</details>\n",
+    );
+    expect(blocks.values.Door).toEqual(["two-way"]);
+  });
+
+  // Re-review 3, verbatim: GitHub displays no declaration in either body.
+  test("re-review 3: `<!--` in a code span before a fence and a comment", () => {
+    expect(passes("`<!--`\n\n```\n-->\n\nDoor: two-way\nOrigin: proposal\n```\n")).toBe(false);
+  });
+
+  test("re-review 3: a void tag before two fences", () => {
+    expect(passes("<br>\n```\n\n```\n\nDoor: two-way\nOrigin: proposal\n")).toBe(false);
+  });
+
+  test("re-review 3, M1 as given: no block at the top, so nothing is read", () => {
+    expect(passes("`<!--`\n\nDoor: one-way\n\n-->\n")).toBe(false);
+    expect(readDeclarationBlocks("`<!--`\n\nDoor: one-way\n\n-->\n").block).toBeNull();
+  });
+
+  // The limit T3 declares: after a valid block, a key line that the simple
+  // cleaner wrongly places inside a comment goes unnamed. It is never read:
+  // the verdict is the block's.
+  test("re-review 3, M1 after a block: the declared T3 limit, never a read", () => {
+    const body = "Door: two-way\nOrigin: proposal\n\n`<!--`\n\nDoor: one-way\n\n-->\n";
+    expect(passes(body)).toBe(true);
+    expect(readDeclarationBlocks(body).values.Door).toEqual(["two-way"]);
+  });
+
+  test("readDeclarationBlocks keeps its name and .values for #144", () => {
+    const blocks = readDeclarationBlocks("Not-added: dependency, schema\nDoor: two-way\n\nBody.\n");
+    expect(blocks.values["Not-added"]).toEqual(["dependency, schema"]);
+    expect(blocks.block).toEqual({ first: 1, last: 2 });
+  });
+});
+
+describe("Door", () => {
   test("a one-way door with a substantive second instrument passes", () => {
     expect(
-      okOf(
-        "Door: one-way\nSecond-instrument: git ls-remote over the 29 repositories, 0 references left\n",
+      passes(
+        withDoor(
+          "Door: one-way\nSecond-instrument: git ls-remote over the 29 repositories, 0 references left",
+        ),
       ),
     ).toBe(true);
   });
 
   test("a description without a Door line fails", () => {
-    const report = evaluate("## Summary\nA fix.\n");
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("no `Door: one-way` or `Door: two-way` line");
-  });
-
-  test("an empty description fails", () => {
-    expect(okOf("")).toBe(false);
-  });
-
-  test("the unfilled template line fails", () => {
-    expect(okOf("Door: one-way | two-way\n")).toBe(false);
+    expect(violations("Origin: proposal\n\nBody.\n")).toContain(
+      "no `Door: one-way` or `Door: two-way` line in the declaration block (lines 1-1)",
+    );
   });
 
   test.each([
@@ -61,50 +359,38 @@ describe("evaluateDoor", () => {
     "Door: Two-Way",
     "Door: two-way, mostly",
     "Door:",
+    "Door: one-way | two-way",
   ])("an invalid value fails: %s", (line) => {
-    expect(okOf(`${line}\n`)).toBe(false);
+    expect(passes(withDoor(line))).toBe(false);
   });
 
   test("two Door lines fail, even when they agree", () => {
-    expect(okOf("Door: two-way\nDoor: two-way\n")).toBe(false);
+    expect(passes(withDoor("Door: two-way\nDoor: two-way"))).toBe(false);
   });
 
   test("a one-way door without a second instrument fails", () => {
-    const report = evaluate("Door: one-way\n");
-    expect(report.violations.join("\n")).toContain("needs a `Second-instrument:` line");
+    expect(violations(withDoor("Door: one-way"))).toContain("needs a `Second-instrument:` line");
   });
 
   test.each([
     "",
-    "<instrument and result>",
     "n/a",
     "none",
     "TBD",
     "-",
     "short one",
   ])("a one-way door with a placeholder second instrument fails: %p", (value) => {
-    expect(okOf(`Door: one-way\nSecond-instrument: ${value}\n`)).toBe(false);
+    expect(passes(withDoor(`Door: one-way\nSecond-instrument: ${value}`))).toBe(false);
   });
 
-  test("a Door line inside an HTML comment does not count", () => {
-    expect(okOf("<!--\nDoor: two-way\n-->\n")).toBe(false);
+  test("a refused Second-instrument names its line in the absence", () => {
+    expect(violations(withDoor("Door: one-way\nSecond-instrument: see `x"))).toContain(
+      "in the declaration block (lines 1-3); refused: line 2",
+    );
   });
 
-  test("a Door line inside a fenced code block does not count", () => {
-    expect(okOf("```\nDoor: two-way\n```\n")).toBe(false);
-  });
-
-  test("a Door line after a closed code block counts", () => {
-    expect(okOf("```sh\nbun run check\n```\n\nDoor: two-way\n")).toBe(true);
-  });
-
-  test("a Door line not at the start of its line does not count", () => {
-    expect(okOf("We think Door: two-way\n")).toBe(false);
-  });
-
-  test("CRLF and CR line endings are read", () => {
-    expect(okOf("Summary\r\n\r\nDoor: two-way\r\n")).toBe(true);
-    expect(okOf("Summary\r\rDoor: two-way\r")).toBe(true);
+  test("a value carrying U+2028 is still one line", () => {
+    expect(passes(`Door: two-way${LINE_SEPARATOR}\nOrigin: proposal\n`)).toBe(true);
   });
 
   // 2026-10-14: Door declaration became required; Dependabot writes its own
@@ -112,7 +398,7 @@ describe("evaluateDoor", () => {
   test("an undeclared pull request from an implicit two-way author passes, and says why", () => {
     const report = evaluate("Bumps x from 1 to 2.", "PR #9 description", "dependabot[bot]");
     expect(report.outcome).toBe("pass");
-    expect(report.checks[0]?.note).toBe(
+    expect(report.checks.find((check) => check.item === "PR #9 description — Door")?.note).toBe(
       "Door: two-way (implicit: no Door line, author dependabot[bot] is in IMPLICIT_TWO_WAY_AUTHORS)",
     );
     expect(report.volumeSummary).toContain("door implied by author dependabot[bot]");
@@ -120,18 +406,18 @@ describe("evaluateDoor", () => {
 
   test("an undeclared pull request from any other author still fails", () => {
     for (const author of [null, "constantin-jais", "dependabot", "renovate[bot]"]) {
-      expect(evaluate("Bumps x.", "d", author).outcome).toBe("violations");
+      expect(passes("Bumps x.", author)).toBe(false);
     }
   });
 
   test("a Door line written by an implicit two-way author is judged as written", () => {
-    expect(evaluate("Door: one-way", "d", "dependabot[bot]").outcome).toBe("violations");
-    expect(evaluate("Door: sideways", "d", "dependabot[bot]").outcome).toBe("violations");
+    expect(passes("Door: one-way", "dependabot[bot]")).toBe(false);
+    expect(passes("Door: sideways", "dependabot[bot]")).toBe(false);
+    expect(passes("Bumps x.\nDoor: two-way\n", "dependabot[bot]")).toBe(false);
   });
 });
 
-// ADR-0056 D1: every pull request declares the origin of the problem it treats.
-describe("evaluateDoor — Origin", () => {
+describe("Origin (ADR-0056 D1)", () => {
   test.each([
     "Origin: inspection",
     "Origin: synthetic",
@@ -141,31 +427,28 @@ describe("evaluateDoor — Origin", () => {
     "Origin: observed 2026-10-07 session note of the fleet-pins drill",
     "Origin: observed 2026-10-07 <https://github.com/libre-ai/project-governance/pull/135>",
     "Origin: observed 2024-02-29 #12",
+    "Origin: observed 2026-10-07 note de session Ω",
   ])("a valid Origin line passes: %s", (line) => {
-    expect(originOk(line)).toBe(true);
+    expect(passes(withOrigin(line))).toBe(true);
   });
 
   test("the passing verdict restates the declared origin", () => {
-    const report = evaluate("Door: two-way\nOrigin: observed 2026-10-07 PR #135\n", "d");
+    const report = evaluate(withOrigin("Origin: observed 2026-10-07 PR #135"), "d");
     expect(report.checks.find((check) => check.item === "d — Origin")?.note).toBe(
       "Origin: observed 2026-10-07 PR #135",
     );
   });
 
-  test("a description without an Origin line fails, and names the vocabulary", () => {
-    const report = evaluate("Door: two-way\n", "d");
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("d — Origin: no `Origin:` line");
-    expect(report.violations.join("\n")).toContain(
-      '"observed", "inspection", "synthetic", "proposal"',
-    );
+  test("a block without an Origin line fails, and names the vocabulary", () => {
+    const text = violations("Door: two-way\n\nBody.\n");
+    expect(text).toContain("d — Origin: no `Origin:` line");
+    expect(text).toContain('"observed", "inspection", "synthetic", "proposal"');
   });
 
   test("two Origin lines fail, even when they agree", () => {
-    expect(originOk("Origin: proposal\nOrigin: proposal")).toBe(false);
-    expect(evaluate("Door: two-way\nOrigin: proposal\nOrigin: inspection\n").violations).toEqual([
-      'pull request description — Origin: 2 Origin lines ("proposal", "inspection") — declare exactly one',
-    ]);
+    expect(violations("Door: two-way\nOrigin: proposal\nOrigin: inspection\n")).toContain(
+      'd — Origin: 2 Origin lines ("proposal", "inspection") — declare exactly one',
+    );
   });
 
   test.each([
@@ -176,658 +459,111 @@ describe("evaluateDoor — Origin", () => {
     "Origin: observation 2026-10-07 #1",
     "Origin: proposal,",
   ])("a value outside the vocabulary fails: %s", (line) => {
-    expect(originOk(line)).toBe(false);
-  });
-
-  test("the unfilled template line fails", () => {
-    expect(originOk("Origin: observed | inspection | synthetic | proposal")).toBe(false);
+    expect(passes(withOrigin(line))).toBe(false);
   });
 
   test("an empty Origin line is refused as carrying no value", () => {
-    const report = evaluate("Door: two-way\nOrigin:   \n");
-    expect(report.violations.join("\n")).toContain("Origin line carries no value");
+    expect(violations(withOrigin("Origin:   "))).toContain("Origin line carries no value");
   });
 
   test.each([
     "Origin: proposal mostly",
     "Origin: inspection of check-fleet-pins",
     "Origin: synthetic probe",
-    "Origin: proposal 2026-10-07 #1",
   ])("a value other than observed carries nothing else on its line: %s", (line) => {
-    const report = evaluate(`Door: two-way\n${line}\n`);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("carries nothing else on its line");
+    expect(violations(withOrigin(line))).toContain("carries nothing else on its line");
   });
 
   test("observed without a date fails, and says what it needs", () => {
-    const report = evaluate("Door: two-way\nOrigin: observed\n");
-    expect(report.violations.join("\n")).toContain("observed needs its date and its source");
+    expect(violations(withOrigin("Origin: observed"))).toContain(
+      "observed needs its date and its source",
+    );
   });
 
   test.each([
     "2026-02-30",
     "2025-02-29",
     "2026-13-01",
-    "2026-00-10",
-    "2026-10-00",
     "2026-10-7",
     "20261007",
-    "07/10/2026",
     "2026-10-07T12:00:00Z",
     "yesterday",
   ])("observed with an invalid ISO date fails: %s", (date) => {
-    const report = evaluate(`Door: two-way\nOrigin: observed ${date} PR #135\n`);
-    expect(report.violations.join("\n")).toContain(
+    expect(violations(withOrigin(`Origin: observed ${date} PR #135`))).toContain(
       `observed date "${date}" is not a valid ISO 8601 calendar date`,
     );
   });
 
+  test.each([
+    "2999-12-31",
+    "2026-10-25",
+    "0000-01-01",
+    "1969-12-31",
+  ])("an observed date in the future or before 1970 is refused: %s", (date) => {
+    expect(violations(withOrigin(`Origin: observed ${date} PR #135`))).toMatch(
+      /is after .* \+ 1 day|is before 1970-01-01/,
+    );
+  });
+
+  test.each(["2026-10-24", "2026-10-23", "1970-01-01"])("%s is admitted", (date) => {
+    expect(passes(withOrigin(`Origin: observed ${date} PR #135`))).toBe(true);
+  });
+
+  test("the clock is injected: the same date judged at another instant", () => {
+    const body = withOrigin("Origin: observed 2026-10-25 PR #135");
+    expect(evaluate(body, "d", null, new Date("2026-10-24T00:00:00Z")).outcome).toBe("pass");
+    expect(evaluate(body, "d", null, new Date("2026-10-23T23:59:59Z")).outcome).toBe("violations");
+  });
+
   test("observed with a date but no source fails", () => {
-    const report = evaluate("Door: two-way\nOrigin: observed 2026-10-07\n");
-    expect(report.violations.join("\n")).toContain("needs a source after its date");
+    expect(violations(withOrigin("Origin: observed 2026-10-07"))).toContain(
+      "needs a source after its date",
+    );
   });
 
   test.each([
     "n/a",
     "none",
     "TBD",
-    "-",
-    "...",
-  ])("observed with a placeholder source fails: %p", (source) => {
-    const report = evaluate(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
-    expect(report.violations.join("\n")).toContain("is a placeholder");
+    ZERO_WIDTH_SPACE,
+    "&#8203;",
+    "&nbsp;",
+    "?",
+    `${WORD_JOINER}${WORD_JOINER}`,
+    ...HANGUL_FILLERS,
+    `${HANGUL_FILLERS[2]}${HANGUL_FILLERS[2]} #`,
+  ])("observed with a placeholder or invisible source fails: %p", (source) => {
+    expect(violations(withOrigin(`Origin: observed 2026-10-07 ${source}`))).toContain(
+      "is a placeholder or has no letter or digit",
+    );
   });
 
-  test("the template placeholder <source> is refused by the grammar (G3)", () => {
-    const report = evaluate("Door: two-way\nOrigin: observed 2026-10-07 <source>\n");
-    expect(report.violations.join("\n")).toContain("declaration value carries '<'");
-  });
-
-  test("an Origin line inside an HTML comment does not count", () => {
-    expect(originOk("<!--\nOrigin: proposal\n-->")).toBe(false);
-  });
-
-  test("an Origin line inside a fenced code block does not count", () => {
-    expect(originOk("```\nOrigin: proposal\n```")).toBe(false);
-  });
-
-  test("an Origin line not at the start of its line does not count", () => {
-    expect(originOk("We think Origin: proposal")).toBe(false);
+  test("the template placeholder <source> is refused by T2", () => {
+    expect(violations(withOrigin("Origin: observed 2026-10-07 <source>"))).toContain(
+      "the Origin value carries '<'",
+    );
   });
 
   test("the key is case-sensitive, as Door's is", () => {
-    expect(originOk("origin: proposal")).toBe(false);
-    expect(okOf("door: two-way")).toBe(false);
+    expect(passes("Door: two-way\norigin: proposal\n")).toBe(false);
   });
 
   test("an implicit two-way author writing no Origin line is waived, and says so", () => {
     const report = evaluate("Bumps x from 1 to 2.", "PR #9 description", "dependabot[bot]");
-    expect(report.outcome).toBe("pass");
     expect(report.checks.find((check) => check.item === "PR #9 description — Origin")?.note).toBe(
       "Origin: waived (no Origin line, author dependabot[bot] is in IMPLICIT_TWO_WAY_AUTHORS)",
     );
     expect(report.volumeSummary).toContain("origin waived for author dependabot[bot]");
   });
 
-  test("an undeclared Origin from any other author still fails", () => {
-    for (const author of [null, "constantin-jais", "dependabot", "renovate[bot]"]) {
-      expect(originOk("", author)).toBe(false);
-    }
-  });
-
   test("an Origin line written by an implicit two-way author is judged as written", () => {
-    expect(originOk("Origin: maybe", "dependabot[bot]")).toBe(false);
-    expect(originOk("Origin: observed 2026-02-30 #1", "dependabot[bot]")).toBe(false);
-    expect(originOk("Origin: proposal", "dependabot[bot]")).toBe(true);
-  });
-
-  test("a Door line by an implicit author does not waive the Origin check, nor the reverse", () => {
-    // Door written, Origin absent: the door is judged, the origin is waived.
-    expect(evaluate("Door: two-way", "d", "dependabot[bot]").outcome).toBe("pass");
-    // Origin written and invalid, Door absent: the door is implied, the origin still fails.
-    expect(evaluate("Origin: maybe", "d", "dependabot[bot]").outcome).toBe("violations");
+    expect(passes("Door: two-way\nOrigin: maybe\n", "dependabot[bot]")).toBe(false);
+    expect(passes("Door: two-way\nOrigin: proposal\n", "dependabot[bot]")).toBe(true);
+    expect(passes("Origin: maybe\n", "dependabot[bot]")).toBe(false);
   });
 });
 
-// Review of #141 (2026-10-23, separate role): each case below was a probe that
-// passed the gate while GitHub renders something else, or not at all.
-const verdict = (body: string, author: string | null = null) =>
-  evaluateDoor(body, "d", author, NOW);
-const passes = (body: string): boolean => verdict(body).outcome === "pass";
-// Invisible characters are written by code point: a literal one cannot be read in review.
-const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
-const WORD_JOINER = String.fromCodePoint(0x2060);
-const LINE_SEPARATOR = String.fromCodePoint(0x2028);
-const PARAGRAPH_SEPARATOR = String.fromCodePoint(0x2029);
-
-describe("finding 1 — an observed source must be visible", () => {
-  test.each([
-    ZERO_WIDTH_SPACE,
-    "&#8203;",
-    "&nbsp;",
-    "?",
-    `${WORD_JOINER}${WORD_JOINER}`,
-  ])("a source with no visible letter or digit fails: %p", (source) => {
-    const report = verdict(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("no letter or digit");
-  });
-
-  // Round 2: tags, code spans and host-less autolinks no longer reach the
-  // source check; the grammar refuses the line first (G3).
-  test.each([
-    "<b></b>",
-    `<b>${ZERO_WIDTH_SPACE}</b>`,
-    "<b>PR #135</b>",
-    "``",
-    "<https://>",
-    "<http://>",
-  ])("a source opening a construct is refused before it is judged: %p", (source) => {
-    const report = verdict(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("that can open a construct over the next lines");
-  });
-
-  test.each([
-    "<https://github.com/libre-ai/project-governance/pull/135>",
-    "#7",
-    "a.ts:3",
-    "note de session Ω",
-  ])("a visible source passes: %p", (source) => {
-    expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(true);
-  });
-});
-
-describe("finding 2 — indented code and CommonMark fences", () => {
-  test.each([
-    ["four spaces", "Door: two-way\n\n    Origin: proposal\n"],
-    ["a tab", "Door: two-way\n\n\tOrigin: proposal\n"],
-    ["a space then a tab", "Door: two-way\n\n \tOrigin: proposal\n"],
-  ])("an indented Origin line is never a declaration (%s)", (_name, body) => {
-    const report = verdict(body);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("indented");
-  });
-
-  test("an indented Door line, and an indented Second-instrument, are never declarations", () => {
-    expect(passes("Origin: proposal\n\n    Door: two-way\n")).toBe(false);
-    expect(
-      passes(
-        "Origin: proposal\n\nDoor: one-way\n    Second-instrument: git ls-remote over 25 repositories, 0 hits\n",
-      ),
-    ).toBe(false);
-  });
-
-  // Round 2 (G1): a declaration starts at column 0; one to three spaces are refused by name.
-  test("three spaces of indentation no longer declare", () => {
-    const report = verdict("   Door: two-way\n   Origin: proposal\n");
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain(
-      "is indented (a declaration starts at column 0)",
-    );
-  });
-
-  test("a shorter run inside a longer fence does not close it", () => {
-    expect(passes("Door: two-way\n\n````\n```\nOrigin: proposal\n````\n")).toBe(false);
-  });
-
-  test("a run followed by text does not close a fence", () => {
-    expect(passes("Door: two-way\n\n```\n``` not-a-close\nOrigin: proposal\n")).toBe(false);
-  });
-
-  test("a tilde run does not close a backtick fence", () => {
-    expect(passes("Door: two-way\n\n```\n~~~\nOrigin: proposal\n")).toBe(false);
-  });
-
-  test("a closing run at least as long as the opening one closes the fence", () => {
-    expect(passes("~~~~\nx\n~~~\n~~~~~  \n\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-  });
-
-  test("a backtick run whose info string carries a backtick is inline code, not a fence", () => {
-    expect(passes("```x```\n\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-  });
-
-  test("a closing run indented four spaces does not close the fence", () => {
-    expect(passes("Door: two-way\n\n```\n    ```\nOrigin: proposal\n")).toBe(false);
-  });
-
-  test("an indented key line does not open a chain", () => {
-    const report = verdict("Origin: proposal\n\n    Door: two-way\nSecond-instrument: none\n");
-    expect(report.volumeSummary).toContain("0 Second-instrument line(s)");
-  });
-
-  test("a fence indented four spaces is not a fence", () => {
-    expect(passes("    ```\n\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-  });
-});
-
-describe("finding 3 — the short comments <!--> and <!---> are complete", () => {
-  test.each(["<!-->", "<!--->"])("%s does not swallow the lines up to the next -->", (short) => {
-    const report = verdict(
-      `Door: two-way\nOrigin: proposal\n${short}\nOrigin: observed 2026-10-07\n<!-- -->\n`,
-    );
-    // Round 2 (G2/G4): the second Origin line follows a comment that follows a
-    // non-blank line, so it is not read, and an unread Origin line fails the gate.
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain(
-      "1 Origin line(s) outside comments and code are not read: line 4 continues the line above",
-    );
-  });
-
-  test("<!----> is a complete comment too", () => {
-    expect(passes("<!---->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-  });
-});
-
-describe("finding 4 — lines are CommonMark lines, and a declaration starts a block", () => {
-  test("U+2028 and U+2029 do not end a line", () => {
-    expect(
-      passes(
-        `Door: two-way\n\n<code>x${LINE_SEPARATOR}Origin: proposal${PARAGRAPH_SEPARATOR}y</code>\n`,
-      ),
-    ).toBe(false);
-  });
-
-  test("a declaration line carrying U+2028 is still one line, read as GitHub shows it", () => {
-    expect(passes(`Door: two-way${LINE_SEPARATOR}\nOrigin: proposal\n`)).toBe(true);
-    expect(passes(`Door: two-way\nOrigin: proposal${LINE_SEPARATOR}observed 2026-10-07 x\n`)).toBe(
-      false,
-    );
-  });
-
-  test("a prose line breaks a chain", () => {
-    const report = verdict("Door: two-way\nprose\nOrigin: proposal\n");
-    expect(report.volumeSummary).toContain("0 Origin line(s)");
-  });
-
-  test("a key line that continues a paragraph does not open a chain either", () => {
-    const report = verdict("Summary\nDoor: two-way\nOrigin: proposal\n");
-    expect(report.volumeSummary).toContain("0 Door line(s)");
-    expect(report.volumeSummary).toContain("0 Origin line(s)");
-    expect(report.volumeSummary).toContain("2 key line(s) not read");
-  });
-
-  test("a Door line inside a multi-line HTML attribute does not count", () => {
-    // GitHub renders `Door: one-way`; the attribute is a tooltip.
-    const report = verdict(
-      'Origin: proposal\n\n<span title="\nDoor: two-way\n">Door: one-way</span>\n',
-    );
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("continues the line above");
-  });
-
-  test("a Door line inside a multi-line link title does not count", () => {
-    expect(passes('Origin: proposal\n\n[i](https://example.org "tip\nDoor: two-way\n")\n')).toBe(
-      false,
-    );
-  });
-
-  test("a declaration that continues a paragraph is not read, and the refusal says why", () => {
-    const report = verdict("Summary\nDoor: two-way\n\nOrigin: proposal\n");
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("line 2 continues the line above");
-  });
-
-  test("declaration lines chain: after a blank line, the body start, or another declaration", () => {
-    expect(passes("Door: two-way\nOrigin: proposal\n")).toBe(true);
-    expect(
-      passes(
-        "Summary.\n\nOwner-arbitration: 2026-10-23 chat\nNot-added: dependency\nDoor: one-way\nSecond-instrument: git ls-remote over 25 repositories, 0 hits\nOrigin: proposal\n",
-      ),
-    ).toBe(true);
-  });
-
-  test("a line left blank by a removed comment opens a new block, as in the fleet template", () => {
-    expect(
-      passes(
-        "## Origin\n\n<!--\nguidance\n-->\nOrigin: proposal\n\n<!--\nDoor guidance\n-->\nDoor: two-way\n",
-      ),
-    ).toBe(true);
-  });
-});
-
-describe("finding 4 — the fleet template shape, one-way", () => {
-  test("a Second-instrument copied out of its comment, right after it, is read", () => {
-    expect(
-      passes(
-        "Origin: proposal\n\n<!--\nDoor guidance\n-->\nDoor: one-way\n\nBlast radius: <!-- who -->\n\n<!--\nOne-way door only\n-->\nSecond-instrument: git ls-remote over 25 repositories, 0 hits\n",
-      ),
-    ).toBe(true);
-  });
-});
-
-describe("finding 5 — an observed date is neither in the future nor before 1970", () => {
-  test.each(["2999-12-31", "2026-10-25", "0000-01-01", "1969-12-31"])("%s is refused", (date) => {
-    const report = verdict(`Door: two-way\nOrigin: observed ${date} PR #135\n`);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toMatch(/is after .* \+ 1 day|is before 1970-01-01/);
-  });
-
-  test.each(["2026-10-24", "2026-10-23", "1970-01-01"])("%s is admitted", (date) => {
-    expect(passes(`Door: two-way\nOrigin: observed ${date} PR #135\n`)).toBe(true);
-  });
-
-  test("the clock is injected: the same date judged at another instant", () => {
-    const body = "Door: two-way\nOrigin: observed 2026-10-25 PR #135\n";
-    expect(evaluateDoor(body, "d", null, new Date("2026-10-24T00:00:00Z")).outcome).toBe("pass");
-    expect(evaluateDoor(body, "d", null, new Date("2026-10-23T23:59:59Z")).outcome).toBe(
-      "violations",
-    );
-  });
-});
-
-describe("finding 6 — the line counters sum to the body", () => {
-  test("examined + removed = lines of the body, printed as such", () => {
-    const report = verdict(
-      "<!-- guidance -->\nDoor: one-way\nSecond-instrument: none\nOrigin: proposal\n",
-    );
-    expect(report.volumeSummary).toBe(
-      "4 description line(s) = 3 examined + 1 removed in 1 comment/code block(s); 1 Door line(s), 1 Second-instrument line(s), 1 Origin line(s); 0 key line(s) not read (0 inside comments or code)",
-    );
-  });
-
-  test.each([
-    "",
-    "a",
-    "a\n<!--\nb\n-->\nc\n",
-    "```\nx\n\n```\ny <!-- z --> w\n<!-- open",
-    "    Door: two-way\nSummary\nDoor: two-way\n",
-  ])("the partition holds for %p", (body) => {
-    const summary = verdict(body).volumeSummary ?? "";
-    const counts = /^(\d+) description line\(s\) = (\d+) examined \+ (\d+) removed/.exec(summary);
-    expect(counts).not.toBeNull();
-    const [total, examined, removed] = (counts ?? []).slice(1).map(Number);
-    expect((examined ?? -1) + (removed ?? -1)).toBe(total ?? -2);
-    // Round 2 (E): a final newline opens no line.
-    const normalised = body.replace(/\r\n?/g, "\n");
-    const expected =
-      normalised === "" ? 0 : normalised.split("\n").length - (normalised.endsWith("\n") ? 1 : 0);
-    expect(total).toBe(expected);
-  });
-});
-
-// Review n°2 of #141 (2026-10-23): restricted grammar. Each probe is verbatim
-// from the review, or measured through GitHub's renderer (POST /markdown,
-// mode gfm) as hiding or swallowing the declaration lines it carries.
-const notRead = (body: string, key: string): boolean => {
-  const report = verdict(body);
-  return (
-    report.outcome === "violations" &&
-    (report.volumeSummary ?? "").includes(`0 ${key} line(s)`) &&
-    report.violations.some((violation) => violation.includes(`— ${key}`))
-  );
-};
-
-describe("round 2 — A: a line emptied by cleaning is never a boundary by itself", () => {
-  test("A1: a link title spanning an indented comment", () => {
-    const body =
-      'Summary text.\n\n[x]: https://example.com "t\n    <!-- -->\nDoor: two-way\nOrigin: proposal\n"\n';
-    expect(notRead(body, "Door")).toBe(true);
-    expect(notRead(body, "Origin")).toBe(true);
-  });
-
-  test("A2: an attribute spanning a comment that follows a non-blank line", () => {
-    const body =
-      'Summary text.\n\n<div title="\n<!-- -->\nDoor: one-way\nSecond-instrument: none taken, trust me\nOrigin: proposal\n"></div>\n';
-    expect(notRead(body, "Door")).toBe(true);
-    expect(notRead(body, "Origin")).toBe(true);
-  });
-
-  test("A3: an attribute spanning a fence", () => {
-    expect(notRead('<div title="\n~~~\n~~~\nOrigin: proposal\n', "Origin")).toBe(true);
-  });
-
-  test("A4: a comment opened in the middle of a line", () => {
-    expect(notRead('x <span title="a <!--\n-->\nOrigin: proposal\n', "Origin")).toBe(true);
-  });
-
-  test("a comment or fence that follows a blank line, or opens the body, is a boundary", () => {
-    expect(passes("<!-- c -->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-    expect(passes("Summary.\n\n<!--\nc\n-->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-    expect(passes("Summary.\n\n```\nx\n```\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-  });
-
-  test("a comment that follows a non-blank line is not a boundary", () => {
-    expect(notRead("Summary.\n<!-- c -->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-  });
-
-  test("a comment indented four spaces is not a boundary", () => {
-    expect(notRead("Summary.\n\n    <!-- c -->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
-      true,
-    );
-  });
-
-  test("a comment followed by text on its closing line is not a boundary", () => {
-    expect(notRead("Summary.\n\n<!-- c --> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
-      true,
-    );
-  });
-
-  test("a second comment on the line of the first is not a boundary", () => {
-    expect(notRead("<!-- a --><!-- b\n-->\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-  });
-
-  test("a short comment at the body start is a boundary, but not with text after it", () => {
-    expect(passes("<!-->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-    expect(passes("<!--->\nDoor: two-way\nOrigin: proposal\n")).toBe(true);
-    expect(notRead("<!--> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-    expect(notRead("<!---> x\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-  });
-
-  test("a fence that follows a non-blank line is not a boundary", () => {
-    expect(notRead("Summary.\n```\nx\n```\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-  });
-});
-
-describe("round 2 — B: a declaration value never opens a construct", () => {
-  test("B1: an HTML attribute opened in a Second-instrument value", () => {
-    expect(
-      notRead(
-        'Door: two-way\nSecond-instrument: n/a <span title="\nOrigin: proposal\n"\\>x</span>\n',
-        "Origin",
-      ),
-    ).toBe(true);
-  });
-
-  test("B2: a link title opened in a Second-instrument value", () => {
-    expect(
-      notRead(
-        'Door: two-way\nSecond-instrument: see [doc](https://example.com "\nOrigin: proposal\n")\n',
-        "Origin",
-      ),
-    ).toBe(true);
-  });
-
-  test("B3: a code span opened in a Second-instrument value", () => {
-    expect(
-      notRead("Door: two-way\nSecond-instrument: see `x\nOrigin: proposal\n`\n", "Origin"),
-    ).toBe(true);
-  });
-
-  test.each([
-    "<",
-    ">",
-    "[",
-    "]",
-    "`",
-    '"',
-  ])("each construct character is refused by name in any key's value: %s", (character) => {
-    for (const key of ["Owner-arbitration", "Not-added", "Second-instrument"]) {
-      const report = verdict(`${key}: x ${character} y\nDoor: two-way\nOrigin: proposal\n`);
-      expect(report.outcome).toBe("violations");
-      expect(report.violations.join("\n")).toContain(
-        `declaration value carries '${character}' that can open a construct over the next lines`,
-      );
-    }
-  });
-
-  test("an observed source may carry a whole autolink, and nothing else that opens", () => {
-    expect(
-      passes("Door: two-way\nOrigin: observed 2026-10-07 <https://example.com/a?b=1> and #135\n"),
-    ).toBe(true);
-    expect(passes("Door: two-way\nOrigin: observed 2026-10-07 <http://example.com>\n")).toBe(true);
-    for (const source of [
-      "<https://>",
-      "<ftp://example.com>",
-      '<https://example.com/"x>',
-      "<https://example.com> [doc]",
-      "<https://example.com",
-    ]) {
-      expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(false);
-    }
-  });
-
-  test("a refused value on the first line of a block is named for its character", () => {
-    const report = verdict("Door: two-way <b>x</b>\nOrigin: proposal\n");
-    expect(report.violations.join("\n")).toContain(
-      "line 1: declaration value carries '<' that can open a construct over the next lines",
-    );
-  });
-
-  test("the autolink exception is for an observed source only", () => {
-    expect(
-      passes("Door: two-way\nSecond-instrument: <https://example.com>\nOrigin: proposal\n"),
-    ).toBe(false);
-  });
-});
-
-describe("round 2 — G0: no declaration is read after raw HTML (measured on GitHub)", () => {
-  test.each([
-    ["an attribute across a blank line (renders nothing)", '<div title="\n\nDoor: two-way\n">\n'],
-    ["CDATA (renders nothing)", "<![CDATA[\n\nDoor: two-way\n\n]]>\n"],
-    ["a processing instruction (renders nothing)", "<?x\n\nDoor: two-way\n\n?>\n"],
-    ["a declaration (renders nothing)", "<!X\n\nDoor: two-way\n\n>\n"],
-    ["details (collapsed)", "<details>\n\nDoor: two-way\n\n</details>\n"],
-    ["video (fallback content)", "<video>\n\nDoor: two-way\n\n</video>\n"],
-    [
-      "a table cell attribute (renders nothing)",
-      '<table><tr><td title="\n\nDoor: two-way\n\n"></td></tr></table>\n',
-    ],
-  ])("%s", (_name, body) => {
-    const report = verdict(`Origin: proposal\n\n${body}`);
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain("follows raw HTML at line");
-  });
-
-  test("raw HTML on a refused key line, or after a comment on its closing line, counts too", () => {
-    expect(notRead("Not-added: <details>\n\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(true);
-    expect(notRead("<!--\nc\n--><details>\n\nDoor: two-way\nOrigin: proposal\n", "Door")).toBe(
-      true,
-    );
-  });
-
-  test("a complete void tag without quotes hides nothing (measured on GitHub)", () => {
-    for (const tag of [
-      "<br>",
-      "<hr/>",
-      "<img src=x>",
-      "<input type=checkbox>",
-      "<wbr>",
-      "<source>",
-    ]) {
-      expect(passes(`x ${tag}\n\nDoor: two-way\nOrigin: proposal\n`)).toBe(true);
-    }
-  });
-
-  test("an incomplete or quoted void tag is still raw HTML", () => {
-    expect(notRead("<img src=x\n\nDoor: two-way\nOrigin: proposal\n>\n", "Door")).toBe(true);
-    expect(notRead('x <img title="a">\n\nDoor: two-way\nOrigin: proposal\n', "Door")).toBe(true);
-  });
-
-  test("raw HTML after the block does not matter, nor tags inside code spans", () => {
-    expect(passes("Door: two-way\nOrigin: proposal\n\n<details>x</details>\n")).toBe(true);
-    expect(
-      passes("See `<details>` and <https://example.com>.\n\nDoor: two-way\nOrigin: proposal\n"),
-    ).toBe(true);
-  });
-});
-
-describe("round 2 — G1/G4: column 0, and every displayed key line must be read", () => {
-  test("one to three spaces of indentation no longer declare", () => {
-    expect(notRead("Origin: proposal\n\n  Door: two-way\n", "Door")).toBe(true);
-  });
-
-  test("a second Origin line that is not read fails the gate (P17)", () => {
-    const report = verdict(
-      "Door: two-way\nOrigin: proposal\n<!-->\nOrigin: observed 2026-10-07\n<!-- -->\n",
-    );
-    expect(report.outcome).toBe("violations");
-    expect(report.violations.join("\n")).toContain(
-      "Origin line(s) outside comments and code are not read",
-    );
-  });
-
-  test("an absent key with unread lines fails once, naming them", () => {
-    const report = verdict("Summary\nDoor: two-way\n\nOrigin: proposal\n");
-    expect(report.violations.filter((violation) => violation.includes("— Door")).length).toBe(1);
-    expect(report.volumeSummary).toContain("1 Origin line(s)");
-  });
-
-  test("an unread Door or Origin line removes the implicit-author waiver", () => {
-    expect(verdict("Bumps x.\nDoor: one-way\n", "dependabot[bot]").outcome).toBe("violations");
-    expect(verdict("Bumps x.\nOrigin: proposal\n", "dependabot[bot]").outcome).toBe("violations");
-    expect(verdict("Bumps x.\n", "dependabot[bot]").outcome).toBe("pass");
-  });
-
-  test("key lines inside comments and code are counted, never failing", () => {
-    const report = verdict(
-      "Door: two-way\nOrigin: proposal\n\n<!--\nSecond-instrument: <x>\nNot-added: dependency\n-->\n",
-    );
-    expect(report.outcome).toBe("pass");
-    expect(report.volumeSummary).toContain("2 key line(s) not read (2 inside comments or code)");
-  });
-});
-
-describe("round 2 — C: hangul fillers are not visible letters", () => {
-  test.each([
-    "\u115f",
-    "\u1160",
-    "\u3164",
-    "\uffa0",
-    "\u3164\u3164 #",
-  ])("a source of fillers fails: %p", (source) => {
-    expect(passes(`Door: two-way\nOrigin: observed 2026-10-07 ${source}\n`)).toBe(false);
-  });
-
-  test("a markdown link with an empty text is refused (G3)", () => {
-    expect(passes("Door: two-way\nOrigin: observed 2026-10-07 [](https://example.com)\n")).toBe(
-      false,
-    );
-  });
-});
-
-describe("round 2 — D: fences opened on a list marker", () => {
-  test("indented Door inside an ordered-list fence is not read", () => {
-    expect(notRead("1. ~~~\n\n   Door: two-way\n   ~~~\n", "Door")).toBe(true);
-  });
-
-  test("indented Door inside a bullet-list fence is not read", () => {
-    expect(notRead("- ```\n\n  Door: two-way\n  ```\n", "Door")).toBe(true);
-  });
-
-  // Measured 2026-10-23 through POST /markdown (gfm): a non-indented line after
-  // the blank ends the list item, and GitHub renders it as a paragraph,
-  // `<p>Door: two-way<br> Origin: proposal</p>`. Reading it invents nothing.
-  test("the non-indented variant is displayed by GitHub, so it is read", () => {
-    expect(passes("1. ~~~\n\nDoor: two-way\nOrigin: proposal\n   ~~~\n")).toBe(true);
-    expect(passes("- ```\n\nDoor: two-way\nOrigin: proposal\n```\n")).toBe(true);
-  });
-});
-
-describe("round 2 — E: no phantom line for the final newline", () => {
-  test.each([
-    ["", 0],
-    ["\n", 1],
-    ["Door: two-way", 1],
-    ["Door: two-way\n", 1],
-    ["Door: two-way\r\n", 1],
-    ["a\n\n", 2],
-  ])("%p has %p line(s)", (body, lines) => {
-    expect(verdict(body).volumeSummary ?? "").toStartWith(`${lines} description line(s) =`);
-  });
-});
-
-describe("judgeOrigin", () => {
+describe("judgeOrigin and isIsoCalendarDate", () => {
   test("returns the parts of an observed declaration", () => {
     expect(judgeOrigin(" observed  2026-10-07   PR #135 ", NOW)).toEqual({
       ok: true,
@@ -845,9 +581,7 @@ describe("judgeOrigin", () => {
       source: null,
     });
   });
-});
 
-describe("isIsoCalendarDate", () => {
   test.each([
     ["2026-10-07", true],
     ["2024-02-29", true],
@@ -861,8 +595,33 @@ describe("isIsoCalendarDate", () => {
   });
 });
 
-describe("stripNonDeclarations", () => {
-  test("keeps the line count stable so the rest of the body is untouched", () => {
+describe("the volume line", () => {
+  test("names the partition, the headers, the block and the counts", () => {
+    expect(evaluate(`${SPDX}Door: two-way\nOrigin: proposal\n\n<!-- x -->\n`).volumeSummary).toBe(
+      "6 description line(s) = 3 examined + 3 removed in 3 comment/code block(s); 2 header comment line(s), declaration block lines 3-4; 1 Door line(s), 0 Second-instrument line(s), 1 Origin line(s); 0 key line(s) outside the block (0 inside comments or code)",
+    );
+  });
+
+  test.each([
+    ["", 0],
+    ["\n", 1],
+    ["Door: two-way", 1],
+    ["Door: two-way\n", 1],
+    ["Door: two-way\r\n", 1],
+    ["a\n\n", 2],
+    [`${BOM}a\n`, 1],
+    ["```\nx\n\n```\ny <!-- z --> w\n<!-- open", 6],
+  ])("%p has %p line(s), and examined + removed sums to it", (body, lines) => {
+    const summary = evaluate(body).volumeSummary ?? "";
+    const counts = /^(\d+) description line\(s\) = (\d+) examined \+ (\d+) removed/.exec(summary);
+    const [total, examined, removed] = (counts ?? []).slice(1).map(Number);
+    expect(total).toBe(lines);
+    expect((examined ?? -1) + (removed ?? -1)).toBe(total ?? -2);
+  });
+});
+
+describe("stripNonDeclarations (T3 and #144)", () => {
+  test("keeps the line layout so the rest of the body is untouched", () => {
     const { text, removedBlocks } = stripNonDeclarations("a\n<!--\nb\n-->\nc\n");
     expect(text.split("\n")).toEqual(["a", "", "", "", "c", ""]);
     expect(removedBlocks).toBe(1);
@@ -876,8 +635,22 @@ describe("stripNonDeclarations", () => {
     expect(stripped.removedBlocks).toBe(3);
   });
 
-  test("an unclosed comment swallows the rest, never leaks a declaration", () => {
+  test("an unclosed comment swallows the rest", () => {
     expect(stripNonDeclarations("<!-- Door: two-way").text).not.toContain("Door");
+  });
+
+  test("short comments are complete, fences follow CommonMark", () => {
+    expect(stripNonDeclarations("<!-->\nx\n<!--->\ny\n").lines).toEqual(["", "x", "", "y"]);
+    expect(stripNonDeclarations("````\n```\nx\n````\ny\n").lines).toEqual(["", "", "", "", "y"]);
+    expect(stripNonDeclarations("```\n~~~\nx\n").lines).toEqual(["", "", ""]);
+    expect(stripNonDeclarations("```x```\ny\n").lines).toEqual(["```x```", "y"]);
+    expect(stripNonDeclarations("    ```\ny\n").lines).toEqual(["    ```", "y"]);
+    expect(stripNonDeclarations("```\n``` x\n    ```\ny\n").inside).toEqual([
+      false,
+      true,
+      true,
+      true,
+    ]);
   });
 });
 
@@ -898,7 +671,7 @@ describe("readPullRequestEvent", () => {
     expect(read).toEqual({ ok: true, number: 7, body: "", author: "dependabot[bot]" });
   });
 
-  test("a null body reads as empty, then fails the door check", () => {
+  test("a null body reads as empty", () => {
     const read = readPullRequestEvent('{"pull_request":{"number":7,"body":null}}');
     expect(read).toEqual({ ok: true, number: 7, body: "", author: null });
   });
@@ -928,9 +701,9 @@ describe("CLI", () => {
       output: new TextDecoder().decode(result.stdout) + new TextDecoder().decode(result.stderr),
     };
   };
-  const eventFile = (payload: string): string => {
+  const eventFile = (payload: unknown): string => {
     const path = join(mkdtempSync(join(tmpdir(), "pr-door-")), "event.json");
-    writeFileSync(path, payload);
+    writeFileSync(path, JSON.stringify(payload));
     return path;
   };
 
@@ -952,53 +725,42 @@ describe("CLI", () => {
     expect(result.exitCode).toBe(1);
   });
 
-  test("a description without Door fails; with Door it passes and prints its volume", () => {
+  test("a description without the block fails; with it, it passes and prints its volume", () => {
     const missing = run({
       GITHUB_EVENT_NAME: "pull_request",
-      GITHUB_EVENT_PATH: eventFile('{"pull_request":{"number":3,"body":"A fix."}}'),
+      GITHUB_EVENT_PATH: eventFile({ pull_request: { number: 3, body: "A fix." } }),
     });
     expect(missing.exitCode).toBe(1);
     expect(missing.output).toContain("PR #3 description — Door");
 
     const declared = run({
       GITHUB_EVENT_NAME: "pull_request",
-      GITHUB_EVENT_PATH: eventFile(
-        '{"pull_request":{"number":3,"body":"A fix.\\n\\nDoor: two-way\\nOrigin: proposal"}}',
-      ),
+      GITHUB_EVENT_PATH: eventFile({
+        pull_request: { number: 3, body: "Door: two-way\nOrigin: proposal\n\nA fix." },
+      }),
     });
     expect(declared.exitCode).toBe(0);
     expect(declared.output).toContain("4 description line(s) = 4 examined + 0 removed");
-    expect(declared.output).toContain("1 Origin line(s)");
+    expect(declared.output).toContain("declaration block lines 1-2");
   });
 
   test("the command reads the clock: an observed date far in the future fails end to end", () => {
     const result = run({
       GITHUB_EVENT_NAME: "pull_request",
-      GITHUB_EVENT_PATH: eventFile(
-        '{"pull_request":{"number":6,"body":"Door: two-way\\nOrigin: observed 2999-12-31 PR #1"}}',
-      ),
+      GITHUB_EVENT_PATH: eventFile({
+        pull_request: { number: 6, body: "Door: two-way\nOrigin: observed 2999-12-31 PR #1" },
+      }),
     });
     expect(result.exitCode).toBe(1);
     expect(result.output).toContain('observed date "2999-12-31" is after');
   });
 
-  test("a description with Door but without Origin fails end to end, naming Origin", () => {
-    const result = run({
-      GITHUB_EVENT_NAME: "pull_request",
-      GITHUB_EVENT_PATH: eventFile(
-        '{"pull_request":{"number":5,"body":"A fix.\\n\\nDoor: two-way"}}',
-      ),
-    });
-    expect(result.exitCode).toBe(1);
-    expect(result.output).toContain("PR #5 description — Origin: no `Origin:` line");
-  });
-
   test("an undeclared Dependabot pull request passes end to end", () => {
     const bot = run({
       GITHUB_EVENT_NAME: "pull_request",
-      GITHUB_EVENT_PATH: eventFile(
-        '{"pull_request":{"number":4,"body":"Bumps x.","user":{"login":"dependabot[bot]"}}}',
-      ),
+      GITHUB_EVENT_PATH: eventFile({
+        pull_request: { number: 4, body: "Bumps x.", user: { login: "dependabot[bot]" } },
+      }),
     });
     expect(bot.exitCode).toBe(0);
     expect(bot.output).toContain("door implied by author dependabot[bot]");
