@@ -1,4 +1,5 @@
 import { concludeGate, GateReport } from "./gate-report";
+import { listChangedPaths, readGit, runGit } from "./git-diff";
 
 /**
  * Review-evidence gate (K4 redefinition, Domain A re-ratification, 2026-08-18,
@@ -298,33 +299,25 @@ export function evaluateReviewEvidence(
 
 /** `git cat-file -e HEAD:<path>` answers for a blob or a tree, so a dossier directory counts. */
 function existsAtHead(path: string): boolean {
-  return sh(["git", "cat-file", "-e", `HEAD:${path}`]).exitCode === 0;
-}
-
-function sh(argv: string[]): { exitCode: number; stdout: string; stderr: string } {
-  const result = Bun.spawnSync(argv, { stdout: "pipe", stderr: "pipe" });
-  return {
-    exitCode: result.exitCode ?? 1,
-    stdout: new TextDecoder().decode(result.stdout),
-    stderr: new TextDecoder().decode(result.stderr),
-  };
+  return runGit(["cat-file", "-e", `HEAD:${path}`]).exitCode === 0;
 }
 
 /**
- * Run one `git diff` of the gate and return its stdout, or exit 1.
+ * Exit 1 on a git read that failed, or return what it read.
  *
  * An unreadable diff is not an empty one: an empty path list reads as
  * "touches none of the gated paths" and passes, an empty content diff reads
- * as "no evidence" for a reason that is not the change. Both calls share this
+ * as "no evidence" for a reason that is not the change. Both reads share this
  * one exit, so a single probe (a head with no merge base) holds it.
  */
-function gitDiffOrExit(argv: readonly string[], what: string): string {
-  const result: { exitCode: number; stdout: string; stderr: string } = sh(["git", ...argv]);
-  if (result.exitCode !== 0) {
-    console.error(`check-review-evidence: could not ${what}: ${result.stderr.trim()}`);
+function orExit<T>(
+  read: ({ readonly ok: true } & T) | { readonly ok: false; readonly reason: string },
+): T {
+  if (!read.ok) {
+    console.error(`check-review-evidence: ${read.reason}`);
     process.exit(1);
   }
-  return result.stdout;
+  return read;
 }
 
 async function readPullRequestBody(): Promise<string> {
@@ -355,7 +348,7 @@ if (import.meta.main) {
       console.error("check-review-evidence: GITHUB_BASE_REF is required on pull_request runs");
       process.exit(1);
     }
-    const fetched = sh(["git", "fetch", "--quiet", "origin", baseRef]);
+    const fetched = runGit(["fetch", "--quiet", "origin", baseRef]);
     if (fetched.exitCode !== 0) {
       console.error(
         `check-review-evidence: could not fetch origin/${baseRef}: ${fetched.stderr.trim()}`,
@@ -363,17 +356,13 @@ if (import.meta.main) {
       process.exit(1);
     }
     const range: string = `origin/${baseRef}...HEAD`;
-    // `--no-renames`: with rename detection, an ADR moved out of docs/adr is
-    // listed under its new name only, and the change "touches none" of the
-    // gated paths. Without it, the old path is listed, deleted. `-z`: paths
-    // come NUL-terminated and unquoted, so `core.quotePath` cannot turn a
-    // non-ASCII name into its quoted octal form (`"docs/adr/0004-na\303\257ve.md"`
-    // for U+00EF), which the gated patterns do not match.
-    const names: string = gitDiffOrExit(
-      ["diff", "--name-only", "-z", "--no-renames", range],
-      `list the paths changed in ${range}`,
+    // The path list is the shared one (`git-diff.ts`): `--no-renames`, so an
+    // ADR moved out of docs/adr is listed under its old path, deleted, instead
+    // of "touching none" of the gated paths; `-z`, so a non-ASCII name is not
+    // quoted into a form the gated patterns do not match.
+    const changedPaths: readonly string[] = orExit(listChangedPaths([range])).entries.map(
+      (entry) => entry.path,
     );
-    const changedPaths: readonly string[] = names.split("\0").filter(Boolean);
     // The parser reads git's own format, whatever the repository config says:
     // - no colour: an escape sequence before `+` would hide an added line;
     // - no external diff driver and no textconv: either replaces the text
@@ -389,23 +378,25 @@ if (import.meta.main) {
     // printed beside each signal readable: `destinationPath` already absorbs
     // `diff.noprefix`, and the verdict never depends on the file name, so for
     // the verdict these three are equivalent mutants and no test claims them.
-    const diff: string = gitDiffOrExit(
-      [
-        "-c",
-        "core.quotePath=false",
-        "diff",
-        "--no-color",
-        "--no-ext-diff",
-        "--no-textconv",
-        "--find-renames",
-        "--src-prefix=a/",
-        "--dst-prefix=b/",
-        range,
-        "--",
-        ...GATED_PATHSPECS,
-      ],
-      `diff ${range}`,
-    );
+    const diff: string = orExit(
+      readGit(
+        [
+          "-c",
+          "core.quotePath=false",
+          "diff",
+          "--no-color",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--find-renames",
+          "--src-prefix=a/",
+          "--dst-prefix=b/",
+          range,
+          "--",
+          ...GATED_PATHSPECS,
+        ],
+        `diff ${range}`,
+      ),
+    ).stdout;
     const prBody = await readPullRequestBody();
     concludeGate(
       "Review evidence",

@@ -1,0 +1,55 @@
+name: pr-negatives
+
+# Negatives gate (tools/quality/check-pr-negatives.ts, ADR-0056 D5): a pull
+# request description may declare `Not-added: <value>, …`; the declaration is
+# validated, and each verifiable negative (dependency, schema, workflow) is
+# confronted to the diff. A workflow of its own, like pr-door.yml: the
+# declaration lives in the description, so the gate re-runs when the
+# description is `edited`, which ci.yml does not listen to.
+#
+# The description is read from the event payload file by the gate, never
+# interpolated into a shell command: it is author-controlled text. The diff is
+# read from git, between the merge base of the fetched base branch and HEAD:
+# the full history is checked out so the merge base exists. The rules
+# (tools/quality/pr-negatives.v1.json) are read at that merge base, never from
+# the head.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-negatives-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  negatives:
+    name: Negatives declaration
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # No token is left in .git/config: the gate fetches a public base
+          # branch, and nothing after the checkout needs to authenticate.
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # GATE_VERBOSE prints every check with its note on success too: which
+      # negatives are declarative and not verified, and which lockfiles were
+      # modified without being judged, are said by name, not only counted.
+      - run: bun run check:pr-negatives
+        env:
+          GATE_VERBOSE: "1"

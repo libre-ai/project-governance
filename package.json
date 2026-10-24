@@ -51,6 +51,7 @@
     "build:skills-manifest": "bun run check:bun:runtime && bun tools/skills/build-skills-manifest.ts",
     "check:skills-manifest": "bun run check:bun:runtime && bun tools/skills/build-skills-manifest.ts --check",
     "check:pr-door": "bun run check:bun:runtime && bun tools/quality/check-pr-door.ts",
+    "check:pr-negatives": "bun run check:bun:runtime && bun tools/quality/check-pr-negatives.ts",
     "check:work-package-link": "bun run check:bun:runtime && bun tools/quality/check-work-package-link.ts",
     "check:doctrine": "bun run check:bun:runtime && bash tools/quality/check-doctrine-governance.sh",
     "check:context-hygiene": "bun run check:bun:runtime && bash tools/quality/check-context-hygiene.sh",

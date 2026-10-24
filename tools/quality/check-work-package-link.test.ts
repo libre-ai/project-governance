@@ -3246,6 +3246,7 @@ describe("the command", () => {
     "check-review-evidence.ts",
     "check-pr-door.ts",
     "gate-report.ts",
+    "git-diff.ts",
     "prd-model.ts",
     "work-package-policy.ts",
     "work-package-ports.ts",
