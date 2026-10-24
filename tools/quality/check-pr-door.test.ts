@@ -194,11 +194,13 @@ describe("T2' — no value opens a construct over the next line", () => {
     ],
   ])("re-review 4 %s fails: a link or image is refused, and nothing after it is read", (_name, body) => {
     expect(passes(body)).toBe(false);
-    expect(violations(body)).toContain("value carries '[' (no link, image or strikethrough");
+    expect(violations(body)).toContain("value carries '[' (no link, image, strikethrough or math");
   });
 
-  // With no link, title or HTML, nothing on the line can be hidden, so the
-  // length a Second-instrument shows is the length it has.
+  // What is guaranteed: no link, title, HTML or math can carry text the line
+  // does not show (T2'), and only visible letters and digits count toward the
+  // minimum (entities, Hangul fillers, shortcodes, U+200B and blanks do not).
+  // Other rendering tricks are not modelled.
   test("a Second-instrument cannot reach its minimum length with hidden text", () => {
     for (const value of [
       "n/a [ ](https://h.example 'a long hidden title')",
@@ -463,6 +465,90 @@ describe("T3 — key lines elsewhere in the body", () => {
     const blocks = readDeclarationBlocks("Not-added: dependency, schema\nDoor: two-way\n\nBody.\n");
     expect(blocks.values["Not-added"]).toEqual(["dependency, schema"]);
     expect(blocks.block).toEqual({ first: 1, last: 2 });
+  });
+});
+
+describe("re-review 5", () => {
+  // C1, verbatim: cmark keeps these HTML blocks open across blank lines, the
+  // browser shows what follows, so the fence after them exempts nothing.
+  test.each([
+    "Door: two-way\nOrigin: proposal\n\n<? >\n\n```\nDoor: one-way\n```\n\n?>\n",
+    "Door: two-way\nOrigin: proposal\n\n<![CDATA[ >\n\n```\nDoor: one-way\n```\n]]>\n",
+    "Door: two-way\nOrigin: proposal\n\n<!-- x --!>\n\n```\nDoor: one-way\n```\n-->\n",
+    "Door: two-way\nOrigin: proposal\n\n<!-- guidance --!>\n\n```\nDoor: one-way\nSecond-instrument: none\n```\n\n## Summary\n\nBody.\n",
+    "Door: two-way\nOrigin: proposal\n\n<?x >\n\n~~~\nDoor: one-way\n~~~\n",
+  ])("C1: after an HTML block cmark leaves open, a fence exempts nothing: %p", (body) => {
+    expect(passes(body)).toBe(false);
+    expect(violations(body)).toContain("a `Door:` line outside the declaration block");
+  });
+
+  test.each([
+    ["type 4 declaration", "<!X a"],
+    ["type 4 doctype", "<!DOCTYPE html"],
+  ])("C1: an unclosed %s block ends the exemptions too", (_name, opener) => {
+    expect(
+      passes(`Door: two-way\nOrigin: proposal\n\n${opener}\n\n\`\`\`\nDoor: one-way\n\`\`\`\n`),
+    ).toBe(false);
+  });
+
+  test.each([
+    ["<?php ?>", "<?php ?>"],
+    ["<!DOCTYPE html>", "<!DOCTYPE html>"],
+    ["<![CDATA[ x ]]>", "<![CDATA[ x ]]>"],
+  ])("C1 control: %s, closed on its line, keeps the exemption", (_name, line) => {
+    expect(
+      passes(`Door: two-way\nOrigin: proposal\n\n${line}\n\n\`\`\`\nDoor: one-way\n\`\`\`\n`),
+    ).toBe(true);
+  });
+
+  // C2: TeX letters show nothing; `$` is refused outside code spans.
+  test.each([
+    "$\\quad$",
+    "$\\phantom{PR}$",
+    "$\\color{transparent}{PR 12}$",
+  ])("C2: an Origin source in math is refused: %s", (source) => {
+    const text = violations(withOrigin(`Origin: observed 2026-10-07 ${source}`));
+    expect(text).toContain("the Origin value carries '$'");
+  });
+
+  test("C2: $ is refused in any value outside code spans, escaped too, admitted inside", () => {
+    expect(violations(withBoth("Second-instrument: costs $5 over 25 repositories"))).toContain(
+      "carries '$' (no link, image, strikethrough or math",
+    );
+    expect(violations(withBoth("Second-instrument: costs \\$5 over 25 repositories"))).toContain(
+      "carries '$' (escaped or not)",
+    );
+    expect(passes(withBoth("Second-instrument: `echo $HOME` over 25 repositories"))).toBe(true);
+  });
+
+  test("C2: a shortcode is not a letter of the source", () => {
+    expect(violations(withOrigin("Origin: observed 2026-10-07 :smile:"))).toContain(
+      "is a placeholder or has no letter or digit",
+    );
+    expect(violations(withOrigin("Origin: observed 2026-10-07 :smile::+1:"))).toContain(
+      "is a placeholder or has no letter or digit",
+    );
+    expect(passes(withOrigin("Origin: observed 2026-10-07 :smile: PR 12"))).toBe(true);
+  });
+
+  // C3: an invisible Second-instrument on a one-way door.
+  test.each([
+    ["math", "$\\phantom{xxxxxxxxxxxx}$"],
+    ["entities", "&#x200B;&#x200B;&#x200B;"],
+    ["12 zero-width spaces", String.fromCodePoint(0x200b).repeat(12)],
+    ["12 Hangul fillers", String.fromCodePoint(0x3164).repeat(12)],
+    ["non-breaking spaces", "&nbsp;&nbsp;&nbsp;"],
+    ["a code span of 12 blanks", "`            `"],
+    ["n/a and entities", "n/a &#x200B;&#x200B;"],
+    ["shortcodes", ":white_check_mark: :white_check_mark:"],
+  ])("C3: an invisible Second-instrument fails: %s", (_name, value) => {
+    expect(passes(withDoor(`Door: one-way\nSecond-instrument: ${value}`))).toBe(false);
+  });
+
+  test("C3: twelve visible letters or digits are enough, code spans included", () => {
+    expect(passes(withDoor("Door: one-way\nSecond-instrument: `ls-remote` 25 repos"))).toBe(true);
+    expect(passes(withDoor("Door: one-way\nSecond-instrument: abcdef 123456"))).toBe(true);
+    expect(passes(withDoor("Door: one-way\nSecond-instrument: abcdef 12345"))).toBe(false);
   });
 });
 

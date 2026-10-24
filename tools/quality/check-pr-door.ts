@@ -46,19 +46,24 @@ import { concludeGate, GateReport } from "./gate-report";
  *   on the line: a backtick run opens, and closes at the next run of the same
  *   length on the same line; an unclosed run refuses the line. Inside a code
  *   span everything is admitted. Outside, a value carries no `[` or `]` (no
- *   link or image, inline or by reference, even escaped), no `~`, and no `<`
- *   except a whole autolink `<https://host...>` or `<http://host...>`. No
- *   HTML. A refused line fails the gate, and no line after it in the block is
+ *   link or image, inline or by reference, even escaped), no `~`, no `$` (no
+ *   math, re-review 5: `$\phantom{PR}$` shows nothing), and no `<` except a
+ *   whole autolink `<https://host...>` or `<http://host...>`. No HTML. A
+ *   refused line fails the gate, and no line after it in the block is
  *   read: the construct it opens may hide them (a `<details>` collapses them).
  * - T3. A key line at column 0 elsewhere in the body fails the gate by name,
  *   unless it sits in an HTML comment or a fence that opened at column 0, at
  *   the start of its line, right after a raw blank line (re-review 3, M1/M2:
  *   a `<!--` in a code span, or indented four spaces, opens no comment for
  *   GitHub, which then displays the key line). A comment closes on `-->` or
- *   `--!>`, as HTML5 closes it. After a line that opens a type-1 HTML block
- *   (`<pre`, `<script`, `<style`, `<textarea`), no line is exempt (re-review
- *   4). Nothing outside the block is ever read, so this rule can only refuse
- *   more or name fewer, never read.
+ *   `--!>`, as HTML5 closes it. Fail closed after a line that cmark leaves
+ *   inside an HTML block across blank lines while the browser shows what
+ *   follows: from there on, no line is exempt. Such a line opens a type-1
+ *   block (`<pre`, `<script`, `<style`, `<textarea`, re-review 4), holds a
+ *   `--!>` (cmark waits for `-->`), or opens a type 3, 4 or 5 block (`<?`,
+ *   `<!` and a letter, `<![CDATA[`) without its cmark end (`?>`, `>`, `]]>`)
+ *   on the same line (re-review 5). Nothing outside the block is ever read,
+ *   so this rule can only refuse more or name fewer, never read.
  *
  * The values, then:
  *
@@ -66,8 +71,10 @@ import { concludeGate, GateReport } from "./gate-report";
  *   (lowercase, nothing else on the line). The unfilled template line
  *   `Door: one-way | two-way` is refused: choosing is the point;
  * - `Second-instrument:` is required when the door is one-way, with at least
- *   SECOND_INSTRUMENT_MIN_LENGTH characters that are not a placeholder
- *   (`n/a`, `none`, `tbd`, `-`). On a two-way door it is optional.
+ *   SECOND_INSTRUMENT_MIN_LENGTH visible letters or digits, counted as for
+ *   an observed source below (blanks, in code spans too, never count), and
+ *   it is not a placeholder (`n/a`, `none`, `tbd`, `-`). On a two-way door it
+ *   is optional.
  *
  * This is a declaration gate, like check-review-evidence's
  * `Owner-arbitration:` marker: it makes forgetting the declaration
@@ -102,9 +109,10 @@ import { concludeGate, GateReport } from "./gate-report";
  *   the run's day plus one (a time-zone margin) and not before
  *   OBSERVED_DATE_FLOOR; then a source (pull request, issue, `path:line`,
  *   session note) that is not a placeholder word and that keeps at least one
- *   letter or digit (`\p{L}`, `\p{N}`) once `&...;` entities and the Hangul
+ *   letter or digit (`\p{L}`, `\p{N}`) once `&...;` entities, the Hangul
  *   fillers (U+115F, U+1160, U+3164, U+FFA0, letters that render as blank)
- *   are removed. Invisible format characters (`\p{Cf}`, U+200B) are neither
+ *   and `:shortcode:` emoji (rendered as images) are removed. Invisible
+ *   format characters (`\p{Cf}`, U+200B) are neither
  *   letters nor digits, so they never count;
  * - `inspection`, `synthetic` and `proposal` carry nothing else on the line,
  *   as a `Door:` value does: `Origin: proposal mostly` is refused. ADR-0056
@@ -175,11 +183,24 @@ const FENCE_CLOSE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 const COMMENT_CLOSE = /--!?>/;
 /** CommonMark HTML block type 1, at the start of a line, any case. */
 const RAW_TEXT_BLOCK_OPEN = /^ {0,3}<(?:pre|script|style|textarea)(?:[\s>]|$)/i;
+/**
+ * CommonMark HTML blocks of types 3, 4 and 5 left open on their line: cmark
+ * keeps them open through blank lines until `?>`, `>` or `]]>`, and the text
+ * after them shows as raw HTML (re-review 5). The openers exclude one
+ * another (`<![` is not `<!` and a letter), so their order does not matter.
+ */
+const UNCLOSED_HTML_BLOCKS: readonly (readonly [RegExp, string])[] = [
+  [/^ {0,3}<!\[CDATA\[/, "]]>"],
+  [/^ {0,3}<![A-Za-z]/, ">"],
+  [/^ {0,3}<\?/, "?>"],
+];
 /** T2: a complete autolink, read at a `<`; its URL holds nothing that opens a construct. */
 const AUTOLINK_AT = /<https?:\/\/[^\s<>"`[\]()/?#]+[^\s<>"`[\]()]*>/y;
 const ASCII_PUNCTUATION = /[!-/:-@[-`{-~]/;
 /** T2': refused outside code spans; `<` too, unless it opens a whole autolink. */
-const REFUSED_OUTSIDE_CODE: ReadonlySet<string> = new Set(["[", "]", "~", "<"]);
+const REFUSED_OUTSIDE_CODE: ReadonlySet<string> = new Set(["[", "]", "~", "<", "$"]);
+/** An emoji shortcode, `:word:`: GitHub renders it as an image, not as its letters. */
+const SHORTCODE = /:[A-Za-z0-9_+-]+:/g;
 
 const DOOR_VALUES = new Set(["one-way", "two-way"]);
 const PLACEHOLDER = /^(?:n\/?a|none|tbd|todo|-+|\.+)$/i;
@@ -204,14 +225,19 @@ export interface StrippedBody {
   readonly removedBlocks: number;
   /** The cleaned lines; `[]` for an empty body, no line for a final newline. */
   readonly lines: readonly string[];
-  /** Lines that held something and hold nothing but blanks once comments and fences are removed. */
+  /**
+   * Lines a comment or a fence touched and that hold nothing but blanks once
+   * cleaned; every line inside a fence counts, blank ones included.
+   */
   readonly removedLines: number;
   /** Per line: it starts inside a comment or a fence (a fence's closing line included). */
   readonly inside: readonly boolean[];
   /**
    * Per line: it starts inside a comment or a fence that opened at column 0,
-   * at the start of its line, right after a raw blank line or the body start.
-   * Only such a construct exempts a key line from T3.
+   * at the start of its line, right after a raw blank line or the body start,
+   * and no earlier line held a `--!>` or opened an HTML block of type 1, or of
+   * type 3, 4 or 5 left open on its line. Only such a construct exempts a key
+   * line from T3.
    */
   readonly insideClean: readonly boolean[];
 }
@@ -223,6 +249,16 @@ function splitLines(body: string): { readonly lines: string[]; readonly finalNew
   const finalNewline = normalised.endsWith("\n");
   if (finalNewline) lines.pop();
   return { lines, finalNewline };
+}
+
+/** Does this line end every T3 exemption after it (see stripNonDeclarations)? */
+function opensRawHtmlBlock(line: string): boolean {
+  if (RAW_TEXT_BLOCK_OPEN.test(line) || line.includes("--!>")) return true;
+  for (const [opener, end] of UNCLOSED_HTML_BLOCKS) {
+    const open = opener.exec(line);
+    if (open !== null) return !line.slice(open[0].length).includes(end);
+  }
+  return false;
 }
 
 /**
@@ -241,17 +277,18 @@ export function stripNonDeclarations(body: string): StrippedBody {
   let inComment = false;
   // Whether the construct open at the start of the current line opened clean.
   let openedClean = false;
-  // A type-1 HTML block (`<pre`, `<script`, `<style`, `<textarea`) runs to its
-  // closing tag through blank lines, and holds raw text a fence does not
-  // hide: after a line that opens one, no exemption holds to the end.
-  let afterRawTextBlock = false;
+  // HTML blocks that cmark keeps open through blank lines while the browser
+  // shows what follows: type 1 (`<pre`, `<script`, `<style`, `<textarea`),
+  // type 2 closed by `--!>` (cmark waits for `-->`), and types 3, 4 and 5
+  // left open on their line. After such a line, no exemption holds to the end.
+  let afterRawHtmlBlock = false;
 
   source.forEach((line, index) => {
     // The body start reads as a raw blank line above (source[-1] is absent).
     const afterBlank = BLANK_LINE.test(source[index - 1] ?? "");
     inside.push(fence !== null || inComment);
-    insideClean.push((fence !== null || inComment) && openedClean && !afterRawTextBlock);
-    if (RAW_TEXT_BLOCK_OPEN.test(line)) afterRawTextBlock = true;
+    insideClean.push((fence !== null || inComment) && openedClean && !afterRawHtmlBlock);
+    if (opensRawHtmlBlock(line)) afterRawHtmlBlock = true;
     if (fence !== null) {
       const run = FENCE_CLOSE.exec(line)?.[1] ?? "";
       if (run[0] === fence.marker && run.length >= fence.length) fence = null;
@@ -321,8 +358,9 @@ export function stripNonDeclarations(body: string): StrippedBody {
  * punctuation, and a backtick run opens a code span closed by the next run of
  * the same length on the line (raw text inside, everything admitted there).
  * Outside code spans the syntax that can hide text is removed, not modelled:
- * no `[` or `]` (no link, no image, even escaped), no `~`, and no `<` except a
- * whole http(s) autolink. Parentheses and quotes are then inert.
+ * no `[` or `]` (no link, no image, even escaped), no `~`, no `$` (no math),
+ * and no `<` except a whole http(s) autolink. Parentheses and quotes are then
+ * inert.
  */
 export function constructOpenedBy(value: string): string | null {
   let index = 0;
@@ -366,7 +404,7 @@ export function constructOpenedBy(value: string): string | null {
       continue;
     }
     if (REFUSED_OUTSIDE_CODE.has(character)) {
-      return `carries '${character}' (no link, image or strikethrough outside a code span)`;
+      return `carries '${character}' (no link, image, strikethrough or math outside a code span)`;
     }
     index += 1;
   }
@@ -501,8 +539,23 @@ export function readDoorDeclaration(body: string): DoorDeclaration {
   };
 }
 
+/**
+ * The letters and digits a value shows: `&...;` entities, Hangul fillers and
+ * `:shortcode:` emoji are removed first. Blanks and invisible format
+ * characters (`\p{Cf}`, U+200B), in code spans too, are neither letters nor
+ * digits, so they never count. `$` math is already refused by T2'.
+ */
+function visibleLettersAndDigits(value: string): number {
+  const visible = value
+    .replace(/&[^\s;&]*;/g, " ")
+    .replace(HANGUL_FILLERS, "")
+    .replace(SHORTCODE, " ");
+  return (visible.match(/[\p{L}\p{N}]/gu) ?? []).length;
+}
+
+/** A second instrument shows at least SECOND_INSTRUMENT_MIN_LENGTH letters or digits. */
 function isSubstantive(value: string): boolean {
-  return value.length >= SECOND_INSTRUMENT_MIN_LENGTH && !PLACEHOLDER.test(value);
+  return visibleLettersAndDigits(value) >= SECOND_INSTRUMENT_MIN_LENGTH && !PLACEHOLDER.test(value);
 }
 
 /** True for `YYYY-MM-DD` naming a day that exists (no 2026-02-30, no month 13). */
@@ -521,15 +574,11 @@ export function isIsoCalendarDate(value: string): boolean {
 }
 
 /**
- * True when a source keeps a letter or a digit once `&...;` entities and the
- * Hangul fillers are removed. The source has passed T2: its only `<` start
- * autolinks, which count as their URL.
+ * True when a source shows at least one letter or digit (visibleLettersAndDigits).
+ * The source has passed T2': its only `<` start autolinks, which count as their URL.
  */
 export function hasVisibleSource(source: string): boolean {
-  // Invisible format characters (\p{Cf}, e.g. U+200B) are neither letters nor
-  // digits, so the test below already ignores them: no removal step is needed.
-  const visible = source.replace(/&[^\s;&]*;/g, " ").replace(HANGUL_FILLERS, "");
-  return /[\p{L}\p{N}]/u.test(visible);
+  return visibleLettersAndDigits(source) > 0;
 }
 
 export type OriginJudgement =
