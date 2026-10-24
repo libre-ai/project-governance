@@ -62,8 +62,18 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * exactly, not its neighbours; its shape is checked by `check-refusals.ts`.
  * `tools/quality/refusals-exemptions.v1.json` joined with it: an exemption
  * relaxes that shape gate for one evidence, which is a guardrail mutation
- * (I-17) in the same way as editing the register. The other data files under
- * `tools/quality/` that relax a gate are an earlier class, not gated here.
+ * (I-17) in the same way as editing the register.
+ *
+ * The rest of that class joined on 2026-10-24 (#153): every data file that
+ * loosens a gate — an exemption, an allowlist, a waiver, an exception, a
+ * threshold — or bounds what a gate inspects. Before, a pull request could
+ * widen `ecosystem/sql-construction-allowlist.v1.yaml`, or empty the surface
+ * list of `pr-negatives.v1.json`, with no review evidence, although I-17 puts
+ * guardrail mutations on the human-touch surface. The class is written in data
+ * below (`LOOSENING_CLASS`), and the test suite requires every tracked file it
+ * matches to be either gated or declared in `NOT_GATED_LOOSENING` with its
+ * reason. A new allowlist cannot then be added beside the others unguarded and
+ * unsaid. Each file is gated exactly, not its neighbours.
  *
  * A review-artefact reference counts only if it names a path that exists in
  * the tree under review (2026-10-14). Before, any string shaped like
@@ -99,6 +109,31 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/FORGOTTEN\.yaml$/,
   /^ecosystem\/refusals\.v1\.yaml$/,
   /^tools\/quality\/refusals-exemptions\.v1\.json$/,
+  // The loosening class (#153). Each line names the gate that reads the file.
+  // check-pinned-citations.ts: exemptions, foreign owners, unnumbered ADRs, threshold.
+  /^tools\/quality\/pinned-citations\.v1\.json$/,
+  // check-pr-negatives.ts: the surface a `Not-added:` negative is confronted to.
+  /^tools\/quality\/pr-negatives\.v1\.json$/,
+  // check-threat-model-citations.ts: the scope and the files whose citations are checked.
+  /^tools\/quality\/threat-model-citations\.v1\.json$/,
+  // check-ref-monotonicity.py: a composed ref allowed to move backwards or sideways.
+  /^\.github\/composition\/ref-monotonicity-exemptions\.json$/,
+  // check-release-age.ts: packages admitted younger than the release-age floor.
+  /^ecosystem\/release-age-exceptions\.v1\.yaml$/,
+  // check-sql-construction.ts: raw-SQL construction sites admitted as safe.
+  /^ecosystem\/sql-construction-allowlist\.v1\.yaml$/,
+  // check-web-headers.ts: header relaxations, raw HTML sinks, servers outside surfaces.
+  /^ecosystem\/web-headers-allowlist\.v1\.yaml$/,
+  // check-work-package-link.ts: exempt classes, approving owners, maturity floor.
+  /^ecosystem\/work-package-policy\.v1\.yaml$/,
+  // bump-generation.ts: historical sites a bump leaves, commit identity, token secret.
+  /^tools\/fleet\/bump-generation\.v1\.yaml$/,
+  // check-dependency-policy.ts (cargo-deny): licence, source and advisory policy, ADR-0042 §4 and §11.
+  /^deny\.toml$/,
+  // check-advisory-waivers.ts reads it as a waiver source; ADR-0042 §11 names it with the root one.
+  /^crates\/ecosystem-engine\/deny\.toml$/,
+  // Bun's release-age guard and check-release-age.ts: `minimumReleaseAge` and its excludes.
+  /^bunfig\.toml$/,
 ];
 
 /**
@@ -114,11 +149,168 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/FORGOTTEN.yaml",
   "ecosystem/refusals.v1.yaml",
   "tools/quality/refusals-exemptions.v1.json",
+  "tools/quality/pinned-citations.v1.json",
+  "tools/quality/pr-negatives.v1.json",
+  "tools/quality/threat-model-citations.v1.json",
+  ".github/composition/ref-monotonicity-exemptions.json",
+  "ecosystem/release-age-exceptions.v1.yaml",
+  "ecosystem/sql-construction-allowlist.v1.yaml",
+  "ecosystem/web-headers-allowlist.v1.yaml",
+  "ecosystem/work-package-policy.v1.yaml",
+  "tools/fleet/bump-generation.v1.yaml",
+  "deny.toml",
+  "crates/ecosystem-engine/deny.toml",
+  "bunfig.toml",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */
 export function touchesGatedPaths(changedPaths: readonly string[]): string[] {
   return changedPaths.filter((path) => GATED_PATH_PATTERNS.some((pattern) => pattern.test(path)));
+}
+
+/**
+ * The class of files that loosen a gate, or bound what it inspects (#153).
+ * A tracked file belongs to it when ANY of the three rules matches; the rules
+ * are the searches that found the class, kept so that they run again:
+ *
+ * - `path`: the path names a loosening (`git ls-files | grep -iE …`);
+ * - `dataDirectory`: a non-code file directly in `tools/quality/` is data a
+ *   gate of that directory reads — all four found are a gate's configuration;
+ * - `key`: a JSON, YAML or TOML file carries, at the start of a line, a key
+ *   that names an exemption list. `exclude`/`excludes` are matched too, at the
+ *   price of declaring the compiler's `exclude` below: Bun's
+ *   `minimumReleaseAgeExcludes` is an exemption list, and a narrower key list
+ *   would have missed it.
+ */
+export const LOOSENING_CLASS = {
+  path: /allow|exempt|waiver|exception|baseline/i,
+  dataDirectory: /^tools\/quality\/[^/]+$/,
+  code: /\.(ts|sh)$/,
+  data: /\.(json|ya?ml|toml)$/,
+  key: /^[ \t]*"?(allow|allowances|allowlist|exempt|exemptions|exceptions|waivers?|ignore|historical_sites|excludes?|[A-Za-z]+Excludes)"?[ \t]*[:=]/m,
+} as const;
+
+interface NotGated {
+  readonly path: string;
+  /** Why the file matches the class without loosening a gate, or why it is not guarded here. */
+  readonly because: string;
+}
+
+/**
+ * Tracked files the class matches and this gate does not guard, each with its
+ * reason. Adding one is an edit of this list, which a reviewer sees.
+ */
+export const NOT_GATED_LOOSENING: readonly NotGated[] = [
+  {
+    path: "distribution/evidence/coverage-baseline-2026-07-19.json",
+    because:
+      "a dated coverage measurement published as evidence; only the evidence feeds cite it, no gate reads it as a threshold",
+  },
+  {
+    path: "docs/consolidation/COMPOSITION-BASELINE.md",
+    because: "a consolidation document; no gate reads it",
+  },
+  {
+    path: "docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/evidence/identity-allowlist.json",
+    because:
+      "frozen evidence of a past review, under the commit it reviewed; no gate of this repository reads it",
+  },
+  {
+    path: "docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/evidence/provider-policy.json",
+    because:
+      "frozen evidence of a past review (its `exclude` key is the reviewed product's); no gate of this repository reads it",
+  },
+  {
+    path: "docs/security/ADVISORY-WAIVER-POLICY.md",
+    because:
+      "the policy in prose; the waivers live in the waiver sources (deny.toml, gated above) and the rules in check-advisory-waivers.ts, which reads this file only as a fixture-marked text",
+  },
+  {
+    path: "tools/attestation/fixtures/frozen-readback.json",
+    because: "a test fixture of the attestation tooling; no gate reads it as policy",
+  },
+  {
+    path: "tsconfig.json",
+    because:
+      "the compiler configuration; its `exclude` lists build outputs and dependencies, and no decision or ADR fixes it the way ADR-0042 fixes deny.toml",
+  },
+  {
+    path: "tools/quality/advisory-waivers.ts",
+    because:
+      "the pure half of the advisory-waiver gate, not a waiver list: check-advisory-waivers reads 0 waivers in this tree and marks this file as a fixture; gate code is not on this surface",
+  },
+  {
+    path: "tools/quality/check-advisory-waivers.ts",
+    because: "gate code (the advisory-waiver gate itself); gate code is not on this surface",
+  },
+  {
+    path: "tools/quality/check-empty-allowances.ts",
+    because:
+      "gate code; its DECLARED_ALLOWANCES list is an allowlist kept in code, the same as this list, and gate code is not on this surface",
+  },
+  {
+    path: "tools/quality/advisory-waivers.test.ts",
+    because: "a test file",
+  },
+  {
+    path: "tools/quality/check-advisory-waivers.test.ts",
+    because: "a test file",
+  },
+  {
+    path: "tools/quality/check-advisory-waivers.adversarial.test.ts",
+    because: "a test file",
+  },
+  {
+    path: "tools/quality/check-empty-allowances.test.ts",
+    because: "a test file",
+  },
+];
+
+/** Reads a tracked file's text, or null when it is not text the key rule applies to. */
+export type ReadText = (path: string) => string | null;
+
+/** Whether one tracked path belongs to the loosening class. Pure: the reader is injected. */
+export function isLooseningClassMember(path: string, readText: ReadText): boolean {
+  if (LOOSENING_CLASS.path.test(path)) return true;
+  if (LOOSENING_CLASS.dataDirectory.test(path) && !LOOSENING_CLASS.code.test(path)) return true;
+  if (!LOOSENING_CLASS.data.test(path)) return false;
+  const text = readText(path);
+  return text !== null && text.match(LOOSENING_CLASS.key) !== null;
+}
+
+/**
+ * The loosening class confronted to the guarded surface. The members split
+ * into gated, declared and undeclared; a declaration that is gated too, or
+ * that no tracked member matches any more, is a defect of the list.
+ */
+export interface LooseningClassAudit {
+  readonly members: readonly string[];
+  readonly gated: readonly string[];
+  readonly declared: readonly string[];
+  /** Members neither gated nor declared: the files that escape the guard. */
+  readonly undeclared: readonly string[];
+  /** Declared AND gated: the list says "not gated" of a file that is. */
+  readonly contradictory: readonly string[];
+  /** Declarations naming no tracked member: a standing excuse ready for another file. */
+  readonly stale: readonly string[];
+}
+
+export function auditLooseningClass(
+  tracked: readonly string[],
+  readText: ReadText,
+  notGated: readonly NotGated[] = NOT_GATED_LOOSENING,
+): LooseningClassAudit {
+  const members = tracked.filter((path) => isLooseningClassMember(path, readText));
+  const declaredPaths = notGated.map((entry) => entry.path);
+  const gated = touchesGatedPaths(members);
+  return {
+    members,
+    gated,
+    declared: members.filter((path) => declaredPaths.includes(path)),
+    undeclared: members.filter((path) => !gated.includes(path) && !declaredPaths.includes(path)),
+    contradictory: gated.filter((path) => declaredPaths.includes(path)),
+    stale: declaredPaths.filter((path) => !members.includes(path)),
+  };
 }
 
 const REVIEW_ARTIFACT_PATTERN = /docs\/reviews\/[^\s)`"'<>]+/g;
