@@ -1,5 +1,5 @@
 import { concludeGate, GateReport } from "./gate-report";
-import { listChangedPaths, readGit, runGit } from "./git-diff";
+import { type GitRead, listChangedPaths, readGit, runGit } from "./git-diff";
 
 /**
  * Review-evidence gate (K4 redefinition, Domain A re-ratification, 2026-08-18,
@@ -150,6 +150,69 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * standing files of the directory (its README and the review protocol) exist
  * in every tree, so citing them proves nothing about this change and they are
  * not admissible either.
+ *
+ * A review record counts only for what it concludes (#160, 2026-10-26).
+ * Before, an existing path was enough, whatever its verdict: on #158 a
+ * dossier whose verdict was `reject` turned `Bun quality` green on 30beb61.
+ * The gate now reads the cited file at HEAD, and it admits the reference only
+ * if:
+ *
+ * 1. the file is a record, not a directory. A dossier directory holds several
+ *    rounds, and which one applies cannot be read from the directory, so the
+ *    reference must name the record;
+ * 2. the record carries a readable verdict line, and every verdict line it
+ *    carries gives the same verdict. Three forms are read. The canonical form
+ *    is defined in docs/reviews/AGENT-REVIEW-PROTOCOL.md ("Verdict line"):
+ *    the first line `Verdict: <verdict> on <commit>`, with ` on <commit>`
+ *    optional. The other two are the forms the existing records use. Counted
+ *    on the 14 records under docs/reviews/ other than the two standing files,
+ *    on 2026-10-26:
+ *    - first line `Verdict: <verdict>`, without the commit: 4 records (rounds
+ *      2 to 5 of adr-0060-gates-run-from-pr-2026-10-24), all of which also
+ *      carry the next form;
+ *    - a `## Verdict` heading whose first non-blank line is
+ *      `` **`<verdict>`** sur le commit `<commit>`. ``: 5 records (the five
+ *      rounds of adr-0060-gates-run-from-pr-2026-10-24);
+ *    - a `## Verdict` heading whose first non-blank line is `<verdict>`,
+ *      alone or followed by ` — ` and prose: 2 records
+ *      (guard-loosening-data-159);
+ *    - none of these: 7 records (the ATTESTATION and CANONICALIZATION files
+ *      of the two bootstrap dossiers, their REVIEW.md files, whose verdicts
+ *      `PASS WITH NOTES`, `FAIL` and "no remaining blocking finding" are not
+ *      protocol verdicts, and unwired-gates-2026-10-08/REVIEW.md). These
+ *      records are immutable audit records and are not rewritten, so citing
+ *      one of them is not evidence.
+ *    The count, rerun with: `git ls-files 'docs/reviews/**.md'`, then for each
+ *    file the first line and the first non-blank line after `## Verdict`;
+ * 3. the verdict is `approve` or `approve-with-minor-reservations`. A
+ *    `reject` record is refused: the protocol keeps it as an audit record,
+ *    and that does not make it evidence;
+ * 4. the record names the reviewed commit, as a full 40-character sha: in its
+ *    canonical verdict line, in the verdict line of the `## Verdict` heading,
+ *    or on a `Reviewed commit: <commit>` line (a list item or not, as in
+ *    guard-loosening-data-159). Each of the 7 records with a readable verdict
+ *    names it, and if a record names more than one commit the reference is
+ *    refused;
+ * 5. that commit is an ancestor of HEAD (`git merge-base --is-ancestor`). A
+ *    record of another change is not evidence for this one. On 2026-10-26
+ *    each of the seven reviewed commits is an ancestor of the head of the
+ *    pull request it reviewed (#158: 5 of 5, #159: 2 of 2), and of no other.
+ *    On a pull_request run HEAD is the merge commit of the pull request,
+ *    whose history (fetch-depth 0) holds the commits of its branch. A rebase
+ *    of the branch after the review therefore makes the record stale.
+ *
+ * A reference refused for any of these reasons is named in the verdict, like
+ * a dangling one. It fails the gate only when no other evidence is admissible.
+ *
+ * LIMITS of the verdict read. It does not check that the reviewed commit is
+ * the head: a gated change pushed after the reviewed commit, which the
+ * protocol says makes the approval stale, still passes. Comparing the gated
+ * paths between the two commits would catch it, but on a branch that merges
+ * its base the merged changes would show up as well (on #158,
+ * `git diff --name-only 2bfd7ca <head>` lists package.json, which #158 never
+ * touched). The verdict line is text written in the repository: it records
+ * what the reviewer concluded, and the gate cannot tell who wrote it. The
+ * `review-verdict.v0.1` envelope that the protocol names is not read.
  *
  * In the diff, only the lines the pull request ADDS are evidence (2026-10-23).
  * Before, the whole `git diff` text was scanned: a marker on a context line —
@@ -397,8 +460,121 @@ export const STANDING_REVIEW_PATHS: readonly string[] = [
   "docs/reviews/AGENT-REVIEW-PROTOCOL.md",
 ];
 
-/** Answers whether a repository-relative path exists in the tree under review. */
-export type PathExists = (path: string) => boolean;
+/** What the tree under review holds at a cited path. */
+export type RecordRead =
+  | { readonly kind: "absent" }
+  | { readonly kind: "directory" }
+  /** A gitlink (submodule) or anything else that is neither a file nor a directory. */
+  | { readonly kind: "other" }
+  | { readonly kind: "file"; readonly text: string };
+
+/** Where a reviewed commit stands relative to the head under review. */
+export type Ancestry = "ancestor" | "not-ancestor" | "unknown-commit";
+
+/** The two reads the verdict needs from the tree under review, injected so the verdict stays pure. */
+export interface ReviewTree {
+  readonly read: (path: string) => RecordRead;
+  readonly ancestry: (commit: string) => Ancestry;
+}
+
+/** The three verdicts of docs/reviews/AGENT-REVIEW-PROTOCOL.md. */
+export type Verdict = "approve" | "approve-with-minor-reservations" | "reject";
+
+const VERDICTS: readonly Verdict[] = ["approve", "approve-with-minor-reservations", "reject"];
+
+/** The verdicts that make a record evidence; `reject` does not. */
+export const ADMISSIBLE_VERDICTS: readonly Verdict[] = [
+  "approve",
+  "approve-with-minor-reservations",
+];
+
+function isVerdict(value: string | undefined): value is Verdict {
+  return VERDICTS.some((verdict) => verdict === value);
+}
+
+// `approve` is a prefix of `approve-with-minor-reservations`: every form below
+// is anchored at the end of the line, so the shorter one never reads the longer.
+const VERDICT = "(approve-with-minor-reservations|approve|reject)";
+const COMMIT = "([0-9a-f]{40})";
+/** The canonical form, on the first line of the record. */
+const CANONICAL_VERDICT_LINE = new RegExp(`^Verdict: ${VERDICT}(?: on ${COMMIT})?$`);
+const VERDICT_HEADING = "## Verdict";
+/** After the heading, as the five rounds of adr-0060-gates-run-from-pr-2026-10-24 write it. */
+const HEADING_VERDICT_WITH_COMMIT = new RegExp(
+  `^\\*\\*\`${VERDICT}\`\\*\\* sur le commit \`${COMMIT}\`\\.$`,
+);
+/** After the heading, as the two rounds of guard-loosening-data-159 write it. */
+const HEADING_VERDICT_ALONE = new RegExp(`^${VERDICT}(?: — .+)?$`);
+const REVIEWED_COMMIT_LINE = new RegExp(`^(?:- )?Reviewed commit: ${COMMIT}(?:\\s|$)`);
+
+/** Every verdict and every reviewed commit a record states, each listed once, in reading order. */
+export interface RecordStatement {
+  readonly verdicts: readonly Verdict[];
+  readonly commits: readonly string[];
+}
+
+/** Pure read of a record's verdict lines, in the three forms of the gate header. */
+export function readRecordStatement(text: string): RecordStatement {
+  const lines = text.split("\n").map((line) => line.replace(/\r$/, ""));
+  const verdicts: Verdict[] = [];
+  const commits: string[] = [];
+  const state = (verdict: string | undefined, commit: string | undefined): void => {
+    if (isVerdict(verdict) && !verdicts.includes(verdict)) verdicts.push(verdict);
+    if (commit !== undefined && !commits.includes(commit)) commits.push(commit);
+  };
+  const canonical = (lines[0] ?? "").match(CANONICAL_VERDICT_LINE);
+  if (canonical !== null) state(canonical[1], canonical[2]);
+  lines.forEach((line, index) => {
+    const reviewed = line.match(REVIEWED_COMMIT_LINE);
+    if (reviewed !== null) state(undefined, reviewed[1]);
+    if (line !== VERDICT_HEADING) return;
+    const next = lines.slice(index + 1).find((candidate) => candidate.trim().length > 0) ?? "";
+    const withCommit = next.match(HEADING_VERDICT_WITH_COMMIT);
+    if (withCommit !== null) {
+      state(withCommit[1], withCommit[2]);
+      return;
+    }
+    const alone = next.match(HEADING_VERDICT_ALONE);
+    if (alone !== null) state(alone[1], undefined);
+  });
+  return { verdicts, commits };
+}
+
+/** Why a cited record is not evidence, or null when it is. */
+function recordRefusal(record: RecordRead, tree: ReviewTree): string | null {
+  if (record.kind === "absent") return "does not exist in the tree under review";
+  if (record.kind === "directory") {
+    return "is a directory, not a record: cite the record whose verdict applies";
+  }
+  if (record.kind === "other") return "is neither a file nor a directory";
+  const { verdicts, commits } = readRecordStatement(record.text);
+  const [verdict] = verdicts;
+  if (verdict === undefined) {
+    return "has no readable verdict line (first line `Verdict: <verdict> on <commit>`, docs/reviews/AGENT-REVIEW-PROTOCOL.md)";
+  }
+  if (verdicts.length > 1) return `states conflicting verdicts (${verdicts.join(", ")})`;
+  if (!ADMISSIBLE_VERDICTS.includes(verdict)) {
+    return `records the verdict ${verdict}: a refused review is not evidence`;
+  }
+  const [commit] = commits;
+  if (commit === undefined) return `records ${verdict} but names no reviewed commit`;
+  if (commits.length > 1) return `names more than one reviewed commit (${commits.join(", ")})`;
+  const ancestry = tree.ancestry(commit);
+  if (ancestry === "unknown-commit") {
+    return `records ${verdict} on ${commit}, which is not a commit of this clone`;
+  }
+  if (ancestry === "not-ancestor") {
+    return `records ${verdict} on ${commit}, which is not an ancestor of the head: it reviews another change`;
+  }
+  return null;
+}
+
+/** `approve on 0123abcd…`: what an admitted record concludes, as the report prints it. */
+function recordConclusion(record: RecordRead): string {
+  if (record.kind !== "file") return "";
+  const { verdicts, commits } = readRecordStatement(record.text);
+  return ` (${verdicts[0] ?? ""} on ${commits[0] ?? ""})`;
+}
 
 /** Pure scan over one text blob, so the two accepted forms are independently testable. */
 export function findEvidenceSignals(
@@ -431,7 +607,7 @@ export function evaluateReviewEvidence(
   changedPaths: readonly string[],
   prBody: string,
   diffText: string,
-  pathExists: PathExists,
+  tree: ReviewTree,
 ): GateReport {
   const report = new GateReport();
   const gated = touchesReviewedPaths(changedPaths);
@@ -445,22 +621,25 @@ export function evaluateReviewEvidence(
     ...findEvidenceSignals("pr-body", prBody, null),
     ...scan.added.flatMap((line) => findEvidenceSignals("diff", line.text, line.file)),
   ];
-  const admissible: EvidenceSignal[] = [];
+  // Each admitted signal as the report prints it: `<kind> (<origin>): <text>`.
+  const admissible: string[] = [];
   const rejected: string[] = [];
   for (const signal of signals) {
+    const admitted = `${signal.kind} (${signalOrigin(signal)}): ${signal.text}`;
     if (signal.kind === "owner-arbitration-marker") {
-      admissible.push(signal);
-    } else if (STANDING_REVIEW_PATHS.includes(signal.text)) {
+      admissible.push(admitted);
+      continue;
+    }
+    if (STANDING_REVIEW_PATHS.includes(signal.text)) {
       rejected.push(
         `${signal.text} (${signalOrigin(signal)}) is a standing file of docs/reviews/, not a review`,
       );
-    } else if (!pathExists(signal.text)) {
-      rejected.push(
-        `${signal.text} (${signalOrigin(signal)}) does not exist in the tree under review`,
-      );
-    } else {
-      admissible.push(signal);
+      continue;
     }
+    const record = tree.read(signal.text);
+    const refusal = recordRefusal(record, tree);
+    if (refusal === null) admissible.push(`${admitted}${recordConclusion(record)}`);
+    else rejected.push(`${signal.text} (${signalOrigin(signal)}) ${refusal}`);
   }
 
   const examined =
@@ -475,15 +654,47 @@ export function evaluateReviewEvidence(
     gated.join(", "),
     ok,
     ok
-      ? `evidence found: ${admissible.map((signal) => `${signal.kind} (${signalOrigin(signal)}): ${signal.text}`).join("; ")}${rejectedNote}`
-      : `neither the pull request description nor a line the pull request adds to the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (${examined}; ${signals.length} candidate signal(s) examined${rejectedNote})`,
+      ? `evidence found: ${admissible.join("; ")}${rejectedNote}`
+      : `neither the pull request description nor a line the pull request adds to the gated files references a docs/reviews/** record approving a commit of this change or carries an 'Owner-arbitration: YYYY-MM-DD' marker (${examined}; ${signals.length} candidate signal(s) examined${rejectedNote})`,
   );
   return report;
 }
 
-/** `git cat-file -e HEAD:<path>` answers for a blob or a tree, so a dossier directory counts. */
-function existsAtHead(path: string): boolean {
-  return runGit(["cat-file", "-e", `HEAD:${path}`]).exitCode === 0;
+/**
+ * Exit 1 on a git read that failed where it had to succeed: a record that
+ * exists but cannot be read is not a record without a verdict.
+ */
+function orExitRead(read: GitRead): string {
+  if (!read.ok) {
+    console.error(`check-review-evidence: ${read.reason}`);
+    process.exit(1);
+  }
+  return read.stdout;
+}
+
+/** The cited path at HEAD: `git cat-file -t` tells a file from a directory, then the file is read. */
+function readAtHead(path: string): RecordRead {
+  const type = runGit(["cat-file", "-t", `HEAD:${path}`]);
+  if (type.exitCode !== 0) return { kind: "absent" };
+  const kind = type.stdout.trim();
+  if (kind === "tree") return { kind: "directory" };
+  if (kind !== "blob") return { kind: "other" };
+  return {
+    kind: "file",
+    text: orExitRead(readGit(["cat-file", "blob", `HEAD:${path}`], `read ${path} at HEAD`)),
+  };
+}
+
+/** `git merge-base --is-ancestor` answers 0 or 1; anything else is a failed read, not an answer. */
+function ancestryOfHead(commit: string): Ancestry {
+  if (runGit(["cat-file", "-e", `${commit}^{commit}`]).exitCode !== 0) return "unknown-commit";
+  const run = runGit(["merge-base", "--is-ancestor", commit, "HEAD"]);
+  if (run.exitCode === 0) return "ancestor";
+  if (run.exitCode === 1) return "not-ancestor";
+  console.error(
+    `check-review-evidence: could not compare ${commit} with HEAD: ${run.stderr.trim()}`,
+  );
+  process.exit(1);
 }
 
 /**
@@ -584,7 +795,10 @@ if (import.meta.main) {
     const prBody = await readPullRequestBody();
     concludeGate(
       "Review evidence",
-      evaluateReviewEvidence(changedPaths, prBody, diff, existsAtHead),
+      evaluateReviewEvidence(changedPaths, prBody, diff, {
+        read: readAtHead,
+        ancestry: ancestryOfHead,
+      }),
     );
   }
 }

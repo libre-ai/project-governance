@@ -75,9 +75,9 @@ Ce qu'une pull request qui ajoute une capacité n'ajoute **pas** (ADR-0056 D5) :
 
 ## Chemins gardés et `Owner-arbitration:`
 
-Dans `libre-ai/project-governance`, la liste des chemins gardés est `GATED_PATH_PATTERNS` de `tools/quality/check-review-evidence.ts`. La lire **sur la base** (`git show origin/<servie>:tools/quality/check-review-evidence.ts`), jamais la recopier, puis la confronter aux fichiers touchés.
+Dans `libre-ai/project-governance`, la liste des chemins gardés est `GATED_PATH_PATTERNS` de `tools/quality/check-review-evidence.ts`, complétée par `CONFIGURATION_PATH_PATTERNS` (la configuration des outils du dépôt : `package.json`, `tsconfig.json`, `biome.json`…), qui exige la même preuve. La lire **sur la base** (`git show origin/<servie>:tools/quality/check-review-evidence.ts`), jamais la recopier, puis la confronter aux fichiers touchés.
 
-- Un fichier touché correspond : ajouter au bloc `Owner-arbitration: <date ISO de l'arbitrage> <où il a été donné>`, ou citer un artefact `docs/reviews/…` dans le corps. La date est celle d'un arbitrage **réel** du propriétaire dans la session ou un document ; ne jamais en écrire une pour faire passer le gate. Sans arbitrage, s'arrêter et poser la question au propriétaire (choix structuré, contexte restitué).
+- Un fichier touché correspond : ajouter au bloc `Owner-arbitration: <date ISO de l'arbitrage> <où il a été donné>`, ou citer dans le corps un dossier de revue `docs/reviews/…`. Citer le fichier du dossier, pas son répertoire. Sa ligne de verdict doit approuver un commit de la branche (`docs/reviews/AGENT-REVIEW-PROTOCOL.md`, section « Verdict line ») : un dossier `reject` n'est pas une preuve. La date est celle d'un arbitrage **réel** du propriétaire dans la session ou un document ; ne jamais en écrire une pour faire passer le gate. Sans arbitrage, s'arrêter et poser la question au propriétaire (choix structuré, contexte restitué).
 - Autre dépôt : chercher son équivalent (`grep -rln "Owner-arbitration" tools .github`). Aucun gate : aucune ligne.
 
 ## Vérification avant `gh pr create`
