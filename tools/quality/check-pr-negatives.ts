@@ -499,17 +499,18 @@ export function readDeclarationLines(body: string): DeclarationLines {
  *   after other text;
  * - any other line: the raw line.
  *
- * Outside an exempt construct, the raw line joined with the rest of its
- * paragraph is judged too, so a construct that spans a line break is read
- * whole (eighth review, F2). Each form is a list of source lines.
+ * Outside an exempt construct, "the raw line" is read joined with the rest
+ * of its paragraph, so a construct that spans a line break is read whole
+ * (eighth review, F2). Each form is a list of source lines.
  */
 function displayedForms(read: DeclarationLines, index: number): readonly (readonly string[])[] {
-  const line = read.raw[index] ?? "";
   const visible = read.visible[index] ?? "";
   if (read.insideClean[index] === true) return [[visible]];
+  // The raw line is the first line of its paragraph: judging the paragraph
+  // judges the raw line, with what a construct opened on it carries over.
   const paragraph = paragraphFrom(read.raw, index);
-  if (read.inside[index] === true) return [[line], [visible], paragraph];
-  return [[line], paragraph];
+  if (read.inside[index] === true) return [paragraph, [visible]];
+  return [paragraph];
 }
 
 /**
