@@ -1,7 +1,7 @@
 # ADR-0060 — Les gates s'exécutent depuis la pull request qu'ils jugent : options mesurées
 
 - **Statut :** proposed — la fusion de cette pull request signe la mesure et l'écartement conditionnel d'A1, tant que les deux comportements de GitHub qu'il suppose ne sont pas mesurés. Aucune option n'est retenue ; le choix d'une option se fera par un ADR ultérieur. Cet ADR ne modifie aucun workflow ni aucun gate.
-- **Arbitrage :** décision du propriétaire du 2026-10-25 sur la question P1 des revues (ce que signe la fusion), prise par question structurée et relayée par la session de coordination : « Signe la mesure ».
+- **Arbitrage :** décision du propriétaire du 2026-10-24 sur la question P1 des revues (ce que signe la fusion), prise par question structurée et relayée par la session de coordination : « Signe la mesure ».
 - **Date de rédaction :** 2026-10-24
 - **Origine :** inspection — issue #152, relevés de revue de #141 et #142, limite déclarée par #144, incidents corrigés par #151 et #154.
 - **Portée :** les workflows de ce dépôt qui jugent une pull request, requis ou non. Les dépôts de la flotte ne sont pas concernés, sauf en tant que contenu lu par les gates de flotte.
