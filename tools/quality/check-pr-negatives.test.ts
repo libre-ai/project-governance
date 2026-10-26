@@ -968,6 +968,7 @@ describe("seventh review, against GitHub's rendering", () => {
   const UNDERSCORES: readonly (readonly [string, "absent" | "refused"])[] = [
     ["Not_added: dependency", "absent"],
     ["not_added: is a variable name", "absent"],
+    ["not_added: names a snake_case field", "absent"],
     ["__Not-added:__ dependency", "refused"],
     ["_Not-added:_ dependency", "refused"],
     ["_Not_-added: dependency", "refused"],
