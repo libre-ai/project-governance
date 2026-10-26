@@ -32,6 +32,11 @@
       "file": "docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md",
       "citation": "tt-a1i/archify@25cf370:<chemin>",
       "because": "the form in which ADR-0056 cites the upstream drill, written as a template in its header: a placeholder path, naming no file"
+    },
+    {
+      "file": "docs/reviews/adr-0060-gates-run-from-pr-2026-10-24/REVIEW-ROUND-3.md",
+      "citation": "libre-ai/project-governance/.github/workflows/validate-composition.yml@<sha>",
+      "because": "the shape of the `uses:` line the third review round of ADR-0060 counted in sixteen fleet repositories, written with a placeholder: it names no commit, and the review dossier is recorded verbatim, never rewritten"
     }
   ],
   "foreignOwners": [
