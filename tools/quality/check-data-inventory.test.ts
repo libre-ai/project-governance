@@ -304,6 +304,27 @@ describe("defects of the list", () => {
     expect(audit.staleExtensions).toEqual(['d/ ".yaml"']);
   });
 
+  // X1 of the fourth review: a gated file under the directory does not keep a
+  // declared extension alive. Otherwise `.toml` would stay declared for every
+  // non-gated TOML file added there later, on the strength of a file the
+  // declaration does not even cover.
+  test("a declared extension that only a gated file of the directory carries is stale, and the gate fails", () => {
+    const tracked = ["d/a.json", "d/x/bunfig.toml"];
+    const declarations: readonly NotGated[] = [
+      { path: "d/", extensions: [".json", ".toml"], because: "data" },
+    ];
+    const audit = auditInventory(tracked, declarations);
+    expect(audit.gated).toEqual(["d/x/bunfig.toml"]);
+    expect(audit.declared).toEqual(["d/a.json"]);
+    expect(audit.stale).toEqual([]);
+    expect(audit.staleExtensions).toEqual(['d/ ".toml"']);
+    const report = reportInventory(tracked, audit, declarations);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations).toEqual([
+      'd/ ".toml": a declared extension no file of the directory carries: remove it',
+    ]);
+  });
+
   test("a file covered by two declarations is overlapping", () => {
     const audit = auditInventory(
       ["docs/reviews/a.json"],
