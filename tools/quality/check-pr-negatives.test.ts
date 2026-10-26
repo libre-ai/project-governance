@@ -1014,8 +1014,21 @@ describe("eighth review, against GitHub's rendering", () => {
     expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
   });
 
-  test("F1 control: an escaped empty link is literal text, absent", () => {
-    expect(combined(`${B}\\[](x)Not-added: dependency\n`)).toEqual(["pass", "absent"]);
+  test.each([
+    ["an escaped empty link is literal text", "\\[](x)Not-added: dependency"],
+    ["an escaped empty link before a dash is literal text", "\\[](x)-Not-added: dependency"],
+  ])("F1 control: %s, absent", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "absent"]);
+  });
+
+  // A comment that spans a blank line: the paragraph of its opener stops at
+  // the blank line, and only the after-close text of the line shows the key.
+  test.each([
+    ["clean, spanning a blank line", "<!--\nx\n\ny -->Not-added: dependency"],
+    ["after a paragraph, spanning a blank line", "para\n<!--\n\nx -->Not-added: dependency"],
+    ["indented, spanning a blank line", "  <!--\n\nx -->Not-added: dependency"],
+  ])("a comment %s shows the key after its close, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
   });
 
   // F2: constructs that span a line break, read over the paragraph.
