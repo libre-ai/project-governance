@@ -988,3 +988,56 @@ describe("seventh review, against GitHub's rendering", () => {
     ).toBe(1);
   });
 });
+
+// Eighth review (2026-10-26, docs/reviews/pr-negatives-161/5e16fab…). Every
+// expected verdict is GitHub's rendering of the body (POST /markdown, gfm,
+// sent with `-F text=@<file>`): "refused" where the key is displayed at the
+// start of a line, "absent" where it is not.
+describe("eighth review, against GitHub's rendering", () => {
+  const B = "Door: two-way\nOrigin: proposal\n\n";
+  const NOW = new Date("2026-10-24T00:00:00Z");
+  const combined = (body: string) => [
+    evaluateDoor(body, "PR #0 description", null, NOW).outcome,
+    readNegativesDeclaration(body).kind,
+  ];
+
+  // F1: single-line constructs GitHub renders as nothing before the key.
+  test.each([
+    ["P01, an empty link", "[](https://example.com)Not-added: dependency"],
+    ["P02, an empty link without target", "[]()Not-added: dependency"],
+    ["P03, an empty image", "![]()Not-added: dependency"],
+    ["P46, an empty link in a list item", "- [](#x)Not-added: dependency"],
+    ["P09, a processing instruction", "<?x ?>Not-added: dependency"],
+    ["P10, a declaration", "<!DOCTYPE x>Not-added: dependency"],
+    ["P11, a CDATA section", "<![CDATA[x]]>Not-added: dependency"],
+  ])("F1: %s shows the key, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  test("F1 control: an escaped empty link is literal text, absent", () => {
+    expect(combined(`${B}\\[](x)Not-added: dependency\n`)).toEqual(["pass", "absent"]);
+  });
+
+  // F2: constructs that span a line break, read over the paragraph.
+  test.each([
+    ["P04, a tag over two lines", '<span\ntitle="x">Not-added: dependency'],
+    ["P05, the key split by a tag over two lines", 'Not<span\nid="a">-added: dependency'],
+    ["P06, the key split by a comment over two lines", "Not<!--\n-->-added: dependency"],
+    ["P07, a _ pair over two lines", "_Not-added: dependency\nmore_"],
+    ["P43, a __ pair over two lines", "__Not-added:\ndependency__"],
+    ["P08, an HTML block that joins its lines", "<div>\nNot\nadded: dependency\n</div>"],
+    [
+      "P39, an empty link whose title holds a line break",
+      '[](https://example.com "a\nb")Not-added: dependency',
+    ],
+  ])("F2: %s shows the key, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  test.each([
+    ["a blank line ends the paragraph", '<span\n\ntitle="x">Not-added: dependency'],
+    ["a lone _ over two lines does not pair", "_Not-added: dependency\nmore"],
+  ])("F2 control: %s, absent", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "absent"]);
+  });
+});

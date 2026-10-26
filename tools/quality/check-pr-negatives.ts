@@ -128,41 +128,60 @@ import {
  * MISPLACED KEYS, best effort. A line that is not the exact key at column 0
  * and that the Door gate does not refuse is refused by name ("write it as
  * `Not-added:` at the start of its own line") when its START, once
- * normalised, reads as the key. Normalisation: backslash escapes removed;
- * complete HTML comments removed (`-->`, `--!>`, the short forms `<!-->` and
- * `<!--->`), then tags, their quoted attribute values read whole;
- * entities decoded; every `\p{Pd}` dash read as `-`; every
+ * normalised, reads as the key. Normalisation: empty links and images
+ * removed (`[](…)`, `![](…)`, not after a backslash); backslash escapes
+ * removed; complete HTML comments removed (`-->`, `--!>`, the short forms
+ * `<!-->` and `<!--->`), then CDATA sections, processing instructions
+ * (`<?…?>`) and declarations (`<!DOCTYPE …>`), then tags, their quoted
+ * attribute values read whole; entities decoded; every `\p{Pd}` dash read as `-`; every
  * `\p{Default_Ignorable_Code_Point}` removed, with the braille blank U+2800
  * and the Hangul fillers (the key pattern needs no separator, so the key
  * split by an invisible still matches); case folded; the markers `*` and the
  * backquote removed wherever they sit, `_` only at a word's edge and when
- * the line holds two such runs, a pair approximated by a count (GitHub
+ * the paragraph holds two such runs, a pair approximated by a count (GitHub
  * displays `Not_added` and a lone `Not_-added` as written); then markup
  * prefixes stripped: white space, a task box `[ ]` or `[x]`, `>`, `-`, `+`,
- * `#`, `[`, `~`, a number followed by `.` or `)`. Where the line starts
- * inside a comment or fence the Door gate exempts, what is judged is what
- * follows its close on that line (GitHub displays it); a line wholly inside
- * one is not displayed and not judged. Where it starts inside a comment that
- * is not exempt, both the raw line and what follows the close are judged
- * (see `displayedForms`).
+ * `#`, `[`, `~`, a number followed by `.` or `)`. Each line is judged alone
+ * AND joined with the rest of its paragraph (the next lines up to a blank
+ * one), so a construct that spans a line break is read whole: a tag or a
+ * comment over two lines, an empty link whose title holds a line break, a
+ * `_` pair opened on one line and closed on the next; in a type-6 HTML
+ * block (`<div>` …) the lines are joined by a space, as the browser
+ * displays them (eighth review, F2). Where the line starts inside a comment
+ * or fence the Door gate exempts, what is judged is what follows its close
+ * on that line; the rest of the line is hidden (a comment) or displayed as
+ * code (a fence), and exempt by T3 either way. An indented code block is not
+ * exempt: a key in it is refused, while the same key in a fence opened at
+ * column 0 after a blank line is not. Where the line starts inside a
+ * comment that is not exempt, both the raw line and what follows the close
+ * are judged (see `displayedForms`).
  *
- * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-24) on 60
- * bodies: the 15 cases of the seventh review, the 36 bodies of the fifth
- * review's point 3, 6 underscore cases and 3 short-form comments. The
- * combined verdict (Door, then this gate) differs from what GitHub displays
- * on 8 of them, all refusals of a key GitHub does not display at a line
- * start, none the reverse: a `<!--` in a code span or mid-line followed, on
- * a later line, by `-->` and the key (2); a mid-line `<!--` whose comment
- * GitHub really opens over the next line (5, kept refused since the fifth
- * review); and a comment closed then reopened on the same line, which the
- * Door gate refuses by T3 (1).
+ * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-26) on
+ * two benches. On the 61 bodies of the seventh review (its 15 cases, the 36
+ * bodies of the fifth review's point 3, 7 underscore cases, 3 short-form
+ * comments), the combined verdict (Door, then this gate) differs from what
+ * GitHub displays on 8, all refusals of a key GitHub does not display at a
+ * line start: a `<!--` in a code span or mid-line followed, on a later line,
+ * by `-->` and the key (2); a mid-line `<!--` whose comment GitHub really
+ * opens over the next line (5, kept refused since the fifth review); and a
+ * comment closed then reopened on the same line, which the Door gate
+ * refuses by T3 (1). On the 46 probes of the eighth review, 26 agree; 11 are
+ * refusals of a key GitHub does not display (`_` runs that do not pair, a
+ * marker without the space a list needs, a task box outside a list, an
+ * escape or entity shown literally, an info string); 7 are keys GitHub
+ * displays and this gate does not refuse, all in the classes declared
+ * below; 1 is a fence exempt by T3; 1 (math) cannot be measured, the API
+ * does not render it.
  *
  * What the detection does NOT recognise, declared and not coded: a visual
  * line break inside one source line (`<br>`, a `<p>` or the end of a
  * `</div>` that starts the key on a new displayed line); a key in a table
  * cell or a footnote; a bidirectional override (U+202E) that reorders what
- * is displayed; a homoglyph (the key written with U+043E, the Cyrillic small
- * o, in place of the Latin `o`); and any rendering not listed above. A
+ * is displayed; a homoglyph: the key written with U+043E, the Cyrillic small
+ * o, in place of the Latin `o`, with the minus sign U+2212 (or `&minus;`)
+ * in place of the hyphen, in fullwidth letters, or with the fullwidth colon
+ * U+FF1A; inline math (`$…$`), which GitHub renders in the browser; and any
+ * rendering not listed above. A
  * mention in the middle of prose is not refused either: it reads as prose
  * (#143 and #145 were refused for "… lists. Not added: the gate refuses …"
  * before that rule).
@@ -213,6 +232,24 @@ const HTML_COMMENT = /<!--(?:-?>|[\s\S]*?--!?>)/g;
 /** An HTML tag, its quoted attribute values read whole: `<span title=">">`. */
 const HTML_TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|[^'">])*>/g;
 /**
+ * Constructs GitHub renders as nothing before what follows them (eighth
+ * review, F1): an empty link or image, `[](…)` or `![](…)`, which renders an
+ * empty anchor, unless its bracket is escaped; a processing instruction
+ * `<?…?>`; a declaration `<!DOCTYPE …>`; a CDATA section `<![CDATA[…]]>`.
+ */
+const EMPTY_LINK = /(?<!\\)!?\[\]\([^)]*\)/g;
+const PROCESSING_INSTRUCTION = /<\?[\s\S]*?\?>/g;
+const DECLARATION = /<![A-Za-z][^>]*>/g;
+const CDATA_SECTION = /<!\[CDATA\[[\s\S]*?\]\]>/g;
+/**
+ * CommonMark HTML block of type 6 opened at the start of a line: its lines
+ * are raw HTML, which the browser joins with a space (eighth review, F2:
+ * `<div>` / `Not` / `added:` displays `Not added:`).
+ */
+const HTML_BLOCK_OPEN =
+  /^ {0,3}<\/?(?:address|article|aside|blockquote|details|dialog|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)(?:[\s/>]|$)/i;
+const BLANK_SOURCE_LINE = /^[ \t]*$/;
+/**
  * Emphasis and code markers. `*` and the backquote are removed wherever they
  * sit (`N*ot*-added`, `Not-`added``): GitHub reads both inside a word.
  */
@@ -221,16 +258,21 @@ const EMPHASIS_MARKERS = /[*`]/g;
  * `_` runs at a word's edge, where GitHub can read emphasis (`__Not-added:__`,
  * `_Not_-added:`), never inside a word: GitHub displays `Not_added` with its
  * underscore. Emphasis needs a pair, so the runs are removed only when the
- * line holds at least two of them: a lone `Not_-added:` is displayed as
+ * paragraph holds at least two of them: a lone `Not_-added:` is displayed as
  * written (measured on POST /markdown, seventh review). Pairing is
  * approximated by that count, not modelled.
  */
 const EDGE_UNDERSCORES = /(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu;
 
-/** The line without the `_` runs GitHub would read as emphasis (see EDGE_UNDERSCORES). */
-function withoutUnderscoreEmphasis(text: string): string {
-  const runs = text.match(EDGE_UNDERSCORES) ?? [];
-  return runs.length >= 2 ? text.replace(EDGE_UNDERSCORES, "") : text;
+/**
+ * The first displayed line without the `_` runs GitHub would read as
+ * emphasis (see EDGE_UNDERSCORES). The runs are counted over the whole
+ * paragraph: a pair opened on one line may close on the next (eighth review,
+ * F2: `_Not-added: dependency` / `more_`).
+ */
+function withoutUnderscoreEmphasis(first: string, paragraph: string): string {
+  const runs = paragraph.match(EDGE_UNDERSCORES) ?? [];
+  return runs.length >= 2 ? first.replace(EDGE_UNDERSCORES, "") : first;
 }
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
@@ -244,19 +286,51 @@ const BYTE_ORDER_MARK = String.fromCodePoint(0xfeff);
 
 /** How a line starts once rendered: the text a reader takes for its first word. */
 export function renderedLineStart(line: string): string {
-  let text = line.replace(/\\([!-/:-@[-`{-~])/g, "$1");
-  // Comments first, whole, then tags: a `>` inside a comment or inside a
-  // quoted attribute value does not end it (sixth review).
-  text = text.replace(HTML_COMMENT, "").replace(HTML_TAG, "");
+  return renderedParagraphStart([line]);
+}
+
+/** Markup removed from source text, line breaks kept unless a construct spans them. */
+function withoutMarkup(source: string): string {
+  // Empty links before the escapes: `\[](x)` is literal text, not a link.
+  let text = source.replace(EMPTY_LINK, "").replace(/\\([!-/:-@[-`{-~])/g, "$1");
+  // Comments first, whole, then the other `<!` and `<?` constructs, then
+  // tags: a `>` inside a comment or inside a quoted attribute value does not
+  // end it (sixth review).
+  text = text.replace(HTML_COMMENT, "").replace(CDATA_SECTION, "");
+  text = text.replace(PROCESSING_INSTRUCTION, "").replace(DECLARATION, "");
+  return text.replace(HTML_TAG, "");
+}
+
+/** Character-level normalisation: entities, dashes, invisibles, case, `*` and the backquote. */
+function normalisedCharacters(source: string): string {
   // Entities after the markup, so an encoded invisible (`&#x200B;`) is
   // decoded before the invisibles go.
-  text = decodeHTML(text);
+  let text = decodeHTML(source);
   text = text.replace(/\p{Pd}/gu, "-");
   // The soft hyphen is default-ignorable and goes with the rest;
   // NORMALISED_KEY accepts no separator at all, so `Not` U+00AD `added:`
   // still reads as the key.
   text = text.replace(RENDERS_AS_NOTHING, "");
-  text = withoutUnderscoreEmphasis(text.toLowerCase().replace(EMPHASIS_MARKERS, ""));
+  return text.toLowerCase().replace(EMPHASIS_MARKERS, "");
+}
+
+/**
+ * How the first displayed line of these source lines starts once rendered.
+ * The lines are joined first, so a construct that spans a line break (a tag
+ * over two lines, `Not<!--` / `-->-added:`, an empty link whose title holds a
+ * line break) is removed whole (eighth review, F2). The text is then cut at
+ * the first line break left, before entities are decoded: an encoded line
+ * break (`&#10;`) does not cut it. In a type-6 HTML block the lines are joined
+ * by a space, as the browser displays them.
+ */
+export function renderedParagraphStart(lines: readonly string[]): string {
+  const separator = HTML_BLOCK_OPEN.test(lines[0] ?? "") ? " " : "\n";
+  const paragraph = withoutMarkup(lines.join(separator));
+  const first = paragraph.split("\n")[0] ?? "";
+  let text = withoutUnderscoreEmphasis(
+    normalisedCharacters(first),
+    normalisedCharacters(paragraph),
+  );
   for (
     let prefix = text.match(MARKUP_PREFIX);
     prefix !== null;
@@ -407,7 +481,8 @@ export function readDeclarationLines(body: string): DeclarationLines {
  * seventh review's bench, 2026-10-24:
  *
  * - a line inside a comment or fence the Door gate exempts (clean): only what
- *   follows the close (`visible`), since GitHub hides the rest (sixth review);
+ *   follows the close (`visible`). The rest is hidden (a comment) or
+ *   displayed as code (a fence), and exempt by T3 either way (sixth review);
  * - a line inside a comment that is NOT clean: the raw line AND what follows
  *   the close. `stripNonDeclarations` reads a `<!--` in a code span, or one
  *   cmark ignores, as an opener, so `visible` alone would hide lines GitHub
@@ -418,13 +493,33 @@ export function readDeclarationLines(body: string): DeclarationLines {
  *   opener in a code span, or mid-line) is refused while GitHub shows it
  *   after other text;
  * - any other line: the raw line.
+ *
+ * Outside an exempt construct, the raw line joined with the rest of its
+ * paragraph is judged too, so a construct that spans a line break is read
+ * whole (eighth review, F2). Each form is a list of source lines.
  */
-function displayedForms(read: DeclarationLines, index: number): readonly string[] {
+function displayedForms(read: DeclarationLines, index: number): readonly (readonly string[])[] {
   const line = read.raw[index] ?? "";
   const visible = read.visible[index] ?? "";
-  if (read.insideClean[index] === true) return [visible];
-  if (read.inside[index] === true) return [line, visible];
-  return [line];
+  if (read.insideClean[index] === true) return [[visible]];
+  const paragraph = paragraphFrom(read.raw, index);
+  if (read.inside[index] === true) return [[line], [visible], paragraph];
+  return [[line], paragraph];
+}
+
+/**
+ * The raw line and the lines after it up to the next blank one: the rest of
+ * its paragraph, as far as a construct opened on it can reach in GitHub.
+ * shortcut: a paragraph is "consecutive non-blank lines", not CommonMark's
+ * block structure (a list item or a fence inside it is not split off), so it
+ * can only refuse more; upgrade trigger: a false red on a real body.
+ */
+function paragraphFrom(raw: readonly string[], index: number): readonly string[] {
+  const lines: string[] = [];
+  for (let at = index; at < raw.length && !BLANK_SOURCE_LINE.test(raw[at] ?? ""); at += 1) {
+    lines.push(raw[at] ?? "");
+  }
+  return lines;
 }
 
 /** Pure parse of the declaration of a pull request description. */
@@ -440,7 +535,9 @@ export function readNegativesDeclaration(
     // lines it refuses: neither is judged here.
     if (isKeyLine(line) || read.doorRefusedLines.has(index + 1)) return;
     if (
-      displayedForms(read, index).some((shown) => NORMALISED_KEY.test(renderedLineStart(shown)))
+      displayedForms(read, index).some((shown) =>
+        NORMALISED_KEY.test(renderedParagraphStart(shown)),
+      )
     ) {
       misplacedLines.add(index + 1);
       misplaced.push(
