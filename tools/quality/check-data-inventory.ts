@@ -88,6 +88,15 @@ import { readGit } from "./git-diff";
  *      IGNORED_SUBSTRINGS, IGNORED_FILES, LINE_EXEMPTION_FILES;
  *    - check-source-policy.ts: ignoredPrefixes;
  *    - tools/skills/lint-skill.ts: ALLOWED_STATUS, ALLOWED_TOP_LEVEL_KEYS.
+ *    The command finds only the bindings named with one of its stems, so the
+ *    list is a floor, not a census. A second read on 2026-10-26, of every
+ *    top-level array, Set or Map literal by name (fourth review of #159),
+ *    found 6 more allowlists in 4 files, named otherwise:
+ *    - check-js-licenses.ts: firstPartyLicences;
+ *    - check-personal-data-boundary.ts: FIXTURE_BEARING_PATHS,
+ *      IDENTIFIER_OUT_OF_SCOPE_PREFIXES, IDENTIFIER_OUT_OF_SCOPE_SUFFIXES;
+ *    - check-pr-door.ts: IMPLICIT_TWO_WAY_AUTHORS;
+ *    - public-source-scanner.ts: exactRfc2606ExampleDomains.
  * 3. The CI definitions under `.github/workflows/` are declared, not gated:
  *    their triggers, `paths-ignore` and steps decide what runs.
  * 4. Markdown read as data: `docs/prd.md` and `docs/cahier-des-charges.md`,
