@@ -191,7 +191,12 @@ import {
  * the block) and `stripNonDeclarations` (`text` with the body's line layout,
  * `removedBlocks`), read in one function, `readDeclarationLines`. A key line
  * the Door gate refuses is never refused twice (see that function). Line
- * numbers in refusals are lines of the body.
+ * numbers in refusals are lines of the body. The volume line and the
+ * ignored counter inherit `stripNonDeclarations`, which does not know code
+ * spans: a `<!--` in a code span is counted as a comment, and a displayed
+ * line after it can be counted as ignored (eighth review, F4). Verdicts do
+ * not depend on it: `displayedForms` judges the raw line inside a comment
+ * that is not exempt.
  *
  * Runs on `pull_request` events (including `edited`). Elsewhere it declares
  * that it judged nothing. An event payload absent or unreadable on a
