@@ -1040,4 +1040,12 @@ describe("eighth review, against GitHub's rendering", () => {
   ])("F2 control: %s, absent", (_, probe) => {
     expect(combined(`${B}${probe}\n`)).toEqual(["pass", "absent"]);
   });
+
+  test("F2: a line that renders empty does not take the next line's key, which is named once", () => {
+    // GitHub: `<p><b></b></p>`, then a blockquote holding the key (line 5).
+    const read = readNegativesDeclaration(`${B}<b></b>\n> Not-added: dependency\n`);
+    expect(read.kind === "refused" && read.reasons).toEqual([
+      'line 5 "> Not-added: dependency" — write it as "Not-added:" at the start of its own line',
+    ]);
+  });
 });
