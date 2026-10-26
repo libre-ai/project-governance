@@ -1,4 +1,4 @@
-import { touchesGatedPaths } from "./check-review-evidence";
+import { touchesReviewedPaths } from "./check-review-evidence";
 import { concludeGate, GateReport } from "./gate-report";
 import { readGit } from "./git-diff";
 
@@ -18,7 +18,8 @@ import { readGit } from "./git-diff";
  * is neither source code nor Markdown, whatever its name or its content. Each
  * file of the universe falls in exactly one of three places:
  *
- * - gated: `touchesGatedPaths` of check-review-evidence matches it, so a pull
+ * - gated: `touchesReviewedPaths` of check-review-evidence matches it (the
+ *   guarded surface or the tool configuration), so a pull
  *   request that changes it needs review evidence;
  * - declared: an entry of `NOT_GATED` below covers it, with the reason it is
  *   not gated: by its exact path, or by a directory AND one of the extensions
@@ -103,8 +104,17 @@ import { readGit } from "./git-diff";
  *    which check-work-package-link.ts (PRD_PATH, REQUIREMENTS_PATH) reads in
  *    the repository it judges, are prose to this inventory, and the `docs-only`
  *    exempt class of work-package-policy.v1.yaml covers them.
- * 5. The files declared below as awaiting owner arbitration each delimit a
- *    gate; guarding them would need an owner ready on every change.
+ * 5. No file awaits owner arbitration since 2026-10-26. The six that did
+ *    (biome.json, tsconfig.json, package.json, REUSE.toml, Cargo.toml,
+ *    crates/ecosystem-engine/Cargo.toml) are gated, with the manifests of the
+ *    workspace packages, and their declarations are gone; the reasons and the
+ *    measured cost are in the header of check-review-evidence.ts. A
+ *    declaration may still carry `awaitingOwnerArbitration`, and the volume
+ *    line counts those files, so a file left for the owner stays visible.
+ *    `biome.jsonc` is read by Biome like `biome.json` but is not gated: no
+ *    file of that name is tracked, and a gated pathspec that selects no
+ *    tracked file fails the tests of this inventory. A new one is undeclared,
+ *    so this gate fails on it until it is gated or declared.
  * 6. A new file under a declared directory, with an extension that directory
  *    already holds, is covered by the declaration without being named. Only a
  *    new directory or a new extension is a decision the list has to record.
@@ -130,42 +140,7 @@ export interface NotGated {
   readonly awaitingOwnerArbitration?: true;
 }
 
-const AWAITING =
-  "guarding it would require an owner ready on every change of this configuration, and that decision is the owner's";
-
 export const NOT_GATED: readonly NotGated[] = [
-  // Configuration that delimits a gate. Each one loosens a gate when it is
-  // edited; each one waits for the owner.
-  {
-    path: "biome.json",
-    because: `its files.includes negations delimit what \`biome ci .\` lints and formats; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
-  {
-    path: "tsconfig.json",
-    because: `its include and exclude delimit what \`typecheck\` reads, and its compiler options set how strict it is; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
-  {
-    path: "package.json",
-    because: `its scripts.check is the list of steps \`bun run check\` runs; removing one removes a gate from the aggregate; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
-  {
-    path: "REUSE.toml",
-    because: `its annotations declare the licence of the paths they match, which is what \`reuse lint\` checks; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
-  {
-    path: "Cargo.toml",
-    because: `its [workspace.lints] table sets the level of every rustc and clippy lint: \`all = "allow"\` there makes \`cargo clippy -- -D warnings\` pass on code it refuses today; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
-  {
-    path: "crates/ecosystem-engine/Cargo.toml",
-    because: `a [lints] table here, or \`[lints] workspace = true\` with the workspace table, sets the lint levels clippy applies to the crate; ${AWAITING}`,
-    awaitingOwnerArbitration: true,
-  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
@@ -261,11 +236,6 @@ export const NOT_GATED: readonly NotGated[] = [
   {
     path: "bun.lock",
     because: "the lockfile; check-audit-delta judges what a change introduces into it",
-  },
-  {
-    path: "packages/classification/package.json",
-    because:
-      "the manifest of the classification kernel. Its scripts.check (`bun test src`) is run by no gate: the root `bun test` runs the same tests itself; its dependencies are judged by check-js-licenses and check:dead-code",
   },
   {
     path: "rust-toolchain.toml",
@@ -465,7 +435,7 @@ export function auditInventory(
   symlinks: readonly string[] = [],
 ): InventoryAudit {
   const universe = tracked.filter((path) => !OUTSIDE_THE_UNIVERSE.test(path));
-  const gatedSet = new Set(touchesGatedPaths(universe));
+  const gatedSet = new Set(touchesReviewedPaths(universe));
   const gated: string[] = [];
   const declared: string[] = [];
   const undeclared: string[] = [];
@@ -520,7 +490,7 @@ export function auditInventory(
       malformed.push(declaration.path);
     }
   }
-  const gatedSymlinks = touchesGatedPaths(symlinks);
+  const gatedSymlinks = touchesReviewedPaths(symlinks);
   return {
     universe,
     outside: tracked.length - universe.length,

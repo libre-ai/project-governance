@@ -75,6 +75,57 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * runs its gate from the governance checkout, so a `preload` in the root one
  * would execute code inside the gate of every consumer.
  *
+ * The configuration of the aggregate's own tools joined on 2026-10-26. The
+ * inventory held six files as "awaiting owner arbitration": `package.json`,
+ * `tsconfig.json`, `biome.json`, `REUSE.toml`, `Cargo.toml` and
+ * `crates/ecosystem-engine/Cargo.toml`. The owner delegated the decision that
+ * day ("Le faire"), with this criterion: a file is gated if a change to it can
+ * loosen a gate (lint levels, compiler strictness, exclusions, licence
+ * annotations that exempt files, the scripts that compose `bun run check`);
+ * otherwise it is declared, with its reason. All six meet it. So does the
+ * manifest of every workspace package (`packages/<name>/package.json`):
+ * `bun install` runs its lifecycle scripts, which execute code before any gate
+ * (measured with Bun 1.4.4 on 2026-10-26: a `postinstall` of a workspace
+ * package ran). `biome.json` and `REUSE.toml` are gated at every depth,
+ * because each tool reads a nested one (measured the same day: a nested
+ * `biome.json` with `"root": false` and the linter disabled removed its
+ * subtree from `biome lint` with Biome 2.5.3, and a nested `REUSE.toml`
+ * annotating `**` made a failing `reuse lint` pass). The measured cost, on the
+ * 100 merged pull requests #48 to #159: 18 touched one of the six, 8 of them
+ * touching no path gated before (16 touched `package.json`); none was opened
+ * by a bot. The command: `gh pr list -R libre-ai/project-governance --state
+ * merged --limit 100 --json number,author,files`.
+ *
+ * These files are gated by a second list, CONFIGURATION_PATH_PATTERNS, and not
+ * by GATED_PATH_PATTERNS, because the latter is the guarded surface of I-17
+ * for the whole fleet. check-work-package-link.ts runs in the consumers
+ * (reusable-work-package-link.yml) and refuses every exemption, and requires
+ * an explicit owner `ready`, on a pull request that touches a path of
+ * GATED_PATH_PATTERNS; tools/fleet/bump-generation.ts refuses to propose a
+ * bump that does. A consumer's root `package.json`, `Cargo.toml`, `biome.json`
+ * or `REUSE.toml` would match the same anchored patterns. Measured on
+ * 2026-10-26: the fleet-bump class of work-package-policy.v1.yaml lists
+ * `package.json`, so a bump editing it would be refused; in
+ * libre-ai/ai-work-supervision, the one repository `gh search code` finds
+ * wiring the reusable gate, 17 of the 40 merged pull requests touched one of
+ * these paths and would have needed an explicit `ready`. That is a fleet
+ * decision, not the one delegated here, so it stays the owner's. The
+ * inventory counts both lists as gated (`touchesReviewedPaths`).
+ *
+ * Dependency bumps: there is no automatic path for a bot. Every Rust
+ * dependency of the crate is pinned exactly (`=x.y.z`), so a Dependabot cargo
+ * update edits `crates/ecosystem-engine/Cargo.toml` and needs evidence like
+ * any other change. Exempting an author would not keep the gate honest: the
+ * author of a pull request says nothing about who wrote its later commits, and
+ * a maintainer can push to a Dependabot branch. The path to green is the
+ * owner's: write an `Owner-arbitration: YYYY-MM-DD` line in the description,
+ * then close and reopen the pull request. This gate runs in ci.yml, on the
+ * `opened`, `synchronize` and `reopened` events only, and a re-run replays the
+ * payload of the event that started it, so an edited description is read
+ * only by a new event. Dependabot opened none of the 151 pull requests
+ * `gh pr list --state all` listed on 2026-10-26, and `.github/dependabot.yml` carries no
+ * bun entry (owner decision 2026-09-08), so no bot edits `package.json` today.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -87,9 +138,8 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * in the inventory and adjusts the tests passes every gate with no review
  * evidence, because the gate it weakens is the one that judges it. The same
  * holds for the allowlists kept in the code of other gates, for the CI
- * definitions under `.github/workflows/`, for Markdown a gate reads as data,
- * and for the configuration files declared as awaiting owner arbitration. The
- * full list, with the command that finds the code allowlists, is the LIMITS
+ * definitions under `.github/workflows/`, and for Markdown a gate reads as
+ * data. The full list, with the command that finds the code allowlists, is the LIMITS
  * section of `check-data-inventory.ts`. Guarding any of them is an owner
  * decision.
  *
@@ -198,9 +248,61 @@ export const GATED_PATHSPECS: readonly string[] = [
   "distribution/templates/dependabot/github-actions.yml",
 ];
 
-/** Pure filter, so "what counts as gated" is testable without a git call. */
+/**
+ * The configuration of this repository's own tools (owner delegation,
+ * 2026-10-26): a change needs review evidence here, but it is not a guarded
+ * path of I-17 for the fleet gates that import GATED_PATH_PATTERNS
+ * (check-work-package-link.ts, tools/fleet/bump-generation.ts). Each line
+ * names the gate the file can loosen.
+ */
+export const CONFIGURATION_PATH_PATTERNS: readonly RegExp[] = [
+  // `bun run check`: scripts.check lists the steps it runs; `bun install` runs its lifecycle scripts.
+  /^package\.json$/,
+  // `bun install` runs the lifecycle scripts of every workspace package (`workspaces: packages/*`).
+  /^packages\/[^/]+\/package\.json$/,
+  // `typecheck` (`tsc -p tsconfig.json`): what it reads (include, exclude) and how strict it is.
+  /^tsconfig\.json$/,
+  // `lint` (`biome ci .`): what it reads and the rule levels; Biome applies a nested one to its subtree.
+  /(^|\/)biome\.json$/,
+  // `reuse lint`: an annotation licenses every path it matches; a nested one is read as well.
+  /(^|\/)REUSE\.toml$/,
+  // `check:rust` (clippy, cargo test): members, [workspace.lints], profiles, [patch].
+  /^Cargo\.toml$/,
+  // `check:rust`: the crate's [lints] table, its test targets (autotests, [[test]]) and features.
+  /^crates\/ecosystem-engine\/Cargo\.toml$/,
+];
+
+/** CONFIGURATION_PATH_PATTERNS as git pathspecs, one entry per pattern, in the same order. */
+export const CONFIGURATION_PATHSPECS: readonly string[] = [
+  "package.json",
+  // `glob` magic: `*` does not cross a `/`, as `[^/]+` does not.
+  ":(glob)packages/*/package.json",
+  "tsconfig.json",
+  ":(glob)**/biome.json",
+  ":(glob)**/REUSE.toml",
+  "Cargo.toml",
+  "crates/ecosystem-engine/Cargo.toml",
+];
+
+/** Every pathspec whose diff this gate reads: the guarded surface, then the configuration. */
+export const REVIEWED_PATHSPECS: readonly string[] = [
+  ...GATED_PATHSPECS,
+  ...CONFIGURATION_PATHSPECS,
+];
+
+/**
+ * Pure filter on the guarded surface of I-17, so "what counts as gated" is
+ * testable without a git call. The fleet gates import it.
+ */
 export function touchesGatedPaths(changedPaths: readonly string[]): string[] {
   return changedPaths.filter((path) => GATED_PATH_PATTERNS.some((pattern) => pattern.test(path)));
+}
+
+/** Pure filter on what needs review evidence here: the guarded surface and the configuration. */
+export function touchesReviewedPaths(changedPaths: readonly string[]): string[] {
+  return changedPaths.filter((path) =>
+    [...GATED_PATH_PATTERNS, ...CONFIGURATION_PATH_PATTERNS].some((pattern) => pattern.test(path)),
+  );
 }
 
 const REVIEW_ARTIFACT_PATTERN = /docs\/reviews\/[^\s)`"'<>]+/g;
@@ -332,9 +434,9 @@ export function evaluateReviewEvidence(
   pathExists: PathExists,
 ): GateReport {
   const report = new GateReport();
-  const gated = touchesGatedPaths(changedPaths);
+  const gated = touchesReviewedPaths(changedPaths);
   if (gated.length === 0) {
-    report.allowEmpty(`this run touches none of ${GATED_PATHSPECS.join(", ")}`);
+    report.allowEmpty(`this run touches none of ${REVIEWED_PATHSPECS.join(", ")}`);
     return report;
   }
 
@@ -474,7 +576,7 @@ if (import.meta.main) {
           "--dst-prefix=b/",
           range,
           "--",
-          ...GATED_PATHSPECS,
+          ...REVIEWED_PATHSPECS,
         ],
         `diff ${range}`,
       ),

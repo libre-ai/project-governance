@@ -3,14 +3,18 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  CONFIGURATION_PATH_PATTERNS,
+  CONFIGURATION_PATHSPECS,
   evaluateReviewEvidence,
   extractAddedLines,
   findEvidenceSignals,
   GATED_PATH_PATTERNS,
   GATED_PATHSPECS,
   type PathExists,
+  REVIEWED_PATHSPECS,
   STANDING_REVIEW_PATHS,
   touchesGatedPaths,
+  touchesReviewedPaths,
 } from "./check-review-evidence";
 
 // K4 redefinition (Domain A re-ratification, 2026-08-18, ADR-0023): "documented
@@ -170,13 +174,13 @@ describe("touchesGatedPaths", () => {
         "tools/fleet/bump-generation.ts",
       ],
     ],
-    ["deny.toml", ["deny.toml.bak", "x/deny.toml", "Cargo.toml", "crates/other/deny.toml"]],
+    ["deny.toml", ["deny.toml.bak", "x/deny.toml", "Cargo.lock", "crates/other/deny.toml"]],
     [
       "crates/ecosystem-engine/deny.toml",
       [
         "crates/ecosystem-engine/deny.toml.bak",
         "crates/ecosystem-engine/sub/deny.toml",
-        "crates/ecosystem-engine/Cargo.toml",
+        "crates/ecosystem-engine/Cargo.lock",
         "x/crates/ecosystem-engine/deny.toml",
       ],
     ],
@@ -241,6 +245,58 @@ describe("touchesGatedPaths", () => {
     });
   }
 
+  // Owner delegation 2026-10-26: the configuration of the aggregate's tools
+  // needs review evidence here, and is not a guarded path for the fleet gates
+  // that import touchesGatedPaths. `[path(s) gated, neighbours]`.
+  const configuration: readonly (readonly [readonly string[], readonly string[]])[] = [
+    [["package.json"], ["package.json.bak", "x/package.json", "packages/package.json", "bun.lock"]],
+    [
+      ["packages/classification/package.json", "packages/x/package.json"],
+      [
+        "packages/classification/package.json.bak",
+        "packages/classification/sub/package.json",
+        "x/packages/classification/package.json",
+        "packages/classification/tsconfig.json",
+      ],
+    ],
+    [
+      ["tsconfig.json"],
+      ["tsconfig.json.bak", "tsconfig.build.json", "tsconfig.jsonc", "x/tsconfig.json"],
+    ],
+    // Biome applies a nested biome.json to its subtree: every depth.
+    [
+      ["biome.json", "packages/x/biome.json", "x/y/z/biome.json"],
+      ["biome.json.bak", "xbiome.json", "packages/x/my-biome.json", "biome.jsonc"],
+    ],
+    // `reuse lint` reads a nested REUSE.toml: every depth. No lower-case
+    // `reuse.toml` sample: on a case-insensitive file system it is REUSE.toml.
+    [
+      ["REUSE.toml", "packages/x/REUSE.toml", "x/y/z/REUSE.toml"],
+      ["REUSE.toml.bak", "XREUSE.toml", "REUSE.yaml", ".reuse/dep5"],
+    ],
+    [["Cargo.toml"], ["Cargo.toml.bak", "Cargo.lock", "x/Cargo.toml", "crates/other/Cargo.toml"]],
+    [
+      ["crates/ecosystem-engine/Cargo.toml"],
+      [
+        "crates/ecosystem-engine/Cargo.toml.bak",
+        "crates/ecosystem-engine/tests/fixtures/Cargo.toml",
+        "x/crates/ecosystem-engine/Cargo.toml",
+        "crates/ecosystem-engine/src/Cargo.toml",
+      ],
+    ],
+  ];
+  for (const [gated, neighbours] of configuration) {
+    test(`needs review evidence for ${gated.join(", ")}, not for its neighbours, and guards none for the fleet`, () => {
+      expect(touchesReviewedPaths([...gated, ...neighbours])).toEqual([...gated]);
+      expect(touchesGatedPaths([...gated, ...neighbours])).toEqual([]);
+    });
+  }
+
+  test("the guarded surface is reviewed: touchesReviewedPaths keeps every path touchesGatedPaths keeps", () => {
+    const guarded = loosening.map(([path]) => path);
+    expect(touchesReviewedPaths(guarded)).toEqual(guarded);
+  });
+
   // NB-1 of the review of #159: check-release-age.ts reads every tracked
   // bunfig.toml, so every one is gated, at any depth; a near-miss name is not.
   test("matches bunfig.toml at every depth, not a near-miss name", () => {
@@ -259,15 +315,21 @@ describe("touchesGatedPaths", () => {
 
   test("every gated pattern has a pathspec", () => {
     expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
+    expect(CONFIGURATION_PATHSPECS).toHaveLength(CONFIGURATION_PATH_PATTERNS.length);
+    expect(REVIEWED_PATHSPECS).toEqual([...GATED_PATHSPECS, ...CONFIGURATION_PATHSPECS]);
   });
 
   // The diff the evidence is searched in is selected by the pathspecs, the
   // verdict by the patterns. Asked to git itself, in a throwaway repository
   // holding every gated sample and every neighbour above, both must select
   // exactly the same files, or a gated change would have its diff unread.
-  test("git selects with the pathspecs exactly the files the patterns gate", () => {
+  test.each([
+    ["GATED_PATHSPECS", GATED_PATHSPECS, touchesGatedPaths],
+    ["REVIEWED_PATHSPECS", REVIEWED_PATHSPECS, touchesReviewedPaths],
+  ] as const)("git selects with %s exactly the files the patterns gate", (_name, pathspecs, filter) => {
     const samples = [
       ...loosening.flatMap(([path, neighbours]) => [path, ...neighbours]),
+      ...configuration.flatMap(([gated, neighbours]) => [...gated, ...neighbours]),
       "docs/adr/0001-x.md",
       "docs/adrx/0001-x.md",
       "docs/decisions/INVARIANTS.md",
@@ -292,7 +354,7 @@ describe("touchesGatedPaths", () => {
         writeFileSync(join(repository, path), "x\n");
       }
       expect(git("add", "--all").exitCode).toBe(0);
-      const selected = git("ls-files", "-z", "--", ...GATED_PATHSPECS);
+      const selected = git("ls-files", "-z", "--", ...pathspecs);
       expect(selected.exitCode).toBe(0);
       const byPathspec = new TextDecoder()
         .decode(selected.stdout)
@@ -305,7 +367,7 @@ describe("touchesGatedPaths", () => {
         .filter((path) => path.length > 0);
       expect(tracked.length).toBe(new Set(samples).size);
       expect(byPathspec.length).toBeGreaterThan(0);
-      expect(byPathspec).toEqual(touchesGatedPaths(tracked).sort());
+      expect(byPathspec).toEqual(filter(tracked).sort());
     } finally {
       rmSync(repository, { recursive: true, force: true });
     }
@@ -739,6 +801,31 @@ describe("evaluateReviewEvidence", () => {
     );
     expect(report.outcome).toBe("pass");
   });
+
+  // Owner delegation 2026-10-26: each configuration file of the aggregate's
+  // tools, edited to loosen its gate, needs evidence; the same change with a
+  // dated marker in the description passes.
+  const loosenedConfiguration: readonly (readonly [string, string])[] = [
+    ["package.json", '+    "check": "bun run lint",'],
+    ["packages/classification/package.json", '+    "postinstall": "bun x.ts",'],
+    ["tsconfig.json", '+    "strict": false,'],
+    ["biome.json", '+      "!tools",'],
+    ["packages/x/biome.json", '+  "root": false, "linter": { "enabled": false }'],
+    ["REUSE.toml", '+path = "**"'],
+    ["packages/x/REUSE.toml", '+path = "**"'],
+    ["Cargo.toml", '+clippy.all = "allow"'],
+    ["crates/ecosystem-engine/Cargo.toml", "+autotests = false"],
+  ];
+  for (const [path, line] of loosenedConfiguration) {
+    test(`a ${path} change needs evidence`, () => {
+      const diff = gitDiff(path, [line]);
+      const without = evaluateReviewEvidence([path], "chore: tidy the configuration", diff, TREE);
+      expect(without.outcome).toBe("violations");
+      expect(without.violations[0]).toStartWith(`${path}: neither the pull request description`);
+      const marked = evaluateReviewEvidence([path], "Owner-arbitration: 2026-10-26", diff, TREE);
+      expect(marked.outcome).toBe("pass");
+    });
+  }
 
   test("several gated paths in one run are reported as a single item", () => {
     const report = evaluateReviewEvidence(
