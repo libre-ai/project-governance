@@ -47,16 +47,47 @@ import { readGit } from "./git-diff";
  *    their tests. A pull request that removes a gated pattern and declares the
  *    file here passes every gate with no review evidence.
  * 2. Allowlists kept in the code of gates are outside it too. They are found
- *    with `git grep -nE '^(export )?const [A-Z0-9_]*(ALLOW|EXEMPT|EXCEPT|WAIV|IGNORE|SKIP|RESIDUAL|PERMIT|TRUST|NOT_CALLER|EXCLU|BENIGN|TOLERAT)[A-Z0-9_]*[ :=]' -- '*.ts' '*.py' ':!*.test.ts'`,
- *    minus the hits that name a data file or parse a format. Among them:
- *    DECLARED_ALLOWANCES and SUBJECT_NOT_CALLER of check-empty-allowances.ts,
- *    the IGNORED_* lists and LINE_EXEMPTION_FILES of check-secret-scan.ts,
- *    ALLOWLISTED_ADDRESSES and ALLOWLISTED_DOMAINS of
- *    check-personal-data-boundary.ts, ALLOWLISTED_PATHS of
- *    check-no-transmission.ts, the three lists of
- *    check-kernel-status-authority.ts, HISTORICAL_ALLOWLIST of
- *    check-retired-repository-names.ts, ARCHIVE_RESIDUALS and
- *    RESIDUAL_PREFIXES of ecosystem/check-hub-orphans.ts.
+ *    with this command, case-insensitive so that a camelCase binding counts,
+ *    and with `const` optional so that a Python module-level binding counts:
+ *
+ *      git grep -niE '^(export )?(const )?[a-z0-9_]*(ALLOW|EXEMPT|EXCEPT|WAIV|IGNORE|SKIP|RESIDUAL|PERMIT|TRUST|NOT_CALLER|EXCLU|BENIGN|TOLERAT)[a-z0-9_]*[ :=]' -- '*.ts' '*.py' ':!*.test.ts' ':!*[/]test_*.py'
+ *
+ *    It reads top-level bindings of TypeScript and Python only. The bindings
+ *    indented in a function body, read one by one on 2026-10-26, were locals
+ *    built from a data file, a flag or a count. On 2026-10-26 the command gives
+ *    40 hits in 24 files. 13 of them are not allowlists (paths without a
+ *    directory are under tools/quality/):
+ *    - they name a data file: ALLOWLIST_PATH of
+ *      ecosystem/check-web-headers.ts, EXEMPTIONS_PATH of check-refusals.ts,
+ *      isToolchainAllowList of tools/fleet/bump-plan.ts, EXEMPTIONS_SCHEMA of
+ *      .github/composition/check-ref-monotonicity.py;
+ *    - they parse a format or name a marker: exemptionLine of
+ *      tools/attestation/neutralise-check.ts, ALLOWED_PATTERN of
+ *      tools/fleet/bump-plan.ts, EXEMPT_CLASS and EXEMPT_TRAILER of
+ *      tools/fleet/bump-generation.ts, IGNORE_FLAG of advisory-waivers.ts,
+ *      EXEMPT_VALUE of check-work-package-link.ts, ALLOWANCE_MARKER of
+ *      check-resolved-refs.ts, LINE_EXEMPTION_MARKER of check-secret-scan.ts;
+ *    - it matches by accident: SHALLOW_REFUSAL of work-package-ports.ts.
+ *    The other 27, in 16 files, are the allowlists:
+ *    - ecosystem/check-context-conformance.ts: ORG_PROFILE_EXEMPTION;
+ *    - ecosystem/check-hub-orphans.ts: ARCHIVE_RESIDUALS, RESIDUAL_PREFIXES;
+ *    - ecosystem/check-toolchain-source.ts: ARCHIVED_EXCLUSIONS;
+ *    - ecosystem/check-truth-drift.ts: PRIVATE_SKIP (empty today);
+ *    - ecosystem/check-web-headers.ts: IGNORED_SEGMENT;
+ *    - check-empty-allowances.ts: DECLARED_ALLOWANCES, SUBJECT_NOT_CALLER;
+ *    - check-js-licenses.ts: allowed, the inbound licences it accepts;
+ *    - check-kernel-status-authority.ts: EXEMPT_DIRECTORY_PREFIXES,
+ *      IGNORED_PATH_PREFIXES, DECLARED_FILE_ALLOWANCES;
+ *    - check-no-clever-production.ts: IGNORED_PREFIXES, IGNORED_SUBSTRINGS;
+ *    - check-no-transmission.ts: ALLOWLISTED_PATHS;
+ *    - check-personal-data-boundary.ts: ALLOWLISTED_ADDRESSES,
+ *      ALLOWLISTED_DOMAINS;
+ *    - check-resolved-refs.ts: SKIPPED_DIRECTORIES;
+ *    - check-retired-repository-names.ts: HISTORICAL_ALLOWLIST;
+ *    - check-secret-scan.ts: IGNORED_PREFIXES, IGNORED_SEGMENTS,
+ *      IGNORED_SUBSTRINGS, IGNORED_FILES, LINE_EXEMPTION_FILES;
+ *    - check-source-policy.ts: ignoredPrefixes;
+ *    - tools/skills/lint-skill.ts: ALLOWED_STATUS, ALLOWED_TOP_LEVEL_KEYS.
  * 3. The CI definitions under `.github/workflows/` are declared, not gated:
  *    their triggers, `paths-ignore` and steps decide what runs.
  * 4. Markdown read as data: `docs/prd.md` and `docs/cahier-des-charges.md`,
