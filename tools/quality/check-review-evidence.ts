@@ -62,8 +62,36 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * exactly, not its neighbours; its shape is checked by `check-refusals.ts`.
  * `tools/quality/refusals-exemptions.v1.json` joined with it: an exemption
  * relaxes that shape gate for one evidence, which is a guardrail mutation
- * (I-17) in the same way as editing the register. The other data files under
- * `tools/quality/` that relax a gate are an earlier class, not gated here.
+ * (I-17) in the same way as editing the register.
+ *
+ * The rest of that class joined on 2026-10-24 (#153): every data file that
+ * loosens a gate — an exemption, an allowlist, a waiver, an exception, a
+ * threshold — or bounds what a gate inspects. Before, a pull request could
+ * widen `ecosystem/sql-construction-allowlist.v1.yaml`, or empty the surface
+ * list of `pr-negatives.v1.json`, with no review evidence, although I-17 puts
+ * guardrail mutations on the human-touch surface. Each file is gated exactly,
+ * not its neighbours, except `bunfig.toml`, which is gated at every depth:
+ * check-release-age.ts reads every tracked one, and reusable-work-package-link
+ * runs its gate from the governance checkout, so a `preload` in the root one
+ * would execute code inside the gate of every consumer.
+ *
+ * Which files belong here is not left to a name heuristic. Every tracked file
+ * that is neither source code nor Markdown is either gated by this list or
+ * declared not gated, with its reason, in `check-data-inventory.ts`, which
+ * fails on any other: a new data file is a decision, gated or declared, never
+ * a silent addition.
+ *
+ * LIMITS, not decided here (#152, ADR-0060 proposed in #158). The surface is
+ * written in code that is itself outside the surface: this file, its test and
+ * the inventory. A pull request that drops a pattern below, declares the file
+ * in the inventory and adjusts the tests passes every gate with no review
+ * evidence, because the gate it weakens is the one that judges it. The same
+ * holds for the allowlists kept in the code of other gates, for the CI
+ * definitions under `.github/workflows/`, for Markdown a gate reads as data,
+ * and for the configuration files declared as awaiting owner arbitration. The
+ * full list, with the command that finds the code allowlists, is the LIMITS
+ * section of `check-data-inventory.ts`. Guarding any of them is an owner
+ * decision.
  *
  * A review-artefact reference counts only if it names a path that exists in
  * the tree under review (2026-10-14). Before, any string shaped like
@@ -99,6 +127,41 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/FORGOTTEN\.yaml$/,
   /^ecosystem\/refusals\.v1\.yaml$/,
   /^tools\/quality\/refusals-exemptions\.v1\.json$/,
+  // The loosening class (#153). Each line names the gate that reads the file.
+  // check-pinned-citations.ts: exemptions, foreign owners, unnumbered ADRs, threshold.
+  /^tools\/quality\/pinned-citations\.v1\.json$/,
+  // check-pr-negatives.ts: the surface a `Not-added:` negative is confronted to.
+  /^tools\/quality\/pr-negatives\.v1\.json$/,
+  // check-threat-model-citations.ts: the scope and the files whose citations are checked.
+  /^tools\/quality\/threat-model-citations\.v1\.json$/,
+  // check-ref-monotonicity.py: a composed ref allowed to move backwards or sideways.
+  /^\.github\/composition\/ref-monotonicity-exemptions\.json$/,
+  // check-release-age.ts: packages admitted younger than the release-age floor.
+  /^ecosystem\/release-age-exceptions\.v1\.yaml$/,
+  // check-sql-construction.ts: raw-SQL construction sites admitted as safe.
+  /^ecosystem\/sql-construction-allowlist\.v1\.yaml$/,
+  // check-web-headers.ts: header relaxations, raw HTML sinks, servers outside surfaces.
+  /^ecosystem\/web-headers-allowlist\.v1\.yaml$/,
+  // check-work-package-link.ts: exempt classes, approving owners, maturity floor.
+  /^ecosystem\/work-package-policy\.v1\.yaml$/,
+  // bump-generation.ts: historical sites a bump leaves, commit identity, token secret.
+  /^tools\/fleet\/bump-generation\.v1\.yaml$/,
+  // check-dependency-policy.ts (cargo-deny): licence, source and advisory policy, ADR-0042 §4 and §11.
+  /^deny\.toml$/,
+  // check-advisory-waivers.ts reads it as a waiver source; ADR-0042 §11 names it with the root one.
+  /^crates\/ecosystem-engine\/deny\.toml$/,
+  // Bun reads it from its working directory: `minimumReleaseAge`, its excludes,
+  // and `preload`, which executes code. check-release-age.ts reads every tracked one.
+  /(^|\/)bunfig\.toml$/,
+  // check-langgraph-advisory-floor.ts, distributed: the minimum version per advisory fix.
+  /^distribution\/templates\/langgraph-gates\/langgraph-advisory-floor\.v1\.txt$/,
+  // validate-cards / validate-knowledge-objects: what a card or an object must carry.
+  /^ecosystem\/schemas\/project\.v1\.schema\.json$/,
+  /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
+  /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
+  // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
+  /^distribution\/templates\/dependabot\/cargo\.yml$/,
+  /^distribution\/templates\/dependabot\/github-actions\.yml$/,
 ];
 
 /**
@@ -114,6 +177,25 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/FORGOTTEN.yaml",
   "ecosystem/refusals.v1.yaml",
   "tools/quality/refusals-exemptions.v1.json",
+  "tools/quality/pinned-citations.v1.json",
+  "tools/quality/pr-negatives.v1.json",
+  "tools/quality/threat-model-citations.v1.json",
+  ".github/composition/ref-monotonicity-exemptions.json",
+  "ecosystem/release-age-exceptions.v1.yaml",
+  "ecosystem/sql-construction-allowlist.v1.yaml",
+  "ecosystem/web-headers-allowlist.v1.yaml",
+  "ecosystem/work-package-policy.v1.yaml",
+  "tools/fleet/bump-generation.v1.yaml",
+  "deny.toml",
+  "crates/ecosystem-engine/deny.toml",
+  // `glob` magic: `**/` also matches no directory, so the root file is included.
+  ":(glob)**/bunfig.toml",
+  "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt",
+  "ecosystem/schemas/project.v1.schema.json",
+  "ecosystem/schemas/knowledge-object.schema.json",
+  "ecosystem/schemas/knowledge-projection.schema.json",
+  "distribution/templates/dependabot/cargo.yml",
+  "distribution/templates/dependabot/github-actions.yml",
 ];
 
 /** Pure filter, so "what counts as gated" is testable without a git call. */
