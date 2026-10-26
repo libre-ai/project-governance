@@ -117,28 +117,86 @@ import {
  * every verifiable negative fails closed. The gate's code runs from the pull
  * request's branch, like every gate of this repository.
  *
- * MISPLACED KEYS. A visible line that is not a declaration but whose START
- * renders as the key is refused by name ("write it as `Not-added:` at the
- * start of its own line"): behind markup prefixes (`>`, `-`, `*`, `+`, `#`,
- * `_`, `[`, a backquote, `~`, a number followed by `.` or `)`), and after
- * normalising the line:
- * backslash escapes removed, HTML entities decoded, tags removed, every
- * `\p{Pd}` dash read as `-`, `\p{Cf}` characters removed (a BOM, a
- * zero-width space, a soft hyphen — the key pattern needs no separator, so
- * `Not` + U+00AD + `added:` still matches), case folded. A mention in the
- * middle of prose is not
- * refused: it reads as prose (#143 and #145 were refused for "… lists. Not
- * added: the gate refuses …" before this rule). Out of reach, declared: a
- * homoglyph (the key written with U+043E, the Cyrillic small o, in place of
- * the Latin `o`) is not normalised, so such a
- * line is neither a declaration nor refused.
+ * THE INVARIANT, AND ONLY THIS ONE (orchestrator, after the sixth review of
+ * 2026-10-24): only the block at the top declares; each verifiable negative
+ * in it is confronted to the diff. A form that resembles the key anywhere
+ * else is PROSE, refused only when the best-effort detection below
+ * recognises it. The recognition of rendered Markdown and HTML by patterns
+ * is not pursued further: it is an aid, never a guarantee, and nothing here
+ * claims that every displayed resemblance is refused.
+ *
+ * MISPLACED KEYS, best effort. A line that is not the exact key at column 0
+ * and that the Door gate does not refuse is refused by name ("write it as
+ * `Not-added:` at the start of its own line") when its START, once
+ * normalised, reads as the key. Normalisation: empty links and images
+ * removed (`[](…)`, `![](…)`, not after a backslash); backslash escapes
+ * removed; complete HTML comments removed (`-->`, `--!>`, the short forms
+ * `<!-->` and `<!--->`), then CDATA sections, processing instructions
+ * (`<?…?>`) and declarations (`<!DOCTYPE …>`), then tags, their quoted
+ * attribute values read whole; entities decoded; every `\p{Pd}` dash read as `-`; every
+ * `\p{Default_Ignorable_Code_Point}` removed, with the braille blank U+2800
+ * and the Hangul fillers (the key pattern needs no separator, so the key
+ * split by an invisible still matches); case folded; the markers `*` and the
+ * backquote removed wherever they sit, `_` only at a word's edge and when
+ * the paragraph holds two such runs, a pair approximated by a count (GitHub
+ * displays `Not_added` and a lone `Not_-added` as written); then markup
+ * prefixes stripped: white space, a task box `[ ]` or `[x]`, `>`, `-`, `+`,
+ * `#`, `[`, `~`, a number followed by `.` or `)`. Each line is judged alone
+ * AND joined with the rest of its paragraph (the next lines up to a blank
+ * one), so a construct that spans a line break is read whole: a tag or a
+ * comment over two lines, an empty link whose title holds a line break, a
+ * `_` pair opened on one line and closed on the next; in a type-6 HTML
+ * block (`<div>` …) the lines are joined by a space, as the browser
+ * displays them (eighth review, F2). Where the line starts inside a comment
+ * or fence the Door gate exempts, what is judged is what follows its close
+ * on that line; the rest of the line is hidden (a comment) or displayed as
+ * code (a fence), and exempt by T3 either way. An indented code block is not
+ * exempt: a key in it is refused, while the same key in a fence opened at
+ * column 0 after a blank line is not. Where the line starts inside a
+ * comment that is not exempt, both the raw line and what follows the close
+ * are judged (see `displayedForms`).
+ *
+ * Measured against GitHub's rendering (POST /markdown, gfm, 2026-10-26) on
+ * two benches. On the 61 bodies of the seventh review (its 15 cases, the 36
+ * bodies of the fifth review's point 3, 7 underscore cases, 3 short-form
+ * comments), the combined verdict (Door, then this gate) differs from what
+ * GitHub displays on 8, all refusals of a key GitHub does not display at a
+ * line start: a `<!--` in a code span or mid-line followed, on a later line,
+ * by `-->` and the key (2); a mid-line `<!--` whose comment GitHub really
+ * opens over the next line (5, kept refused since the fifth review); and a
+ * comment closed then reopened on the same line, which the Door gate
+ * refuses by T3 (1). On the 46 probes of the eighth review, 26 agree; 11 are
+ * refusals of a key GitHub does not display (`_` runs that do not pair, a
+ * marker without the space a list needs, a task box outside a list, an
+ * escape or entity shown literally, an info string); 7 are keys GitHub
+ * displays and this gate does not refuse, all in the classes declared
+ * below; 1 is a fence exempt by T3; 1 (math) cannot be measured, the API
+ * does not render it.
+ *
+ * What the detection does NOT recognise, declared and not coded: a visual
+ * line break inside one source line (`<br>`, a `<p>` or the end of a
+ * `</div>` that starts the key on a new displayed line); a key in a table
+ * cell or a footnote; a bidirectional override (U+202E) that reorders what
+ * is displayed; a homoglyph: the key written with U+043E, the Cyrillic small
+ * o, in place of the Latin `o`, with the minus sign U+2212 (or `&minus;`)
+ * in place of the hyphen, in fullwidth letters, or with the fullwidth colon
+ * U+FF1A; inline math (`$…$`), which GitHub renders in the browser; and any
+ * rendering not listed above. A
+ * mention in the middle of prose is not refused either: it reads as prose
+ * (#143 and #145 were refused for "… lists. Not added: the gate refuses …"
+ * before that rule).
  *
  * What this depends on in check-pr-door: `readDeclarationBlocks` (the
  * admitted values, the block's range, the refusals, the key lines outside
  * the block) and `stripNonDeclarations` (`text` with the body's line layout,
  * `removedBlocks`), read in one function, `readDeclarationLines`. A key line
  * the Door gate refuses is never refused twice (see that function). Line
- * numbers in refusals are lines of the body.
+ * numbers in refusals are lines of the body. The volume line and the
+ * ignored counter inherit `stripNonDeclarations`, which does not know code
+ * spans: a `<!--` in a code span is counted as a comment, and a displayed
+ * line after it can be counted as ignored (eighth review, F4). Verdicts do
+ * not depend on it: `displayedForms` judges the raw line inside a comment
+ * that is not exempt.
  *
  * Runs on `pull_request` events (including `edited`). Elsewhere it declares
  * that it judged nothing. An event payload absent or unreadable on a
@@ -157,19 +215,74 @@ const VOCABULARY: ReadonlySet<string> = new Set([
 const VERIFIABLE: ReadonlySet<string> = new Set(VERIFIABLE_NEGATIVES);
 const NEGATIVES_KEY = "Not-added:";
 /**
- * Letters that render as blank and are not `\p{Cf}`: the braille blank
- * U+2800 and the Hangul fillers U+115F, U+1160, U+3164, U+FFA0 (fifth
+ * Characters that render as nothing: every `\p{Default_Ignorable_Code_Point}`
+ * (the BOM, zero-width characters, the soft hyphen, U+034F, the variation
+ * selectors, U+17B4 and U+17B5, the Mongolian free variation selectors, the
+ * Hangul fillers), and the braille blank U+2800, which is a letter (sixth
  * review). Built from code points, so the source carries no invisible
  * character.
  */
-const BLANK_LETTERS = new RegExp(
-  `[${String.fromCodePoint(0x2800, 0x115f, 0x1160, 0x3164, 0xffa0)}]`,
+const RENDERS_AS_NOTHING = new RegExp(
+  `[\\p{Default_Ignorable_Code_Point}${String.fromCodePoint(0x2800, 0x115f, 0x1160, 0x3164, 0xffa0)}]`,
   "gu",
 );
+/**
+ * A complete HTML comment on the line: closed by `-->` or `--!>`, as HTML5
+ * closes it, or a short form (`<!-->`, `<!--->`). A comment left open to the
+ * end of the line is not removed: everything after its opener is inside it,
+ * so the line cannot start with the key either way (a `|$` branch was an
+ * equivalent mutant, seventh review).
+ */
+const HTML_COMMENT = /<!--(?:-?>|[\s\S]*?--!?>)/g;
+/** An HTML tag, its quoted attribute values read whole: `<span title=">">`. */
+const HTML_TAG = /<\/?[A-Za-z](?:"[^"]*"|'[^']*'|[^'">])*>/g;
+/**
+ * Constructs GitHub renders as nothing before what follows them (eighth
+ * review, F1): an empty link or image, `[](…)` or `![](…)`, which renders an
+ * empty anchor, unless its bracket is escaped; a processing instruction
+ * `<?…?>`; a declaration `<!DOCTYPE …>`; a CDATA section `<![CDATA[…]]>`.
+ */
+const EMPTY_LINK = /(?<!\\)!?\[\]\([^)]*\)/g;
+const PROCESSING_INSTRUCTION = /<\?[\s\S]*?\?>/g;
+const DECLARATION = /<![A-Za-z][^>]*>/g;
+const CDATA_SECTION = /<!\[CDATA\[[\s\S]*?\]\]>/g;
+/**
+ * CommonMark HTML block of type 6 opened at the start of a line: its lines
+ * are raw HTML, which the browser joins with a space (eighth review, F2:
+ * `<div>` / `Not` / `added:` displays `Not added:`).
+ */
+const HTML_BLOCK_OPEN =
+  /^ {0,3}<\/?(?:address|article|aside|blockquote|details|dialog|dd|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|p|section|summary|table|tbody|td|tfoot|th|thead|tr|ul)(?:[\s/>]|$)/i;
+const BLANK_SOURCE_LINE = /^[ \t]*$/;
+/**
+ * Emphasis and code markers. `*` and the backquote are removed wherever they
+ * sit (`N*ot*-added`, `Not-`added``): GitHub reads both inside a word.
+ */
+const EMPHASIS_MARKERS = /[*`]/g;
+/**
+ * `_` runs at a word's edge, where GitHub can read emphasis (`__Not-added:__`,
+ * `_Not_-added:`), never inside a word: GitHub displays `Not_added` with its
+ * underscore. Emphasis needs a pair, so the runs are removed only when the
+ * paragraph holds at least two of them: a lone `Not_-added:` is displayed as
+ * written (measured on POST /markdown, seventh review). Pairing is
+ * approximated by that count, not modelled.
+ */
+const EDGE_UNDERSCORES = /(?<![\p{L}\p{N}])_+|_+(?![\p{L}\p{N}])/gu;
+
+/**
+ * The first displayed line without the `_` runs GitHub would read as
+ * emphasis (see EDGE_UNDERSCORES). The runs are counted over the whole
+ * paragraph: a pair opened on one line may close on the next (eighth review,
+ * F2: `_Not-added: dependency` / `more_`).
+ */
+function withoutUnderscoreEmphasis(first: string, paragraph: string): string {
+  const runs = paragraph.match(EDGE_UNDERSCORES) ?? [];
+  return runs.length >= 2 ? first.replace(EDGE_UNDERSCORES, "") : first;
+}
 /** The key as a normalised line start renders it. */
 const NORMALISED_KEY = /^not[\s-]*added\s*:/;
-/** Markup a line may start with before the key still renders first. */
-const MARKUP_PREFIX = /^(?:\s+|[>\-*+#_[`~]|\d+[.)])/;
+/** Markup a line may start with before the key still renders first; a task box first. */
+const MARKUP_PREFIX = /^(?:\s+|\[[ x]\]|[>\-+#[~]|\d+[.)])/;
 /** Any occurrence, to count the lines whose mention a comment or code block hid. */
 const KEY_ANYWHERE = /not[\s\p{Pd}]*added\s*:/iu;
 const BAD_SEPARATOR = /[\s;|/]/;
@@ -178,16 +291,51 @@ const BYTE_ORDER_MARK = String.fromCodePoint(0xfeff);
 
 /** How a line starts once rendered: the text a reader takes for its first word. */
 export function renderedLineStart(line: string): string {
-  let text = line.replace(/\\([!-/:-@[-`{-~])/g, "$1");
-  text = decodeHTML(text);
-  text = text.replace(/<[^>]*>/g, "");
+  return renderedParagraphStart([line]);
+}
+
+/** Markup removed from source text, line breaks kept unless a construct spans them. */
+function withoutMarkup(source: string): string {
+  // Empty links before the escapes: `\[](x)` is literal text, not a link.
+  let text = source.replace(EMPTY_LINK, "").replace(/\\([!-/:-@[-`{-~])/g, "$1");
+  // Comments first, whole, then the other `<!` and `<?` constructs, then
+  // tags: a `>` inside a comment or inside a quoted attribute value does not
+  // end it (sixth review).
+  text = text.replace(HTML_COMMENT, "").replace(CDATA_SECTION, "");
+  text = text.replace(PROCESSING_INSTRUCTION, "").replace(DECLARATION, "");
+  return text.replace(HTML_TAG, "");
+}
+
+/** Character-level normalisation: entities, dashes, invisibles, case, `*` and the backquote. */
+function normalisedCharacters(source: string): string {
+  // Entities after the markup, so an encoded invisible (`&#x200B;`) is
+  // decoded before the invisibles go.
+  let text = decodeHTML(source);
   text = text.replace(/\p{Pd}/gu, "-");
-  // U+00AD (soft hyphen) is Cf and goes here with the BOM and the zero-width
-  // characters; NORMALISED_KEY accepts no separator at all, so `Not` U+00AD
-  // `added:` still reads as the key. Mapping it to `-` first was measured as
-  // an equivalent mutant on 2026-10-23, and removed.
-  text = text.replace(/\p{Cf}/gu, "").replace(BLANK_LETTERS, "");
-  text = text.toLowerCase();
+  // The soft hyphen is default-ignorable and goes with the rest;
+  // NORMALISED_KEY accepts no separator at all, so `Not` U+00AD `added:`
+  // still reads as the key.
+  text = text.replace(RENDERS_AS_NOTHING, "");
+  return text.toLowerCase().replace(EMPHASIS_MARKERS, "");
+}
+
+/**
+ * How the first displayed line of these source lines starts once rendered.
+ * The lines are joined first, so a construct that spans a line break (a tag
+ * over two lines, `Not<!--` / `-->-added:`, an empty link whose title holds a
+ * line break) is removed whole (eighth review, F2). The text is then cut at
+ * the first line break left, before entities are decoded: an encoded line
+ * break (`&#10;`) does not cut it. In a type-6 HTML block the lines are joined
+ * by a space, as the browser displays them.
+ */
+export function renderedParagraphStart(lines: readonly string[]): string {
+  const separator = HTML_BLOCK_OPEN.test(lines[0] ?? "") ? " " : "\n";
+  const paragraph = withoutMarkup(lines.join(separator));
+  const first = paragraph.split("\n")[0] ?? "";
+  let text = withoutUnderscoreEmphasis(
+    normalisedCharacters(first),
+    normalisedCharacters(paragraph),
+  );
   for (
     let prefix = text.match(MARKUP_PREFIX);
     prefix !== null;
@@ -224,6 +372,14 @@ function quote(text: string): string {
   return JSON.stringify(trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed);
 }
 
+/** Is this 1-based line one of the declaration block's? */
+function inBlock(
+  block: { readonly first: number; readonly last: number } | null,
+  lineNumber: number,
+): boolean {
+  return block !== null && lineNumber >= block.first && lineNumber <= block.last;
+}
+
 /** Does this RAW line hold the exact key at column 0 (the Door gate's T1-T3)? */
 function isKeyLine(line: string): boolean {
   return line.startsWith(NEGATIVES_KEY);
@@ -236,10 +392,16 @@ export interface DeclarationLines {
   readonly visible: readonly string[];
   /** Per line: inside a comment or fence the Door gate exempts (StrippedBody.insideClean). */
   readonly insideClean: readonly boolean[];
+  /** Per line: it starts inside any comment or fence, clean or not (StrippedBody.inside). */
+  readonly inside: readonly boolean[];
+  /** 1-based first and last lines of the declaration block, or null when there is none. */
+  readonly block: { readonly first: number; readonly last: number } | null;
   /** The value of every `Not-added:` line the declaration block admits, text after the key. */
   readonly admitted: readonly string[];
   /** `Not-added:` lines the Door gate refuses itself: T2' in the block, T3 outside it. */
   readonly leftToDoor: number;
+  /** The same lines, 1-based: each line falls in one counter only. */
+  readonly leftToDoorLines: ReadonlySet<number>;
   /** 1-based lines the Door gate already refuses (T1 end of block, T2'): not refused again. */
   readonly doorRefusedLines: ReadonlySet<number>;
   /** The Door gate's line partition, as it prints it. */
@@ -287,34 +449,83 @@ export function readDeclarationLines(body: string): DeclarationLines {
   const raw = normalized === "" ? [] : normalized.split("\n");
   if (normalized.endsWith("\n")) raw.pop();
   const refusedLines = new Set(blocks.refusals.map((refusal) => refusal.line));
-  // Counted line by line, never as a difference, so no count goes below zero:
-  // the block's key lines the Door gate refused (T2', or after a refused one),
-  // plus the key lines outside the block it judges (T3, not exempt).
-  const refusedInBlock =
-    blocks.block === null
-      ? 0
-      : raw.filter(
-          (line, index) =>
-            index + 1 >= (blocks.block?.first ?? 0) &&
-            index + 1 <= (blocks.block?.last ?? 0) &&
-            isKeyLine(line) &&
-            refusedLines.has(index + 1),
-        ).length;
-  const outside = blocks.outsideKeyLines.filter(
-    (keyLine) => keyLine.key === "Not-added" && !keyLine.inside,
-  ).length;
+  // Named line by line, never counted as a difference, so no count goes
+  // below zero: the block's key lines the Door gate refused (T2', or after a
+  // refused one), plus the key lines outside the block it judges (T3, not
+  // exempt).
+  const leftToDoorLines = new Set<number>();
+  raw.forEach((line, index) => {
+    const lineNumber = index + 1;
+    if (inBlock(blocks.block, lineNumber) && isKeyLine(line) && refusedLines.has(lineNumber)) {
+      leftToDoorLines.add(lineNumber);
+    }
+  });
+  for (const keyLine of blocks.outsideKeyLines) {
+    if (keyLine.key === "Not-added" && !keyLine.inside) leftToDoorLines.add(keyLine.line);
+  }
   return {
     raw,
     visible: stripped.lines,
     insideClean: stripped.insideClean,
+    inside: stripped.inside,
+    block: blocks.block,
     admitted: blocks.values["Not-added"],
-    leftToDoor: refusedInBlock + outside,
+    leftToDoor: leftToDoorLines.size,
+    leftToDoorLines,
     doorRefusedLines: refusedLines,
     totalLines: blocks.totalLines,
     linesExamined: blocks.linesExamined,
     removedLines: blocks.removedLines,
     removedBlocks: blocks.removedBlocks,
   };
+}
+
+/**
+ * What GitHub may display of a raw line, judged by the misplaced-key check.
+ * Measured against GitHub's own rendering (POST /markdown, gfm) on the
+ * seventh review's bench, 2026-10-24:
+ *
+ * - a line inside a comment or fence the Door gate exempts (clean): only what
+ *   follows the close (`visible`). The rest is hidden (a comment) or
+ *   displayed as code (a fence), and exempt by T3 either way (sixth review);
+ * - a line inside a comment that is NOT clean: the raw line AND what follows
+ *   the close. `stripNonDeclarations` reads a `<!--` in a code span, or one
+ *   cmark ignores, as an opener, so `visible` alone would hide lines GitHub
+ *   displays (19 of the 36 point-3 bodies went silent that way); the raw
+ *   line alone would miss a key GitHub shows after a real comment closes
+ *   (after a paragraph, an indented opener, a `<pre>` block). The cost, also
+ *   measured: a key right after `-->` on a line that is in fact prose (the
+ *   opener in a code span, or mid-line) is refused while GitHub shows it
+ *   after other text;
+ * - any other line: the raw line.
+ *
+ * Outside an exempt construct, "the raw line" is read joined with the rest
+ * of its paragraph, so a construct that spans a line break is read whole
+ * (eighth review, F2). Each form is a list of source lines.
+ */
+function displayedForms(read: DeclarationLines, index: number): readonly (readonly string[])[] {
+  const visible = read.visible[index] ?? "";
+  if (read.insideClean[index] === true) return [[visible]];
+  // The raw line is the first line of its paragraph: judging the paragraph
+  // judges the raw line, with what a construct opened on it carries over.
+  const paragraph = paragraphFrom(read.raw, index);
+  if (read.inside[index] === true) return [paragraph, [visible]];
+  return [paragraph];
+}
+
+/**
+ * The raw line and the lines after it up to the next blank one: the rest of
+ * its paragraph, as far as a construct opened on it can reach in GitHub.
+ * shortcut: a paragraph is "consecutive non-blank lines", not CommonMark's
+ * block structure (a list item or a fence inside it is not split off), so it
+ * can only refuse more; upgrade trigger: a false red on a real body.
+ */
+function paragraphFrom(raw: readonly string[], index: number): readonly string[] {
+  const lines: string[] = [];
+  for (let at = index; at < raw.length && !BLANK_SOURCE_LINE.test(raw[at] ?? ""); at += 1) {
+    lines.push(raw[at] ?? "");
+  }
+  return lines;
 }
 
 /** Pure parse of the declaration of a pull request description. */
@@ -324,14 +535,17 @@ export function readNegativesDeclaration(
 ): NegativesDeclaration {
   const read = readLines(body);
   const misplaced: string[] = [];
+  const misplacedLines = new Set<number>();
   read.raw.forEach((line, index) => {
-    // Judged on the RAW line, as GitHub displays it (fifth review): skipped
-    // only when the Door gate owns it (the exact key at column 0, or a line it
-    // refuses) or when it sits in a comment or fence the Door gate exempts —
-    // opened at column 0 after a blank line, before any unclosed HTML block.
+    // The Door gate owns the exact key at column 0 of the RAW line, and the
+    // lines it refuses: neither is judged here.
     if (isKeyLine(line) || read.doorRefusedLines.has(index + 1)) return;
-    if (read.insideClean[index] === true) return;
-    if (NORMALISED_KEY.test(renderedLineStart(line))) {
+    if (
+      displayedForms(read, index).some((shown) =>
+        NORMALISED_KEY.test(renderedParagraphStart(shown)),
+      )
+    ) {
+      misplacedLines.add(index + 1);
       misplaced.push(
         `line ${index + 1} ${quote(line)} — write it as "${NEGATIVES_KEY}" at the start of its own line`,
       );
@@ -344,9 +558,19 @@ export function readNegativesDeclaration(
     removedLines: read.removedLines,
     removedBlocks: read.removedBlocks,
     // Counted directly, never as a difference of two totals: a line counts
-    // when its raw text mentions the key and the stripped one no longer does.
+    // when its raw text mentions the key and the stripped one no longer does,
+    // and it is neither refused here nor left to the Door gate — the three
+    // counters are disjoint, so their sum never exceeds the lines (sixth review).
+    // A line of the declaration block is never ignored: the block is read by
+    // the Door gate on raw lines, so a `<!--` in a code span above a
+    // `Not-added:` line does not hide it (seventh review, minor-3).
     ignoredInBlocks: read.raw.filter(
-      (line, index) => KEY_ANYWHERE.test(line) && !KEY_ANYWHERE.test(read.visible[index] ?? ""),
+      (line, index) =>
+        KEY_ANYWHERE.test(line) &&
+        !KEY_ANYWHERE.test(read.visible[index] ?? "") &&
+        !inBlock(read.block, index + 1) &&
+        !misplacedLines.has(index + 1) &&
+        !read.leftToDoorLines.has(index + 1),
     ).length,
     declarationLines: declarations.length,
     misplacedLines: misplaced.length,
@@ -552,6 +776,8 @@ export interface SurfaceScan {
   readonly skippedByExtension: number;
   /** Changed paths deleted by the pull request: nothing at the head to read. */
   readonly deleted: number;
+  /** Symlinks of the diff judged by their name or target, contact or not (schema). */
+  readonly links: number;
 }
 
 const deletedIn = (entries: readonly ChangedPath[]): number =>
@@ -622,7 +848,13 @@ export function dependencyContacts(context: ChangeContext): SurfaceScan {
       contacts.push({ path, status: present.join("+"), why: "a symlink", present });
     }
   }
-  return { contacts, blobsRead, skippedByExtension: 0, deleted: deletedIn(context.entries) };
+  return {
+    contacts,
+    blobsRead,
+    skippedByExtension: 0,
+    deleted: deletedIn(context.entries),
+    links: 0,
+  };
 }
 
 /** Pure: every contact of the change set with the workflow surface. */
@@ -658,7 +890,13 @@ export function workflowContacts(context: ChangeContext): SurfaceScan {
       present,
     });
   }
-  return { contacts, blobsRead: 0, skippedByExtension: 0, deleted: deletedIn(context.entries) };
+  return {
+    contacts,
+    blobsRead: 0,
+    skippedByExtension: 0,
+    deleted: deletedIn(context.entries),
+    links: 0,
+  };
 }
 
 const SCHEMA_DIRECTORY = /(?:^|\/)schemas?(?:\/|$)/i;
@@ -696,6 +934,7 @@ export function schemaContacts(context: ChangeContext): SurfaceScan {
   const inDiff = new Set<string>();
   let blobsRead = 0;
   let skippedByExtension = 0;
+  let links = 0;
   for (const entry of context.entries) {
     inDiff.add(entry.path);
     if (entry.status === "D") continue;
@@ -706,6 +945,9 @@ export function schemaContacts(context: ChangeContext): SurfaceScan {
     const lower = entry.path.toLowerCase();
     const extension = schemaContentExtensions.find((candidate) => lower.endsWith(candidate));
     if (entry.newMode === SYMLINK_MODE) {
+      // Counted whether it touches the surface or not: every path of the diff
+      // falls in one part of the partition (sixth review).
+      links += 1;
       const why =
         extension !== undefined
           ? "a link, whose content cannot be read"
@@ -747,7 +989,7 @@ export function schemaContacts(context: ChangeContext): SurfaceScan {
     const why = schemaLinkReason(path, present[0] ?? "head", context);
     if (why !== null) contacts.push({ path, status: present.join("+"), why, present });
   }
-  return { contacts, blobsRead, skippedByExtension, deleted: deletedIn(context.entries) };
+  return { contacts, blobsRead, skippedByExtension, deleted: deletedIn(context.entries), links };
 }
 
 const CONTACTS: Readonly<Record<VerifiableNegative, (context: ChangeContext) => SurfaceScan>> = {
@@ -820,7 +1062,7 @@ export function evaluateNegatives(
   const examined = context.entries.length;
   const surfaces: string[] = [];
   for (const value of verifiable) {
-    const { contacts, blobsRead, skippedByExtension, deleted } = CONTACTS[value](context);
+    const { contacts, blobsRead, skippedByExtension, deleted, links } = CONTACTS[value](context);
     const remove = `remove "${value}" from ${NEGATIVES_KEY}`;
     report.check(
       `${label} — Not-added ${value}`,
@@ -836,7 +1078,7 @@ export function evaluateNegatives(
             .join("; "),
     );
     surfaces.push(
-      `${value}: ${contacts.length} contact(s), ${blobsRead} blob(s) read for content, ${skippedByExtension} file(s) skipped by extension, ${deleted} deleted path(s)`,
+      `${value}: ${contacts.length} contact(s), ${blobsRead} blob(s) read for content, ${skippedByExtension} file(s) skipped by extension, ${deleted} deleted path(s), ${links} link(s) judged by name or target`,
     );
   }
   report.volume(

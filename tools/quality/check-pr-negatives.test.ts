@@ -185,6 +185,11 @@ describe("the declaration", () => {
     ["a comment that creates the key once removed", "Not<!-- x -->-added: dependency", 0],
     ["a key hidden in a comment", "<!-- Not-added: x -->", 1],
     [
+      "a mention that stays visible in prose",
+      "Door: two-way\n\nThe Not-added: line is optional.\n",
+      0,
+    ],
+    [
       "a key hidden in a comment beside a visible one",
       "Not-added: schema <!-- Not-added: x -->",
       0,
@@ -238,8 +243,11 @@ describe("the seam with the declaration block (readDeclarationLines, #141)", () 
       raw: ["Not-added: schema"],
       visible: ["Not-added: schema"],
       insideClean: [false],
+      inside: [false],
+      block: { first: 1, last: 1 },
       admitted: [" workflow"],
       leftToDoor: 0,
+      leftToDoorLines: new Set<number>(),
       doorRefusedLines: new Set<number>(),
       totalLines: 1,
       linesExamined: 1,
@@ -296,8 +304,8 @@ describe("renderedLineStart", () => {
   test.each([
     ["Not\\-added:", "not-added:"],
     ["&#x4E;ot-added:", "not-added:"],
-    ["**<i>Not</i>&nbsp;added**:", `not${cp(0x00a0)}added**:`],
-    [`> 1. __Not${cp(0x2014)}added:__`, "not-added:__"],
+    ["**<i>Not</i>&nbsp;added**:", `not${cp(0x00a0)}added:`],
+    [`> 1. __Not${cp(0x2014)}added:__`, "not-added:"],
   ])("%j renders as %j", (line, rendered) => {
     expect(renderedLineStart(line)).toBe(rendered);
   });
@@ -637,9 +645,9 @@ describe("the verdict", () => {
     expect(report.outcome).toBe("pass");
     expect(rendered).toContain(
       "rules read at the merge base; diff: 2 changed path(s) examined, 1 tree entries read for symlinks; " +
-        "dependency: 0 contact(s), 2 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s), " +
-        "schema: 0 contact(s), 0 blob(s) read for content, 2 file(s) skipped by extension, 0 deleted path(s), " +
-        "workflow: 0 contact(s), 0 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s)",
+        "dependency: 0 contact(s), 2 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s), 0 link(s) judged by name or target, " +
+        "schema: 0 contact(s), 0 blob(s) read for content, 2 file(s) skipped by extension, 0 deleted path(s), 0 link(s) judged by name or target, " +
+        "workflow: 0 contact(s), 0 blob(s) read for content, 0 file(s) skipped by extension, 0 deleted path(s), 0 link(s) judged by name or target",
     );
   });
 
@@ -825,5 +833,232 @@ describe("the schema partition counts deleted paths (fifth review, point 5)", ()
   test("a deleted path is counted, not read", () => {
     const scan = schemaScan(context([file("D", "a.json"), file("M", "b.json")]));
     expect([scan.deleted, scan.blobsRead]).toEqual([1, 1]);
+  });
+});
+
+// Sixth review (2026-10-24). Every expected verdict is the orchestrator's:
+// a line GitHub displays and whose start reads as the key, once the listed
+// normalisation is applied, is refused here while the Door gate passes.
+describe("sixth review, on the combined verdict", () => {
+  const B = "Door: two-way\nOrigin: proposal\n\n";
+  const NOW = new Date("2026-10-24T00:00:00Z");
+  const combined = (body: string) => [
+    evaluateDoor(body, "PR #0 description", null, NOW).outcome,
+    readNegativesDeclaration(body).kind,
+  ];
+
+  // N1: a line that starts inside a clean comment shows what follows the close.
+  test.each([
+    `${B}<!--\nx -->Not-added: dependency\n`,
+    `${B}<!--\n<!-- c -->Not-added: dependency\n`,
+    `${B}<!--\nx --!>Not-added: dependency\n`,
+    `${B}<!--\nx\n-->Not-added: dependency\n`,
+  ])("N1: %j is refused here, Door passing", (body) => {
+    expect(combined(body)).toEqual(["pass", "refused"]);
+  });
+
+  test("N1 control: a key wholly inside a clean comment is not displayed, and absent", () => {
+    expect(combined(`${B}<!--\nNot-added: x\n-->\n`)).toEqual(["pass", "absent"]);
+  });
+
+  // N2: every default-ignorable code point, and comments removed before tags.
+  test.each([
+    `Not${cp(0x034f)}-added: dependency`,
+    `Not${cp(0xfe0f)}-added: dependency`,
+    `Not${cp(0x17b4)}-added: dependency`,
+    `Not${cp(0x180b)}-added: dependency`,
+    "Not&#x34F;-added: dependency",
+    "Not&#8203;-added: dependency",
+    "<!-- a > b -->Not-added: dependency",
+    '<span title=">">Not-added: dependency',
+  ])("N2: %j is refused here, Door passing", (line) => {
+    expect(combined(`${B}${line}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  // N3: task boxes as a prefix, emphasis and code markers wherever they sit.
+  test.each([
+    "- [ ] Not-added: dependency",
+    "- [x] Not-added: dependency",
+    "* [ ] Not-added: dependency",
+    "> - [ ] Not-added: dependency",
+    "N*ot*-added: dependency",
+    "**Not**-added: dependency",
+    "Not-`added`: dependency",
+  ])("N3: %j is refused here, Door passing", (line) => {
+    expect(combined(`${B}${line}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  // N4: the three counters are disjoint; their sum never exceeds the lines.
+  test.each([
+    [
+      "a key in a comment opened mid-line: left to Door",
+      `${B}text <!--\nNot-added: x\n-->\n`,
+      [0, 0, 1],
+    ],
+    ["a misplaced key in it: refused here", `${B}text <!--\n> Not-added: x\n-->\n`, [0, 1, 0]],
+    ["a key in a clean comment: ignored", `${B}<!--\nNot-added: x\n-->\n`, [1, 0, 0]],
+  ])("N4: %s, counted once", (_, body, counts) => {
+    const read = readNegativesDeclaration(body);
+    expect([read.ignoredInBlocks, read.misplacedLines, read.leftToDoor]).toEqual(counts);
+    expect(read.ignoredInBlocks + read.misplacedLines + read.leftToDoor).toBeLessThanOrEqual(
+      readDeclarationBlocks(body).totalLines,
+    );
+  });
+
+  test("N4: the schema partition sums to the diff, symlinks counted", () => {
+    const entries = [
+      file("D", "gone.json"),
+      file("A", "x.schema.json"),
+      file("A", "docs/link", "000000", "120000"),
+      file("A", "data/defs", "000000", "120000"),
+      file("M", "README.md"),
+      file("A", "vendor/lib", "000000", "160000"),
+      file("M", "a.json"),
+    ];
+    const scan = schemaScan(
+      context(entries, { "docs/link": "../readme.md", "data/defs": "../schemas" }),
+    );
+    const byName = scan.contacts.filter((contact) => contact.why === "schema file name").length;
+    const gitlinks = scan.contacts.filter((contact) => contact.why.includes("gitlink")).length;
+    expect(scan.links).toBe(2);
+    expect(
+      scan.deleted + byName + scan.links + scan.skippedByExtension + gitlinks + scan.blobsRead,
+    ).toBe(entries.length);
+  });
+});
+
+// Seventh review (2026-10-24). Every expected verdict below is GitHub's
+// rendering of the body (POST /markdown, mode gfm): "refused" where GitHub
+// displays the key at the start of a line, "absent" where it does not.
+describe("seventh review, against GitHub's rendering", () => {
+  const B = "Door: two-way\nOrigin: proposal\n\n";
+  const NOW = new Date("2026-10-24T00:00:00Z");
+  const combined = (body: string) => [
+    evaluateDoor(body, "PR #0 description", null, NOW).outcome,
+    readNegativesDeclaration(body).kind,
+  ];
+
+  // minor-2: every way HTML5 closes a comment, and the short forms.
+  test.each([
+    `${B}<!-- a --!>Not-added: dependency\n`,
+    `${B}<!-->Not-added: dependency\n`,
+    `${B}<!--->Not-added: dependency\n`,
+  ])("minor-2: %j shows the key, refused here, Door passing", (body) => {
+    expect(combined(body)).toEqual(["pass", "refused"]);
+  });
+
+  // minor-1: a comment that is not the Door gate's exempt kind, closed on
+  // the line, shows what follows the close.
+  test.each([
+    ["b7, after a paragraph", `${B}para\n<!--\nx -->Not-added: dependency\n`],
+    ["b9, an indented opener", `${B}  <!--\nx -->Not-added: dependency\n`],
+    ["b14, after a <pre> block", `${B}<pre>\nx\n</pre>\n\n<!--\nx -->Not-added: dependency\n`],
+  ])("minor-1: %s shows the key, refused here, Door passing", (_, body) => {
+    expect(combined(body)).toEqual(["pass", "refused"]);
+  });
+
+  test("minor-1 control: b3, the key after prose and a comment, is prose", () => {
+    expect(combined(`${B}<!--\nx -->prose <!-- c -->Not-added: dependency\n`)).toEqual([
+      "pass",
+      "absent",
+    ]);
+  });
+
+  // An underscore inside a word is displayed; at a word's edge it is emphasis.
+  const UNDERSCORES: readonly (readonly [string, "absent" | "refused"])[] = [
+    ["Not_added: dependency", "absent"],
+    ["not_added: is a variable name", "absent"],
+    ["not_added: names a snake_case field", "absent"],
+    ["__Not-added:__ dependency", "refused"],
+    ["_Not-added:_ dependency", "refused"],
+    ["_Not_-added: dependency", "refused"],
+    ["Not_-added: dependency", "absent"],
+  ];
+  test.each(UNDERSCORES)("underscore: %j is %s", (line, kind) => {
+    expect(combined(`${B}${line}\n`)).toEqual(["pass", kind]);
+  });
+
+  test("minor-3: a block line is never ignored, so the counters sum on the block", () => {
+    const body =
+      "Door: two-way\nOrigin: proposal\nOwner-arbitration: see `<!--` below\nNot-added: hosted-service\n\nbody\n";
+    const read = readNegativesDeclaration(body);
+    expect([read.kind, read.declarationLines, read.ignoredInBlocks]).toEqual(["declared", 1, 0]);
+    expect(
+      read.declarationLines + read.ignoredInBlocks + read.misplacedLines + read.leftToDoor,
+    ).toBe(1);
+  });
+});
+
+// Eighth review (2026-10-26, docs/reviews/pr-negatives-161/5e16fab…). Every
+// expected verdict is GitHub's rendering of the body (POST /markdown, gfm,
+// sent with `-F text=@<file>`): "refused" where the key is displayed at the
+// start of a line, "absent" where it is not.
+describe("eighth review, against GitHub's rendering", () => {
+  const B = "Door: two-way\nOrigin: proposal\n\n";
+  const NOW = new Date("2026-10-24T00:00:00Z");
+  const combined = (body: string) => [
+    evaluateDoor(body, "PR #0 description", null, NOW).outcome,
+    readNegativesDeclaration(body).kind,
+  ];
+
+  // F1: single-line constructs GitHub renders as nothing before the key.
+  test.each([
+    ["P01, an empty link", "[](https://example.com)Not-added: dependency"],
+    ["P02, an empty link without target", "[]()Not-added: dependency"],
+    ["P03, an empty image", "![]()Not-added: dependency"],
+    ["P46, an empty link in a list item", "- [](#x)Not-added: dependency"],
+    ["P09, a processing instruction", "<?x ?>Not-added: dependency"],
+    ["P10, a declaration", "<!DOCTYPE x>Not-added: dependency"],
+    ["P11, a CDATA section", "<![CDATA[x]]>Not-added: dependency"],
+  ])("F1: %s shows the key, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  test.each([
+    ["an escaped empty link is literal text", "\\[](x)Not-added: dependency"],
+    ["an escaped empty link before a dash is literal text", "\\[](x)-Not-added: dependency"],
+  ])("F1 control: %s, absent", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "absent"]);
+  });
+
+  // A comment that spans a blank line: the paragraph of its opener stops at
+  // the blank line, and only the after-close text of the line shows the key.
+  test.each([
+    ["clean, spanning a blank line", "<!--\nx\n\ny -->Not-added: dependency"],
+    ["after a paragraph, spanning a blank line", "para\n<!--\n\nx -->Not-added: dependency"],
+    ["indented, spanning a blank line", "  <!--\n\nx -->Not-added: dependency"],
+  ])("a comment %s shows the key after its close, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  // F2: constructs that span a line break, read over the paragraph.
+  test.each([
+    ["P04, a tag over two lines", '<span\ntitle="x">Not-added: dependency'],
+    ["P05, the key split by a tag over two lines", 'Not<span\nid="a">-added: dependency'],
+    ["P06, the key split by a comment over two lines", "Not<!--\n-->-added: dependency"],
+    ["P07, a _ pair over two lines", "_Not-added: dependency\nmore_"],
+    ["P43, a __ pair over two lines", "__Not-added:\ndependency__"],
+    ["P08, an HTML block that joins its lines", "<div>\nNot\nadded: dependency\n</div>"],
+    [
+      "P39, an empty link whose title holds a line break",
+      '[](https://example.com "a\nb")Not-added: dependency',
+    ],
+  ])("F2: %s shows the key, refused here, Door passing", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "refused"]);
+  });
+
+  test.each([
+    ["a blank line ends the paragraph", '<span\n\ntitle="x">Not-added: dependency'],
+    ["a lone _ over two lines does not pair", "_Not-added: dependency\nmore"],
+  ])("F2 control: %s, absent", (_, probe) => {
+    expect(combined(`${B}${probe}\n`)).toEqual(["pass", "absent"]);
+  });
+
+  test("F2: a line that renders empty does not take the next line's key, which is named once", () => {
+    // GitHub: `<p><b></b></p>`, then a blockquote holding the key (line 5).
+    const read = readNegativesDeclaration(`${B}<b></b>\n> Not-added: dependency\n`);
+    expect(read.kind === "refused" && read.reasons).toEqual([
+      'line 5 "> Not-added: dependency" — write it as "Not-added:" at the start of its own line',
+    ]);
   });
 });
