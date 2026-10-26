@@ -31,6 +31,26 @@ Each review record includes:
 
 Identifiers are audit metadata; equality with authoring identifiers does not invalidate a role-separated pass. Any normative change after a verdict makes affected approval stale and requires a fresh pass.
 
+### Verdict line
+
+The first line of a review record states its verdict and the commit it reviewed, in this form, with nothing before it on the line or after it:
+
+```text
+Verdict: <verdict> on <commit>
+```
+
+`<verdict>` is one of the three verdicts above, written as above. `<commit>` is the full 40-character SHA of the reviewed commit, in lowercase. Example: `Verdict: approve-with-minor-reservations on 0123456789abcdef0123456789abcdef01234567`.
+
+The review-evidence gate (`tools/quality/check-review-evidence.ts`) reads this line in the record a pull request cites. It admits the record as evidence only if all of the following hold:
+
+- the citation names the record itself, not the directory that holds it;
+- the verdict is `approve` or `approve-with-minor-reservations`;
+- the reviewed commit is an ancestor of the head under review.
+
+A `reject` record stays an immutable audit record, but it is not evidence.
+
+Records written before this section use two other forms, and the gate reads those too: a `## Verdict` heading followed by the verdict, and a `Reviewed commit:` line. The header of the gate lists these forms, with the number of records that use each one. Existing records are not rewritten to the new form.
+
 ## Disposition of each finding
 
 Each finding also carries one disposition — blocking defect, required evidence, suggestion or ready — defined by `docs/adr/0056-method-origin-review-dispositions-live-install-refusals-negatives.md` D2, which is the only authority on them and is not restated here. Its re-review rule sets the starting point of the fresh pass required above and never replaces it. How dispositions combine with the severity scale and the verdicts above is also fixed by that ADR's D2, owner-arbitrated on 2026-10-23: it narrows which findings may be called a suggestion and which verdicts may stand while required evidence is open. Read it there; it is not restated here.

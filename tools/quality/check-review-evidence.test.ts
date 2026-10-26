@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  type Ancestry,
   CONFIGURATION_PATH_PATTERNS,
   CONFIGURATION_PATHSPECS,
   evaluateReviewEvidence,
@@ -10,12 +11,16 @@ import {
   findEvidenceSignals,
   GATED_PATH_PATTERNS,
   GATED_PATHSPECS,
-  type PathExists,
   REVIEWED_PATHSPECS,
+  type RecordRead,
+  type ReviewTree,
+  readRecordStatement,
   STANDING_REVIEW_PATHS,
   touchesGatedPaths,
   touchesReviewedPaths,
+  type Verdict,
 } from "./check-review-evidence";
+import type { GateReport } from "./gate-report";
 
 // K4 redefinition (Domain A re-ratification, 2026-08-18, ADR-0023): "documented
 // adversarial review + owner merge = signature", applied mechanically. A pull
@@ -560,20 +565,55 @@ describe("extractAddedLines", () => {
   });
 });
 
-/** A tree holding exactly these paths (the files and every directory above them). */
-function treeWith(...paths: string[]): PathExists {
-  const present = new Set<string>();
-  for (const path of paths) {
+/** A commit the head under review descends from, and two it does not know as such. */
+const REVIEWED = "a".repeat(40);
+const ELSEWHERE = "b".repeat(40);
+const UNKNOWN = "c".repeat(40);
+
+/** A record in the canonical form, approving the reviewed commit. */
+const APPROVED = `Verdict: approve on ${REVIEWED}\n\n# Review\n`;
+
+/**
+ * A tree holding exactly these files (path → text) and every directory above
+ * them; REVIEWED is an ancestor of its head, ELSEWHERE a commit off its
+ * history, anything else unknown to the clone.
+ */
+function treeWith(files: Readonly<Record<string, string>>): ReviewTree {
+  const directories = new Set<string>();
+  for (const path of Object.keys(files)) {
     const parts = path.split("/");
-    for (let depth = 1; depth <= parts.length; depth += 1) {
-      present.add(parts.slice(0, depth).join("/"));
+    for (let depth = 1; depth < parts.length; depth += 1) {
+      directories.add(parts.slice(0, depth).join("/"));
     }
   }
-  return (path) => present.has(path);
+  return {
+    read: (path: string): RecordRead => {
+      const text = files[path];
+      if (text !== undefined) return { kind: "file", text };
+      return directories.has(path) ? { kind: "directory" } : { kind: "absent" };
+    },
+    ancestry: (commit: string): Ancestry => {
+      if (commit === REVIEWED) return "ancestor";
+      return commit === ELSEWHERE ? "not-ancestor" : "unknown-commit";
+    },
+  };
 }
 
 const REAL_VERDICT = "docs/reviews/domain-a/VERDICT.md";
-const TREE = treeWith(REAL_VERDICT, ...STANDING_REVIEW_PATHS);
+const TREE = treeWith({
+  [REAL_VERDICT]: APPROVED,
+  ...Object.fromEntries(STANDING_REVIEW_PATHS.map((path) => [path, APPROVED])),
+});
+
+/** The verdict on a gated ADR change whose only evidence is one record of this text. */
+function judgeRecord(text: string): GateReport {
+  return evaluateReviewEvidence(
+    ["docs/adr/0050-x.md"],
+    "see docs/reviews/x/REVIEW.md",
+    "",
+    treeWith({ "docs/reviews/x/REVIEW.md": text }),
+  );
+}
 
 describe("evaluateReviewEvidence", () => {
   test("a change outside the gated paths asserts nothing, declared", () => {
@@ -618,14 +658,19 @@ describe("evaluateReviewEvidence", () => {
     }
   });
 
-  test("an existing dossier directory counts as evidence", () => {
+  // #160: a dossier directory holds several rounds; which one applies cannot
+  // be read from the directory, so the reference must name the record.
+  test("a dossier directory is not a record, so it is not evidence", () => {
     const report = evaluateReviewEvidence(
       ["docs/adr/0050-x.md"],
       "dossier: docs/reviews/domain-a/",
       "",
       TREE,
     );
-    expect(report.outcome).toBe("pass");
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      "docs/reviews/domain-a (pr-body) is a directory, not a record",
+    );
   });
 
   test("one real reference passes and the dangling one is still named", () => {
@@ -735,7 +780,7 @@ describe("evaluateReviewEvidence", () => {
     );
     expect(report.outcome).toBe("violations");
     expect(report.violations).toEqual([
-      "ecosystem/FORGOTTEN.yaml: neither the pull request description nor a line the pull request adds to the gated files references an existing docs/reviews/** artefact or carries an 'Owner-arbitration: YYYY-MM-DD' marker (3 added line(s) examined in the diff of the gated files (0 context, 0 removed and 5 header line(s) are not evidence); 0 candidate signal(s) examined)",
+      "ecosystem/FORGOTTEN.yaml: neither the pull request description nor a line the pull request adds to the gated files references a docs/reviews/** record approving a commit of this change or carries an 'Owner-arbitration: YYYY-MM-DD' marker (3 added line(s) examined in the diff of the gated files (0 context, 0 removed and 5 header line(s) are not evidence); 0 candidate signal(s) examined)",
     ]);
   });
 
@@ -757,7 +802,7 @@ describe("evaluateReviewEvidence", () => {
       gitDiff("ecosystem/FORGOTTEN.yaml", [
         "+    review: docs/reviews/forgetting/eviction-2026-10-08.md",
       ]),
-      treeWith("docs/reviews/forgetting/eviction-2026-10-08.md"),
+      treeWith({ "docs/reviews/forgetting/eviction-2026-10-08.md": APPROVED }),
     );
     expect(report.outcome).toBe("pass");
   });
@@ -836,4 +881,221 @@ describe("evaluateReviewEvidence", () => {
     );
     expect(report.checks[0]?.item).toBe("docs/adr/0023-x.md, docs/decisions/DECISION-REGISTER.md");
   });
+});
+
+// #160: on #158 a dossier whose verdict was `reject` turned the gate green.
+// A record now counts for what it concludes, on a commit of this change.
+describe("a cited record counts for its verdict", () => {
+  test("approve on an ancestor commit is evidence, and the report says what it concludes", () => {
+    const report = judgeRecord(APPROVED);
+    expect(report.outcome).toBe("pass");
+    expect(report.checks[0]?.note).toBe(
+      `evidence found: review-artifact (pr-body): docs/reviews/x/REVIEW.md (approve on ${REVIEWED})`,
+    );
+  });
+
+  test("approve-with-minor-reservations on an ancestor commit is evidence", () => {
+    expect(judgeRecord(`Verdict: approve-with-minor-reservations on ${REVIEWED}\n`).outcome).toBe(
+      "pass",
+    );
+  });
+
+  test("reject is refused, and the record is named", () => {
+    const report = judgeRecord(`Verdict: reject on ${REVIEWED}\n`);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      "docs/reviews/x/REVIEW.md (pr-body) records the verdict reject: a refused review is not evidence",
+    );
+  });
+
+  test("a record without a readable verdict line fails, naming the path", () => {
+    for (const text of [
+      "# Review\n\nNo verdict here.\n",
+      "Verdict: approved\n",
+      "Verdict: PASS WITH NOTES\n",
+      `# Review\n\nVerdict: approve on ${REVIEWED}\n`,
+    ]) {
+      const report = judgeRecord(text);
+      expect(report.outcome).toBe("violations");
+      expect(report.violations[0]).toContain(
+        "docs/reviews/x/REVIEW.md (pr-body) has no readable verdict line",
+      );
+    }
+  });
+
+  test("two different verdicts in one record are refused", () => {
+    const report = judgeRecord(
+      `Verdict: approve\n\n## Verdict\n\n**\`reject\`** sur le commit \`${REVIEWED}\`.\n`,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain("states conflicting verdicts (approve, reject)");
+  });
+
+  test("an approval that names no reviewed commit is refused", () => {
+    const report = judgeRecord("Verdict: approve\n");
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain("records approve but names no reviewed commit");
+  });
+
+  test("an approval naming two reviewed commits is refused", () => {
+    const report = judgeRecord(
+      `Verdict: approve on ${REVIEWED}\n\nReviewed commit: ${ELSEWHERE}\n`,
+    );
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      `names more than one reviewed commit (${REVIEWED}, ${ELSEWHERE})`,
+    );
+  });
+
+  test("an approval of a commit that is not an ancestor of the head is refused", () => {
+    const report = judgeRecord(`Verdict: approve on ${ELSEWHERE}\n`);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      `records approve on ${ELSEWHERE}, which is not an ancestor of the head: it reviews another change`,
+    );
+  });
+
+  test("an approval of a commit unknown to the clone is refused", () => {
+    const report = judgeRecord(`Verdict: approve on ${UNKNOWN}\n`);
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      `records approve on ${UNKNOWN}, which is not a commit of this clone`,
+    );
+  });
+
+  test("a path that is neither a file nor a directory (a gitlink) is not evidence", () => {
+    const report = evaluateReviewEvidence(["docs/adr/0050-x.md"], "see docs/reviews/module", "", {
+      read: () => ({ kind: "other" }),
+      ancestry: () => "ancestor",
+    });
+    expect(report.outcome).toBe("violations");
+    expect(report.violations[0]).toContain(
+      "docs/reviews/module (pr-body) is neither a file nor a directory",
+    );
+  });
+
+  test("a refused record does not hide an admissible one cited beside it", () => {
+    const report = evaluateReviewEvidence(
+      ["docs/adr/0050-x.md"],
+      "round 1: docs/reviews/x/REVIEW.md, round 2: docs/reviews/x/REVIEW-ROUND-2.md",
+      "",
+      treeWith({
+        "docs/reviews/x/REVIEW.md": `Verdict: reject on ${REVIEWED}\n`,
+        "docs/reviews/x/REVIEW-ROUND-2.md": APPROVED,
+      }),
+    );
+    expect(report.outcome).toBe("pass");
+    expect(report.checks[0]?.note).toContain(
+      "docs/reviews/x/REVIEW.md (pr-body) records the verdict reject",
+    );
+  });
+});
+
+describe("readRecordStatement", () => {
+  test("the canonical first line, with and without the commit", () => {
+    expect(readRecordStatement(`Verdict: approve on ${REVIEWED}\n`)).toEqual({
+      verdicts: ["approve"],
+      commits: [REVIEWED],
+    });
+    expect(readRecordStatement("Verdict: reject\r\n# Review\r\n")).toEqual({
+      verdicts: ["reject"],
+      commits: [],
+    });
+  });
+
+  test("approve is not read inside approve-with-minor-reservations", () => {
+    expect(readRecordStatement("Verdict: approve-with-minor-reservations\n").verdicts).toEqual([
+      "approve-with-minor-reservations",
+    ]);
+  });
+
+  test("the heading form of adr-0060-gates-run-from-pr-2026-10-24, with its commit", () => {
+    expect(
+      readRecordStatement(
+        `# Revue\n\n## Verdict\n\n**\`reject\`** sur le commit \`${REVIEWED}\`.\n`,
+      ),
+    ).toEqual({ verdicts: ["reject"], commits: [REVIEWED] });
+  });
+
+  test("the heading form of guard-loosening-data-159, with its Reviewed commit list item", () => {
+    const text = [
+      "# Review record",
+      "",
+      `- Reviewed commit: ${REVIEWED} (head of #159)`,
+      "",
+      "## Verdict",
+      "",
+      "approve-with-minor-reservations — MAJOR-2 excluded by owner decision.",
+      "",
+    ].join("\n");
+    expect(readRecordStatement(text)).toEqual({
+      verdicts: ["approve-with-minor-reservations"],
+      commits: [REVIEWED],
+    });
+  });
+
+  test("forms that are not verdict lines state nothing", () => {
+    for (const text of [
+      "Verdict: no remaining blocking finding in the reviewed attestation.\n",
+      "**Verdict: PASS WITH NOTES.** Merging this PR does not expose anything.\n",
+      "## Verdict\n\nThe pull request is approvable.\n",
+      "## Verdicts\n\napprove\n",
+      ` Verdict: approve on ${REVIEWED}\n`,
+      `Verdict: approve on ${REVIEWED.slice(0, 12)}\n`,
+    ]) {
+      expect({ text, statement: readRecordStatement(text) }).toEqual({
+        text,
+        statement: { verdicts: [], commits: [] },
+      });
+    }
+  });
+});
+
+// The records of this tree are immutable audit records (protocol): the forms
+// the gate reads were measured on them, and each one reads as measured.
+describe("the review records of this tree", () => {
+  const root: string = join(import.meta.dir, "..", "..");
+  const read = (path: string): string =>
+    new TextDecoder().decode(Bun.spawnSync(["git", "show", `HEAD:${path}`], { cwd: root }).stdout);
+  const ADR_0060 = "docs/reviews/adr-0060-gates-run-from-pr-2026-10-24";
+  const GUARD = "docs/reviews/guard-loosening-data-159";
+  const readable: readonly (readonly [string, Verdict, string])[] = [
+    [`${ADR_0060}/REVIEW.md`, "reject", "95871c4bf486d20702826a48afb734d68f7d3481"],
+    [`${ADR_0060}/REVIEW-ROUND-2.md`, "reject", "30beb618257d0fcd1b7e86de49e72d0d9ca5fb6e"],
+    [`${ADR_0060}/REVIEW-ROUND-3.md`, "reject", "6d380eb8202bc0e94d8042f191b7755b544f699b"],
+    [`${ADR_0060}/REVIEW-ROUND-4.md`, "approve", "876d64cc8a9ad6a7230617124b8da263086451de"],
+    [`${ADR_0060}/REVIEW-ROUND-5.md`, "approve", "2bfd7ca366761036e89d60398b6e67265bd749db"],
+    [
+      `${GUARD}/247bfda745058083bf7d3025f37cae771812f009/REVIEW.md`,
+      "approve-with-minor-reservations",
+      "247bfda745058083bf7d3025f37cae771812f009",
+    ],
+    [
+      `${GUARD}/b74808b724f486ed31f894a65f9a97e5f072012f/REVIEW.md`,
+      "approve-with-minor-reservations",
+      "b74808b724f486ed31f894a65f9a97e5f072012f",
+    ],
+  ];
+  for (const [path, verdict, commit] of readable) {
+    test(`${path} reads as ${verdict} on ${commit.slice(0, 7)}`, () => {
+      expect(readRecordStatement(read(path))).toEqual({ verdicts: [verdict], commits: [commit] });
+    });
+  }
+
+  const unreadable: readonly string[] = [
+    "docs/reviews/signalement-bootstrap/8b02f8e61e1675948caaea5be3c57a898cbd624b/ATTESTATION.md",
+    "docs/reviews/signalement-bootstrap/8b02f8e61e1675948caaea5be3c57a898cbd624b/CANONICALIZATION.md",
+    "docs/reviews/signalement-bootstrap/8b02f8e61e1675948caaea5be3c57a898cbd624b/REVIEW.md",
+    "docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/ATTESTATION.md",
+    "docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/CANONICALIZATION.md",
+    "docs/reviews/square-control-bootstrap/95e1bcea42e6c20c9fc8987b65b7c55de007d2f2/REVIEW.md",
+    "docs/reviews/unwired-gates-2026-10-08/REVIEW.md",
+  ];
+  for (const path of unreadable) {
+    test(`${path} states no protocol verdict`, () => {
+      const text = read(path);
+      expect(text.length).toBeGreaterThan(0);
+      expect(readRecordStatement(text).verdicts).toEqual([]);
+    });
+  }
 });

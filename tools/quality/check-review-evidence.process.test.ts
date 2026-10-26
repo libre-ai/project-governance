@@ -334,3 +334,75 @@ describe("the diff the gate reads is git's own, over every gated path", () => {
     expect(run.stderr).toContain(`Review evidence: ${name}: neither the pull request description`);
   });
 });
+
+/**
+ * #160, read through git: the record is read at HEAD with `git cat-file`, and
+ * its reviewed commit is confronted to HEAD with `git merge-base
+ * --is-ancestor`. Each branch changes the register in a first commit, then
+ * records a review of a commit in a second one, as a pull request does.
+ */
+describe("a cited record counts for its verdict, read through git", () => {
+  const RECORD = "docs/reviews/probe/REVIEW.md";
+  const CITATION = `review: ${RECORD}`;
+
+  /** The branch, with the record `text(reviewed)` written over the commit of its change. */
+  function reviewedBranch(name: string, text: (reviewed: string) => string): string {
+    pullRequestBranch(name, (register) => `${register}| D95 | A reviewed decision | ADR-0056 |\n`);
+    const reviewed = git(clone, ["rev-parse", "HEAD"]).stdout.trim();
+    mkdirSync(join(clone, "docs/reviews/probe"), { recursive: true });
+    writeFileSync(join(clone, RECORD), text(reviewed));
+    git(clone, ["add", RECORD]);
+    git(clone, ["commit", "--quiet", "--no-gpg-sign", "-m", `${name}: review record`]);
+    return reviewed;
+  }
+
+  test("approve on a commit of the branch passes", () => {
+    reviewedBranch("probe/record-approve", (sha) => `Verdict: approve on ${sha}\n`);
+    const run = runGate(CITATION);
+    expect(run.stderr).toBe("");
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toContain("1 candidate signal(s): 1 admissible, 0 rejected");
+  });
+
+  test("reject on a commit of the branch fails, naming the record", () => {
+    reviewedBranch("probe/record-reject", (sha) => `Verdict: reject on ${sha}\n`);
+    const run = runGate(CITATION);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(`${RECORD} (pr-body) records the verdict reject`);
+  });
+
+  test("approve on a commit off the history of the head fails", () => {
+    reviewedBranch("probe/record-elsewhere", () => "placeholder\n");
+    // A commit of the clone that HEAD does not descend from.
+    const elsewhere = git(clone, [
+      "commit-tree",
+      "HEAD^{tree}",
+      "-m",
+      "a commit off the history of the head",
+    ]).stdout.trim();
+    writeFileSync(join(clone, RECORD), `Verdict: approve on ${elsewhere}\n`);
+    git(clone, ["commit", "--quiet", "--no-gpg-sign", "-am", "probe/record-elsewhere: re-record"]);
+    const run = runGate(CITATION);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(
+      `records approve on ${elsewhere}, which is not an ancestor of the head`,
+    );
+  });
+
+  test("approve on a commit the clone does not hold fails", () => {
+    const missing = "0123456789abcdef0123456789abcdef01234567";
+    reviewedBranch("probe/record-unknown", () => `Verdict: approve on ${missing}\n`);
+    const run = runGate(CITATION);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(
+      `records approve on ${missing}, which is not a commit of this clone`,
+    );
+  });
+
+  test("a dossier directory fails: the record has to be named", () => {
+    reviewedBranch("probe/record-directory", (sha) => `Verdict: approve on ${sha}\n`);
+    const run = runGate("review: docs/reviews/probe/");
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain("docs/reviews/probe (pr-body) is a directory, not a record");
+  });
+});
