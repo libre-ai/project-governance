@@ -1,6 +1,7 @@
 # ADR-0049 — Couverture des menaces non couvertes du modèle de menace : quorum, SQL, XSS, exports et registre résiduel
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-10 en chat ; I-35, I-36, I-37, l'élargissement d'I-10 et D71 sont en vigueur à la fusion
+- **Amendé par :** D103 (2026-11-09) : I-35 est retiré du registre des invariants, garde-fou muet jamais satisfait (aucun consommateur, aucun vecteur rouge, aucun gate) ; la décision 1 ci-dessous est historique, R7 redevient porté par I-17 et par un mécanisme de harness ; I-36, I-37, l'élargissement d'I-10 et D71 sont inchangés. Owner-arbitration: 2026-11-09 — question structurée en chat
 - **Date :** 2026-10-10
 - **Arbitrage :** le propriétaire a tranché le tri des sept menaces que `docs/security/THREAT-MODEL.md` marquait « no register invariant ». Il crée des invariants distincts sans élargir les invariants existants (Q2, option B), impose dès maintenant la diversité de famille de modèle dans le quorum agentique (Q3, option A), élargit I-10 aux exportations, et traite l'enveloppe et la chaîne d'approvisionnement par des garde-fous plutôt que par des invariants, le zero-day étant un risque accepté. La menace MLS est traitée à part par ADR-0048. Owner-arbitration: 2026-10-10 — décisions de tri des menaces arbitrées en chat
 - **Portée :** les menaces 1, 2, 4, 5, 6 et 7 du tri du 2026-10-09 (XSS, intégrité des exportations, retour arrière d'`envelope.v1`, collusion d'agents, chaîne d'approvisionnement, paramétrisation SQL) et le registre résiduel du modèle de menace.
@@ -56,7 +57,7 @@ Aucun gate de `tools/` ni d'`ecosystem/` ne lit `minimumReleaseAge`, et rien ne 
 
 ## Décision
 
-1. **I-35 — quorum agentique à diversité de famille de modèle, imposée dès maintenant.**
+1. **I-35 — quorum agentique à diversité de famille de modèle, imposée dès maintenant.** *Retiré le 2026-11-09 par D103 : jamais satisfait, aucun consommateur n'est apparu ; le texte ci-dessous est historique.*
    - Un quorum de revues d'agents ne remplace une revue humaine que s'il réunit au moins deux reviewers de familles de modèle distinctes.
    - Toute politique de quorum déclare `model-family` dans ses exigences de diversité. Un quorum dont la politique l'omet, ou dont deux revues partagent une famille, ne vaut pas revue.
    - L'exigence ne relâche aucune autre exigence de diversité et ne remplace jamais la touche humaine d'I-17.
@@ -83,7 +84,7 @@ Aucun gate de `tools/` ni d'`ecosystem/` ne lit `minimumReleaseAge`, et rien ne 
    Ces garde-fous sont construits par d'autres lots. Le modèle de menace les nomme comme « guardrail ».
 6. **Registre résiduel.**
    - Le zero-day dans une dépendance (biscuit-auth, OpenMLS ou toute dépendance transitive) est un **risque accepté**, porté par R8.
-   - La collusion d'agents (R7) est désormais portée par I-35.
+   - La collusion d'agents (R7) est désormais portée par I-35. *Depuis D103 (2026-11-09) : par I-17 et un mécanisme de harness (relecteur vierge), I-35 étant retiré.*
    - La falsification d'une exportation par son détenteur entre au registre comme risque accepté (R9).
 
 ## Conséquences
