@@ -55,7 +55,7 @@ Les deux questions de l'ADR-0060, dans l'ordre ; la seconde ne dépend pas de la
 ## Conséquences
 
 - Si accepté : deux pull requests d'outillage dans ce dépôt (workflows et lecteurs de flotte), un contexte requis de plus (acte propriétaire), aucun jeton nouveau.
-- Si renversé : l'option retenue par le propriétaire est écrite ici à la place de la recommandation, et le statut passe à `accepted` dans la même pull request.
+- Si renversé : l'option retenue par le propriétaire est écrite ici à la place de la recommandation, et le statut passe de proposé à en vigueur dans la même pull request.
 
 ## Retour arrière
 
