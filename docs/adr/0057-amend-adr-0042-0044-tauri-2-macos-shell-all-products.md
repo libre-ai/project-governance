@@ -1,6 +1,6 @@
 # ADR-0057 — Amendement d'ADR-0042 §6/§8 et d'ADR-0044 : Tauri 2 est la coquille macOS de tous les produits du catalogue, P04 inclus
 
-- **Statut :** proposé — la fusion de cette pull request vaut signature du propriétaire (ADR-0043).
+- **Statut :** accepted — fusionné, signature du propriétaire (ADR-0043), précondition levée par lui (« go Tauri ») ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Arbitrage :** Owner-arbitration: 2026-10-23 — décision prise en chat par question structurée (ADR-0022/I-24), après restitution des trois ADR qu'elle renverse et des mesures qu'ils portent. La formulation du propriétaire est reprise, non réinterprétée (section « Source »).
 - **Date de rédaction :** 2026-10-23
 - **Portée :** la technologie de la coquille macOS de tout produit du catalogue d'ADR-0042 §1. Ne modifie ni le cœur Rust des produits, ni l'extension navigateur, ni l'hôte de native messaging, ni la matrice de parité, ni l'ordre d'ADR-0042 §3.

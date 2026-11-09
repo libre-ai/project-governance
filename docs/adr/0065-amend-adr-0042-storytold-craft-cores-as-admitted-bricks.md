@@ -1,4 +1,4 @@
-# ADR-0061 — Amendement d'ADR-0042 §4 : les crates cœur de la suite *craft (storytold) sont des briques de base admises par produit, sous conditions de preuve
+# ADR-0065 — Amendement d'ADR-0042 §4 : les crates cœur de la suite *craft (storytold) sont des briques de base admises par produit, sous conditions de preuve
 
 - **Statut :** proposé — la fusion de cette pull request vaut signature du propriétaire (ADR-0043).
 - **Arbitrage :** Owner-arbitration: 2026-10-24 — décision prise en chat par question structurée (ADR-0022/I-24), après restitution de la synthèse de mesure du 2026-10-24 et de ses trois options comparées. Réponse du propriétaire, dans sa formulation exacte : « A » (section « Source »).
@@ -75,7 +75,7 @@ Dans le catalogue et la roadmap, la ligne d'un produit qui reçoit des briques p
 
 ## Conséquences
 
-- **D57 précisé** : la liste des briques de base d'ADR-0042 §4 reçoit des entrées nominatives (§1) et des conditions d'entrée vérifiables par PR (§2). Registre : D103, D104, D105.
+- **D57 précisé** : la liste des briques de base d'ADR-0042 §4 reçoit des entrées nominatives (§1) et des conditions d'entrée vérifiables par PR (§2). Registre : D104, D105, D106.
 - **Périmètre à écrire.** Pour P08, P09, P10, P12, P14, P22, P24, P27 et P31, le moteur de format ou de calcul n'est plus à écrire : il est à prouver, épingler et envelopper. Ce qui reste à écrire est la part propre de libre-ai : coquille, front accessible à 100 % (ADR-0057 §3), pont de commandes, provenance, supervision, assistant, politique de modèles.
 - **Roadmap révisée** le 2026-10-24 dans le livrable privé de la mission (`roadmap/_p-xx.csv`, `roadmap/catalogue.csv`, `roadmap/_p-xx-notes.md`, section « Révision du 2026-10-24 ») : dix lignes passent d'« intégration » à « projet autonome » avec briques nommées ; gate de la mission `bash tools/check.sh --phase 3` → 0 échec. Promotion vers ce dépôt par PR dédiée, au rythme de la mission.
 - **Risque assumé et son contrôle.** L'amont est rapide et peu gouverné (aucun check requis, 13 revs de `craft-libs`, documentation périmée en deux semaines) : le contrôle est l'épinglage par rev (§2.2) et le prove rejouable (§2.1), qui rendent chaque brique retirable ou remplaçable sans toucher au produit. La contribution amont reste possible et n'est pas une condition.
@@ -97,7 +97,7 @@ Le message initial du propriétaire, le même jour : « Les outils réalisés pa
 
 ## Preuves
 
-- Numéro d'ADR dérivé : `ls docs/adr | grep -oE '^00[0-9]{2}' | sort | tail -1` → `0058` ; PR ouvertes réservant un numéro : `gh pr diff 156 | grep '^+++ b/docs/adr/'` → `0059`, `gh pr diff 158 | grep '^+++ b/docs/adr/'` → `0060` ; donc **0061**. Registre : `grep -oE '^\| D[0-9]+' docs/decisions/DECISION-REGISTER.md | sort -t D -k2 -n | tail -1` → `| D101`, PR #156 ajoute D102 ; donc **D103 à D105**.
+- Numéro d'ADR dérivé : `ls docs/adr | grep -oE '^00[0-9]{2}' | sort | tail -1` → `0058` ; PR ouvertes réservant un numéro : `gh pr diff 156 | grep '^+++ b/docs/adr/'` → `0059`, `gh pr diff 158 | grep '^+++ b/docs/adr/'` → `0060` ; donc **0061**. Registre : `grep -oE '^\| D[0-9]+' docs/decisions/DECISION-REGISTER.md | sort -t D -k2 -n | tail -1` → `| D101`, PR #156 ajoute D102 ; donc **D103 à D105**. **Renuméroté le 2026-11-09**, avant la fusion : entre la rédaction (2026-10-24) et la fusion, les numéros 0061 à 0064 et D103 ont été pris sur la branche servie par les pull requests #171, #172, #176 et #177, qui n'avaient pas consulté cette pull request ouverte ; dérivation rejouée le 2026-11-09 : `ls docs/adr | grep -oE '^00[0-9]{2}' | sort | tail -1` → `0064` et dernier `| D103`, donc **0065** et **D104 à D106**. Décisions inchangées ; décision du propriétaire par question structurée en chat : « Renuméroter 0065 / D106-D108 et fusionner » (les numéros libres étaient D104-D106, retenus).
 - Relicence d'ArtCraft : `curl -H "Authorization: Bearer $(gh auth token)" "https://api.github.com/repos/storytold/artcraft/commits?path=LICENSE.md&per_page=5"` → `8abde751 2026-10-10 Relicense ArtCraft under MIT OR Apache-2.0 (#2043)`.
 - Croissance depuis le 2026-10-09 : `…/repos/storytold/<repo>/compare/<sha du 09/10>...HEAD | jq .total_commits` → photocraft 5 054, vectorcraft 4 172, lightcraft 2 589, designcraft 2 473, pdfcraft 2 129, gridcraft 1 789, effectcraft 1 651, wordcraft 1 642, filmcraft 1 593, deckcraft 1 129, soundcraft 905, cadcraft 695.
 - Séparation cœur / interface : `ls -d <clone>/crates/*/Cargo.toml | wc -l` et `grep -lE '^\s*(egui|eframe|wgpu|egui_wgpu|egui-wgpu|eframe-wgpu)\b' <clone>/crates/*/Cargo.toml | wc -l` sur les 13 clones → 309 et 18.

@@ -1,6 +1,6 @@
 # ADR-0047 — Specification Lock des vecteurs de liaison d'une demande de décision
 
-- **Statut :** proposed — l'arbitrage propriétaire du 2026-10-13 vaut signature ; la fusion de cette pull request l'exécute
+- **Statut :** accepted — l'arbitrage propriétaire du 2026-10-13 vaut signature, exécutée par la fusion (#83) ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
 - **Date :** 2026-10-09
 - **Arbitrage :** le propriétaire a demandé en chat de préparer le verrouillage et de le signer lui-même par la fusion (« Préparer, je merge moi-même »). Owner-arbitration: 2026-10-09 — préparation demandée ; la fusion de cette pull request et celle de `libre-ai/schemas-and-contracts` #22 sont la signature. Owner-arbitration: 2026-10-13 — « l'orchestrateur réaligne et merge sur vert » : la fusion est exécutée par l'orchestrateur sur checks requis verts, `schemas-and-contracts` #22 d'abord ; la signature n'est plus la fusion par le propriétaire mais cet arbitrage en chat, l'ordre des deux fusions est inchangé
 - **Portée :** le jeu de vecteurs sémantiques `decision-binding-vectors.v1` de `libre-ai/schemas-and-contracts`.

@@ -1,8 +1,9 @@
 # ADR-0033 — Système de marque ouvert et vérifiable
 
-- **Statut :** proposed — plateforme et direction A approuvées par le propriétaire
-  en session le 2026-09-09 ; le merge signé sous I-17 reste l'acte d'adoption
-  doctrinale.
+- **Statut :** accepted — plateforme et direction A approuvées par le propriétaire
+  en session le 2026-09-09, merge signé sous I-17 ; statut clos le 2026-11-09.
+  Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en
+  chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Date :** 2026-09-09
 - **Portée :** plateforme verbale Libre AI, architecture de famille, sémantique
   visuelle, autorité des sources et conditions de publication des projections.

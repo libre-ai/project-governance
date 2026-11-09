@@ -1,6 +1,7 @@
 # ADR-0040 — Persistance du contrôle de run Orchestrator
 
-- **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
+- **Statut :** accepted — fusionné ; statut clos le 2026-11-09. L'acceptation de l'ADR ne vaut pas le prononcé de la tranche de persistance (D6 : deux actes distincts)
+- **Arbitrage :** recommandation A validée puis choix C par le propriétaire le 2026-09-11 (ligne « Choix de conception ») ; Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
 - **Choix de conception :** recommandation A validée par le propriétaire le 2026-09-11 ; profil de dépendances corrigé par le choix C explicite du même jour ; l'autorité Governance reste conditionnée à la fusion
 - **Étend :** ADR-0032 D38, ADR-0034 D40, ADR-0036 D42 et ADR-0037 D43
 - **Applique :** I-08 (preuves et critères), I-17 (action human-touch), I-21 (zéro donnée personnelle dans Git) et ADR-0011 D4 (premier merge sécurité de couche 2)

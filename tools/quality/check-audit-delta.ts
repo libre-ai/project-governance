@@ -34,9 +34,9 @@ function audit(cwd: string) {
 
 const report = new GateReport();
 
-// FETCH_HEAD rather than origin/<base>: an actions/checkout clone is shallow
-// and single-ref, where the remote-tracking ref may not exist but a targeted
-// fetch always resolves. Locally the two are the same commit.
+// FETCH_HEAD rather than origin/<base>: a single-ref clone may not carry the
+// remote-tracking ref, but a targeted fetch always resolves. Locally the two
+// are the same commit.
 //
 // The base is never a written branch name.
 //
@@ -154,7 +154,16 @@ const baseRef = (resolved as { ref: string; how: string; from: string }).ref;
 const baseHow = (resolved as { ref: string; how: string; from: string }).how;
 const resolvedFrom = (resolved as { ref: string; how: string; from: string }).from;
 
-const fetched = sh(["git", "fetch", "--quiet", "--depth=1", "origin", baseRef]);
+// No `--depth` (#146). ci.yml checks out with `fetch-depth: 0`, so a depth on
+// this fetch can only shorten the clone, and it does so for every gate that
+// runs after this one. `--depth=1` writes the fetched base tip into
+// `.git/shallow` even when that tip is already present, hiding all history
+// below it. When the served branch moves during the run, the new tip arrives
+// without its parents, `origin/<base>...HEAD` has no merge base, and
+// check-review-evidence, the next step, failed `Bun quality` on three runs
+// between 2026-10-23 and 2026-10-24. A plain fetch brings the new tip with its
+// ancestry and leaves the clone complete.
+const fetched = sh(["git", "fetch", "--quiet", "origin", baseRef]);
 if (fetched.exitCode !== 0) {
   report.check(
     "base lockfile",
@@ -209,8 +218,8 @@ const baseManifest = sh(["git", "show", "FETCH_HEAD:package.json"]);
 let baseAdvisories: string[] = [];
 // "absent" and "unreadable" are two different answers. A base that carries no
 // lockfile audits as empty, legitimately — a documentary branch has none. But a
-// `git show` that fails for any OTHER reason (an object the shallow fetch did
-// not bring, a partial clone) would silently make every head advisory read as
+// `git show` that fails for any OTHER reason (an object the fetch did not
+// bring, a partial clone) would silently make every head advisory read as
 // introduced, and the previous form recorded no check for that branch at all.
 const baseMissing = (result: { exitCode: number; stderr: string }): boolean =>
   result.exitCode !== 0 &&

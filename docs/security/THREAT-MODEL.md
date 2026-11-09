@@ -206,9 +206,9 @@ right one remains a review matter (realigned 2026-10-09).
 
 2. **Delay between detection and revocation** (max 1h until Biscuit expires): can be reduced by orchestrator triggering immediate Biscuit refresh + revocation check, not yet specified.
 
-3. **Quorum bypass** (two-agent colluding): the agent-identity controls of I-18 assume single-agent compromise. I-35 (ADR-0049) carries the collusion case: an agent quorum stands for a human review only with at least two reviewers of distinct model families, `model-family` declared by every quorum policy. The evaluator (`evaluate_agent_review_quorum`, 26 vectors, `schemas-and-contracts`) checks it when required; the locked contract leaves it optional, so the consumer carries it, and no consumer exists yet.
+3. **Quorum bypass** (two-agent colluding): the agent-identity controls of I-18 assume single-agent compromise. I-35 (ADR-0049) carried the collusion case until 2026-11-09, when D103 withdrew it as a silent guardrail: no consumer of the quorum evaluator ever existed, no red vector was written, no gate read it. The case is now carried by I-17 (no agent review stands for the human touch) and by a harness mechanism — a clean-context second reviewer per mission — to be proven per mission, not by invariant. The evaluator (`evaluate_agent_review_quorum`, 26 vectors, `schemas-and-contracts`) and the locked contract are unchanged.
 
-**Invariant:** I-18 (agent identity — fleet, mission, capabilities — and per-agent revocation are the sole defenses against a single compromised agent; they depend on timely revocation and tight capability spec); I-35 (model-family diversity of any agent quorum — ADR-0049).
+**Invariant:** I-18 (agent identity — fleet, mission, capabilities — and per-agent revocation are the sole defenses against a single compromised agent; they depend on timely revocation and tight capability spec); I-17 for the collusion case (I-35 withdrawn by D103, 2026-11-09).
 
 ---
 
@@ -258,7 +258,7 @@ right one remains a review matter (realigned 2026-10-09).
 | R4  | LLM prompt-injection bypass (envelope + refusal) | medium      | high     | independent review + refusal testing (I-17 gate); isolation by construction specified by ADR-0045, enforcement pending — rating unchanged until a runtime passes the I-32 red vectors | design review      | I-18, I-32 |
 | R5  | MLS epoch key derivation flaw (OpenMLS)          | low         | high     | formal crypto review + test vectors (D4 gate); red vectors of I-34 written before any MLS code; the signed design's R4/R5 corrected by ADR-0048 | K4 crypto reviewer | I-34       |
 | R6  | Collab relay offline merge conflict              | low         | medium   | conflict resolution UX + client-side merge hint — **accepted risk** (ADR-0048): an interface matter, not a cryptographic one | sessions owner     | accepted risk (ADR-0048, D70) — no invariant by decision |
-| R7  | Two-agent collusion                              | low         | high     | an agent quorum stands for a human review only with two distinct model families (ADR-0049); the first quorum consumer proves it by a red vector | orchestrator lock  | I-35       |
+| R7  | Two-agent collusion                              | low         | high     | no agent review stands for the human touch (I-17); a clean-context second reviewer per mission is a harness mechanism, proven per mission — I-35 (ADR-0049) withdrawn by D103 on 2026-11-09 as a silent guardrail (no consumer, no red vector, no gate) | orchestrator lock  | I-17 (I-35 withdrawn, D103) |
 | R8  | Zero-day in a dependency (biscuit-auth, OpenMLS or any transitive) | very low    | critical | vendor security monitoring, timely patch SLA — **accepted risk** (ADR-0049) | dependency manager | I-26 (advisory half); zero-day: accepted risk (ADR-0049, D71) — no invariant by decision |
 | R9  | Holder forges their own export                   | medium      | low      | **accepted risk** (ADR-0049): the holder owns the key or the content; outside the trust context an export is authenticated by AEAD or signature | data owner         | I-10 (widened by ADR-0049) |
 

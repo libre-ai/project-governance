@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import {
   evaluateReviewEvidence,
   extractAddedLines,
@@ -68,25 +71,243 @@ describe("touchesGatedPaths", () => {
   });
 
   // Review of #142 (2026-10-23): an exemption relaxes the refusals gate, so
-  // its file is gated like the register — exactly that file. The other
-  // ungated data files of tools/quality are an earlier class, out of scope.
+  // its file is gated like the register — exactly that file. Its neighbour
+  // pinned-citations.v1.json used to stand here as an ungated sibling; it
+  // joined the surface with the rest of the loosening class (#153).
   test("matches tools/quality/refusals-exemptions.v1.json exactly, not a sibling", () => {
     expect(
       touchesGatedPaths([
         "tools/quality/refusals-exemptions.v1.json",
         "tools/quality/refusals-exemptions.v2.json",
         "tools/quality/refusals-exemptions.v1.json.bak",
-        "tools/quality/pinned-citations.v1.json",
         "tools/quality/check-refusals.ts",
       ]),
     ).toEqual(["tools/quality/refusals-exemptions.v1.json"]);
   });
 
-  test("every gated pattern has a pathspec whose diff is searched for evidence", () => {
+  // #153: each file of the loosening class is gated exactly. The neighbours
+  // are the near-misses a loose pattern would also catch: another version,
+  // a backup, the same name in another directory, and the gate that reads it.
+  const loosening: readonly (readonly [string, readonly string[]])[] = [
+    [
+      "tools/quality/pinned-citations.v1.json",
+      [
+        "tools/quality/pinned-citations.v2.json",
+        "tools/quality/pinned-citations.v1.json.bak",
+        "docs/tools/quality/pinned-citations.v1.json",
+        "tools/quality/check-pinned-citations.ts",
+      ],
+    ],
+    [
+      "tools/quality/pr-negatives.v1.json",
+      [
+        "tools/quality/pr-negatives.v2.json",
+        "tools/quality/pr-negatives.v1.json.bak",
+        "docs/tools/quality/pr-negatives.v1.json",
+        "tools/quality/check-pr-negatives.ts",
+      ],
+    ],
+    [
+      "tools/quality/threat-model-citations.v1.json",
+      [
+        "tools/quality/threat-model-citations.v2.json",
+        "tools/quality/threat-model-citations.v1.json.bak",
+        "docs/tools/quality/threat-model-citations.v1.json",
+        "tools/quality/check-threat-model-citations.ts",
+      ],
+    ],
+    [
+      ".github/composition/ref-monotonicity-exemptions.json",
+      [
+        ".github/composition/ref-monotonicity-exemptions.json.bak",
+        ".github/composition/ref-monotonicity-exemptions.v2.json",
+        "x/.github/composition/ref-monotonicity-exemptions.json",
+        ".github/composition/check-ref-monotonicity.py",
+      ],
+    ],
+    [
+      "ecosystem/release-age-exceptions.v1.yaml",
+      [
+        "ecosystem/release-age-exceptions.v2.yaml",
+        "ecosystem/release-age-exceptions.v1.yaml.bak",
+        "docs/ecosystem/release-age-exceptions.v1.yaml",
+        "ecosystem/check-release-age.ts",
+      ],
+    ],
+    [
+      "ecosystem/sql-construction-allowlist.v1.yaml",
+      [
+        "ecosystem/sql-construction-allowlist.v2.yaml",
+        "ecosystem/sql-construction-allowlist.v1.yaml.bak",
+        "docs/ecosystem/sql-construction-allowlist.v1.yaml",
+        "ecosystem/check-sql-construction.ts",
+      ],
+    ],
+    [
+      "ecosystem/web-headers-allowlist.v1.yaml",
+      [
+        "ecosystem/web-headers-allowlist.v2.yaml",
+        "ecosystem/web-headers-allowlist.v1.yaml.bak",
+        "docs/ecosystem/web-headers-allowlist.v1.yaml",
+        "ecosystem/check-web-headers.ts",
+      ],
+    ],
+    [
+      "ecosystem/work-package-policy.v1.yaml",
+      [
+        "ecosystem/work-package-policy.v2.yaml",
+        "ecosystem/work-package-policy.v1.yaml.bak",
+        "docs/ecosystem/work-package-policy.v1.yaml",
+        "tools/quality/work-package-policy.ts",
+      ],
+    ],
+    [
+      "tools/fleet/bump-generation.v1.yaml",
+      [
+        "tools/fleet/bump-generation.v2.yaml",
+        "tools/fleet/bump-generation.v1.yaml.bak",
+        "docs/tools/fleet/bump-generation.v1.yaml",
+        "tools/fleet/bump-generation.ts",
+      ],
+    ],
+    ["deny.toml", ["deny.toml.bak", "x/deny.toml", "Cargo.toml", "crates/other/deny.toml"]],
+    [
+      "crates/ecosystem-engine/deny.toml",
+      [
+        "crates/ecosystem-engine/deny.toml.bak",
+        "crates/ecosystem-engine/sub/deny.toml",
+        "crates/ecosystem-engine/Cargo.toml",
+        "x/crates/ecosystem-engine/deny.toml",
+      ],
+    ],
+    [
+      "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt",
+      [
+        "distribution/templates/langgraph-gates/langgraph-advisory-floor.v2.txt",
+        "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt.bak",
+        "tools/quality/langgraph-advisory-floor.v1.txt",
+        "distribution/templates/langgraph-gates/check-langgraph-advisory-floor.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/project.v1.schema.json",
+      [
+        "ecosystem/schemas/project.v2.schema.json",
+        "ecosystem/schemas/project.v1.schema.json.bak",
+        "docs/ecosystem/schemas/project.v1.schema.json",
+        "ecosystem/project-cards.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/knowledge-object.schema.json",
+      [
+        "ecosystem/schemas/knowledge-object.v2.schema.json",
+        "ecosystem/schemas/knowledge-object.schema.json.bak",
+        "docs/ecosystem/schemas/knowledge-object.schema.json",
+        "tools/quality/validate-knowledge-objects.ts",
+      ],
+    ],
+    [
+      "ecosystem/schemas/knowledge-projection.schema.json",
+      [
+        "ecosystem/schemas/knowledge-projection.v2.schema.json",
+        "ecosystem/schemas/knowledge-projection.schema.json.bak",
+        "docs/ecosystem/schemas/knowledge-projection.schema.json",
+        "ecosystem/knowledge-projection.ts",
+      ],
+    ],
+    [
+      "distribution/templates/dependabot/cargo.yml",
+      [
+        "distribution/templates/dependabot/cargo.yaml",
+        "distribution/templates/dependabot/cargo.yml.bak",
+        ".github/dependabot.yml",
+        "x/distribution/templates/dependabot/cargo.yml",
+      ],
+    ],
+    [
+      "distribution/templates/dependabot/github-actions.yml",
+      [
+        "distribution/templates/dependabot/github-actions.yaml",
+        "distribution/templates/dependabot/github-actions.yml.bak",
+        "distribution/templates/dependabot/npm.yml",
+        "ecosystem/check-dependabot-conformance.ts",
+      ],
+    ],
+  ];
+  for (const [path, neighbours] of loosening) {
+    test(`matches ${path} exactly, not its neighbours`, () => {
+      expect(touchesGatedPaths([path, ...neighbours])).toEqual([path]);
+    });
+  }
+
+  // NB-1 of the review of #159: check-release-age.ts reads every tracked
+  // bunfig.toml, so every one is gated, at any depth; a near-miss name is not.
+  test("matches bunfig.toml at every depth, not a near-miss name", () => {
+    expect(
+      touchesGatedPaths([
+        "bunfig.toml",
+        "packages/x/bunfig.toml",
+        "x/y/z/bunfig.toml",
+        "bunfig.toml.bak",
+        "xbunfig.toml",
+        "packages/x/my-bunfig.toml",
+        "bun.lock",
+      ]),
+    ).toEqual(["bunfig.toml", "packages/x/bunfig.toml", "x/y/z/bunfig.toml"]);
+  });
+
+  test("every gated pattern has a pathspec", () => {
     expect(GATED_PATHSPECS).toHaveLength(GATED_PATH_PATTERNS.length);
-    for (const pathspec of GATED_PATHSPECS) {
-      const sample = /\.(md|yaml|json)$/.test(pathspec) ? pathspec : `${pathspec}/x.md`;
-      expect(touchesGatedPaths([sample])).toEqual([sample]);
+  });
+
+  // The diff the evidence is searched in is selected by the pathspecs, the
+  // verdict by the patterns. Asked to git itself, in a throwaway repository
+  // holding every gated sample and every neighbour above, both must select
+  // exactly the same files, or a gated change would have its diff unread.
+  test("git selects with the pathspecs exactly the files the patterns gate", () => {
+    const samples = [
+      ...loosening.flatMap(([path, neighbours]) => [path, ...neighbours]),
+      "docs/adr/0001-x.md",
+      "docs/adrx/0001-x.md",
+      "docs/decisions/INVARIANTS.md",
+      "docs/decisions/DECISION-REGISTER.md",
+      "docs/decisions/LEXICON.md",
+      "docs/decisions/README.md",
+      "ecosystem/FORGOTTEN.yaml",
+      "ecosystem/refusals.v1.yaml",
+      "tools/quality/refusals-exemptions.v1.json",
+      "bunfig.toml",
+      "packages/x/bunfig.toml",
+      "x/y/z/bunfig.toml",
+      "xbunfig.toml",
+    ];
+    const repository = mkdtempSync(join(tmpdir(), "review-evidence-pathspecs-"));
+    try {
+      const git = (...argv: string[]) =>
+        Bun.spawnSync(["git", "-C", repository, ...argv], { stdout: "pipe", stderr: "pipe" });
+      expect(git("init", "-q").exitCode).toBe(0);
+      for (const path of samples) {
+        mkdirSync(dirname(join(repository, path)), { recursive: true });
+        writeFileSync(join(repository, path), "x\n");
+      }
+      expect(git("add", "--all").exitCode).toBe(0);
+      const selected = git("ls-files", "-z", "--", ...GATED_PATHSPECS);
+      expect(selected.exitCode).toBe(0);
+      const byPathspec = new TextDecoder()
+        .decode(selected.stdout)
+        .split("\0")
+        .filter((path) => path.length > 0)
+        .sort();
+      const tracked = new TextDecoder()
+        .decode(git("ls-files", "-z").stdout)
+        .split("\0")
+        .filter((path) => path.length > 0);
+      expect(tracked.length).toBe(new Set(samples).size);
+      expect(byPathspec.length).toBeGreaterThan(0);
+      expect(byPathspec).toEqual(touchesGatedPaths(tracked).sort());
+    } finally {
+      rmSync(repository, { recursive: true, force: true });
     }
   });
 });
