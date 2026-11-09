@@ -1,7 +1,10 @@
 # ADR-0035 — Autorisation de release locale au repository
 
-- **Statut :** proposed — direction approuvée par le propriétaire en session le
-  2026-09-10 ; le merge signé sous I-17 reste l'acte d'adoption doctrinale.
+- **Statut :** accepted — direction approuvée par le propriétaire en session le
+  2026-09-10, merge signé sous I-17 ; statut clos le 2026-11-09.
+- **Arbitrage :** Owner-arbitration: 2026-11-09 — clôture du statut par question
+  structurée en chat (ADR-0022/I-24) ; tri
+  `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Date :** 2026-09-10
 - **Portée :** configuration, provisioning et déploiement des applications de la
   constellation sur Clever Cloud Paris/UE.

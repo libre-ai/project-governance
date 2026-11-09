@@ -1,12 +1,15 @@
 # ADR-0055 — Amendement d'ADR-0042 §1 : `signalement` sort du gel et porte P15
 
-- **Statut :** proposed — la fusion de cette pull request par le propriétaire
-  constitue l'arbitrage.
+- **Statut :** accepted — fusionné ; statut clos le 2026-11-09.
 - **Arbitrage :** décisions du propriétaire du 2026-10-22 en chat, prises par
   questions structurées (ADR-0022/I-24) pendant la session de cadrage v1.0 de
   `signalement` : lever le gel de `signalement` ; faire de `signalement` le
-  seul dépôt porteur de P15, `ai-work-supervision` restant la fabrique. La
-  ligne d'arbitrage daté est ajoutée par le propriétaire, pas par l'agent.
+  seul dépôt porteur de P15, `ai-work-supervision` restant la fabrique.
+  Owner-arbitration: 2026-10-22 — décisions ci-dessus, en chat ; ligne absente
+  du fichier jusqu'au 2026-11-09 (tri, point 0055), écrite sur autorisation
+  explicite du propriétaire. Owner-arbitration: 2026-11-09 — clôture du statut
+  par question structurée en chat (ADR-0022/I-24) ; tri
+  `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Date :** 2026-10-23
 - **Portée :** ADR-0042 §1, « Rattachements », premier point ; préambule
   « Autorise » d'ADR-0042.

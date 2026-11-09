@@ -1,6 +1,6 @@
 # ADR-0039 — Recherche produit dans un dépôt administratif privé
 
-- **Statut :** proposed — la fusion revue constitue la signature propriétaire.
+- **Statut :** accepted — fusion revue le 2026-09-11 ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Date :** 2026-09-11
 - **Arbitrage :** le propriétaire a approuvé la conception à deux plans puis demandé l'intégration, la cohérence documentaire, la ratification et la préparation distante.
 - **Trace :** Owner-arbitration: 2026-09-11

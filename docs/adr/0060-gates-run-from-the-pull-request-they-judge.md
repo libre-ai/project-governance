@@ -1,12 +1,13 @@
 # ADR-0060 — Les gates s'exécutent depuis la pull request qu'ils jugent : options mesurées
 
-- **Statut :** proposed — la fusion de cette pull request signe la mesure et l'écartement conditionnel d'A1, tant que les deux comportements de GitHub qu'il suppose ne sont pas mesurés. Aucune option n'est retenue ; le choix d'une option se fera par un ADR ultérieur. Cet ADR ne modifie aucun workflow ni aucun gate.
-- **Arbitrage :** décision du propriétaire du 2026-10-24 sur la question P1 des revues (ce que signe la fusion), prise par question structurée et relayée par la session de coordination : « Signe la mesure ».
+- **Statut :** accepted — la fusion a signé la mesure et l'écartement conditionnel d'A1, tant que les deux comportements de GitHub qu'il suppose ne sont pas mesurés. Aucune option n'est retenue ici ; le choix est fait par ADR-0062. Cet ADR ne modifie aucun workflow ni aucun gate ; statut clos le 2026-11-09.
+- **Arbitrage :** décision du propriétaire du 2026-10-24 sur la question P1 des revues (ce que signe la fusion), prise par question structurée et relayée par la session de coordination : « Signe la mesure ». Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
+- **Amendé par :** ADR-0062 (2026-11-09) : modèle de menace « accident d'un auteur de confiance », option A2 combinée à D ; la mesure de cet ADR n'est pas modifiée.
 - **Date de rédaction :** 2026-10-24
 - **Origine :** inspection — issue #152, relevés de revue de #141 et #142, limite déclarée par #144, incidents corrigés par #151 et #154.
 - **Portée :** les workflows de ce dépôt qui jugent une pull request, requis ou non. Les dépôts de la flotte ne sont pas concernés, sauf en tant que contenu lu par les gates de flotte.
 - **Numéro :** 0059 est l'amendement d'ADR-0056, rédigé en parallèle et fusionné par #156.
-- **Invariants :** aucun invariant modifié.
+- **Invariants :** No invariant — aucun invariant modifié ; cet ADR consigne une mesure et des options.
 
 ## Contexte
 
@@ -184,3 +185,7 @@ Questions à poser au propriétaire, indépendantes l'une de l'autre :
 
 1. Le modèle de menace retenu pour les gates requis : accident d'un auteur de confiance seulement, ou aussi auteur hostile.
 2. Le traitement du cas inverse : D, ou le statu quo avec correction après fusion comme pour #151 et #154.
+
+## Ce qui n'est pas décidé ici
+
+Les deux questions ci-dessus ont reçu leur réponse le 2026-11-09, par question structurée en chat, et sont consignées dans ADR-0062 : accident d'un auteur de confiance seulement (réouverture avant toute contribution externe) ; D pour le cas inverse. Restent hors de cet ADR : la forme du code d'A2 et de D (pull requests d'implémentation), la mesure des deux comportements de GitHub qui conditionnent A1, et le contexte requis qu'exige D (acte du propriétaire, ADR-0062 D3).

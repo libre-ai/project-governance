@@ -1,6 +1,6 @@
 # ADR-0052 — Square Control (P40) : dépôt public `libre-ai/square-control`, moratoire levé pour le domaine Poste de travail
 
-- **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
+- **Statut :** accepted — fusionné ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
 - **Date :** 2026-10-14
 - **Arbitrage :** décisions propriétaire D28 et D32 du 2026-10-14, prises en chat. D28 : Square Control devient un dépôt public, moratoire de D53 et Y28 levés pour ce domaine. D32 : publication par le circuit I-30 complet, sans exemption (distant privé de staging, attestation, puis bascule publique) ; elle annule la décision antérieure D31 (publication directe). Owner-arbitration: 2026-10-14 — D28 and D32, publish Square Control through the full I-30 circuit (private staging, attestation, then public).
 - **Lève :** D53 (« aucun nouveau dépôt avant B′ ») pour le seul domaine Poste de travail, par la voie qu'ADR-0042 §7 prévoit (« le moratoire est levé domaine par domaine, par ADR ») ; Y28, décision propriétaire du 2026-10-07 : « Code de Square Control local privé jusqu'à B′ ; le dépôt naîtra par ADR après B′ ».
