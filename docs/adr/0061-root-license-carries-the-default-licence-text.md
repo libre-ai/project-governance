@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # ADR-0061 — Le fichier `LICENSE` racine porte le texte intégral de la licence par défaut du dépôt ; la différenciation vit dans `LICENSING.md` et `REUSE.toml`
 
-- **Statut :** proposé — l'acceptation est un acte du propriétaire : il ajoute la ligne d'arbitrage datée et fait passer ce statut à `accepted` dans la pull request qu'il fusionne. Tant que ces deux lignes n'ont pas changé, l'ADR n'est pas en vigueur, fusionné ou non.
+- **Statut :** proposé — l'acceptation est un acte du propriétaire : il ajoute la ligne d'arbitrage datée et fait passer ce statut de proposé à en vigueur dans la pull request qu'il fusionne. Tant que ces deux lignes n'ont pas changé, l'ADR n'est pas en vigueur, fusionné ou non.
 - **Arbitrage :** aucun à ce jour. Rédigé par l'agent sur la consigne « go all » du 2026-11-09 ; la décision est au propriétaire.
 - **Date de rédaction :** 2026-11-09
 - **Portée :** le fichier `LICENSE` à la racine de chaque dépôt actif de l'organisation, le job de licence de ce dépôt et le ruleset de sa branche servie. Ne modifie aucune licence : la licence par défaut de chaque dépôt reste celle que `LICENSING.md` et son `REUSE.toml` déclarent.
