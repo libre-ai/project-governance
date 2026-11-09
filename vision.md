@@ -2,6 +2,32 @@
 
 **Statut :** accepted — architecture cible et migration Big Bang ; topologie amendée par ADR-0020 (activation générale, 2026-07-28)
 
+> **Lire sous les amendements (2026-11-09).** Ce document est la vision de 2026-07.
+> Depuis, la vision produit en vigueur est **ADR-0042** (catalogue des 40
+> applications, briques de base réutilisées, ordre de réalisation,
+> `docs/adr/0042-product-vision-and-realization-method.md`) et ses amendements.
+> Quatre énoncés de ce document ne se lisent plus tels quels :
+>
+> - **« Stack web cible : Bun fullstack + TypeScript strict + React 19 »** : reste
+>   la pile du front et des produits serveur par défaut (ADR-0042 §5, I-06), mais
+>   **ADR-0054** admet un serveur entièrement Rust (axum, sqlx, PostgreSQL) quand
+>   l'ADR d'un produit le décide, P02 le premier ; **ADR-0058** admet LangGraph JS
+>   comme runtime des workers TypeScript, jamais comme autorité.
+> - **« Rôle de Rust : composants spécialisés »** : le cœur de chaque produit est
+>   en Rust avec des adaptateurs d'interface par plateforme (ADR-0042 §6) ; la
+>   coquille macOS de tous les produits est **Tauri 2** (ADR-0057), qui remplace
+>   « application macOS native » (ADR-0042 §8 initial, ADR-0044 pour P04).
+> - **« monorepo canonique »** : topologie multi-dépôts depuis ADR-0020 ; un
+>   domaine a au plus un dépôt produit (ADR-0042 §7), avec une exception nommée
+>   pour P02 (ADR-0054 §2).
+> - **Non-objectifs** : l'offre hébergée payante existe pour P02 (ADR-0054 §4),
+>   sans donnée de paiement dans l'application ; l'auto-hébergement et l'export
+>   sans verrou sont conservés.
+>
+> Le corps du document n'est pas réécrit : il reste la source de l'intention de
+> 2026-07 et de son vocabulaire. Toute phrase en contradiction avec un ADR cité
+> ci-dessus cède devant l'ADR.
+
 **Cible :** reconstruction greenfield, d’abord dans un monorepo canonique, puis éclatée en topologie multi-repository (ADR-0020)
 
 **Stack web cible :** Bun fullstack + TypeScript strict + React 19
