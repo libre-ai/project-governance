@@ -1,6 +1,6 @@
 # ADR-0054 — Amendement d'ADR-0042 pour P02 v1 : surfaces, stack serveur, dépôt dédié, offre hébergée
 
-- **Statut :** proposé — la fusion de cette pull request vaut signature du propriétaire (ADR-0043).
+- **Statut :** accepted — fusionné, signature du propriétaire (ADR-0043) ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Arbitrage :** Owner-arbitration: 2026-10-22 — décisions P02-D1 à P02-D13 du lot P02 v1, arbitrées en chat le 2026-10-22 et reprises dans la table de décisions du registre (`docs/decisions/DECISION-REGISTER.md`, D81 à D93). La formulation du propriétaire est reprise, non réinterprétée.
 - **Date de rédaction :** 2026-10-22
 - **Portée :** produit P02 (veille de flux, domaine Connaissance) uniquement. Ne modifie ni le catalogue, ni les autres produits, ni les règles de topologie des autres domaines.

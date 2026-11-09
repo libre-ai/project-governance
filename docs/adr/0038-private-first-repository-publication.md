@@ -1,6 +1,6 @@
 # ADR-0038 — Première publication d'un repository en deux frontières
 
-- **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
+- **Statut :** accepted — fusionné ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
 - **Introduit :** I-30
 - **Amende :** ADR-0009 §9 — un distant privé temporaire de prépublication n'est pas encore un repository du portefeuille
 - **Applique :** I-17 (actions human-touch), I-21 (zéro donnée personnelle dans Git) et I-12 (GitHub canonique sans dépendance de données irréversible)

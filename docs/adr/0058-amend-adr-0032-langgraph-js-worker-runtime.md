@@ -1,6 +1,6 @@
 # ADR-0058 — Amendement d'ADR-0032 : LangGraph JS est admis comme runtime des workers TypeScript, jamais comme autorité
 
-- **Statut :** proposé — la fusion de cette pull request vaut signature du propriétaire (ADR-0043).
+- **Statut :** accepted — fusionné, signature du propriétaire (ADR-0043) ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
 - **Arbitrage :** Owner-arbitration: 2026-10-23 — décision prise en chat par question structurée (ADR-0022/I-24), après restitution d'ADR-0032, d'ADR-0037 et des avis de sécurité publiés sur les paquets concernés. La formulation du propriétaire est reprise, non réinterprétée (section « Source »).
 - **Date de rédaction :** 2026-10-23
 - **Portée :** le runtime des workers écrits en TypeScript, dans les produits du catalogue dont la fiche déclare un appel de modèle de langage et dans l'outillage de la forge. Ne modifie aucun contrat canonique, aucun lock, aucune autorité.

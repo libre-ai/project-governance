@@ -2,8 +2,8 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # ADR-0062 — Amendement d'ADR-0060 : option recommandée pour les gates exécutés depuis la pull request, et clôture de ce que l'ADR-0060 laisse ouvert
 
-- **Statut :** proposé — l'acceptation est un acte du propriétaire : il répond aux deux questions de la section « Ce que le propriétaire tranche », ajoute la ligne d'arbitrage datée et fait passer ce statut de proposé à en vigueur dans la pull request qu'il fusionne. Tant que ces lignes n'ont pas changé, rien ici n'est en vigueur.
-- **Arbitrage :** aucun à ce jour. Rédigé par l'agent sur la consigne « go all » du 2026-11-09 ; la recommandation est de l'agent, la décision est au propriétaire.
+- **Statut :** accepted — arbitrage du propriétaire du 2026-11-09 en chat ; les deux questions de la section « Ce que le propriétaire tranche » ont reçu la réponse recommandée : accident d'un auteur de confiance seulement (D1), et D pour le cas inverse (D2). D1 à D4 sont en vigueur ; D4 est exécuté dans la même pull request (en-tête d'ADR-0060).
+- **Arbitrage :** Owner-arbitration: 2026-11-09 — question structurée en chat (ADR-0022/I-24) : « Accident + D » ; ligne écrite par l'agent sur autorisation explicite du propriétaire le même jour. Rédigé par l'agent sur la consigne « go all » du 2026-11-09 ; la recommandation était de l'agent, la décision est du propriétaire.
 - **Date de rédaction :** 2026-11-09
 - **Portée :** les six checks requis du ruleset de la branche servie de ce dépôt et les gates de flotte qui lisent ce dépôt. Aucun autre dépôt.
 - **Amende :** ADR-0060, section « Ce que la mesure départage, et ce qu'elle laisse au propriétaire » : l'ADR-0060 renvoie le choix « à un ADR ultérieur » qui n'existait pas (dernier numéro 0060, aucun D-xx ne le cite). Celui-ci est cet ADR.
@@ -45,6 +45,8 @@ Les deux questions de l'ADR-0060, dans l'ordre ; la seconde ne dépend pas de la
 
 1. Modèle de menace : **accident seulement** (recommandé, D1) ou **aussi auteur hostile**. Si hostile : B plutôt qu'A2, et le coût du marqueur routinier est accepté en connaissance de cause.
 2. Cas inverse : **D** (recommandé) ou **statu quo avec correction après fusion**.
+
+Réponses du propriétaire, 2026-11-09, question structurée en chat : 1. accident seulement ; 2. D. La recommandation est retenue telle quelle ; rien n'est réécrit.
 
 ## Ce qui n'est pas décidé ici
 

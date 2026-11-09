@@ -1,6 +1,6 @@
 # ADR-0041 — Consolidation de l'autorité et absorption des capacités sans destination
 
-- **Statut :** proposed — la fusion de cette pull request constitue l'arbitrage propriétaire
+- **Statut :** accepted — fusionné (#4) ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
 - **Arbitrage :** décisions propriétaires du 2026-10-07, prises sur les quatre axes de décision (sécurité, qualité, performance, complétude) après mesure, le coût d'outillage ayant été écarté comme critère ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), à laquelle il donne sa numérotation et ses entrées de registre
 - **Amende :** ADR-0024 §2.2 (clause « aucune fusion ») et I-28 (réalisations de référence du gate de `rev` orphelin)
