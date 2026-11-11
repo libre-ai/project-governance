@@ -101,7 +101,10 @@ function referenceLayers(): Record<LayerSlug, Draft[]> {
 function ficheOf(draft: Draft): string {
   const cited = [...draft.depend_de, ...draft.invariants, ...draft.decisions].join(", ");
   const sections = FICHE_SECTIONS.map((title) => `## ${title}\n\nTexte de la section.`);
-  return `<!-- SPDX-License-Identifier: CC-BY-4.0 -->\n# ${draft.id} — ${draft.nom}\n\n${sections.join("\n\n")}\n\nCite : ${cited}.\n`;
+  // A comment before the title, as a licence header would be. Not the SPDX
+  // tag itself: written in this file, `reuse lint` reads it as the licence of
+  // this file and finds the rest of the line unparsable.
+  return `<!-- en-tête de licence -->\n# ${draft.id} — ${draft.nom}\n\n${sections.join("\n\n")}\n\nCite : ${cited}.\n`;
 }
 
 interface World {
