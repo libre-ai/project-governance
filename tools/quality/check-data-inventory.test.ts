@@ -13,7 +13,7 @@ import {
   reportInventory,
   SYMLINK_MODE,
 } from "./check-data-inventory";
-import { GATED_PATHSPECS } from "./check-review-evidence";
+import { REVIEWED_PATHSPECS } from "./check-review-evidence";
 
 // #153, and the reviews of #159: the guarded surface rests on a closed world.
 // Every tracked file that is neither code nor Markdown is gated or declared,
@@ -53,24 +53,33 @@ describe("the inventory of this tree", () => {
     expect(new Set([...audit.gated, ...audit.declared]).size).toBe(audit.universe.length);
   });
 
-  // Reviews of #159: each of these delimits a gate (lint scope, compiler
-  // strictness, the aggregate's steps, licence annotations, lint levels), so
-  // guarding them waits for the owner, and the inventory names them.
-  test("the configuration files that delimit a gate are declared, awaiting owner arbitration", () => {
+  // Reviews of #159 left six configuration files awaiting the owner; the
+  // owner delegated the decision on 2026-10-26, and each one, edited, can
+  // loosen a gate (lint scope, compiler strictness, the aggregate's steps,
+  // licence annotations, lint levels). They are gated, and nothing waits.
+  test("the configuration files that delimit a gate are gated, and no file awaits owner arbitration", () => {
     const audit = auditInventory(listed.paths);
-    expect([...audit.awaiting].sort()).toEqual([
+    expect(audit.awaiting).toEqual([]);
+    const configuration = [
       "Cargo.toml",
       "REUSE.toml",
       "biome.json",
       "crates/ecosystem-engine/Cargo.toml",
       "package.json",
+      "packages/classification/package.json",
       "tsconfig.json",
-    ]);
-    for (const path of audit.awaiting) expect(audit.declared).toContain(path);
+    ];
+    for (const path of configuration) {
+      expect(listed.paths).toContain(path);
+      expect({ path, gated: audit.gated.includes(path) }).toEqual({ path, gated: true });
+    }
+    expect(reportInventory(listed.paths, audit).volumeSummary).toContain(
+      "(0 awaiting owner arbitration: none)",
+    );
   });
 
   test("every gated pathspec selects a tracked file, so no pattern guards a file that is gone", () => {
-    for (const pathspec of GATED_PATHSPECS) {
+    for (const pathspec of REVIEWED_PATHSPECS) {
       const selected = lsFiles(pathspec);
       expect(selected.exitCode).toBe(0);
       expect({ pathspec, count: selected.paths.length }).not.toEqual({ pathspec, count: 0 });
@@ -174,7 +183,8 @@ describe("constructed loosening files", () => {
     ".gitleaksignore",
     ".trivyignore",
     "tools/quality/config/surface.v1.json",
-    "x/biome.json",
+    // A nested biome.json is gated at every depth; a biome.jsonc is not (LIMIT 5).
+    "x/biome.jsonc",
     "tools/quality/surface.json5",
     "tools/quality/surface.jsonc",
     ".npmrc",
@@ -196,14 +206,14 @@ describe("the partition", () => {
     extensions: [".json"],
     because: "frozen evidence",
   };
-  const file: NotGated = { path: "biome.json", because: "configuration" };
+  const file: NotGated = { path: "llms.txt", because: "an index" };
 
   test("a directory covers what is under it with a declared extension, nothing else", () => {
     expect(covers(directory, "docs/reviews/a/b.json")).toBeTrue();
     expect(covers(directory, "docs/reviews/a/b.yaml")).toBeFalse();
     expect(covers(directory, "docs/reviewsX/b.json")).toBeFalse();
-    expect(covers(file, "biome.json")).toBeTrue();
-    expect(covers(file, "x/biome.json")).toBeFalse();
+    expect(covers(file, "llms.txt")).toBeTrue();
+    expect(covers(file, "x/llms.txt")).toBeFalse();
   });
 
   test("a directory declared for files without an extension covers those only", () => {
@@ -214,21 +224,21 @@ describe("the partition", () => {
 
   test("each data file lands in exactly one place, and a gated one is never declared", () => {
     const audit = auditInventory(
-      ["deny.toml", "docs/reviews/a/b.json", "biome.json", "ecosystem/new.v1.yaml", "README.md"],
+      ["deny.toml", "docs/reviews/a/b.json", "llms.txt", "ecosystem/new.v1.yaml", "README.md"],
       [directory, file],
     );
     expect(audit.gated).toEqual(["deny.toml"]);
-    expect(audit.declared).toEqual(["docs/reviews/a/b.json", "biome.json"]);
+    expect(audit.declared).toEqual(["docs/reviews/a/b.json", "llms.txt"]);
     expect(audit.undeclared).toEqual(["ecosystem/new.v1.yaml"]);
     expect(audit.outside).toBe(1);
   });
 
   test("awaiting files are the declared ones whose declaration waits for the owner", () => {
     const audit = auditInventory(
-      ["biome.json", "docs/reviews/a.json"],
+      ["llms.txt", "docs/reviews/a.json"],
       [{ ...file, awaitingOwnerArbitration: true }, directory],
     );
-    expect(audit.awaiting).toEqual(["biome.json"]);
+    expect(audit.awaiting).toEqual(["llms.txt"]);
   });
 
   // F7 of the second review: bunfig.toml is gated at every depth, so a fixture
