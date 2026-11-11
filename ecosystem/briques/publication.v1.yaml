@@ -6,7 +6,7 @@ couche: publication
 briques:
   - id: PUB-01
     nom: Page vision générée
-    role: Génère la page vision depuis les seules sorties du vérificateur de la carte (graphe des couches, fiches, compteurs par statut), sans qu'aucun texte y soit saisi.
+    role: Génère la page vision depuis la carte jugée par son vérificateur (matrice des couches, fiches, compteurs par statut), sans qu'aucun compte ni aucun statut y soit saisi.
     # La page lit les sorties du vérificateur de la carte, qui est une brique de
     # la couche fabrique. La table d'ADR-0064 D1 n'admet pas cette dépendance
     # pour la couche publication : la décision D6 est citée, la dépendance non.
@@ -15,13 +15,16 @@ briques:
     # ADR-0064 est cité pour sa décision D6, et la fiche le dit proposé.
     decisions: [ADR-0064]
     # ADR-0064 D6 place la page sous `distribution/vision/` de ce dépôt, qui
-    # porte ses données (la carte). Au 2026-11-11, ce répertoire est absent de
-    # l'arbre suivi.
+    # porte ses données (la carte).
     depots: [libre-ai/project-governance]
     origine:
       type: propre
     autonomie: modify
-    preuve: []
+    preuve:
+      - date: "2026-11-11"
+        cible: distribution/build-vision.ts
+      - date: "2026-11-11"
+        cible: .github/workflows/brick-map.yml
   - id: PUB-02
     nom: Catalogue à statut dérivé
     role: Publie la liste des produits et des dépôts avec, pour chacun, un état calculé depuis sa fiche et ses preuves, jamais déclaré à la main.

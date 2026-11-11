@@ -2,7 +2,7 @@
 
 ## Contexte
 
-ADR-0064, proposé, demande par D5 un vérificateur qui lit les fichiers de couche et les fiches, applique la table des dépendances de D1 et imprime ses compteurs. Ce dépôt le porte en deux moitiés : un module pur pour les règles, un script pour les lectures et le code de sortie. Le script ne va pas sur le réseau. Il dérive aussi le catalogue d'ADR-0042 §1 et imprime combien de produits sont en brique. Un workflow dédié l'exécute ; le rendre requis reste un acte du propriétaire. Au 2026-11-11, git ne suit aucun fichier sous `distribution/vision/` : la page vision qu'ADR-0064 D6 demande n'est pas générée dans ce dépôt.
+ADR-0064, proposé, demande par D5 un vérificateur qui lit les fichiers de couche et les fiches, applique la table des dépendances de D1 et imprime ses compteurs. Ce dépôt le porte en deux moitiés : un module pur pour les règles, un script pour les lectures et le code de sortie. Le script ne va pas sur le réseau. Il dérive aussi le catalogue d'ADR-0042 §1 et imprime combien de produits sont en brique. Un workflow dédié l'exécute ; le rendre requis reste un acte du propriétaire. La page vision qu'ADR-0064 D6 demande est générée depuis la carte que ce vérificateur juge : son générateur l'appelle, et n'écrit rien si la carte a une violation.
 
 ## Ce que la brique ferme
 
@@ -28,4 +28,4 @@ ADR-0064, proposé, demande par D5 un vérificateur qui lit les fichiers de couc
 - Preuves citées : `ecosystem/check-briques.ts` et `ecosystem/briques.ts`. La première montre la moitié à effets : lecture de l'index, des copies de travail qui en diffèrent, des fichiers de doctrine et de la configuration du gate des citations, puis impression du volume et sortie non nulle sur toute violation. La seconde montre les règles, dont la table des couches ; sa suite de tests, non citée ici, relit cette table depuis le texte d'ADR-0064.
 - Limites que le module ou le README de la carte déclarent : une clé écrite deux fois pour une même brique ne provoque pas d'erreur ; seuls les titres en début de ligne sont lus comme des titres ; aucun instrument ne vérifie une release signée, donc celui des statuts d'ADR-0064 D4 qui en demande une ne peut être atteint.
 - Aucune des deux ne montre que le gate est requis sur la branche servie.
-- Prochaine preuve : la page vision générée depuis les seules sorties de ce gate, puis le gate rendu requis sur la branche servie par un acte du propriétaire.
+- Prochaine preuve : le gate rendu requis sur la branche servie par un acte du propriétaire. La page vision générée depuis la carte que ce gate juge existe depuis le 2026-11-11 ; elle est produite par PUB-01, dont les preuves sont son générateur et son contrôle de dérive, et n'est pas une preuve de cette brique.

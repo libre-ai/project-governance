@@ -51,3 +51,49 @@ jobs:
       - run: bun install --frozen-lockfile
       - name: Judge the brick map
         run: bun run check:briques
+
+  vision-page:
+    # A job of its own, so that a stale page and a red map are two verdicts.
+    name: Vision page regenerated from the brick map, fail on drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # The generator runs the gate (ajv), so the lockfile is installed.
+      - run: bun install --frozen-lockfile
+      - name: Regenerate the vision page and fail on drift
+        run: |
+          # The generator exits non-zero on a red map: no page from a map with a violation.
+          bun run build:vision
+          # intent-to-add makes a NEW generated file visible to git diff;
+          # without it, an uncommitted new surface would pass silently.
+          git add --intent-to-add distribution/vision
+          if ! git diff --stat --exit-code -- distribution/vision; then
+            echo "::error::distribution/vision is stale — run 'bun run build:vision' and commit the result"
+            exit 1
+          fi
+          # The page and its stylesheet, as two regular files, and nothing else.
+          # The data inventory does not see a file whose extension is source to
+          # it, and neither it nor the diff above sees a symbolic link put in
+          # the place of the page. Index entries are compared, mode included:
+          # git quotes a name that holds a line break, so a name cannot forge a line.
+          tracked="$(git ls-files --format='%(objectmode) %(path)' -- distribution/vision)"
+          expected="$(printf '100644 distribution/vision/index.html\n100644 distribution/vision/vision.css')"
+          if [ "$tracked" != "$expected" ]; then
+            echo "::error::distribution/vision must hold the page and its stylesheet as two regular files, and nothing else; the index holds:"
+            echo "$tracked"
+            exit 1
+          fi

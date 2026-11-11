@@ -96,6 +96,11 @@ export interface LayerRule {
   readonly ownRule: string;
   /** True when this module verifies `ownRule`; false when it only prints it. */
   readonly ownRuleVerified: boolean;
+  /**
+   * When only a part of `ownRule` is verified: which part, and what becomes of
+   * the rest. A reader of the page must not read « verified » on the whole rule.
+   */
+  readonly ownRuleVerifiedOnly?: string;
 }
 
 /**
@@ -111,6 +116,8 @@ export const LAYERS: readonly LayerRule[] = [
     mayDependOn: [],
     ownRule: "seule couche sans dépendance ; toute autre brique cite au moins un invariant",
     ownRuleVerified: true,
+    ownRuleVerifiedOnly:
+      "pour sa première moitié seulement ; la seconde est comptée et ne bloque pas",
   },
   {
     slug: "fabrique",
@@ -1232,6 +1239,11 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
   };
 
   const verified = LAYERS.filter((layer) => layer.ownRuleVerified).map((layer) => layer.slug);
+  // The partial rule is named from the field the page prints. The sentence below describes the
+  // gouvernance rule only: the test suite holds the field to that one layer, on a verified rule.
+  const partly = LAYERS.filter((layer) => layer.ownRuleVerifiedOnly !== undefined).map(
+    (layer) => layer.slug,
+  );
   const perLayer = LAYERS.map((layer) => `${layer.slug} ${counters.par_couche[layer.slug]}`).join(
     ", ",
   );
@@ -1241,7 +1253,7 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     `status derived: ${STATUSES.map((status) => `${status} ${counters.par_statut[status]}`).join(", ")} (prototypee cannot be reached in v1: no instrument verifies a signed release); ` +
     `proofs held: ${localProofs} on this tree, ${pinnedProofs} pinned, each read by the pinned-citations gate and left to it to resolve; ` +
     `products: ${counters.catalogue_produits} in the catalogue of ADR-0042 §1 = ${counters.produits_en_brique} as bricks + ${counters.catalogue_produits - counters.produits_en_brique} outside the map; ` +
-    `layer rules: ${verified.length} verified (${verified.join(", ")}; for gouvernance, its dependency half), ${LAYERS.length - verified.length} declarative, not verified by this gate; ` +
+    `layer rules: ${verified.length} verified (${verified.join(", ")}; for ${partly.join(", ")}, its dependency half), ${LAYERS.length - verified.length} declarative, not verified by this gate; ` +
     `origin: ${counters.par_origine.inspection} inspection, ${counters.par_origine.observed} observed, ${counters.par_origine.propre} propre; ` +
     `autonomy: ${counters.par_autonomie.discover} discover, ${counters.par_autonomie.modify} modify, ${counters.par_autonomie.govern} govern; ` +
     `${counters.sans_depot_porteur} brick(s) without a carrier repository, ${counters.jetables} transitional; ` +

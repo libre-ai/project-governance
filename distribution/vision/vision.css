@@ -1,0 +1,278 @@
+/*
+ * Stylesheet of the generated vision page (distribution/build-vision.ts).
+ * Written by hand, next to the generated files: the page carries no inline
+ * style and no script, so it can be served under a strict content security
+ * policy. Colours are tokens only; sizes are relative.
+ */
+
+:root {
+  --fond: #f6f8f7;
+  --surface: #ffffff;
+  --encre: #0a2a1e;
+  --encre-douce: #45574f;
+  --trait: #cfd9d4;
+  --accent: #0a7d4b;
+  --lien: #0a6b8f;
+  --decrite: #5c6b64;
+  --en-cours: #8a5a00;
+  --prototypee: #0a7d4b;
+  --retiree: #8a2b2b;
+  --pastille-fond: #eef3f0;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fond: #0b1512;
+    --surface: #121f1a;
+    --encre: #e6efe9;
+    --encre-douce: #a9bbb2;
+    --trait: #2a3b34;
+    --accent: #45c98a;
+    --lien: #6cc4e6;
+    --decrite: #a9bbb2;
+    --en-cours: #e6b450;
+    --prototypee: #45c98a;
+    --retiree: #f08a8a;
+    --pastille-fond: #1a2a24;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--encre);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 100%;
+  line-height: 1.55;
+}
+
+header,
+main {
+  width: min(100% - 2rem, 68rem);
+  margin-inline: auto;
+}
+
+header {
+  padding-block: 2.5rem 1rem;
+}
+
+h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  line-height: 1.15;
+}
+
+h2 {
+  margin: 2.75rem 0 0.75rem;
+  font-size: 1.45rem;
+  border-bottom: 1px solid var(--trait);
+  padding-bottom: 0.35rem;
+}
+
+h3 {
+  margin: 2.25rem 0 0.5rem;
+  font-size: 1.2rem;
+}
+
+h4 {
+  margin: 1.1rem 0 0.3rem;
+  font-size: 0.95rem;
+  color: var(--encre-douce);
+}
+
+p {
+  margin: 0.5rem 0;
+  max-width: 46rem;
+}
+
+a {
+  color: var(--lien);
+}
+
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+/* A brick id is short and breaks badly at its hyphen; a path still wraps. */
+a code {
+  white-space: nowrap;
+}
+
+.chapeau {
+  font-size: 1.1rem;
+}
+
+.reserve {
+  color: var(--encre-douce);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  background: var(--surface);
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--trait);
+  text-align: left;
+  vertical-align: top;
+}
+
+thead th {
+  background: var(--pastille-fond);
+}
+
+.nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.regle,
+.compte {
+  display: inline-block;
+  font-size: 0.8em;
+  font-weight: 400;
+  color: var(--encre-douce);
+}
+
+.statut {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.statut-decrite {
+  color: var(--decrite);
+}
+
+.statut-en_cours {
+  color: var(--en-cours);
+}
+
+.statut-prototypee {
+  color: var(--prototypee);
+}
+
+.statut-retiree {
+  color: var(--retiree);
+}
+
+.matrice caption {
+  caption-side: bottom;
+  padding: 0.6rem 0;
+  color: var(--encre-douce);
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+.matrice td {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.matrice thead th {
+  vertical-align: bottom;
+}
+
+.matrice thead th span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+
+.matrice .admise {
+  background: var(--pastille-fond);
+  border: 2px solid var(--accent);
+  font-weight: 600;
+}
+
+.matrice .interne,
+.matrice .refusee {
+  color: var(--encre-douce);
+}
+
+.matrice .interne {
+  font-style: italic;
+}
+
+.brique {
+  margin: 0.4rem 0;
+  padding: 0.55rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--trait);
+  border-radius: 0.5rem;
+}
+
+.brique summary {
+  cursor: pointer;
+  list-style-position: outside;
+}
+
+.brique .id {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  color: var(--encre-douce);
+}
+
+.brique .nom {
+  font-weight: 600;
+}
+
+.brique .role {
+  margin-top: 0.6rem;
+}
+
+dl.champs {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+  font-size: 0.92rem;
+}
+
+dl dt {
+  color: var(--encre-douce);
+}
+
+dl dd {
+  margin: 0;
+}
+
+ul {
+  margin: 0.4rem 0;
+  padding-left: 1.25rem;
+}
+
+/* The region scrolls, the table stays a table: its rows and headers keep their roles. */
+.defilante {
+  overflow-x: auto;
+}
+
+.defilante:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 40rem) {
+  dl.champs {
+    grid-template-columns: 1fr;
+  }
+}

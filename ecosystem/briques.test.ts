@@ -240,6 +240,13 @@ describe("the layer table", () => {
     expect(new Set(LAYERS.map((layer) => layer.prefix)).size).toBe(LAYERS.length);
   });
 
+  test("says of one rule only that it is verified in part: gouvernance, which is verified", () => {
+    // The volume of the gate says « its dependency half » of whatever layer carries the field.
+    const partial = LAYERS.filter((layer) => layer.ownRuleVerifiedOnly !== undefined);
+    expect(partial.map((layer) => layer.slug)).toEqual(["gouvernance"]);
+    expect(partial.every((layer) => layer.ownRuleVerified)).toBe(true);
+  });
+
   test("declares as verified the three rules this gate checks, and no other", () => {
     expect(LAYERS.filter((layer) => layer.ownRuleVerified).map((layer) => layer.slug)).toEqual([
       "gouvernance",
