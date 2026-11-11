@@ -2,7 +2,7 @@
 
 - **Statut :** accepted — la fusion a signé la mesure et l'écartement conditionnel d'A1, tant que les deux comportements de GitHub qu'il suppose ne sont pas mesurés. Aucune option n'est retenue ici ; le choix est fait par ADR-0062. Cet ADR ne modifie aucun workflow ni aucun gate ; statut clos le 2026-11-09.
 - **Arbitrage :** décision du propriétaire du 2026-10-24 sur la question P1 des revues (ce que signe la fusion), prise par question structurée et relayée par la session de coordination : « Signe la mesure ». Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`.
-- **Amendé par :** ADR-0062 (2026-11-09) : modèle de menace « accident d'un auteur de confiance », option A2 combinée à D ; la mesure de cet ADR n'est pas modifiée.
+- **Amendé par :** ADR-0062 (2026-11-09) : modèle de menace « accident d'un auteur de confiance », option A2 + Bw + D (Bw ajoutée par l'amendement d'ADR-0062 du même jour, qui absorbe les mesures C1-C3 de la pull request #165 : A1 mesurée pour partie, C1b et C2b `unavailable`) ; la mesure de cet ADR n'est pas modifiée.
 - **Date de rédaction :** 2026-10-24
 - **Origine :** inspection — issue #152, relevés de revue de #141 et #142, limite déclarée par #144, incidents corrigés par #151 et #154.
 - **Portée :** les workflows de ce dépôt qui jugent une pull request, requis ou non. Les dépôts de la flotte ne sont pas concernés, sauf en tant que contenu lu par les gates de flotte.
