@@ -39,7 +39,7 @@ briques:
     preuve_produite: La charte en données d'une brique produit, dont le dégel et l'abandon nomment chacun un fait observable.
   - id: FAB-03
     nom: Affinage par dépendances
-    role: Découpe une entrée admise en tranches rattachées à des critères vérifiables et les ordonne par leurs dépendances déclarées et par les preuves qui manquent.
+    role: Découpe une entrée admise en tranches rattachées à des critères vérifiables et les ordonne par leurs dépendances déclarées.
     depend_de: [FAB-01]
     invariants: [I-08]
     decisions: [ADR-0042, D53]
@@ -53,7 +53,7 @@ briques:
         cible: tools/quality/prd-model.ts
       - date: "2026-10-24"
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/outline.rs
-    preuve_produite: Le plan de tranches approuvé, où chaque tranche porte ses critères, son périmètre, sa commande de vérification et ses dépendances.
+    preuve_produite: Le plan de tranches validé, où chaque tranche nomme ce qu'elle démontre et celles qu'elle attend.
   - id: FAB-04
     nom: Mission Work Supervision
     role: Conduit un travail confié à un agent comme une mission à états fermés, du brief au résultat que le propriétaire accepte ou rejette sur preuve.
@@ -73,19 +73,20 @@ briques:
     nom: Oracle de parité
     role: Compare un produit livré aux fonctions requises de sa matrice de parité, par des tests d'acceptation dont le seuil est figé avant la mesure.
     depend_de: []
-    invariants: [I-08, I-27]
+    invariants: [I-27]
     decisions: [ADR-0027, ADR-0042, D34, D55]
     # Le schéma des fiches de projet de ce dépôt exige d'un produit ses
     # critères de promotion, ses prédicats d'arrêt et son étalon : les règles
-    # de la brique y vivent. Aucun gate de ce dépôt ne lit ces champs pour
-    # évaluer une parité (relevé du 2026-11-11).
+    # de la brique y vivent. Hors un fichier de test, aucun fichier de code de
+    # ce dépôt ne nomme `promotion_criteria` ni `kill_predicates` (relevé du
+    # 2026-11-11).
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
     preuve: []
-    preuve_produite: "Le verdict de parité d'un produit : chaque fonction requise passée ou non, mesurée sur du code livré après son jalon de dogfooding."
+    preuve_produite: "À produire : le verdict de parité d'un produit, chaque fonction requise passée ou non, mesurée sur du code livré après son jalon de dogfooding."
   - id: FAB-06
     nom: Gates de porte et négatives
     role: Refuse une pull request dont la description ne déclare pas sa réversibilité et l'origine de son problème, ou dont le diff touche une surface qu'elle déclare ne pas toucher.
@@ -106,22 +107,23 @@ briques:
   - id: FAB-07
     nom: Livraison par anneaux
     role: Fait passer une release d'un cercle de destinataires au suivant, du propriétaire au public, sans qu'elle saute un cercle ni perde sa révision de retour.
-    depend_de: [GOV-01, PRV-02, PRV-03]
-    invariants: [I-07, I-20]
+    depend_de: [GOV-01]
+    invariants: [I-07]
     decisions: [ADR-0035, D41]
     # Aucun dépôt porteur déclaré. ADR-0035 pose les conditions d'une release ;
-    # la doctrine de ce dépôt ne nomme pas d'anneaux (relevé du 2026-11-11).
+    # les ADR, le registre, les méthodes et les spécifications de ce dépôt ne
+    # nomment pas d'anneaux (relevé du 2026-11-11).
     depots: []
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: discover
     preuve: []
-    preuve_produite: "La trace du passage d'une release par chaque cercle : candidat immuable, smoke test après déploiement et révision précédente récupérable."
+    preuve_produite: "À produire : la trace du passage d'une release par chaque cercle, avec son candidat immuable, son smoke test après déploiement et sa révision précédente récupérable."
   - id: FAB-08
     nom: Tranche de bout en bout
     role: Fait traverser à un seul travail toute la chaîne, de l'entrée au résultat accepté avec sa preuve, avant tout élargissement du périmètre.
-    depend_de: [FAB-01, FAB-04, FAB-09]
+    depend_de: [FAB-01, FAB-04]
     invariants: [I-19]
     decisions: [ADR-0042, D53]
     depots: [libre-ai/ai-work-supervision]
@@ -132,12 +134,12 @@ briques:
     preuve:
       - date: "2026-10-24"
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/tests/b_prime_simulation.rs
-    preuve_produite: "La chaîne tracée d'une tranche : entrée, mission, pull request fusionnée et preuve, lisible dans un journal vérifié."
+    preuve_produite: "La chaîne tracée d'une tranche, de l'entrée à la mission et à son résultat accepté avec sa preuve, lisible dans un journal vérifié ; à produire pour une tranche réelle, la répétition citée étant une simulation."
   - id: FAB-09
     nom: Pull request de flotte
     role: "Remet un changement à la flotte sous une forme unique : description au gabarit, commits signés DCO et fusion par squash sur checks requis verts."
     depend_de: [FAB-06]
-    invariants: [I-11, I-17]
+    invariants: [I-11]
     decisions: [ADR-0056, ADR-0059, D23, D68, D102]
     depots: [libre-ai/project-governance]
     origine:
@@ -154,7 +156,7 @@ briques:
     nom: Graphe de tâches natif
     role: Exécute un plan autorisé comme un graphe fini et acyclique d'étapes à issues fermées, une seule étape prête à la fois, dans un cœur Rust sans effet.
     depend_de: [GOV-07, HAR-09]
-    invariants: [I-03, I-06, I-32]
+    invariants: [I-06, I-32]
     # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
     # worker TypeScript ; ADR-0063 (proposé) le renverserait. La brique est
     # écrite sur le graphe autorisé d'ADR-0034 et son cœur d'ADR-0037, natifs
@@ -170,7 +172,7 @@ briques:
         cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/authorized_execution/graph.rs
       - date: "2026-10-26"
         cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:tests/authorized_execution_graph.rs
-    preuve_produite: La décision fermée du cœur sur chaque transition, et le rejeu déterministe du même état à faits verrouillés identiques.
+    preuve_produite: "La décision fermée du cœur sur un graphe et sur chaque transition ; à produire : le rejeu de l'état d'une mission de la fabrique par ce cœur."
   - id: FAB-11
     nom: Fil de mission
     role: Rassemble pour une mission ce qui a été demandé, ce qui a été fait, les décisions prises et les preuves, dans un rapport lisible sans avoir suivi l'historique.
@@ -201,10 +203,10 @@ briques:
         cible: tools/quality/check-review-evidence.ts
       - date: "2026-10-24"
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-store/migrations/sqlite/0004_coordination.sql
-    preuve_produite: L'enregistrement daté d'une demande de décision et de sa réponse, et la liste des demandes encore ouvertes.
+    preuve_produite: "L'enregistrement daté d'une demande de décision et de sa réponse ; à produire : la liste des demandes encore ouvertes."
   - id: FAB-13
     nom: Vérificateur de la carte
-    role: Lit les fichiers de couche et les fiches, refuse toute dépendance que la table des couches n'admet pas, dérive le statut des preuves et imprime ses compteurs.
+    role: Lit dans l'index git les fichiers de couche et les fiches, refuse toute dépendance que la table des couches n'admet pas et toute citation que la fiche ne nomme pas, dérive le statut des preuves et imprime ses compteurs.
     depend_de: [GOV-02]
     invariants: [I-14]
     decisions: [ADR-0042, ADR-0064]

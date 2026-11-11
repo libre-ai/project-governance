@@ -1,6 +1,6 @@
 schema_version: libre-ai.brique.v1
 couche: gouvernance
-# Couche sans dépendance vers une autre couche (ADR-0064 D1) : tout `depend_de`
+# Couche sans dépendance vers une autre couche (ADR-0064 D1, proposé) : tout `depend_de`
 # est vide ou ne nomme que des briques `GOV-…`. Toute écriture sur ces briques
 # tombe sur la surface à touche humaine d'I-17 : un agent y propose, le
 # propriétaire décide (`autonomie: discover`).

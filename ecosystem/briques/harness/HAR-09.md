@@ -2,14 +2,13 @@
 
 ## Contexte
 
-ADR-0034 borne un graphe d'exécution autorisé, séquentiel et acyclique (D40). ADR-0037 en autorise le cœur natif (D43) : un crate Rust pur, sans entrée ni sortie, qui rejoue les sémantiques verrouillées à partir d'observations brutes. I-06 destine Rust aux moteurs spécialisés. ADR-0037 applique I-08 : ses vecteurs sont des preuves bloquantes. Ce cœur vit dans `execution-continuity-evaluator`. ADR-0058, en vigueur, admet LangGraph JS comme runtime interne d'un worker TypeScript. ADR-0063, proposé, le renverserait et étendrait la règle : Rust partout où du contenu est traité, moteur de la fabrique et du harnais compris. Tant qu'il n'est pas accepté, le moteur commun reste une intention.
+ADR-0034 borne un graphe d'exécution autorisé, séquentiel et acyclique (D40). ADR-0037 en autorise le cœur natif (D43) : un crate Rust pur, sans entrée ni sortie, qui rejoue les sémantiques verrouillées à partir d'observations brutes, sans dépendance à un framework d'agent (D6). I-06 destine Rust aux moteurs spécialisés. Ce cœur vit dans `execution-continuity-evaluator`. ADR-0058, en vigueur, admet LangGraph JS comme runtime interne d'un worker TypeScript. ADR-0063, proposé, le renverserait et étendrait la règle : Rust partout où du contenu est traité, moteur de la fabrique et du harnais compris. Tant qu'il n'est pas accepté, le moteur commun reste une intention. ADR-0037 dit appliquer I-08 ; cet invariant porte sur la fiche de projet et sur le verrou des contrats, pas sur un moteur : il est voisin et n'est pas cité.
 
 ## Ce que la brique ferme
 
-- Un worker qui choisit la prochaine étape, alors que seul un résultat fermé sélectionne une transition (ADR-0034 D1).
-- Une réémission aveugle après un état d'effet inconnu, barrière de continuité pour le cœur (ADR-0037 D4).
-- Un framework d'agent devenu spécification implicite, exclu par ADR-0037 D6.
-- Deux moteurs qui interprètent différemment les mêmes contrats, l'un pour la fabrique, l'autre pour le harnais : c'est l'objet de la brique, que rien ne réalise encore.
+- Un worker qui choisit la prochaine étape : dans le module cité, seul le couple d'une étape et d'une issue fermée sélectionne une transition (ADR-0034 D1).
+- Une sémantique des contrats réinterprétée par le cœur : le test rejoue en Rust chaque cas du document de vecteurs et compare le résultat à l'attendu littéral (ADR-0037 D3).
+- Une réémission aveugle après un état d'effet inconnu, barrière de continuité pour le cœur (ADR-0037 D4) : parmi les cas rejoués, celui de l'état d'effet inconnu rend son code fermé.
 
 ## Ce qu'elle ne fait pas
 
@@ -19,6 +18,8 @@ ADR-0034 borne un graphe d'exécution autorisé, séquentiel et acyclique (D40).
 
 ## Mesure
 
-Preuves citées : le module de graphe du cœur et son test de vecteurs, dans `execution-continuity-evaluator`. Le test rejoue en Rust les cas sémantiques des contrats, 54 selon ADR-0037 D3 et selon l'assertion du test. Il ne montre pas un moteur partagé avec la fabrique.
+Preuves citées : le module de graphe du cœur et son test de vecteurs, dans `execution-continuity-evaluator`. Pour cette brique, le module montre une pièce du moteur écrite en Rust, dont les imports se limitent à la bibliothèque standard, au registre de contrats embarqué et à la désérialisation. Le test rejoue les cas sémantiques des contrats, 54 selon ADR-0037 D3 et selon l'assertion du test.
+
+Faits attendus, non montrés : un même moteur pour la fabrique et le harnais, qui est l'objet de la brique et que cette fiche ne cite réalisé nulle part ; l'absence de tout framework d'agent dans le crate entier, qu'ADR-0037 D6 exige et qu'un fichier seul ne prouve pas.
 
 Prochaine preuve : une mission de Work Supervision dont les transitions sont décidées par ce cœur.

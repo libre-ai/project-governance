@@ -12,8 +12,8 @@ I-20 publie par défaut l'évidence de forge : rapports signés, journal des ver
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne lie pas une release à son évidence. Sans PRV-02, elle n'a pas de manifeste à publier pour cette clause d'I-20.
-- Elle ne signe aucun rapport. Sans PRV-03, elle n'a pas de rapport signé à publier.
+- Elle ne lie pas une release à son évidence : cette clause d'I-20 relève de PRV-02, une brique voisine dont elle ne dépend pas. Le générateur ne lit aucun manifeste.
+- Elle ne signe aucun rapport : cette clause d'I-20 relève de PRV-03, voisine elle aussi. Le générateur ne lit aucune signature.
 - Elle ne fait pas autorité sur un verdict : la source garde la formulation, le flux porte un état court et un lien.
 - Elle ne publie pas le détail exploitable d'une défense quand le propriétaire a décidé l'exception d'I-20.
 

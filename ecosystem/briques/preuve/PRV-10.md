@@ -6,7 +6,7 @@ Aucun invariant du registre ne lie la brique. ADR-0063, encore proposé, range l
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - Les poids substitués entre leur éditeur et le poste : une empreinte publiée à côté du fichier ne prouve pas qui l'a publiée.
 - Le modèle chargé avant vérification.

@@ -2,7 +2,7 @@
 
 ## Contexte
 
-I-05 fait du site une application qui sert des projections. ADR-0033 le veut statique, sans JavaScript client ni requête externe, consommateur de projections épinglées par sha. Dans `project-website`, le générateur dérive les pages de trois sources : des instantanés des fiches de projet, refusés s'ils s'écartent de leurs empreintes, la projection de marque, et le portefeuille de l'autorité. Les présentations de produit y sont rédigées à la main. I-15 n'ouvre la vitrine d'un produit que sur une chose vérifiable, et I-37 demande une assertion de bout en bout de la politique de sécurité servie. Au 2026-11-11, aucun invariant ne nomme l'accessibilité.
+I-05 fait du site une application qui sert des projections. ADR-0033 le veut statique, sans JavaScript client ni requête externe, consommateur de projections épinglées par sha. Dans `project-website`, le générateur dérive les pages de copies épinglées, refusées si elles s'écartent de leurs empreintes (fiches de projet, fichiers de licences, document de déploiement), de la projection de marque et du portefeuille de l'autorité ; les jetons et les styles viennent du paquet d'interface installé. Les présentations de produit y sont rédigées à la main. I-15 n'ouvre la vitrine d'un produit que sur une chose vérifiable, et I-37 demande une assertion de bout en bout de la politique de sécurité servie. Au 2026-11-11, aucun invariant ne nomme l'accessibilité.
 
 ## Ce que la brique ferme
 

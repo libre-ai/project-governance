@@ -6,7 +6,7 @@ ADR-0021 (D30) donne à la flotte l'état du monde des avis de sécurité sur le
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - Le modèle ou le jeu de données dont personne ne sait dire la licence : chaque entrée porterait la sienne.
 - Le poids remplacé sans trace : chaque entrée porterait une empreinte et une source.

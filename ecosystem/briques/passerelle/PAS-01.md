@@ -6,7 +6,7 @@ La règle de la couche vient d'ADR-0064 D1, encore proposé : la passerelle « n
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - L'appel de modèle ou d'outil qui part sans contrôle de classe, de zone et de budget.
 - L'adaptateur de fournisseur qui reçoit l'état complet d'une mission : le modèle de menace de ce dépôt inscrit cette menace et lui oppose un Biscuit atténué.

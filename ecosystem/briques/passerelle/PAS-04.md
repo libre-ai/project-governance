@@ -6,7 +6,7 @@ Le catalogue d'ADR-0042 §1 nomme P33, routeur de modèles, et le sort du gel (D
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - L'appel vers un modèle non admis : le routeur ne choisirait que dans le registre d'admission de GOV-04.
 - La donnée personnelle routée hors de l'appareil : I-21 veut que « les données concernant une personne physique restent sur le device de leur détenteur ».

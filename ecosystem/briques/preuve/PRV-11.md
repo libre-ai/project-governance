@@ -6,7 +6,7 @@ P37 est le coffre de secrets du catalogue d'ADR-0042 §1, que D53 ouvre en avanc
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - Le secret long posé dans un runner ou dans l'environnement d'un agent : il serait remis au point d'usage, pour la durée du mandat.
 - Le secret lu par un modèle : il ne passerait ni par un prompt ni par un contexte.

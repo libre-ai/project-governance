@@ -8,7 +8,7 @@ ADR-0042 §1 fixe le catalogue et dit quels produits sortent du gel. Son §3 pos
 
 - Un dépôt créé par opportunité : I-17 réserve l'activation d'un dépôt produit au propriétaire, et D53 ne lève le moratoire que par ADR.
 - Un abandon jugé sur une comparaison prématurée : I-27 interdit d'évaluer un `kill_predicate` fondé sur une comparaison à un concurrent avant le jalon dogfooding du produit.
-- Un dépôt déclaré archivé qui reste inscriptible : I-14 pose que l'inventaire lisible par machine fait foi, et le gate cité le compare à la forge.
+- Un dépôt retiré de l'inventaire qui reste dans l'organisation, ou un dépôt déclaré archivé qui reste inscriptible : I-14 pose que l'inventaire lisible par machine fait foi, et le gate cité le compare à la forge.
 
 ## Ce qu'elle ne fait pas
 
@@ -17,6 +17,6 @@ ADR-0042 §1 fixe le catalogue et dit quels produits sortent du gel. Son §3 pos
 
 ## Mesure
 
-Preuve citée : `ecosystem/check-inventory-drift.ts`. Ce gate compare l'inventaire à l'organisation observée sur la forge, dans les deux sens : présence, visibilité, cycle de vie. Il montre qu'un archivage déclaré est constaté, pas qu'un fait de dégel ou d'abandon est évalué. En intégration continue, il compte non vérifiable une entrée privée et active.
+Preuve citée : `ecosystem/check-inventory-drift.ts`. Ce gate compare l'inventaire à l'organisation observée sur la forge, dans les deux sens : présence, visibilité, cycle de vie. Pour cette brique, il montre l'état d'arrivée d'un retrait : un dépôt sorti de l'inventaire et encore observable dans l'organisation est une dérive, comme un dépôt déclaré archivé et encore inscriptible. Le cycle de vie qu'il lit n'a que deux valeurs, `active` et `archived` : le gel d'un produit n'y est pas un état, et le gate ne lit ni fait de dégel, ni fait d'abandon, ni ligne du registre des décisions. En intégration continue, il compte non vérifiable une entrée privée et active.
 
 Prochaine preuve : un gate lit le fait de dégel et le fait d'abandon de chaque charte et imprime, par produit, lequel est constaté.

@@ -6,7 +6,7 @@ ADR-0054 §1 décide pour P02, la veille documentaire, un parseur exécuté comm
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée dans un dépôt de l'inventaire.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - Le document piégé qui fait tomber ou détourne le service appelant : l'analyse vit dans un processus séparé.
 - Le parseur écrit dans un runtime que la pile ne destine pas aux moteurs spécialisés (I-06).

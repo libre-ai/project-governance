@@ -18,7 +18,7 @@ ADR-0042 §8 pose que toute distribution d'une application à un tiers exige un 
 
 ## Mesure
 
-- Preuve citée : aucune. Aucun artefact n'exerce les trois points ci-dessus.
+- Preuve citée : aucune. Aucune preuve citée ici n'exerce donc les trois points ci-dessus.
 - Au 2026-11-11, l'API de la forge ne rend aucune release pour `personal-knowledge-workspace`, `square-control` ni `ai-work-supervision`.
 - La signature et la notarisation ne sont pas vérifiées sur une coquille Tauri (`docs/method/TAURI-SHELL.md` §6).
 - Prochaine preuve : un job de release d'un dépôt porteur qui produit un bundle signé, vérifie son ticket de notarisation et lie la release à son évidence.

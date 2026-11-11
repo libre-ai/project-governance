@@ -12,11 +12,12 @@ I-20 publie par défaut l'évidence de forge, et ADR-0009 §7 fait de la méthod
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne définit ni les contrats ni leurs vecteurs. Sans GOV-07, la voie n'a ni contrat ni vecteur à faire valider par un tiers.
-- Elle ne projette pas ses attestations dans les flux. Sans PUB-04, une attestation reste un fichier que seul trouve celui qui sait où chercher.
+- Elle ne valide aucun contrat contre ses vecteurs : l'en-tête de la boucle écrit que cette validation relève du dépôt des contrats, que GOV-07 porte, et qu'elle ne reproduit qu'un dépôt par passage. GOV-07 est une brique voisine, dont la boucle ne dépend pas.
+- Elle ne projette pas ses attestations dans les flux : c'est PUB-04, voisine elle aussi, qui lit les attestations suivies. Le workflow ne pousse aucune attestation sur la branche servie : il la dépose en résumé d'exécution et en artefact.
+- Elle ne reconstruit aucun produit.
 
 ## Mesure
 
-Preuves citées : `verification/adoption/reproduce.ts` et le workflow planifié `adoption-proof.yml`. Elles montrent le mécanisme : cloner ce dépôt anonymement, l'installer et rejouer sa chaîne de référence sans identifiant. Elles ne montrent la reconstruction ni d'un contrat validé contre ses vecteurs, ni d'un produit. Le répertoire suivi `distribution/evidence/adoption/` porte une attestation datée, celle du 2026-07-24.
+Preuves citées : `verification/adoption/reproduce.ts` et le workflow planifié `adoption-proof.yml`. Elles montrent le mécanisme : cloner ce dépôt anonymement, l'installer et rejouer sa chaîne de référence sans identifiant. Elles ne montrent la reconstruction ni d'un contrat validé contre ses vecteurs, ni d'un produit. Au 2026-11-11, le répertoire suivi `distribution/evidence/adoption/` porte une seule attestation datée, celle du 2026-07-24 : elle atteste la reproduction de `libre-ai/libre-ai`, archivé depuis, par la boucle d'avant la migration, étape de contrat comprise. Aucune attestation suivie ne porte sur ce dépôt.
 
 Prochaine preuve : une attestation où la boucle valide, depuis un clone anonyme, un contrat de `schemas-and-contracts` contre ses vecteurs.

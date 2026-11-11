@@ -59,7 +59,7 @@ briques:
         cible: libre-ai/pi-evidence@fd2dfacf2c307c28b863b63a9f8c595b43c3e9a1:src/signer.ts
   - id: PRV-04
     nom: Gestion des clés
-    role: Génère, scelle, enregistre, fait tourner et retire les clés de signature de la flotte selon une cérémonie écrite, la clé privée ne quittant jamais la machine de son détenteur.
+    role: Génère, scelle, enregistre, fait tourner et retire les clés de signature de la flotte selon une cérémonie écrite et tenue hors ligne, seule la clé publique entrant dans un dépôt.
     depend_de: []
     # Aucun invariant ne porte la gestion des clés : la rotation est écrite dans
     # la spécification d'identité et dans le mode opératoire de la cérémonie.
@@ -129,7 +129,10 @@ briques:
     role: Arrête une mission dès que son budget d'erreur est dépassé et consigne l'arrêt, au lieu d'émettre une alerte.
     depend_de: [PRV-01]
     invariants: []
-    decisions: [ADR-0034, ADR-0046, D40, D67]
+    # ADR-0011 D6 est cité comme voisin le plus proche : il arrête un run
+    # autonome de vague sur des seuils d'échec chiffrés, pas une mission sur un
+    # budget d'erreur.
+    decisions: [ADR-0011, ADR-0034, ADR-0046, D40, D67]
     depots: []
     origine:
       type: inspection

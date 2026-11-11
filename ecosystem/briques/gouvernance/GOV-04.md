@@ -8,7 +8,7 @@ ADR-0042 §1 inscrit au catalogue P33, routeur de modèles, et P34, assistant IA
 
 - Un fait manquant sur un modèle, lu comme un accord : l'évaluateur rend alors `indeterminate` ou `ineligible`, jamais `eligible`.
 - Une politique approuvée par son auteur ou par un agent : l'évaluateur exige un approbateur humain, distinct de l'auteur.
-- Un fait périmé lu comme valide : quand un fait porte une source, l'évaluateur refuse une date de collecte future, et une source plus ancienne que l'âge maximal de la règle.
+- Un fait périmé lu comme valide : quand un fait porte une source, l'évaluateur classe la règle `unknown` pour une date de collecte future, comme pour une source plus ancienne que l'âge maximal de la règle. Le verdict est alors `indeterminate` ou `ineligible`.
 
 ## Ce qu'elle ne fait pas
 

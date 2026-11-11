@@ -6,9 +6,11 @@ I-09 veut un Biscuit « révocable », et I-18 une « révocation par agent » (
 
 ## Ce que la brique ferme
 
+Le module cité écrit ces trois refus ; il ne les exerce pas lui-même.
+
 - Le jeton volé qui reste valable jusqu'à son échéance : un bloc racine révoqué est refusé avant elle (I-09).
 - Le contournement par cache : seul un verdict de révocation est mis en cache, jamais une acceptation. Chaque acceptation reconsulte le magasin.
-- La panne lue comme une permission : sans magasin de révocation, la réponse est un refus.
+- La panne lue comme une permission : quand le magasin de révocation ne répond pas, la réponse est un refus.
 
 ## Ce qu'elle ne fait pas
 
@@ -19,5 +21,5 @@ I-09 veut un Biscuit « révocable », et I-18 une « révocation par agent » (
 
 ## Mesure
 
-- Preuve citée : le module de révocation, épinglé. Il montre le contrôle par jeton, le refus sur magasin indisponible et l'enregistrement de révocation par agent consulté à l'émission. Il porte un trait de magasin, pas un magasin partagé en service : il ne montre pas une révocation reçue par un second vérificateur.
+- Preuve citée : le module de révocation, épinglé. Il porte le contrôle par jeton, le cache des seuls verdicts de révocation, le refus quand le magasin ne répond pas, et l'enregistrement de révocation par agent avec le trait du magasin que l'émission consulte. L'appel à l'émission est dans un autre fichier du même dépôt, et le fichier cité ne contient aucun test. Il porte un trait de magasin, pas un magasin partagé en service. Le test du même dépôt que cite IDN-02 rejoue une révocation de jeton entre deux vérificateurs sur un magasin simulé en mémoire ; il n'est pas cité ici.
 - Prochaine preuve : un test publié où un jeton d'agent déjà émis est refusé par un second vérificateur dès la révocation de l'agent, sans attendre l'échéance.

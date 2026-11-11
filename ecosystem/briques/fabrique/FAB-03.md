@@ -21,4 +21,4 @@ ADR-0042 §3 fixe un ordre de réalisation par dépendances (D53). I-08 n'admet 
 - Preuve locale : `tools/quality/prd-model.ts`. Elle montre la lecture fermée d'une table de lots et de ses critères : un document illisible est refusé, jamais lu comme vide.
 - Preuve épinglée : le module de découpage du domaine de `ai-work-supervision`. Il porte les règles qui valident un plan de tranches et refusent une dépendance inconnue, dupliquée ou cyclique.
 - Aucune des deux ne calcule un ordre.
-- Prochaine preuve : un ordre de réalisation produit par un outil à partir des champs `depend_de` de la carte et des briques sans preuve.
+- Prochaine preuve : un ordre de réalisation produit par un outil à partir des dépendances déclarées d'un plan de tranches. Ordonner aussi par les preuves qui manquent est une proposition de l'agent, non arbitrée.

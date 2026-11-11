@@ -8,7 +8,7 @@ I-30 exige, avant la première publication d'un dépôt, des « contrepreuves ro
 
 - Le contrôle qui reste vert quand on retire ce qu'il vérifie : un site de refus neutralisé sans test rouge est compté comme un défaut.
 - Le test qui casse au lieu d'affirmer : un mutant qui ne provoque qu'un plantage est rapporté à part et compté comme un problème.
-- Le site de refus hors de vue : l'outil compte les sites par son propre motif et échoue sur un site non couvert.
+- Le site de refus hors de vue : l'outil compte les sites par son propre motif et échoue sur un site qui n'a ni marqueur ni exemption motivée.
 
 ## Ce qu'elle ne fait pas
 
@@ -19,5 +19,5 @@ I-30 exige, avant la première publication d'un dépôt, des « contrepreuves ro
 
 ## Mesure
 
-- Preuve citée : l'outil de neutralisation des contrôles d'attestation, dans ce dépôt. Il montre que chaque site de refus de ces outils est rejoué contre un mutant. Il ne couvre que cette surface.
+- Preuve citée : l'outil de neutralisation des contrôles d'attestation, dans ce dépôt. Il montre que chaque site de refus marqué de ces outils est rejoué contre un mutant, et qu'un test doit alors échouer par assertion ; un site exempté n'est pas rejoué, il est compté à part. Il ne couvre que cette surface : la part du rôle qui vise tout système de Libre AI n'a pas de preuve.
 - Prochain fait observable : un jeu de sondes rejoué dans le workflow de release d'un produit, dont une sonde rougit quand la défense visée est neutralisée.

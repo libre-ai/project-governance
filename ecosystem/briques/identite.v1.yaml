@@ -50,11 +50,13 @@ briques:
     nom: Racine par organisation
     role: Rattache chaque jeton à la racine de confiance de son organisation, avec une sous-racine par produit, de sorte qu'aucune clé ne signe pour deux organisations.
     depend_de: [IDN-02]
-    invariants: [I-09]
+    # I-09 veut un tenant obligatoire, que porte IDN-02 ; il ne demande pas de
+    # racine par organisation : voisin, non cité.
+    invariants: []
     decisions: [ADR-0002, ADR-0042, D15, D55, D61]
     # Le tenant obligatoire est dans chaque jeton (D15). La racine par
     # organisation et la sous-racine par produit n'ont pas de source dans la
-    # doctrine : la brique n'a ni dépôt porteur ni preuve.
+    # doctrine : la carte ne donne à la brique ni dépôt porteur ni preuve.
     depots: []
     origine:
       type: inspection

@@ -6,17 +6,17 @@ I-12 fait de GitHub la forge canonique, et pose que les exports git et les artef
 
 ## Ce que la brique ferme
 
-- Un historique que seule la forge sait rendre : le bundle se restaure dans un répertoire propre.
-- Une restauration supposée et jamais exercée : l'empreinte du commit et celle de l'arbre sont comparées après l'aller-retour.
+- Un historique que seule la forge sait rendre : le bundle de `HEAD` se restaure par un clone dans un répertoire propre, sans appel à la forge.
+- Une restauration supposée et jamais exercée : l'empreinte du commit et celle de l'arbre sont comparées après l'aller-retour, et un écart est un échec.
 
 ## Ce qu'elle ne fait pas
 
 - Elle ne migre aucun dépôt et ne nomme aucune forge de remplacement (D03).
 - Elle ne couvre ni les issues ni les pull requests : la spécification du contrôle écrit cette limite.
-- Elle ne modifie aucun ruleset : cet acte reste au propriétaire.
+- Elle ne modifie aucune protection de branche : ADR-0029 §2.8 n'admet cette modification que par l'outil `tools/security/check-branch-protection.ts`.
 
 ## Mesure
 
-Preuve citée : `verification/sovereignty/forge-restore.ts`. Ce contrôle crée un bundle du clone, le restaure et vérifie l'égalité des empreintes du commit de tête et de son arbre. Il montre que l'historique de `HEAD` survit hors de la forge. Il ne montre pas que les rulesets, les protections de branche et les workflows requis sont tenus en données, ni qu'ils sont rejouables ailleurs.
+Preuve citée : `verification/sovereignty/forge-restore.ts`. Ce contrôle crée un bundle de `HEAD` depuis le clone, le restaure et vérifie l'égalité des empreintes du commit de tête et de son arbre. Pour cette brique, il montre la première moitié du rôle, pour ce seul dépôt : la restauration est exercée, et elle ne lit que le clone et le bundle. La spécification du contrôle écrit que le bundle couvre l'historique de `HEAD`. Il ne montre rien de la seconde moitié du rôle : ni rulesets, ni protections de branche, ni workflows requis tenus en données, ni leur rejeu ailleurs.
 
 Prochaine preuve : les rulesets et les workflows requis existent en données dans le dépôt, et un exercice les rejoue sur une forge autre que la forge canonique.

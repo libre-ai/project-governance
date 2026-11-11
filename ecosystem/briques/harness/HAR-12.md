@@ -2,9 +2,11 @@
 
 ## Contexte
 
-I-13 réduit la touche humaine aux invariants, et I-17 ferme la surface où elle reste requise. ADR-0011 gradue déjà l'autonomie d'un run : un premier merge critique d'une couche est un arrêt dur, ses répétitions passent sur revue verte (D4), et des plafonds chiffrés arrêtent un run qui boucle ou dérive (D6). D32 confirme que D4 et D6 restent en vigueur. ADR-0064, proposé, donne par D2 à chaque brique un champ d'autonomie à trois valeurs. Dans les documents de ce dépôt, au 2026-11-11, aucun texte ne nomme un niveau d'autonomie par produit ni un budget d'erreur.
+I-17 ferme la surface où la touche humaine reste requise, « mutations des garde-fous » et « activations » comprises. ADR-0011 gradue déjà l'autonomie d'un run : un premier merge critique d'une couche est un arrêt dur, ses répétitions passent sur revue verte (D4), et des plafonds chiffrés arrêtent un run qui boucle ou dérive (D6). D32 confirme que D4 et D6 restent en vigueur. ADR-0064, proposé, donne par D2 à chaque brique, brique produit comprise, un champ d'autonomie à trois valeurs. Au 2026-11-11, hors de la carte, aucun fichier suivi de ce dépôt ne contient « budget d'erreur », « error budget », « niveau d'autonomie » ni « autonomy level » : une échelle par produit et par classe de données, et un déploiement sous budget d'erreur, sont une proposition de l'agent, non arbitrée. I-13, qui réduit la touche humaine aux invariants, est voisin et n'est pas cité.
 
 ## Ce que la brique ferme
+
+Aucune preuve n'est citée ici : les fermetures ci-dessous sont l'objet de la brique, pas un fait montré.
 
 - Un agent qui déploie sur un produit où il ne devait que proposer.
 - Un niveau d'autonomie tenu par habitude, que rien n'écrit ni ne vérifie.
@@ -19,6 +21,6 @@ I-13 réduit la touche humaine aux invariants, et I-17 ferme la surface où elle
 
 ## Mesure
 
-Preuve citée : aucune. Le champ d'autonomie de la carte porte trois valeurs par brique. Il ne porte pas une échelle par produit et par classe, et la charte d'un produit n'a pas de ligne d'autonomie.
+Preuve citée : aucune. Le champ d'autonomie de la carte porte une valeur parmi trois par brique. Il ne distingue pas les classes de données, et la charte d'un produit, dans le schéma de la carte, n'a pas de ligne d'autonomie.
 
 Prochaine preuve : une charte de produit qui déclare son niveau, et un gate qui refuse une action d'agent au-dessus de ce niveau.

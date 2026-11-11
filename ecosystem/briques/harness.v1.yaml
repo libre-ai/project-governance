@@ -39,20 +39,19 @@ briques:
   - id: HAR-03
     nom: Registre d'outils signé
     role: "Tient la liste fermée des outils qu'un agent peut appeler, chacun avec son empreinte SHA-256 et sa classe de données maximale, et refuse tout outil qui n'y figure pas."
-    depend_de: [GOV-05]
-    invariants: [I-32, I-38]
+    depend_de: []
+    invariants: []
     decisions: [ADR-0045, ADR-0046, ADR-0056, D67]
-    # Le registre lui-même n'est pas écrit. Le premier dépôt porte le verdict
-    # rendu sur un outil que le plan autorisé ne nomme pas ; le second porte le
-    # contrat de plan, où vit la liste des outils d'une exécution.
+    # Aucune preuve citée. Le premier dépôt porte le verdict rendu, après
+    # l'appel, sur un outil que le plan autorisé ne nomme pas ; le second porte
+    # le contrat de plan, où vit la liste des outils d'une exécution. Ce sont
+    # les formes voisines que la fiche nomme ; aucune n'est citée en preuve.
     depots: [libre-ai/execution-continuity-evaluator, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: discover
-    preuve:
-      - date: "2026-10-26"
-        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/tool_observation.rs
+    preuve: []
   - id: HAR-04
     nom: Garde-fous exécutables, juge en second
     role: "Fait juger chaque appel d'outil par un garde déterministe avant son exécution, et n'admet un juge par modèle qu'en second, pour ce que le garde ne lit pas, avec son taux de faux positifs mesuré."
@@ -71,7 +70,7 @@ briques:
         cible: libre-ai/pi-harness-challenger@e0a0bde13553a64ae5d0b637f4243be29ef9c0ea:test/policy-gate.test.mjs
   - id: HAR-05
     nom: Surfaces de pilotage
-    role: "Donne au propriétaire les surfaces où il voit les missions et les sessions d'agents et où il décide, sans pont du navigateur vers un terminal."
+    role: "Montre les missions et les sessions d'agents et recueille les décisions qui reviennent au propriétaire, sans pont du navigateur vers un terminal."
     depend_de: [HAR-02, HAR-07]
     invariants: [I-24, I-37]
     decisions: [ADR-0042]
@@ -91,14 +90,15 @@ briques:
     depend_de: [HAR-02, IDN-04]
     invariants: [I-18, I-32]
     decisions: [ADR-0045, D66]
+    # Aucune preuve citée. Le dépôt porte une forme voisine, que la fiche
+    # nomme : une session déclare son état au démon sous un vocabulaire fermé.
+    # Ce n'est pas un message d'un agent à un autre.
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
-    preuve:
-      - date: "2026-10-24"
-        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/src/hook.rs
+    preuve: []
   - id: HAR-07
     nom: File d'arrêts
     role: "Range chaque arrêt déclaré d'un agent dans une file que le propriétaire lit et tranche, avec la situation qui l'a provoqué et l'intervalle mesuré entre son ouverture et sa réponse."
@@ -119,7 +119,7 @@ briques:
     nom: Contexte versionné
     role: "Versionne le contexte donné aux agents, fichiers d'instructions de dépôt et skills gouvernées, et le rend citable par son empreinte dans une preuve de mission."
     depend_de: []
-    invariants: [I-38]
+    invariants: []
     decisions: [ADR-0050, D73]
     depots: [libre-ai/project-governance]
     origine:
@@ -135,7 +135,7 @@ briques:
     nom: Moteur natif commun
     role: "Exécute en Rust, sans effet ni dépendance à un framework d'agent, le graphe d'exécution autorisé qui doit servir à la fois la fabrique et le harnais."
     depend_de: [HAR-10]
-    invariants: [I-06, I-08]
+    invariants: [I-06]
     # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
     # worker TypeScript ; ADR-0063 (proposé) le renverserait et étendrait le
     # cœur natif à la fabrique et au harnais.
@@ -170,8 +170,8 @@ briques:
     nom: Modules isolés signés
     role: "Fait de chaque skill et de chaque règle un module admis par gate, distribué par un manifeste généré et chargé par son empreinte."
     depend_de: [HAR-08]
-    invariants: [I-25, I-38]
-    decisions: [ADR-0025, ADR-0050, ADR-0053, ADR-0056, D77]
+    invariants: [I-25]
+    decisions: [ADR-0025, ADR-0050, ADR-0053, D77]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -186,7 +186,7 @@ briques:
     nom: Niveaux d'autonomie par produit
     role: "Fixe par produit et par classe de données ce qu'un agent peut faire seul, de la proposition au déploiement sous budget d'erreur, et l'écrit dans la charte du produit."
     depend_de: [GOV-01]
-    invariants: [I-13, I-17]
+    invariants: [I-17]
     decisions: [ADR-0011, ADR-0064, D32]
     # Les règles qui graduent déjà l'autonomie (ADR-0011 D4 et D6, le champ
     # `autonomie` de la carte) vivent dans ce dépôt. Aucune n'est citée en

@@ -48,13 +48,19 @@ briques:
   - id: EXE-03
     nom: Serveur de modèles local
     role: "Sert les modèles admis depuis le poste de l'utilisateur ou un hôte maîtrisé, de sorte qu'une inférence n'envoie par défaut aucun contenu à un tiers."
-    depend_de: [PAS-04]
-    invariants: [I-07, I-10, I-21]
-    decisions: [ADR-0042, ADR-0063, ADR-0065]
+    # Un serveur sert sans routeur : PAS-04 n'est pas une dépendance. Le mot
+    # « admis » du rôle renvoie au registre de GOV-04, que la table d'ADR-0064
+    # D1 ne permet pas à cette couche de citer.
+    depend_de: []
+    # I-10 porte sur le cycle de vie des données, pas sur une inférence hors
+    # ligne : voisin, non cité.
+    invariants: [I-07, I-21]
+    # ADR-0064 D1 est gardé : ADR-0063 renvoie le choix du serveur à la couche
+    # `passerelle`, et c'est la règle de D1 qui range la brique ici.
+    decisions: [ADR-0042, ADR-0063, ADR-0064, ADR-0065]
     # Relevé du 2026-11-11 sur les noms de fichiers des dépôts publics de
     # l'inventaire : aucun ne contient `llama`, `ollama`, `vllm`, `inference`,
-    # `gguf` ni `mlx`. ADR-0063, encore proposé, renvoie le choix du serveur
-    # aux fiches de la carte.
+    # `gguf` ni `mlx`.
     depots: []
     origine:
       type: inspection

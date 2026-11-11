@@ -6,14 +6,14 @@ I-24, posé par ADR-0022 (D31), interdit de supposer que le propriétaire tient 
 
 ## Ce que la brique ferme
 
-- La mission reconstituée à la main depuis des conversations : le rapport donne la demande, le résultat, les preuves, les décisions et la chronologie (I-24).
-- Le renvoi vers un fichier de passation : le fil vit dans l'outil, et le rapport nomme le commit, la preuve et les artefacts par leur empreinte.
-- L'écart passé sous silence : le rapport imprime les codes d'écart de son contrat et marque comme simulation une mission du faux agent.
+- La mission reconstituée à la main depuis des conversations : le rendu donne la demande, le résultat, les preuves, la chronologie, et chaque décision avec ses options, leurs conséquences et leur réversibilité (I-24).
+- Le renvoi vers un fichier de passation : le rendu nomme le commit du résultat, l'empreinte de sa preuve et celle de chaque artefact de phase.
+- L'écart passé sous silence : le rendu imprime les codes d'écart et de blocage de son contrat et marque comme simulation une mission du faux agent.
 
 ## Ce qu'elle ne fait pas
 
 - Elle ne décide rien. Sans FAB-04, elle n'a ni états ni verdicts à rapporter.
-- Elle ne garantit pas l'intégrité des entrées qu'elle lit. Sans PRV-01, sa chronologie n'est pas vérifiable.
+- Elle ne garantit pas l'intégrité des entrées qu'elle lit. Sans PRV-01, elle n'a pas d'entrées de journal dont tirer sa chronologie, ni de quoi la faire vérifier.
 - Elle ne dit pas sous quel contexte la session a travaillé : versionner ce contexte est l'objet de HAR-08.
 
 ## Mesure

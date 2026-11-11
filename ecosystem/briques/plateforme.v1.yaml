@@ -121,8 +121,11 @@ briques:
         cible: libre-ai/personal-knowledge-workspace@9e8dc06dfc21ef798a101ac3d0e221942798ad55:apps/desktop/e2e/accessibility.e2e.ts
   - id: PLT-08
     nom: Poste de pilotage signé
-    role: Livre les outils du poste d'où le propriétaire pilote les agents comme des binaires signés, dont les imports, les droits et les chaînes sont comparés à des listes fermées.
-    depend_de: [PRV-03]
+    role: Livre les outils de pilotage des agents comme des binaires signés, dont les imports sont comparés à une liste fermée, et les droits et les chaînes à des listes d'interdits.
+    # Liste vide : PRV-03 signe ce que la flotte remet à un tiers, et cette
+    # brique ne remet rien à un tiers (ADR-0052) ; au commit cité, le bundle est
+    # signé par un script du dépôt porteur.
+    depend_de: []
     # Liste vide : aucun invariant relu pour cette brique ne porte sur la
     # signature ou le contrôle d'un binaire.
     invariants: []
@@ -140,9 +143,13 @@ briques:
         cible: libre-ai/square-control@493c8dd0bfb18e230f38f8a54f71cb89256a32fc:scripts/check-binary.sh
   - id: PLT-09
     nom: Design system EUPL
-    role: Fournit aux fronts des produits des jetons et des composants d'interface écrits sous EUPL, comme ADR-0054 §3 le demande pour P02.
-    depend_de: [PLT-07]
-    invariants: [I-11, I-29]
+    role: Fournit au front de P02 des jetons et des composants d'interface écrits sous EUPL, comme ADR-0054 §3 le décide pour ce produit.
+    # Liste vide : le rôle écrit ne demande pas le critère d'accessibilité de
+    # PLT-07, nommé comme voisin dans la fiche.
+    depend_de: []
+    # I-29 (réalisation visuelle de la marque, donnée à `ui`) est voisin : la
+    # fiche le nomme pour ce que la brique ne possède pas.
+    invariants: [I-11]
     decisions: [ADR-0033, ADR-0054, D86]
     # Aucun porteur déclaré. Le paquet d'interface existant vit dans
     # `application-development-toolkit` sous Apache-2.0 (relevé du 2026-11-11) :

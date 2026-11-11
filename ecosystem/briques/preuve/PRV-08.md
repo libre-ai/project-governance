@@ -2,11 +2,11 @@
 
 ## Contexte
 
-Aucun invariant du registre ne porte un budget d'erreur par mission (`grep -ciE "budget d.erreur|error budget" docs/decisions/INVARIANTS.md` : 0, au 2026-11-11). La doctrine borne des voisins. ADR-0034 (D40) borne les tentatives d'une étape et exclut les cycles. ADR-0046 (D67) fait tenir par le harness un arrêt typé quand une même action se répète sans progrès. Les plafonds de ressources relèvent de PAS-03. Le budget d'erreur lui-même est une proposition de l'agent, non arbitrée. La brique dépend de PRV-01 : sans journal, l'arrêt ne peut pas être consigné.
+Aucun invariant du registre ne porte un budget d'erreur par mission (`grep -ciE "budget d.erreur|error budget" docs/decisions/INVARIANTS.md` : 0, au 2026-11-11). La doctrine borne des voisins. ADR-0011 D6 arrête un run autonome de vague sur des seuils chiffrés (troisième échec d'une pull request à atteindre le vert, trois pull requests sans progrès) et lui fait produire un dossier avant l'arrêt ; il ne porte pas sur une mission. ADR-0034 (D40) borne les tentatives d'une étape et exclut les cycles. ADR-0046 (D67) fait tenir par le harness un arrêt typé quand une même action se répète sans progrès. Les plafonds de ressources relèvent de PAS-03. Le budget d'erreur par mission est une proposition de l'agent, non arbitrée. La brique dépend de PRV-01 : sans journal, l'arrêt ne peut pas être consigné.
 
 ## Ce que la brique ferme
 
-Aucune de ces fermetures n'est réalisée : la brique n'a ni dépôt porteur ni preuve.
+Cette fiche ne cite aucune preuve et la carte ne donne à la brique aucun dépôt porteur : aucune des fermetures ci-dessous n'est montrée réalisée.
 
 - La mission qui échoue en boucle sous ses plafonds de ressources : le budget d'erreur l'arrêterait.
 - L'alerte que personne ne lit : le dépassement produirait un arrêt consigné au journal, pas un message.

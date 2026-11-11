@@ -6,9 +6,10 @@ ADR-0042 §3 demande que chaque clôture de jalon publie un rapport public daté
 
 ## Ce que la brique ferme
 
-- Un contrôle planifié rouge que personne ne lit : deux échecs consécutifs ouvrent une issue (ADR-0029 §2.5).
+- Un contrôle planifié rouge que personne ne lit : un échec qui suit un échec du même workflow ouvre une issue (ADR-0029 §2.5).
+- Une issue ouverte deux fois pour la même panne : le titre est stable, et l'étape ne crée rien quand une issue ouverte le porte déjà.
 - Une issue d'alerte qui survit au retour au vert : le premier succès la ferme.
-- Un workflow planifié sans alerte : un test échoue quand l'un d'eux ne porte pas les deux étapes.
+- Un échec de branche compté comme une dérive de flotte : seule une exécution planifiée ou lancée à la main compte comme exécution précédente.
 
 ## Ce qu'elle ne fait pas
 
@@ -18,6 +19,6 @@ ADR-0042 §3 demande que chaque clôture de jalon publie un rapport public daté
 
 ## Mesure
 
-Preuve citée : `tools/security/repeat-failure-alert.ts`. Cette étape ouvre une issue quand un contrôle planifié échoue deux fois de suite, et la ferme au premier succès. Elle montre que la mesure périodique a un lecteur. Elle ne montre ni une revue qui en tire une amélioration, ni le rapport de jalon d'ADR-0042 §3.
+Preuve citée : `tools/security/repeat-failure-alert.ts`. Cette étape ouvre une issue quand un contrôle planifié échoue deux fois de suite, et la ferme au premier succès. Son en-tête écrit que chaque workflow planifié de ce dépôt porte les deux étapes et qu'un test, `scheduled-loop-alerting.test.ts`, échoue sinon ; ce test n'est pas cité en preuve ici. Elle montre qu'un échec répété d'un contrôle planifié devient une issue. Elle ne montre ni qu'une personne lit cette issue, ni une revue qui en tire une amélioration, ni le rapport de jalon d'ADR-0042 §3.
 
 Prochaine preuve : un rapport de jalon daté, publié dans l'évidence de ce dépôt et référencé depuis le site.

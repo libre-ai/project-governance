@@ -1,6 +1,6 @@
 schema_version: libre-ai.brique.v1
 couche: publication
-# Règle propre de la couche (ADR-0064 D1) : elle ne publie que des faits
+# Règle propre de la couche (ADR-0064 D1, proposé) : elle ne publie que des faits
 # dérivés, jamais saisis. Chaque fiche dit de quoi son contenu est dérivé, et
 # ce qui reste rédigé à la main quand c'est le cas.
 briques:
@@ -59,10 +59,11 @@ briques:
   - id: PUB-04
     nom: Évidence publique
     role: Projette les sources d'évidence de la forge en un journal et deux flux générés, et fait échouer toute projection qui ne correspond plus à ses sources.
-    # Deux clauses d'I-20 demandent une autre brique : les releases liées à leur
-    # évidence (PRV-02) et les rapports signés (PRV-03). Le journal des verdicts
-    # que le générateur lit est un fichier de ce dépôt.
-    depend_de: [PRV-02, PRV-03]
+    # Aucune dépendance : le générateur ne lit que des fichiers de ce dépôt
+    # (journal des verdicts, attestations, rapports, mesures). Deux clauses
+    # d'I-20 relèvent d'autres briques, que la fiche nomme comme voisines : les
+    # releases liées à leur évidence (PRV-02) et les rapports signés (PRV-03).
+    depend_de: []
     invariants: [I-05, I-20]
     decisions: [ADR-0009]
     depots: [libre-ai/project-governance]
@@ -92,7 +93,10 @@ briques:
   - id: PUB-06
     nom: Voie balisée pour reconstruire
     role: Donne à un tiers sans accès privé un chemin exécutable pour cloner, installer et vérifier la méthode depuis les dépôts publics, et publie l'attestation de chaque passage.
-    depend_de: [GOV-07, PUB-04]
+    # Aucune dépendance : la boucle citée tourne sans contrat ni flux. La
+    # validation d'un contrat relève de GOV-07 et la projection des attestations
+    # de PUB-04 ; la fiche les nomme comme voisines.
+    depend_de: []
     invariants: [I-20]
     decisions: [ADR-0009, ADR-0020]
     depots: [libre-ai/project-governance]
