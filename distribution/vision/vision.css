@@ -261,13 +261,18 @@ ul {
   padding-left: 1.25rem;
 }
 
+/* The region scrolls, the table stays a table: its rows and headers keep their roles. */
+.defilante {
+  overflow-x: auto;
+}
+
+.defilante:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (max-width: 40rem) {
   dl.champs {
     grid-template-columns: 1fr;
-  }
-
-  table {
-    display: block;
-    overflow-x: auto;
   }
 }

@@ -2,11 +2,11 @@
 
 ## Contexte
 
-ADR-0064 D6, proposé, veut la page vision produite sous `distribution/vision/` par un générateur qui lit les seules sorties du vérificateur de la carte. Son contenu est dérivé du graphe des couches, des fiches et des compteurs par statut. Les compteurs et le graphe sont calculés ; les fiches que la page reprend sont rédigées à la main, et sa feuille de style aussi. Le même ADR range la page parmi les projections d'I-05, et ses comptes sous I-14. D6 veut une publication « privée d'abord sous ADR-0038 » ; ADR-0038 règle la première publication d'un dépôt, et D6 ne dit pas comment il s'applique à une page. La page est un fichier de ce dépôt, qui est public, et aucun site ne la sert. D6 veut aussi `vision.md` remplacé par un renvoi vers la page le jour où elle existe : ce remplacement n'est pas fait tant qu'ADR-0064 reste proposé, et `vision.md` reste le texte lu.
+ADR-0064 D6, proposé, veut la page vision produite sous `distribution/vision/` par un générateur qui lit les seules sorties du vérificateur de la carte. Son contenu est dérivé du graphe des couches, des fiches et des compteurs par statut. Les compteurs et la matrice des couches sont calculés ; les fiches que la page reprend sont rédigées à la main, comme sa feuille de style et son texte fixe (titres, légendes, sens de chaque statut), écrit dans le générateur. Le même ADR range la page parmi les projections d'I-05, et ses comptes sous I-14. D6 veut une publication « privée d'abord sous ADR-0038 » ; ADR-0038 règle la première publication d'un dépôt, et D6 ne dit pas comment il s'applique à une page. La page est un fichier de ce dépôt, qui est public, et aucun site ne la sert. D6 veut aussi `vision.md` remplacé par un renvoi vers la page le jour où elle existe : ce remplacement n'est pas fait tant qu'ADR-0064 reste proposé, et `vision.md` reste le texte lu.
 
 ## Ce que la brique ferme
 
-- Une vision tenue en plusieurs endroits qui ne se vérifient pas entre eux : la page n'a qu'une source, la carte.
+- Une vision tenue en plusieurs endroits qui ne se vérifient pas entre eux : la page a pour source la carte, et pour le statut d'ADR-0064 la ligne de statut de cet ADR.
 - Un compte écrit à la main dans un texte public : I-14 exclut tout décompte codé en dur.
 - Une page prise pour une autorité : I-05 pose qu'un artefact généré est une projection, jamais canonique.
 

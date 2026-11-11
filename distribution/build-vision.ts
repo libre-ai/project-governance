@@ -24,7 +24,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -66,6 +66,22 @@ export function escapeHtml(text: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
+}
+
+/** A count with its noun, agreed in number the French way: 0 and 1 are singular. */
+function count(value: number, singular: string, plural: string): string {
+  return `${value} ${value > 1 ? plural : singular}`;
+}
+
+/**
+ * A table inside a named region that scrolls sideways on a narrow screen. The
+ * table keeps its own display, so its rows and headers stay a table to a
+ * screen reader. The region carries no `tabindex`: the linter of this
+ * repository refuses one on a non-interactive element, so a browser that does
+ * not focus a scrolling region by itself scrolls it only by pointer or touch.
+ */
+function scrollable(label: string, table: string): string {
+  return `<section class="defilante" aria-label="${escapeHtml(label)}">${table}</section>`;
 }
 
 /** Escaped text, with `code spans` as the only inline form a fiche keeps. */
@@ -153,14 +169,16 @@ export function renderLayerMatrix(map: BrickMap): string {
             : `<td class="refusee">${declared === 0 ? "—" : declared}</td>`;
         })
         .join("");
-      return `<tr><th scope="row"><a href="#couche-${layer.slug}">${escapeHtml(layer.label)}</a></th>${cells}</tr>`;
+      return `<tr><th scope="row"><a href="#couche-${escapeHtml(layer.slug)}">${escapeHtml(layer.label)}</a></th>${cells}</tr>`;
     })
     .join("");
-  return (
-    `<table class="matrice"><caption>Une ligne est une couche ; une colonne est une couche dont ses briques peuvent dépendre. ` +
-    `Un nombre : la dépendance est admise par la table d'ADR-0064 D1, et c'est le nombre de dépendances que les briques déclarent. ` +
-    `Un tiret : la dépendance n'est pas admise. Sur la diagonale : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>` +
-    `<thead><tr><th scope="col">dépend de →</th>${head}</tr></thead><tbody>${rows}</tbody></table>`
+  return scrollable(
+    "Matrice des dépendances entre couches",
+    `<table class="matrice"><caption>Une ligne est une couche ; une colonne est une couche dont ses briques pourraient dépendre. ` +
+      `Une cellule encadrée : la dépendance est admise par la table d'ADR-0064 D1, et son nombre est celui des dépendances que les briques déclarent. ` +
+      `Un tiret : la dépendance n'est pas admise, et aucune brique ne la déclare. ` +
+      `Sur la diagonale, en italique : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>` +
+      `<thead><tr><th scope="col">dépend de →</th>${head}</tr></thead><tbody>${rows}</tbody></table>`,
   );
 }
 
@@ -199,21 +217,32 @@ function renderBrick(brick: Brick): string {
   const sections = brick.fiche
     .map((section) => `<h4>${escapeHtml(section.title)}</h4>${renderBody(section.body)}`)
     .join("");
+  // What the origin declares beyond its type: the source of an inspection, the date of an observation.
+  const origin = [brick.origine.type, brick.origine.source, brick.origine.date]
+    .filter((part) => part !== undefined)
+    .map(escapeHtml)
+    .join(" — ");
   return (
     `<details class="brique" id="${escapeHtml(brick.id)}">` +
     `<summary><span class="id">${escapeHtml(brick.id)}</span> <span class="nom">${escapeHtml(brick.nom)}</span> ` +
-    `<span class="statut statut-${brick.statut}">${STATUS_LABEL[brick.statut]}</span></summary>` +
+    `<span class="statut statut-${escapeHtml(brick.statut)}">${STATUS_LABEL[brick.statut]}</span></summary>` +
     `<p class="role">${inline(brick.role)}</p>` +
     `<dl class="champs">` +
     `<dt>Dépend de</dt><dd>${dependencies}</dd>` +
     `<dt>Invariants qui la lient</dt><dd>${list(brick.invariants, "aucun")}</dd>` +
     `<dt>Décisions</dt><dd>${list(brick.decisions, "aucune")}</dd>` +
     `<dt>Dépôts porteurs</dt><dd>${list(brick.depots, "aucun")}</dd>` +
-    `<dt>Origine</dt><dd>${escapeHtml(brick.origine.type)}</dd>` +
+    `<dt>Origine</dt><dd>${origin}</dd>` +
     `<dt>Autonomie d'un agent</dt><dd>${escapeHtml(brick.autonomie)}</dd>` +
     (brick.preuve_produite === undefined
       ? ""
       : `<dt>Preuve produite</dt><dd>${inline(brick.preuve_produite)}</dd>`) +
+    (brick.jetable === undefined
+      ? ""
+      : `<dt>Transitoire</dt><dd>${escapeHtml(brick.jetable)}</dd>`) +
+    (brick.retrait === undefined
+      ? ""
+      : `<dt>Retrait</dt><dd><code>${escapeHtml(brick.retrait.decision)}</code>, <time datetime="${escapeHtml(brick.retrait.date)}">${escapeHtml(brick.retrait.date)}</time></dd>`) +
     `</dl>` +
     `<h4>Preuves datées</h4>${proofs}${charter}${sections}` +
     `</details>`
@@ -229,26 +258,33 @@ export function renderVisionHtml(map: BrickMap, standing: AdrStanding): string {
       `<td class="nombre">${counters.par_statut[status]}</td><td>${escapeHtml(STATUS_MEANING[status])}</td></tr>`,
   ).join("");
   const layerRows = map.couches
-    .map(
-      (layer) =>
-        `<tr><th scope="row"><a href="#couche-${layer.slug}">${escapeHtml(layer.label)}</a></th>` +
+    .map((layer) => {
+      // A rule verified in part says which part: « verified » alone would claim the whole rule.
+      const verification = !layer.ownRuleVerified
+        ? "déclarative, non vérifiée"
+        : layer.ownRuleVerifiedOnly === undefined
+          ? "vérifiée par le gate"
+          : `vérifiée par le gate ${layer.ownRuleVerifiedOnly}`;
+      return (
+        `<tr><th scope="row"><a href="#couche-${escapeHtml(layer.slug)}">${escapeHtml(layer.label)}</a></th>` +
         `<td>${escapeHtml(layer.role)}</td>` +
         `<td>${layer.mayDependOn.length === 0 ? "aucune" : layer.mayDependOn.map((slug) => escapeHtml(LAYERS.find((candidate) => candidate.slug === slug)?.label ?? slug)).join(", ")}</td>` +
-        `<td>${inline(layer.ownRule)} <span class="regle">${layer.ownRuleVerified ? "vérifiée par le gate" : "déclarative, non vérifiée"}</span></td>` +
-        `<td class="nombre">${layer.briques.length}</td></tr>`,
-    )
+        `<td>${inline(layer.ownRule)} <span class="regle">${escapeHtml(verification)}</span></td>` +
+        `<td class="nombre">${layer.briques.length}</td></tr>`
+      );
+    })
     .join("");
   const layers = map.couches
     .map(
       (layer) =>
-        `<section class="couche" id="couche-${layer.slug}"><h3>${escapeHtml(layer.label)} <span class="compte">${layer.briques.length} brique${layer.briques.length > 1 ? "s" : ""}</span></h3>` +
+        `<section class="couche" id="couche-${escapeHtml(layer.slug)}"><h3>${escapeHtml(layer.label)} <span class="compte">${count(layer.briques.length, "brique", "briques")}</span></h3>` +
         `<p>${escapeHtml(layer.role)}.</p>${layer.briques.map(renderBrick).join("")}</section>`,
     )
     .join("");
   const unbound =
     counters.sans_invariant.length === 0
       ? "<p>Toutes les briques hors de la couche gouvernance citent au moins un invariant.</p>"
-      : `<p>${counters.sans_invariant.length} brique${counters.sans_invariant.length > 1 ? "s" : ""} hors de la couche gouvernance ${counters.sans_invariant.length > 1 ? "ne sont liées" : "n'est liée"} par aucun invariant : ` +
+      : `<p>${count(counters.sans_invariant.length, "brique", "briques")} hors de la couche gouvernance ${counters.sans_invariant.length > 1 ? "ne sont liées" : "n'est liée"} par aucun invariant : ` +
         `${counters.sans_invariant.map((id) => `<a href="#${escapeHtml(id)}"><code>${escapeHtml(id)}</code></a>`).join(", ")}. ` +
         `C'est la liste de ce que la doctrine ne porte pas encore.</p>`;
   const outside = counters.catalogue_produits - counters.produits_en_brique;
@@ -265,20 +301,26 @@ export function renderVisionHtml(map: BrickMap, standing: AdrStanding): string {
     "<body>",
     "<header>",
     "<h1>Carte des briques</h1>",
-    `<p class="chapeau">La vision Libre AI, en données : ${counters.briques} briques en ${map.couches.length} couches. Cette page est générée depuis <code>ecosystem/briques/</code> par <code>distribution/build-vision.ts</code>. Rien n'y est saisi : ni les comptes, ni les statuts.</p>`,
+    `<p class="chapeau">La vision Libre AI, en données : ${count(counters.briques, "brique", "briques")} en ${count(map.couches.length, "couche", "couches")}. Cette page est générée depuis <code>ecosystem/briques/</code> par <code>distribution/build-vision.ts</code>. Ni les comptes, ni les statuts, ni les fiches n'y sont saisis ; son texte fixe (titres, légendes, sens de chaque statut) est écrit dans le générateur.</p>`,
     `<p class="reserve">Elle applique ${DECISION}, ${standing === "accepted" ? "accepté" : "<strong>encore proposé</strong> : son acceptation est un acte du propriétaire"}.</p>`,
     "</header>",
     "<main>",
     '<section id="statuts"><h2>Statuts dérivés des preuves</h2>',
-    `<table><thead><tr><th scope="col">Statut</th><th scope="col">Briques</th><th scope="col">Ce qu'il veut dire</th></tr></thead><tbody>${statusRows}</tbody></table>`,
-    `<p>Preuves tenues : ${counters.preuves_locales} dans ce dépôt, ${counters.preuves_epinglees} épinglées à un commit d'un dépôt porteur public. ${counters.cibles_partagees} cible${counters.cibles_partagees > 1 ? "s" : ""} de preuve ${counters.cibles_partagees > 1 ? "sont citées" : "est citée"} par plus d'une brique. ${counters.sans_depot_porteur} brique${counters.sans_depot_porteur > 1 ? "s n'ont" : " n'a"} aucun dépôt porteur.</p>`,
+    scrollable(
+      "Statuts dérivés des preuves",
+      `<table><thead><tr><th scope="col">Statut</th><th scope="col">Briques</th><th scope="col">Ce qu'il veut dire</th></tr></thead><tbody>${statusRows}</tbody></table>`,
+    ),
+    `<p>Preuves tenues : ${counters.preuves_locales} dans ce dépôt, ${counters.preuves_epinglees} sous la forme d'une citation épinglée à un commit d'un dépôt porteur. ${count(counters.cibles_partagees, "cible", "cibles")} de preuve ${counters.cibles_partagees > 1 ? "sont citées" : "est citée"} par plus d'une brique. ${count(counters.sans_depot_porteur, "brique", "briques")} ${counters.sans_depot_porteur > 1 ? "n'ont" : "n'a"} aucun dépôt porteur.</p>`,
     "</section>",
     '<section id="couches"><h2>Les couches et leurs dépendances</h2>',
     renderLayerMatrix(map),
-    `<table><thead><tr><th scope="col">Couche</th><th scope="col">Rôle</th><th scope="col">Peut dépendre de</th><th scope="col">Règle propre</th><th scope="col">Briques</th></tr></thead><tbody>${layerRows}</tbody></table>`,
+    scrollable(
+      "Rôle et règle propre de chaque couche",
+      `<table><thead><tr><th scope="col">Couche</th><th scope="col">Rôle</th><th scope="col">Peut dépendre de</th><th scope="col">Règle propre</th><th scope="col">Briques</th></tr></thead><tbody>${layerRows}</tbody></table>`,
+    ),
     "</section>",
     '<section id="produits"><h2>Produits</h2>',
-    `<p>Le catalogue d'ADR-0042 compte ${counters.catalogue_produits} produits : ${counters.produits_en_brique === 0 ? "aucun n'est une brique" : counters.produits_en_brique === 1 ? "1 est une brique" : `${counters.produits_en_brique} sont des briques`}, ${outside} ${outside > 1 ? "restent" : "reste"} hors de la carte, faute de charte.</p>`,
+    `<p>Le catalogue d'ADR-0042 compte ${count(counters.catalogue_produits, "produit", "produits")} : ${counters.produits_en_brique === 0 ? "aucun n'est une brique" : counters.produits_en_brique === 1 ? "1 est une brique" : `${counters.produits_en_brique} sont des briques`}, ${outside} ${outside > 1 ? "restent" : "reste"} hors de la carte.</p>`,
     "</section>",
     '<section id="sans-invariant"><h2>Ce que la doctrine ne porte pas encore</h2>',
     unbound,
@@ -293,11 +335,21 @@ export function renderVisionHtml(map: BrickMap, standing: AdrStanding): string {
   ].join("\n");
 }
 
-/** Whether ADR-0064 is accepted, read the way the doctrine gate reads a status line. */
-export function standingOf(adrText: string): AdrStanding {
-  return adrText.split("\n").some((line) => /Statut.*accepted/i.test(line))
-    ? "accepted"
-    : "proposed";
+/**
+ * What the decision record says of itself: the first word of its one status
+ * line (`- **Statut :** <word> …`), the form every record of `docs/adr` uses.
+ * `null` when the record has no status line, several, or a status that is
+ * neither of the two the page knows how to say: a deferred or superseded
+ * record must not be printed as « encore proposé ».
+ */
+export function standingOf(adrText: string): AdrStanding | null {
+  const statuses = adrText
+    .split("\n")
+    .map((line) => /^- \*\*Statut :\*\* (\p{L}+)/u.exec(line)?.[1])
+    .filter((word) => word !== undefined);
+  if (statuses.length !== 1) return null;
+  if (statuses[0] === "accepted") return "accepted";
+  return statuses[0] === "proposé" || statuses[0] === "proposed" ? "proposed" : null;
 }
 
 export type Projection =
@@ -331,6 +383,14 @@ export function projectVision(
     };
   }
   const standing = standingOf(adrTexts[0] as string);
+  if (standing === null) {
+    return {
+      ok: false,
+      lines: [
+        `Vision not generated: ${DECISION} does not carry exactly one status line whose first word is accepted, proposé or proposed, so the page cannot say its standing.`,
+      ],
+    };
+  }
   return {
     ok: true,
     html: renderVisionHtml(outcome.map, standing),
@@ -339,22 +399,24 @@ export function projectVision(
 }
 
 if (import.meta.main) {
-  const root = process.cwd();
-  // The tracked files only, like the gate: the standing is read from what git tracks.
-  const adrFiles = execFileSync("git", ["ls-files", "-z", "docs/adr"], {
-    encoding: "utf8",
-    cwd: root,
-  })
+  // One root, the repository this script belongs to: the map is read there and
+  // the page is written there, whatever the directory the script is run from.
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const git = (args: readonly string[]): string =>
+    execFileSync("git", args, { encoding: "utf8", cwd: root });
+  // The standing is read from the index, like the map: an edit of the decision
+  // record that git does not track yet does not change the page.
+  const adrFiles = git(["ls-files", "-z", "docs/adr"])
     .split("\0")
     .filter((path) => path.startsWith(`docs/adr/${DECISION.slice(4)}-`));
   const projection = projectVision(
     checkBriques(root),
-    adrFiles.map((path) => readFileSync(`${root}/${path}`, "utf8")),
+    adrFiles.map((path) => git(["show", `:${path}`])),
   );
   if (!projection.ok) {
     for (const line of projection.lines) console.error(line);
     process.exit(1);
   }
-  await Bun.write(fileURLToPath(new URL("./vision/index.html", import.meta.url)), projection.html);
+  await Bun.write(join(root, "distribution/vision/index.html"), projection.html);
   console.log(projection.summary);
 }
