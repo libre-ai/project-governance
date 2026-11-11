@@ -340,6 +340,13 @@ export interface BriquesInput {
   readonly selfRepository: string | null;
   /** What a repository-relative path is: a proof holds on a tracked, regular, non-empty file. */
   readonly localTarget: (path: string) => LocalTarget;
+  /**
+   * Repository-relative paths of the tracked files whose working copy differs
+   * from the index (modified, deleted, or changed of type). The names and the
+   * modes come from the index and the contents from the disk: a file in this
+   * set was judged on a content git does not track, so it is refused (G1).
+   */
+  readonly unstaged: ReadonlySet<string>;
   /** The configuration of the pinned-citations gate, which resolves foreign proofs. */
   readonly citations: {
     readonly organization: string;
@@ -445,6 +452,50 @@ function withoutComments(text: string): string {
 }
 
 /**
+ * A `# ` or `## ` heading at column 0, its closing `#`s removed. Read by index,
+ * not by one expression: a title followed by a long run of spaces made the
+ * expression backtrack quadratically (review of 2026-11-11, G8).
+ */
+function headingOf(line: string): { level: 1 | 2; text: string } | null {
+  const level = line.startsWith("## ") ? 2 : line.startsWith("# ") ? 1 : null;
+  if (level === null) return null;
+  let text = line.slice(level + 1).trim();
+  let end = text.length;
+  while (end > 0 && text[end - 1] === "#") end -= 1;
+  // `## Contexte ##` closes; `## C#` does not: the closing run follows a space.
+  if (end < text.length && (end === 0 || /\s/.test(text[end - 1] as string))) {
+    text = text.slice(0, end).trimEnd();
+  }
+  return text.length === 0 ? null : { level, text };
+}
+
+/**
+ * The prose a reader of the rendered fiche sees, for the rule « the fiche
+ * names what the YAML cites »: headings, comments (closed or not), link
+ * definitions and HTML tags are removed, so an identifier hidden in one of
+ * them does not count as named (G3). A floor, not a Markdown renderer.
+ */
+function readableProse(text: string): string {
+  const closed = withoutComments(text);
+  // What is left of a comment marker is an unterminated comment: hidden to the end.
+  const unterminated = closed.indexOf("<!--");
+  const visible = unterminated === -1 ? closed : closed.slice(0, unterminated);
+  return visible
+    .split("\n")
+    .filter((line) => headingOf(line) === null && !/^\s*\[[^\]]*\]:\s/.test(line))
+    .join("\n")
+    .replace(/<[^>\n]*>/g, " ");
+}
+
+/** Control characters made visible: a value of the data never forges a line of the output. */
+function printable(text: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the control range is the point.
+  return text.replace(/[\u0000-\u001f\u007f]/g, (character) => {
+    return `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`;
+  });
+}
+
+/**
  * A fiche: one `# ` title, then `## ` sections. Licence comments are not
  * content, and a `#` inside a fenced code block is not a heading.
  */
@@ -459,14 +510,13 @@ export function parseFiche(text: string): ParsedFiche {
       if (fence === null) fence = fenced[1] as string;
       else if (fence === fenced[1]) fence = null;
     }
-    const heading =
-      fence === null && fenced === null ? /^(#{1,2})\s+(.+?)(?:\s+#+)?\s*$/.exec(line) : null;
-    if (heading !== null && heading[1] === "#") {
-      titles.push(heading[2] as string);
+    const heading = fence === null && fenced === null ? headingOf(line) : null;
+    if (heading !== null && heading.level === 1) {
+      titles.push(heading.text);
       continue;
     }
     if (heading !== null) {
-      sections.push({ title: heading[2] as string, lines: [] });
+      sections.push({ title: heading.text, lines: [] });
       continue;
     }
     const current = sections.at(-1);
@@ -575,12 +625,23 @@ export function findCycles(
   return cycles;
 }
 
-/** Every string a brick carries, at any depth, for the checks that read its prose. */
-function textsOf(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.flatMap(textsOf);
-  if (value !== null && typeof value === "object") return Object.values(value).flatMap(textsOf);
-  return [];
+/**
+ * The prose a brick carries in its YAML, for the check that no text states a
+ * status. Identifiers, carriers and proof targets are not prose: a path named
+ * `docs/en_cours/x.md` is a path (G10).
+ */
+function proseOf(brick: BrickData): string[] {
+  const charter = brick.charte;
+  return [
+    brick.nom,
+    brick.role,
+    brick.preuve_produite ?? "",
+    brick.jetable ?? "",
+    brick.origine.source ?? "",
+    ...(charter === undefined
+      ? []
+      : [charter.valeur, charter.pour_qui, charter.degel, charter.abandon, ...charter.refus]),
+  ];
 }
 
 /** Whether `text` names `identifier` as a whole token (`D10` is not named by `D103`). */
@@ -601,6 +662,9 @@ interface ProofVerdict {
   readonly kind: "locale" | "epinglee";
   readonly note: string;
 }
+
+const STAGE_FIRST =
+  "its working copy differs from the index: stage it before running the gate, which judges what git tracks";
 
 const LOCAL_TARGET_REFUSAL: Readonly<Record<Exclude<LocalTarget, "regular">, string>> = {
   absent: "is not a tracked file of this repository (stage a new file before running the gate)",
@@ -641,6 +705,9 @@ function judgeProof(
       return refuse(
         `proof target ${proof.cible} is a path of ${input.selfRepository}, which is not a carrier (depots) of the brick`,
       );
+    }
+    if (input.unstaged.has(proof.cible)) {
+      return refuse(`proof target ${proof.cible}: ${STAGE_FIRST}`);
     }
     const target = input.localTarget(proof.cible);
     return target === "regular"
@@ -708,7 +775,14 @@ function count<T extends string>(keys: readonly T[], values: readonly T[]): Reco
  * summed from the same pass.
  */
 export function evaluateBriques(input: BriquesInput): BriquesOutcome {
-  const report = new GateReport();
+  const gate = new GateReport();
+  // Every item and every note goes through one point where control characters
+  // are made visible: a file name, a YAML key or a title of the data cannot
+  // print a line of its own in the output of the gate (G4).
+  const report = {
+    check: (item: string, ok: boolean, note: string) =>
+      gate.check(printable(item), ok, printable(note)),
+  };
 
   // The doctrine sources a brick cites. An empty one is unreadable, not empty.
   report.check(
@@ -778,6 +852,10 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         false,
         "layer file missing: ADR-0064 D1 names eleven layers, and a missing source is not zero bricks",
       );
+      continue;
+    }
+    if (input.unstaged.has(item)) {
+      report.check(item, false, STAGE_FIRST);
       continue;
     }
     const text = input.read(`${rule.slug}.v1.yaml`);
@@ -962,14 +1040,20 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           `origine dated ${brick.origine.date} is in the future (bound: ${input.latestDate})`,
         );
       }
-      const typedInData = TYPED_STATUS.exec(textsOf(brick).join("\n"));
+      const typedInData = TYPED_STATUS.exec(proseOf(brick).join("\n"));
       if (typedInData !== null) {
         errors.push(
           `a field states a status (« ${typedInData[0]} »): ADR-0064 D4, the status is derived, never typed`,
         );
       }
 
-      // Proofs.
+      // Proofs. One artefact is one proof: the same target under two dates
+      // would be held twice (G9).
+      const targets = brick.preuve.map((proof) => proof.cible);
+      const repeated = [...new Set(targets.filter((target, at) => targets.indexOf(target) !== at))];
+      if (repeated.length > 0) {
+        errors.push(`proof target cited twice by the same brick: ${repeated.join(", ")}`);
+      }
       let held = 0;
       for (const proof of brick.preuve) {
         const verdict = judgeProof(brick, proof, layer, input);
@@ -992,7 +1076,9 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         errors.push(`fiche ${BRIQUES_ROOT}/${fichePath} is missing (ADR-0064 D3)`);
       } else {
         const text = input.read(fichePath);
-        if (text === null) {
+        if (input.unstaged.has(`${BRIQUES_ROOT}/${fichePath}`)) {
+          errors.push(`fiche ${BRIQUES_ROOT}/${fichePath}: ${STAGE_FIRST}`);
+        } else if (text === null) {
           errors.push(`fiche ${BRIQUES_ROOT}/${fichePath} is unreadable`);
         } else {
           const fiche = parseFiche(text);
@@ -1022,6 +1108,7 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           // refused wherever they are written in the fiche, in any case, and
           // with or without a Markdown escape.
           const prose = withoutComments(text).replaceAll("\\", "");
+          const readable = readableProse(text);
           const stated = TYPED_STATUS.exec(prose);
           if (stated !== null) {
             errors.push(
@@ -1029,7 +1116,7 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
             );
           }
           const unnamed = [...brick.depend_de, ...brick.invariants, ...brick.decisions].filter(
-            (identifier) => !names(prose, identifier),
+            (identifier) => !names(readable, identifier),
           );
           if (unnamed.length > 0) {
             errors.push(
@@ -1119,10 +1206,10 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     `${counters.sans_depot_porteur} brick(s) without a carrier repository, ${counters.jetables} transitional; ` +
     `${unbound.length} brick(s) outside the gouvernance layer bound by no invariant${unbound.length > 0 ? ` (${unbound.join(", ")})` : ""}; ` +
     `${counters.cibles_partagees} proof target(s) cited by more than one brick`;
-  report.volume(volume);
+  gate.volume(volume);
 
   const map: BrickMap | null =
-    report.violations.length > 0
+    gate.violations.length > 0
       ? null
       : {
           schema_version: SCHEMA_VERSION,
@@ -1132,5 +1219,5 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           })),
           compteurs: counters,
         };
-  return { report, map, volume };
+  return { report: gate, map, volume };
 }

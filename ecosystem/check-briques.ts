@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -84,6 +84,30 @@ function entriesOf(modes: ReadonlyMap<string, string>): TreeEntry[] {
   return entries.sort((left, right) => left.path.localeCompare(right.path, "en"));
 }
 
+/**
+ * Tracked files whose working copy differs from the index: modified, deleted,
+ * changed of type, or reached through a path that became a symbolic link.
+ *
+ * The index gives the names and the modes; the contents are read on disk. On a
+ * CI checkout the two agree. Locally they may not, and a file corrected on disk
+ * but not staged was judged green on a content git does not track: the
+ * evaluation refuses every map file and every proof target of this set. When
+ * git cannot answer, every tracked path is in the set, so nothing passes.
+ */
+function unstagedPaths(root: string): Set<string> {
+  try {
+    const listing = execFileSync("git", ["diff-files", "--name-only", "-z"], {
+      encoding: "utf8",
+      cwd: root,
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return new Set(listing.split("\0").filter(Boolean));
+  } catch {
+    return new Set(trackedModes(root)?.keys() ?? []);
+  }
+}
+
 function readOrNull(path: string): string | null {
   try {
     return readFileSync(path, "utf8");
@@ -122,8 +146,12 @@ function originOf(root: string): string | null {
 export function readBriquesInput(root: string): BriquesInput {
   const modes = trackedModes(root) ?? new Map<string, string>();
 
+  // The decision records are the tracked ones: an untracked `docs/adr/9999-x.md`
+  // is not an ADR a brick may cite (G1).
   const adrDirectory = join(root, "docs/adr");
-  const adrFiles = existsSync(adrDirectory) ? readdirSync(adrDirectory) : [];
+  const adrFiles = [...modes.keys()]
+    .filter((path) => path.startsWith("docs/adr/") && !path.slice("docs/adr/".length).includes("/"))
+    .map((path) => path.slice("docs/adr/".length));
   const adrNumbers = new Set(
     adrFiles.flatMap((name) => /^([0-9]{4})-.+\.md$/.exec(name)?.[1] ?? []),
   );
@@ -193,6 +221,7 @@ export function readBriquesInput(root: string): BriquesInput {
     catalogue: parseCatalogue(catalogueText),
     selfRepository: selfName === null ? null : `${citations.organization}/${selfName}`,
     localTarget,
+    unstaged: unstagedPaths(root),
     citations,
     latestDate: latestAcceptableIso(),
   };

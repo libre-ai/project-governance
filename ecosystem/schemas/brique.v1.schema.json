@@ -96,7 +96,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^I-[0-9]{2}$"
+            "pattern": "^I-[0-9]{2,3}$"
           }
         },
         "decisions": {

@@ -11,7 +11,9 @@ La carte applique ADR-0064, **encore proposé** : son acceptation est un acte du
 
 Le YAML est la source du vérificateur et de la page vision ; la fiche est la source du lecteur. Une brique présente dans l'un et absente de l'autre est une erreur.
 
-La carte est ce que git suit : un fichier non indexé n'en fait pas partie, et un lien symbolique est refusé. Dans un fichier de couche, une clé écrite deux fois pour une même brique ne provoque pas d'erreur : le lecteur YAML garde la dernière.
+La carte est ce que git suit : un fichier non indexé n'en fait pas partie, et un lien symbolique est refusé. Un fichier de la carte, ou une cible de preuve, dont la copie de travail diffère de l'index est refusé lui aussi : le gate ne répond pas d'un contenu que git ne suit pas.
+
+Trois limites du lecteur, déclarées : dans un fichier de couche, une clé écrite deux fois pour une même brique ne provoque pas d'erreur, le lecteur YAML garde la dernière ; le gate lit les titres `# ` et `## ` en début de ligne, pas tout ce qu'un moteur Markdown rendrait comme un titre ; il refuse les quatre valeurs de statut écrites en toutes lettres, pas une graphie qui les imiterait.
 
 ## Ce que le YAML cite, la fiche le nomme
 
@@ -34,7 +36,7 @@ Une preuve est un artefact qui réalise ou exerce la brique (un gate, un contrat
 - un chemin de ce dépôt : un fichier suivi par git, régulier, non vide, hors de `ecosystem/briques/`. Sa date est celle du dernier commit du fichier ;
 - ou une citation épinglée d'un dépôt porteur public, de la forme `organisation/dépôt@<sha de 40 caractères>:<chemin>`, écrite telle quelle, sans échappement ni caractère à sa suite. Elle est résolue par le gate des citations épinglées (`tools/quality/check-pinned-citations.ts`), dont le périmètre liste ce répertoire ; une citation exemptée dans la configuration de ce gate n'est pas une preuve. Sa date est celle du commit épinglé.
 
-Un dépôt privé ne peut pas être cité : une brique portée seulement par un dépôt privé reste `decrite`.
+Un dépôt privé ne peut pas être cité : une brique portée seulement par un dépôt privé reste `decrite`. Une même cible ne se cite qu'une fois par brique. Le gate refuse une date future ; il ne vérifie pas qu'une date est bien celle du commit, c'est une règle de rédaction.
 
 Une preuve montre ce que montre son artefact, rien de plus. La section « Mesure » de la fiche dit exactement quoi, et nomme le fait observable qui ferait la preuve suivante. Un même artefact peut être cité par plusieurs briques ; le gate compte ces cibles partagées. `en_cours` veut donc dire « au moins un artefact existe », pas « la brique fonctionne ».
 

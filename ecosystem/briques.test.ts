@@ -138,6 +138,7 @@ function reference(): World {
       catalogue: new Set(["P01", "P02", "P15"]),
       selfRepository: SELF,
       localTarget: (path): LocalTarget => (path === PROOF ? "regular" : "absent"),
+      unstaged: new Set(),
       citations: {
         organization: "libre-ai",
         scope: ["docs/", "ecosystem/briques/"],
@@ -1086,5 +1087,194 @@ describe("fiches", () => {
     expect(violationsOf(world)).toContain(
       "fiche ecosystem/briques/identite/IDN-01.md is unreadable",
     );
+  });
+});
+
+describe("the index and the working copy (second review, G1)", () => {
+  const STAGE = "its working copy differs from the index: stage it before running the gate";
+
+  test("a layer file changed on disk and not staged is refused, not judged", () => {
+    const world = reference();
+    world.input.unstaged = new Set(["ecosystem/briques/identite.v1.yaml"]);
+    expect(violationsOf(world)).toContain(`ecosystem/briques/identite.v1.yaml: ${STAGE}`);
+  });
+
+  test("a fiche changed on disk and not staged is refused", () => {
+    const world = reference();
+    world.input.unstaged = new Set(["ecosystem/briques/identite/IDN-01.md"]);
+    expect(violationsOf(world)).toContain(
+      `IDN-01: fiche ecosystem/briques/identite/IDN-01.md: ${STAGE}`,
+    );
+  });
+
+  test("a proof target changed on disk and not staged does not hold", () => {
+    const world = reference();
+    world.input.unstaged = new Set([PROOF]);
+    expect(violationsOf(world)).toContain(`PRV-01: proof target ${PROOF}: ${STAGE}`);
+  });
+
+  test("an unstaged file that no brick reads changes nothing", () => {
+    const world = reference();
+    world.input.unstaged = new Set(["docs/elsewhere.md"]);
+    expect(judge(world).report.violations).toEqual([]);
+  });
+});
+
+describe("what a reader sees (second review, G3 to G10)", () => {
+  /** A fiche whose only mention of what the brick cites is `hidden`. */
+  function ficheHiding(world: World, hidden: (cited: string) => string): void {
+    const draft = first(world, "identite");
+    const cited = [...draft.depend_de, ...draft.invariants, ...draft.decisions].join(" ");
+    const sections = FICHE_SECTIONS.map((title) => `## ${title}\n\nTexte de la section.`);
+    setFiche(
+      world,
+      "identite/IDN-01.md",
+      `# ${draft.id} — ${draft.nom}\n\n${sections.join("\n\n")}\n\n${hidden(cited)}\n`,
+    );
+  }
+
+  test.each([
+    ["nowhere", (_cited: string) => "Rien."],
+    ["in a closed comment", (cited: string) => `<!-- ${cited} -->`],
+    ["in a comment that is never closed", (cited: string) => `<!-- ${cited}`],
+    ["in a link definition", (cited: string) => `[//]: # (${cited})`],
+    ["in the attribute of an HTML tag", (cited: string) => `<span title="${cited}"></span>`],
+    ["in a heading", (cited: string) => `## ${cited}`],
+  ])("an identifier named %s is not named for a reader", (_name, hidden) => {
+    const world = reference();
+    ficheHiding(world, hidden);
+    expect(violationsOf(world)).toContain(
+      "the YAML cites GOV-01, I-08, ADR-0064, which the fiche never names",
+    );
+  });
+
+  test("named in a sentence, each identifier is named; a longer one does not name it", () => {
+    const world = reference();
+    ficheHiding(world, (cited) => `La brique cite ${cited}.`);
+    expect(judge(world).report.violations).toEqual([]);
+
+    const longer = reference();
+    ficheHiding(longer, () => "La brique cite XGOV-01, GOV-010, I-081, XI-08 et ADR-00640.");
+    expect(violationsOf(longer)).toContain(
+      "the YAML cites GOV-01, I-08, ADR-0064, which the fiche never names",
+    );
+  });
+
+  test.each([
+    ["degel", "Bientôt, une release signée."],
+    ["abandon", "Aucun relais réel après deux SEMAINES."],
+  ] as const)("a delay word is refused in any case: charte.%s « %s »", (field, text) => {
+    const world = reference();
+    first(world, "produit").charte = { ...CHARTER, [field]: text };
+    expect(violationsOf(world)).toContain(`charte.${field} names a delay`);
+  });
+
+  test("a word that only contains a delay word is not one", () => {
+    const world = reference();
+    first(world, "produit").charte = {
+      ...CHARTER,
+      degel: "Le pain moisi, les séjours et les semainiers ne sont pas des délais.",
+    };
+    expect(judge(world).report.violations).toEqual([]);
+  });
+
+  test("a status value is a whole word: a longer word is not one", () => {
+    const world = reference();
+    setFiche(
+      world,
+      "identite/IDN-01.md",
+      ficheOf(first(world, "identite")).replace(
+        "Texte de la section.",
+        "Les mots indecrite, en_cours_de et retireeX ne sont pas des valeurs.",
+      ),
+    );
+    expect(judge(world).report.violations).toEqual([]);
+  });
+
+  test("a path or a carrier is not prose: it may hold the letters of a status", () => {
+    const world = reference();
+    world.input.localTarget = () => "regular";
+    world.input.repositories = new Map([
+      ...world.input.repositories,
+      ["libre-ai/retiree", { visibility: "public" }],
+    ]);
+    first(world, "preuve").depots = [SELF, "libre-ai/retiree"];
+    first(world, "preuve").preuve = [{ date: "2026-10-10", cible: "docs/en_cours/x.md" }];
+    expect(judge(world).report.violations).toEqual([]);
+  });
+
+  test("a status inside a list of the charter is refused", () => {
+    const world = reference();
+    first(world, "produit").charte = { ...CHARTER, refus: ["Rester decrite sans preuve."] };
+    expect(violationsOf(world)).toContain("PRD-02: a field states a status (« decrite »)");
+  });
+
+  test("one artefact is one proof: the same target under two dates is refused", () => {
+    const world = reference();
+    first(world, "preuve").preuve = [
+      { date: "2026-10-10", cible: PROOF },
+      { date: "2026-10-11", cible: PROOF },
+    ];
+    expect(violationsOf(world)).toContain(
+      `PRV-01: proof target cited twice by the same brick: ${PROOF}`,
+    );
+  });
+
+  test("a withdrawn brick may still depend on a withdrawn brick", () => {
+    const world = reference();
+    first(world, "identite").retrait = { decision: "D103", date: "2026-11-09" };
+    for (const slug of ["harness", "passerelle", "execution", "preuve", "produit"] as const) {
+      first(world, slug).retrait = { decision: "D103", date: "2026-11-09" };
+    }
+    const violations = violationsOf(world);
+    expect(violations).not.toContain("depends on IDN-01, which is withdrawn");
+  });
+
+  test("a fence closes with the fence that opened it", () => {
+    const fiche = parseFiche(
+      "# A\n\n## Contexte\n\n```\n~~~\n## pas un titre\n```\n\n## Mesure\n\nx\n",
+    );
+    expect(fiche.sections.map((section) => section.title)).toEqual(["Contexte", "Mesure"]);
+  });
+
+  test("a heading is read in linear time, and `##` alone is not a heading", () => {
+    expect(parseFiche("# A ##\n\n## C#\n\nx\n\n##\n").titles).toEqual(["A"]);
+    expect(parseFiche("# A\n\n## C#\n\nx\n").sections[0]?.title).toBe("C#");
+    const started = performance.now();
+    parseFiche(`# x${" ".repeat(400_000)}x\n`);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  test.each([
+    [
+      "the path of a tracked entry",
+      (world: World) =>
+        world.extraEntries.push({ path: "x\n::error title=forged::y", kind: "file" }),
+    ],
+    [
+      "an unknown key of a brick",
+      (world: World) => {
+        (first(world, "identite") as Record<string, unknown>)["x\n::error title=forged::y"] = 1;
+      },
+    ],
+    [
+      "a section title of a fiche",
+      (world: World) =>
+        setFiche(
+          world,
+          "identite/IDN-01.md",
+          "# IDN-01 — Brique IDN-01\n\n## A\r::error::y\n\nx\n",
+        ),
+    ],
+  ])("%s cannot print a line of its own", (_name, plant) => {
+    const world = reference();
+    plant(world);
+    const violations = judge(world).report.violations;
+    expect(violations.length).toBeGreaterThan(0);
+    for (const violation of violations) {
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control range is the point.
+      expect(violation).not.toMatch(/[\u0000-\u001f\u007f]/);
+    }
+    expect(violations.join(" ")).toContain("\\x0");
   });
 });

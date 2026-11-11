@@ -280,8 +280,47 @@ describe("check-briques as a process", () => {
   test("two files carrying the catalogue number: neither is chosen by directory order", () => {
     const root = freshTree("two-catalogues");
     write(root, "docs/adr/0042-autre.md", "### 1. Le catalogue d'applications\n\n| A | P09 |\n");
+    git(root, "add", "docs/adr/0042-autre.md");
     const outcome = judge(root);
     expect(outcome.output).toContain("catalogue of ADR-0042 §1: 0 product(s) read");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an untracked decision record is not an ADR a brick may cite", () => {
+    const root = freshTree("untracked-adr");
+    write(root, "docs/adr/9999-fantome.md", "# ADR-9999\n");
+    const layer = join(root, "ecosystem/briques/identite.v1.yaml");
+    writeFileSync(layer, readFileSync(layer, "utf8").replace('"ADR-0064"', '"ADR-9999"'));
+    const fiche = join(root, "ecosystem/briques/identite/IDN-01.md");
+    writeFileSync(fiche, readFileSync(fiche, "utf8").replace("ADR-0064", "ADR-9999"));
+    git(root, "add", "ecosystem/briques");
+    const outcome = judge(root);
+    expect(outcome.output).toContain("IDN-01: cites ADR-9999, which docs/adr/ does not hold");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a fiche corrected on disk and not staged is not judged green", () => {
+    const root = freshTree("unstaged-fiche");
+    const fiche = join(root, "ecosystem/briques/identite/IDN-01.md");
+    const staged = readFileSync(fiche, "utf8");
+    // Staged with a status, then corrected on disk only: the disk is clean,
+    // the index is not, and the gate must not answer for the disk.
+    writeFileSync(fiche, staged.replace("Texte.", "Statut : `en_cours`."));
+    git(root, "add", "ecosystem/briques");
+    writeFileSync(fiche, staged);
+    const outcome = judge(root);
+    expect(outcome.output).toContain(
+      "IDN-01: fiche ecosystem/briques/identite/IDN-01.md: its working copy differs from the index",
+    );
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("the map replaced on disk by a link that is not staged is not followed", () => {
+    const root = freshTree("root-link-unstaged");
+    renameSync(join(root, "ecosystem/briques"), join(root, "ecosystem/briques-real"));
+    symlinkSync("briques-real", join(root, "ecosystem/briques"));
+    const outcome = judge(root);
+    expect(outcome.output).toContain("its working copy differs from the index");
     expect(outcome.exitCode).toBe(1);
   });
 
@@ -327,7 +366,16 @@ describe("check-briques as a process", () => {
       "a tracked file deleted from the working copy",
       "docs/proof.md",
       (root: string) => unlinkSync(join(root, "docs/proof.md")),
-      "proof target docs/proof.md is not a tracked file",
+      "proof target docs/proof.md: its working copy differs from the index",
+    ],
+    [
+      "a tracked file replaced on disk by a link out of the tree",
+      "docs/proof.md",
+      (root: string) => {
+        unlinkSync(join(root, "docs/proof.md"));
+        symlinkSync("/etc/hosts", join(root, "docs/proof.md"));
+      },
+      "proof target docs/proof.md: its working copy differs from the index",
     ],
     [
       "the fiche of the brick itself",
@@ -335,10 +383,12 @@ describe("check-briques as a process", () => {
       (_root: string) => {},
       "is part of the map itself",
     ],
-  ])("a proof target that is %s does not hold", (_name, cible, prepare, expected) => {
-    const root = freshTree(`target-${cible.replaceAll("/", "_")}`);
+  ])("a proof target that is %s does not hold", (name, cible, prepare, expected) => {
+    const root = freshTree(`target-${name.replaceAll(/[^a-z]+/g, "-")}`);
     prepare(root);
     retarget(root, "preuve", cible);
+    // The map is staged again; what `prepare` left unstaged stays so.
+    git(root, "add", "ecosystem/briques");
     const outcome = judge(root);
     expect(outcome.output).toContain(expected);
     expect(outcome.exitCode).toBe(1);
