@@ -1,0 +1,161 @@
+schema_version: libre-ai.brique.v1
+couche: plateforme
+# Règle de couche (ADR-0064 D1, proposé) : une coquille n'a pas de logique
+# métier. La couche ne dépend que de `preuve`, d'`execution` et d'elle-même.
+# Plateformes : macOS d'abord (ADR-0057 §4, en vigueur) ; Linux au second palier
+# avec son déclencheur écrit est ADR-0064 D7, proposé, dont la ligne d'arbitrage
+# reprend le choix du propriétaire du 2026-11-09.
+briques:
+  - id: PLT-01
+    nom: Cœur Rust par produit
+    role: Porte dans le cœur Rust d'un produit les fonctions que la coquille appelle par son pont, sans en réimplémenter aucune.
+    depend_de: []
+    invariants: [I-06]
+    decisions: [ADR-0042, ADR-0044, ADR-0057, ADR-0063, ADR-0065, D96, D97]
+    depots: [libre-ai/personal-knowledge-workspace, libre-ai/square-control]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/personal-knowledge-workspace@9e8dc06dfc21ef798a101ac3d0e221942798ad55:apps/desktop/tests/bridge/no-reimplementation.test.ts
+      - date: "2026-10-24"
+        cible: libre-ai/square-control@493c8dd0bfb18e230f38f8a54f71cb89256a32fc:crates/layout/tests/golden.rs
+  - id: PLT-02
+    nom: Coquilles Tauri 2 et PWA
+    role: Présente le cœur d'un produit dans une coquille Tauri 2 sur macOS ou dans une PWA, sous des contrôles vérifiés par vecteur rouge et sans aucune règle métier.
+    depend_de: [PLT-01]
+    invariants: [I-06, I-08, I-37]
+    decisions: [ADR-0042, ADR-0054, ADR-0057, ADR-0063, ADR-0064, D92, D96, D98]
+    # `project-governance` porte les règles de la coquille (gabarit de référence,
+    # champ `desktop_shell` du schéma de fiche et son contrôle). Ce contrôle
+    # n'est pas cité en preuve : au 2026-11-11, aucune fiche lue à la racine des
+    # dépôts publics actifs de l'inventaire ne déclare ce champ.
+    depots: [libre-ai/personal-knowledge-workspace, libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/personal-knowledge-workspace@9e8dc06dfc21ef798a101ac3d0e221942798ad55:apps/desktop/src-tauri/tests/shell_controls.rs
+  - id: PLT-03
+    nom: Canaux de distribution
+    role: Achemine vers ses utilisateurs un artefact construit et signé, par des canaux nommés dont aucun ne devient la source qui fait autorité.
+    depend_de: [PLT-04, PRV-03]
+    invariants: [I-12, I-20]
+    decisions: [ADR-0042, ADR-0054, ADR-0057, ADR-0064, D81, D98]
+    # Aucun porteur déclaré. Au 2026-11-11, l'API de la forge ne rend aucune
+    # release pour `personal-knowledge-workspace`, `square-control` ni
+    # `ai-work-supervision`.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: PLT-04
+    nom: Construction reproductible
+    role: Épingle les toolchains, les actions et les dépendances de chaque dépôt et refuse une version plus jeune que l'âge minimal déclaré, pour qu'un même commit se construise à partir des mêmes entrées.
+    depend_de: []
+    invariants: [I-28]
+    decisions: [ADR-0001, ADR-0031, ADR-0049, D37, D71]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-10"
+        cible: ecosystem/check-release-age.ts
+      - date: "2026-10-09"
+        cible: ecosystem/check-toolchain-source.ts
+  - id: PLT-05
+    nom: Matrice de compatibilité
+    role: Tient par produit et par palier la liste des cibles sur lesquelles une promesse est faite, chacune inscrite après qualification par un parcours réel.
+    depend_de: [PLT-02]
+    # Liste vide : la promesse de plateforme vient d'ADR-0042 §6, et aucun
+    # invariant relu pour cette brique ne la porte.
+    invariants: []
+    decisions: [ADR-0006, ADR-0042, ADR-0054, ADR-0057, ADR-0064, D90, D98]
+    depots: [libre-ai/personal-knowledge-workspace]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/personal-knowledge-workspace@9e8dc06dfc21ef798a101ac3d0e221942798ad55:tools/qualification/notebook-core-v2/check-resource-class.ts
+  - id: PLT-06
+    nom: Retour arrière et fin de vie
+    role: Nomme le retour arrière de chaque release et sort du service un produit, un dépôt ou un contenu par gel, archivage ou éviction, sans rien détruire.
+    depend_de: [PLT-03, EXE-02]
+    invariants: [I-07, I-23]
+    decisions: [ADR-0019, ADR-0035, ADR-0042, D41]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-09"
+        cible: tools/quality/check-forgotten.ts
+      - date: "2026-10-09"
+        cible: ecosystem/check-inventory-drift.ts
+  - id: PLT-07
+    nom: Accessibilité RGAA
+    role: Fixe pour chaque cible ce qu'une interface expose aux technologies d'assistance, et en fait un critère mesuré de la qualification d'un produit.
+    depend_de: [PLT-02]
+    # Liste vide : aucun invariant du registre ne porte sur l'accessibilité
+    # d'une interface (lecture du 2026-11-11).
+    invariants: []
+    decisions: [ADR-0001, ADR-0044, ADR-0057, D97]
+    depots: [libre-ai/personal-knowledge-workspace, libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/personal-knowledge-workspace@9e8dc06dfc21ef798a101ac3d0e221942798ad55:apps/desktop/e2e/accessibility.e2e.ts
+  - id: PLT-08
+    nom: Poste de pilotage signé
+    role: Livre les outils de pilotage des agents comme des binaires signés, dont les imports sont comparés à une liste fermée, et les droits et les chaînes à des listes d'interdits.
+    # Liste vide : PRV-03 signe ce que la flotte remet à un tiers, et cette
+    # brique ne remet rien à un tiers (ADR-0052) ; au commit cité, le bundle est
+    # signé par un script du dépôt porteur.
+    depend_de: []
+    # Liste vide : aucun invariant relu pour cette brique ne porte sur la
+    # signature ou le contrôle d'un binaire.
+    invariants: []
+    decisions: [ADR-0042, ADR-0052, D76]
+    # `ai-work-supervision` porte le cockpit de la fabrique. Au 2026-11-11,
+    # aucun chemin de son arbre ne nomme une signature et l'API de la forge ne
+    # lui rend aucune release : il n'est pas porteur de la livraison signée.
+    depots: [libre-ai/square-control]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/square-control@493c8dd0bfb18e230f38f8a54f71cb89256a32fc:scripts/check-binary.sh
+  - id: PLT-09
+    nom: Design system EUPL
+    role: Fournit au front de P02 des jetons et des composants d'interface écrits sous EUPL, comme ADR-0054 §3 le décide pour ce produit.
+    # Liste vide : le rôle écrit ne demande pas le critère d'accessibilité de
+    # PLT-07, nommé comme voisin dans la fiche.
+    depend_de: []
+    # I-29 (réalisation visuelle de la marque, donnée à `ui`) est voisin : la
+    # fiche le nomme pour ce que la brique ne possède pas.
+    invariants: [I-11]
+    decisions: [ADR-0033, ADR-0054, D86]
+    # Aucun porteur déclaré. Le paquet d'interface existant vit dans
+    # `application-development-toolkit` sous Apache-2.0 (relevé du 2026-11-11) :
+    # le citer ici trancherait une question de licence non arbitrée.
+    depots: []
+    origine:
+      type: propre
+    autonomie: modify
+    preuve: []

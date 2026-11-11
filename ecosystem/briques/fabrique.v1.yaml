@@ -1,0 +1,222 @@
+schema_version: libre-ai.brique.v1
+couche: fabrique
+# De l'idée à la remise du code (ADR-0064 D1, proposé). Règle propre de la
+# couche, vérifiée par `check-briques` : chaque brique déclare la preuve
+# qu'elle produit (`preuve_produite`). Une preuve épinglée cite un dépôt porteur
+# public au commit lu ; elle est résolue par le gate des citations épinglées.
+briques:
+  - id: FAB-01
+    nom: Entrées et triage
+    role: "Reçoit chaque demande comme une entrée typée et la fait qualifier par un acteur, dans des états fermés : à promouvoir en mission, ou à écarter avec son motif, déjà faite, déjà refusée ou autre."
+    depend_de: [GOV-01]
+    invariants: [I-13, I-19]
+    decisions: [ADR-0042, D52]
+    depots: [libre-ai/project-governance, libre-ai/ai-work-supervision, libre-ai/.github]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-20"
+        cible: tools/quality/check-issue-forms.ts
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/coordination.rs
+    preuve_produite: "L'entrée typée et sa décision de tri rendue comme événement à journaliser : promotion en mission, ou écartement avec son motif nommé."
+  - id: FAB-02
+    nom: Charte de brique
+    role: "Fixe pour chaque brique produit cinq lignes lisibles hors du projet : la valeur, le public, le fait de dégel, le fait d'abandon et les refus."
+    depend_de: [GOV-03, FAB-13]
+    invariants: []
+    decisions: [ADR-0042, ADR-0064]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-11-11"
+        cible: ecosystem/schemas/brique.v1.schema.json
+    preuve_produite: La charte en données d'une brique produit, dont le dégel et l'abandon nomment chacun un fait observable.
+  - id: FAB-03
+    nom: Affinage par dépendances
+    role: Découpe une entrée admise en tranches rattachées à des critères vérifiables et les ordonne par leurs dépendances déclarées.
+    depend_de: [FAB-01]
+    invariants: [I-08]
+    decisions: [ADR-0042, D53]
+    depots: [libre-ai/project-governance, libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-20"
+        cible: tools/quality/prd-model.ts
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/outline.rs
+    preuve_produite: Le plan de tranches validé, où chaque tranche nomme ce qu'elle démontre et celles qu'elle attend.
+  - id: FAB-04
+    nom: Mission Work Supervision
+    role: Conduit un travail confié à un agent comme une mission à états fermés, du brief au résultat que le propriétaire accepte ou rejette sur preuve.
+    depend_de: [HAR-02, PRV-01]
+    invariants: [I-13, I-21]
+    decisions: [ADR-0042, D52, D53, D55]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/model.rs
+    preuve_produite: "Le résultat de mission accepté : un commit, une preuve et un résumé, sans lesquels l'acceptation est refusée."
+  - id: FAB-05
+    nom: Oracle de parité
+    role: Compare un produit livré aux fonctions requises de sa matrice de parité, par des tests d'acceptation dont le seuil est figé avant la mesure.
+    depend_de: []
+    invariants: [I-27]
+    decisions: [ADR-0027, ADR-0042, D34, D55]
+    # Le schéma des fiches de projet de ce dépôt exige d'un produit ses
+    # critères de promotion, ses prédicats d'arrêt et son étalon : les règles
+    # de la brique y vivent. Hors un fichier de test, aucun fichier de code de
+    # ce dépôt ne nomme `promotion_criteria` ni `kill_predicates` (relevé du
+    # 2026-11-11).
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+    preuve_produite: "À produire : le verdict de parité d'un produit, chaque fonction requise passée ou non, mesurée sur du code livré après son jalon de dogfooding."
+  - id: FAB-06
+    nom: Gates de porte et négatives
+    role: Refuse une pull request dont la description ne déclare pas sa réversibilité et l'origine de son problème, ou dont le diff touche une surface qu'elle déclare ne pas toucher.
+    depend_de: [GOV-01]
+    invariants: [I-17]
+    decisions: [ADR-0056, ADR-0059, ADR-0060, ADR-0062, D95, D102]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: tools/quality/check-pr-door.ts
+      - date: "2026-10-26"
+        cible: tools/quality/check-pr-negatives.ts
+    preuve_produite: Le verdict des checks requis « Door declaration » et « Negatives declaration » sur la pull request jugée.
+  - id: FAB-07
+    nom: Livraison par anneaux
+    role: Fait passer une release d'un cercle de destinataires au suivant, du propriétaire au public, sans qu'elle saute un cercle ni perde sa révision de retour.
+    depend_de: [GOV-01]
+    invariants: [I-07]
+    decisions: [ADR-0035, D41]
+    # Aucun dépôt porteur déclaré. ADR-0035 pose les conditions d'une release ;
+    # les ADR, le registre, les méthodes et les spécifications de ce dépôt ne
+    # nomment pas d'anneaux (relevé du 2026-11-11).
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve: []
+    preuve_produite: "À produire : la trace du passage d'une release par chaque cercle, avec son candidat immuable, son smoke test après déploiement et sa révision précédente récupérable."
+  - id: FAB-08
+    nom: Tranche de bout en bout
+    role: Fait traverser à un seul travail toute la chaîne, de l'entrée au résultat accepté avec sa preuve, avant tout élargissement du périmètre.
+    depend_de: [FAB-01, FAB-04]
+    invariants: [I-19]
+    decisions: [ADR-0042, D53]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/tests/b_prime_simulation.rs
+    preuve_produite: "La chaîne tracée d'une tranche, de l'entrée à la mission et à son résultat accepté avec sa preuve, lisible dans un journal vérifié ; à produire pour une tranche réelle, la répétition citée étant une simulation."
+  - id: FAB-09
+    nom: Pull request de flotte
+    role: "Remet un changement à la flotte sous une forme unique : description au gabarit, commits signés DCO et fusion par squash sur checks requis verts."
+    depend_de: [FAB-06]
+    invariants: [I-11]
+    decisions: [ADR-0056, ADR-0059, D23, D68, D102]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: skills/pr-body/SKILL.md
+      - date: "2026-10-14"
+        cible: .github/workflows/reusable-licensing.yml
+    preuve_produite: "La pull request fusionnée par squash : bloc de déclaration en tête, sign-off DCO sur chaque commit et checks requis verts sur sa tête."
+  - id: FAB-10
+    nom: Graphe de tâches natif
+    role: Exécute un plan autorisé comme un graphe fini et acyclique d'étapes à issues fermées, une seule étape prête à la fois, dans un cœur Rust sans effet.
+    depend_de: [GOV-07, HAR-09]
+    invariants: [I-06, I-32]
+    # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
+    # worker TypeScript ; ADR-0063 (proposé) le renverserait. La brique est
+    # écrite sur le graphe autorisé d'ADR-0034 et son cœur d'ADR-0037, natifs
+    # et sans dépendance à un framework sous l'un comme sous l'autre.
+    decisions: [ADR-0034, ADR-0037, ADR-0058, ADR-0063, D40, D43, D66]
+    depots: [libre-ai/execution-continuity-evaluator]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/authorized_execution/graph.rs
+      - date: "2026-10-26"
+        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:tests/authorized_execution_graph.rs
+    preuve_produite: "La décision fermée du cœur sur un graphe et sur chaque transition ; à produire : le rejeu de l'état d'une mission de la fabrique par ce cœur."
+  - id: FAB-11
+    nom: Fil de mission
+    role: Rassemble pour une mission ce qui a été demandé, ce qui a été fait, les décisions prises et les preuves, dans un rapport lisible sans avoir suivi l'historique.
+    depend_de: [FAB-04, PRV-01]
+    invariants: [I-24]
+    decisions: [ADR-0022, ADR-0042, D31]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/src/report.rs
+    preuve_produite: "Le rapport de mission : brief, critères et leurs checks, résultat, écarts nommés, décisions et chronologie des entrées du journal."
+  - id: FAB-12
+    nom: Décisions en données
+    role: "Tient chaque décision demandée au propriétaire comme une donnée : la question, ses options et leurs conséquences, qui l'a ouverte, quand, et la réponse datée."
+    depend_de: [GOV-01]
+    invariants: [I-17, I-24]
+    decisions: [ADR-0022, ADR-0060, ADR-0062, D31, D74]
+    depots: [libre-ai/project-governance, libre-ai/ai-work-supervision, libre-ai/.github]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve:
+      - date: "2026-11-11"
+        cible: tools/quality/check-review-evidence.ts
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-store/migrations/sqlite/0004_coordination.sql
+    preuve_produite: "L'enregistrement daté d'une demande de décision et de sa réponse ; à produire : la liste des demandes encore ouvertes."
+  - id: FAB-13
+    nom: Vérificateur de la carte
+    role: Lit dans l'index git les fichiers de couche et les fiches, refuse toute dépendance que la table des couches n'admet pas et toute citation que la fiche ne nomme pas, dérive le statut des preuves et imprime ses compteurs.
+    depend_de: [GOV-02]
+    invariants: [I-14]
+    decisions: [ADR-0042, ADR-0064]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: propre
+    autonomie: discover
+    preuve:
+      - date: "2026-11-11"
+        cible: ecosystem/check-briques.ts
+      - date: "2026-11-11"
+        cible: ecosystem/briques.ts
+    preuve_produite: "Le verdict du gate avec ses compteurs : briques lues par couche, statuts dérivés, preuves tenues et violations nommées."

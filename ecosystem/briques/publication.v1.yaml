@@ -1,0 +1,126 @@
+schema_version: libre-ai.brique.v1
+couche: publication
+# Règle propre de la couche (ADR-0064 D1, proposé) : elle ne publie que des faits
+# dérivés, jamais saisis. Chaque fiche dit de quoi son contenu est dérivé, et
+# ce qui reste rédigé à la main quand c'est le cas.
+briques:
+  - id: PUB-01
+    nom: Page vision générée
+    role: Génère la page vision depuis les seules sorties du vérificateur de la carte (graphe des couches, fiches, compteurs par statut), sans qu'aucun texte y soit saisi.
+    # La page lit les sorties du vérificateur de la carte, qui est une brique de
+    # la couche fabrique. La table d'ADR-0064 D1 n'admet pas cette dépendance
+    # pour la couche publication : la décision D6 est citée, la dépendance non.
+    depend_de: []
+    invariants: [I-05, I-14]
+    # ADR-0064 est cité pour sa décision D6, et la fiche le dit proposé.
+    decisions: [ADR-0064]
+    # ADR-0064 D6 place la page sous `distribution/vision/` de ce dépôt, qui
+    # porte ses données (la carte). Au 2026-11-11, ce répertoire est absent de
+    # l'arbre suivi.
+    depots: [libre-ai/project-governance]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve: []
+  - id: PUB-02
+    nom: Catalogue à statut dérivé
+    role: Publie la liste des produits et des dépôts avec, pour chacun, un état calculé depuis sa fiche et ses preuves, jamais déclaré à la main.
+    depend_de: [GOV-03]
+    invariants: [I-05, I-14, I-15]
+    # ADR-0064 est cité pour sa ligne « Amende » (le catalogue reste la source,
+    # la carte en est la projection) et pour D4 ; la fiche le dit proposé.
+    decisions: [ADR-0042, ADR-0064, D52]
+    # Le profil d'organisation, qui publie la table, vit dans le dépôt `.github`
+    # de l'organisation.
+    depots: [libre-ai/project-governance, libre-ai/.github]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve:
+      - date: "2026-10-08"
+        cible: ecosystem/render-fleet-status.ts
+      - date: "2026-10-09"
+        cible: tools/presentation/check-org-readme-drift.ts
+  - id: PUB-03
+    nom: Site par public, bilingue, RGAA
+    role: Sert aux lecteurs extérieurs, par public et en deux langues, des pages statiques construites depuis des projections épinglées et soumises à un contrôle d'accessibilité.
+    depend_de: [PUB-02, PUB-07]
+    invariants: [I-05, I-15, I-29, I-37]
+    decisions: [ADR-0033, ADR-0035]
+    depots: [libre-ai/project-website]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve:
+      - date: "2026-11-09"
+        cible: libre-ai/project-website@ce582756e0f2911be7fa9cf57cb8a2d34912e204:src/build-site.ts
+      - date: "2026-11-09"
+        cible: libre-ai/project-website@ce582756e0f2911be7fa9cf57cb8a2d34912e204:e2e/website.e2e.ts
+  - id: PUB-04
+    nom: Évidence publique
+    role: Projette les sources d'évidence de la forge en un journal et deux flux générés, et fait échouer toute projection qui ne correspond plus à ses sources.
+    # Aucune dépendance : le générateur ne lit que des fichiers de ce dépôt
+    # (journal des verdicts, attestations, rapports, mesures). Deux clauses
+    # d'I-20 relèvent d'autres briques, que la fiche nomme comme voisines : les
+    # releases liées à leur évidence (PRV-02) et les rapports signés (PRV-03).
+    depend_de: []
+    invariants: [I-05, I-20]
+    decisions: [ADR-0009]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-08"
+        cible: distribution/build-feeds.ts
+      - date: "2026-10-08"
+        cible: .github/workflows/feeds-freshness.yml
+  - id: PUB-05
+    nom: Contributions
+    role: Fait entrer toute contribution par une pull request dont chaque commit est signé DCO et dont chaque fichier porte une licence, sous les mêmes contrôles requis quel que soit son auteur.
+    depend_de: [GOV-01]
+    invariants: [I-11]
+    decisions: [D23]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-14"
+        cible: .github/workflows/reusable-licensing.yml
+  - id: PUB-06
+    nom: Voie balisée pour reconstruire
+    role: Donne à un tiers sans accès privé un chemin exécutable pour cloner, installer et vérifier la méthode depuis les dépôts publics, et publie l'attestation de chaque passage.
+    # Aucune dépendance : la boucle citée tourne sans contrat ni flux. La
+    # validation d'un contrat relève de GOV-07 et la projection des attestations
+    # de PUB-04 ; la fiche les nomme comme voisines.
+    depend_de: []
+    invariants: [I-20]
+    decisions: [ADR-0009, ADR-0020]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-09"
+        cible: verification/adoption/reproduce.ts
+      - date: "2026-10-09"
+        cible: .github/workflows/adoption-proof.yml
+  - id: PUB-07
+    nom: Marque ouverte et vérifiable
+    role: Tient la promesse, la voix et les qualifications publiques de Libre AI dans une source unique, dont les surfaces publiques ne reçoivent que des projections générées.
+    depend_de: []
+    invariants: [I-01, I-05, I-29]
+    decisions: [ADR-0033, D39, D75]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve:
+      - date: "2026-10-07"
+        cible: brand/build-public-projection.ts
+      - date: "2026-10-07"
+        cible: tools/quality/check-brand-platform.ts

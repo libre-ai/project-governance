@@ -1,0 +1,242 @@
+schema_version: libre-ai.brique.v1
+couche: gouvernance
+# Couche sans dépendance vers une autre couche (ADR-0064 D1, proposé) : tout `depend_de`
+# est vide ou ne nomme que des briques `GOV-…`. Toute écriture sur ces briques
+# tombe sur la surface à touche humaine d'I-17 : un agent y propose, le
+# propriétaire décide (`autonomie: discover`).
+briques:
+  - id: GOV-01
+    nom: Propriétaire, agents, gates
+    role: "Répartit les actes entre le propriétaire, qui signe la surface à touche humaine, les agents, qui écrivent sous les gates, et les gates, qui refusent ce qui n'est pas prouvé."
+    depend_de: []
+    invariants: [I-13, I-17, I-24]
+    decisions: [ADR-0009, ADR-0022, ADR-0043, D31, D68]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-11-11"
+        cible: tools/quality/check-review-evidence.ts
+  - id: GOV-02
+    nom: Invariants en couches
+    role: "Tient le registre des invariants comme seule liste de la doctrine et rattache chaque invariant à la couche et à la classe de dépôt qu'il lie."
+    depend_de: [GOV-01]
+    invariants: [I-03, I-17]
+    decisions: [ADR-0008, D103]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-14"
+        cible: tools/quality/check-doctrine-governance.sh
+  - id: GOV-03
+    nom: Dégel et retrait de produit
+    role: "Fait sortir un produit du gel, ou le retire du portefeuille, sur un fait observable écrit dans sa charte et sur une décision du propriétaire consignée au registre."
+    depend_de: [GOV-01]
+    invariants: [I-14, I-17, I-27]
+    # ADR-0064 est cité pour sa décision D2 (charte : fait de dégel, fait
+    # d'abandon), et la fiche le dit proposé.
+    decisions: [ADR-0042, ADR-0052, ADR-0054, ADR-0055, ADR-0064, D53, D76, D80, D89, D94]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-09"
+        cible: ecosystem/check-inventory-drift.ts
+  - id: GOV-04
+    nom: Registre d'admission des modèles
+    role: "Tient la liste des modèles qu'un produit peut appeler et rend un verdict de refus par défaut pour tout modèle dont un fait requis manque."
+    depend_de: [GOV-01]
+    # Le registre des invariants, lu le 2026-11-11, ne porte aucune règle
+    # d'admission d'un modèle. ADR-0063, proposé, la renvoie à un ADR candidat
+    # distinct.
+    invariants: []
+    decisions: [ADR-0042, ADR-0063]
+    depots: [libre-ai/ai-model-policy]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-model-policy@1069ff6153cc13dd07c588e7f4ca7073520d2ffc:crates/policy-core/src/evaluator.rs
+  - id: GOV-05
+    nom: Registre des dépendances et tiers
+    role: "Recense les dépendances et les tiers dont la flotte dépend, leur origine de distribution, les avis publiés qui les touchent et les projets évalués puis écartés."
+    depend_de: []
+    invariants: [I-26]
+    decisions: [ADR-0021, ADR-0042, ADR-0056, D30, D54]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-07"
+        cible: verification/sovereignty/lockfile-inventory.ts
+      - date: "2026-10-24"
+        cible: tools/quality/check-refusals.ts
+  - id: GOV-06
+    nom: Conformité déclarée par dépôt
+    role: "Fait déclarer à chaque dépôt son état et ses écarts dans une fiche que les gates de flotte lisent, en nommant chaque échec par dépôt."
+    depend_de: [GOV-02]
+    invariants: [I-08, I-14, I-15]
+    decisions: [ADR-0020, D29]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-08"
+        cible: ecosystem/check-fleet-presentation.ts
+      - date: "2026-10-08"
+        cible: ecosystem/check-context-conformance.ts
+  - id: GOV-07
+    nom: Contrats canoniques et vecteurs
+    role: "Tient les contrats canoniques et leurs vecteurs dans une seule autorité, d'où les frontières Rust et TypeScript sont générées et validées."
+    depend_de: [GOV-01]
+    invariants: [I-03, I-05, I-08, I-17]
+    decisions: [ADR-0036, ADR-0047, D08, D42, D69]
+    depots: [libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/catalog.v1.json
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/fixtures/authorized-execution-v1/decision-binding-vectors.v1.json
+  - id: GOV-08
+    nom: Spécifications ouvertes
+    role: "Impose à chaque spécification d'application une structure commune, publiée dans le dépôt du produit et vérifiée avant le verrouillage de ses contrats."
+    depend_de: [GOV-07]
+    invariants: []
+    decisions: [ADR-0002, ADR-0020]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-09-17"
+        cible: tools/quality/check-specification-lock.ts
+  - id: GOV-09
+    nom: Boucle de management (plan, mesure, revue, amélioration)
+    role: "Relie le plan, la mesure, la revue et l'amélioration par des contrôles périodiques dont l'échec répété ouvre une issue et par un rapport daté à chaque clôture de jalon."
+    depend_de: [GOV-06]
+    invariants: []
+    decisions: [ADR-0029, ADR-0042, D53]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-07"
+        cible: tools/security/repeat-failure-alert.ts
+  - id: GOV-10
+    nom: Littératie publique
+    role: "Vérifie qu'un lecteur extérieur sans contexte comprend, depuis les seules surfaces publiques, ce que fait le projet et ce qu'il ne prouve pas."
+    depend_de: []
+    invariants: []
+    decisions: []
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-09"
+        cible: verification/adoption/cold-reader/cold-reader.ts
+  - id: GOV-11
+    nom: Marquage des contenus générés
+    role: "Exige que tout contenu produit par un agent porte la déclaration de son origine, que son destinataire peut vérifier."
+    depend_de: []
+    invariants: []
+    decisions: []
+    depots: [libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/agent-contributor-lineage.v1.schema.json
+  - id: GOV-12
+    nom: Analyse d'impact par produit
+    role: "Fait établir, pour tout produit qui traite des données de personnes, une analyse d'impact que le propriétaire signe lui-même."
+    depend_de: [GOV-01]
+    invariants: []
+    # ADR-0025 admet la skill `rgpd-dpia`, qui renvoie au gabarit cité en preuve.
+    decisions: [ADR-0025]
+    depots: [libre-ai/organization-data-lifecycle]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/organization-data-lifecycle@6414e96aba39d24178ba33c4ec005e7754259c77:packages/rgpd-kit/src/aida-template.ts
+  - id: GOV-13
+    nom: Rétention et effacement exécutables
+    role: "Applique à chaque catégorie de données une durée de rétention exécutée par balayage et rend un reçu pour chaque suppression."
+    depend_de: [GOV-07]
+    invariants: [I-10]
+    decisions: [ADR-0002, D17]
+    depots: [libre-ai/organization-data-lifecycle, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/organization-data-lifecycle@6414e96aba39d24178ba33c4ec005e7754259c77:packages/data/src/retention-sweep.ts
+      - date: "2026-10-24"
+        cible: libre-ai/organization-data-lifecycle@6414e96aba39d24178ba33c4ec005e7754259c77:packages/data/src/deletion-receipt.ts
+  - id: GOV-14
+    nom: Passation et transmission
+    role: "Transforme ce qu'une session a lu, mesuré ou décidé en un écrit que la session suivante cite comme une donnée."
+    depend_de: []
+    invariants: []
+    decisions: [ADR-0028, ADR-0042, D53]
+    # Aucun dépôt porteur n'est déclaré : aucune preuve n'est citée.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve: []
+  - id: GOV-15
+    nom: Forge substituable
+    role: "Garde la forge remplaçable en exerçant la restauration du dépôt hors de la forge et en tenant en données ce que la forge applique."
+    depend_de: []
+    invariants: [I-12]
+    decisions: [ADR-0029, D03]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: propre
+    autonomie: discover
+    preuve:
+      - date: "2026-10-07"
+        cible: verification/sovereignty/forge-restore.ts
+  - id: GOV-16
+    nom: Souveraineté des modèles
+    role: "Fixe qu'aucun modèle n'entre dans le plan de données d'un produit sans admission, et qu'un fournisseur distant se déclare par produit avec son substitut."
+    depend_de: [GOV-04, GOV-05]
+    invariants: []
+    decisions: [ADR-0063]
+    # Aucun dépôt porteur n'est déclaré : au 2026-11-11, `docs/adr` ne porte
+    # pas l'ADR qui déciderait la règle.
+    depots: []
+    origine:
+      type: propre
+    autonomie: discover
+    preuve: []

@@ -1,7 +1,8 @@
 name: pinned-citations
 
 # Pinned-citations gate (tools/quality/check-pinned-citations.ts): every pinned
-# code citation of docs/ (`libre-ai/<repository>@<sha>:<path>[:<lines>]`) names a
+# code citation of the declared scope — docs/ and, since 2026-11-11, the brick
+# map under ecosystem/briques/ — (`libre-ai/<repository>@<sha>:<path>[:<lines>]`) names a
 # repository, a commit, a path and lines that exist, and an ADR above the
 # threshold of tools/quality/pinned-citations.v1.json cites no bare path:line it
 # cannot resolve here and no local pin (`<sha>:<path>`) this repository does not

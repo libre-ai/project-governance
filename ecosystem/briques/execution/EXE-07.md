@@ -1,0 +1,22 @@
+# EXE-07 — Environnements éphémères
+
+## Contexte
+
+ADR-0042 §3 fait avancer plusieurs lignes produit en même temps, chaque dépôt n'ayant qu'un propriétaire à la fois. Son §10 (D62) admet que Work Supervision crée ses worktrees par le `git` du système, appelé en processus séparé. `ai-work-supervision` porte la crate correspondante : un worktree par mission, sur une branche à son nom, qu'une opération crée et qu'une autre retire. Chaque étape s'y écrit en trois temps : intention au journal, effet dans git, confirmation au journal. La brique ne couvre que l'arbre de travail d'un dépôt. Aucun invariant du registre ne la lie.
+
+## Ce que la brique ferme
+
+- Deux missions qui écrivent dans le même arbre de travail et mêlent leurs changements : chaque mission reçoit un arbre et une branche nommés d'après elle.
+- Le résidu d'une mission interrompue : une intention sans confirmation est résolue à la reprise.
+- La suppression sans trace : un abandon archive d'abord le diff, dont seules l'empreinte et la taille entrent au journal.
+
+## Ce qu'elle ne fait pas
+
+- Elle ne confine pas ce qui s'exécute dans l'environnement : c'est EXE-01.
+- Elle ne tient pas le journal où elle écrit : c'est PRV-01.
+- Elle ne supprime pas le résultat accepté d'une mission, dont la branche est conservée.
+
+## Mesure
+
+- Preuves citées : la crate de worktrees de `ai-work-supervision` et son test de cycle de vie. Ils montrent la création, le retrait, l'archivage du diff avant un abandon, et la réconciliation après une panne injectée à chacun des points que la crate déclare. Le test tourne sur un dépôt fabriqué : il ne montre aucune mission réelle, ni que la création suit l'ouverture d'une mission et le retrait sa clôture.
+- Prochaine preuve : une mission réelle dont le journal porte la confirmation de retrait de son environnement, vérifiée par un outil distinct de celui qui l'a écrite.

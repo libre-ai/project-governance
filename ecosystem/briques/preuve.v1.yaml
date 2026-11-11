@@ -1,0 +1,199 @@
+schema_version: libre-ai.brique.v1
+couche: preuve
+# Journal, provenance, signature, menace, audit (ADR-0064 D1, encore proposé).
+# La couche ne dépend que de `identite` et d'elle-même. Une preuve citée ici est
+# un module, un contrat, un jeu de vecteurs ou un gate qui réalise la brique ;
+# une brique sans dépôt porteur garde `depots: []` et `preuve: []`.
+briques:
+  - id: PRV-01
+    nom: Journal scellé
+    role: Enregistre chaque événement d'une organisation dans un journal en ajout seul, chaîné par empreintes, qu'un vérificateur indépendant relit hors de la base qui l'a produit.
+    depend_de: []
+    # I-09 n'apparaît que par la dérogation de la v0, et I-20 vise le journal
+    # public des verdicts de gates : voisins, non cités.
+    invariants: []
+    decisions: [ADR-0042, D55]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    # Les deux cibles montrent un journal mono-utilisateur, sans organisation.
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-journal/src/journal.rs
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-journal-verifier/src/lib.rs
+  - id: PRV-02
+    nom: Manifeste de provenance
+    role: Décrit un artefact par la liste de ses fichiers, leurs tailles et leurs empreintes, et le lie au rapport d'évidence qui l'a autorisé, avec refus fermé de tout écart.
+    depend_de: []
+    invariants: [I-20]
+    decisions: [ADR-0009]
+    depots: [libre-ai/artifact-verification, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/artifact-verification@d3403d2792ef88f9c0e3a78284efddc45d3884cd:src/verify.rs
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/artifact-manifest.v1.schema.json
+  - id: PRV-03
+    nom: Signature des artefacts
+    role: Signe ce que la flotte remet à un tiers (binaire de release, rapport d'évidence, enregistrement de provenance) et en fait vérifier la signature avant usage, avec refus fermé.
+    depend_de: [PRV-04]
+    invariants: [I-20]
+    decisions: [ADR-0009, ADR-0042, ADR-0057, D57, D98]
+    depots: [libre-ai/artifact-verification, libre-ai/pi-evidence]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    # Les deux cibles signent des enregistrements de preuve, aucun binaire.
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/artifact-verification@d3403d2792ef88f9c0e3a78284efddc45d3884cd:packages/provenance/src/index.ts
+      - date: "2026-10-24"
+        cible: libre-ai/pi-evidence@fd2dfacf2c307c28b863b63a9f8c595b43c3e9a1:src/signer.ts
+  - id: PRV-04
+    nom: Gestion des clés
+    role: Génère, scelle, enregistre, fait tourner et retire les clés de signature de la flotte selon une cérémonie écrite et tenue hors ligne, seule la clé publique entrant dans un dépôt.
+    depend_de: []
+    # Aucun invariant ne porte la gestion des clés : la rotation est écrite dans
+    # la spécification d'identité et dans le mode opératoire de la cérémonie.
+    invariants: []
+    decisions: [ADR-0028, ADR-0046, D35]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # Générer, enregistrer ou retirer une clé est un acte du propriétaire.
+    autonomie: discover
+    preuve:
+      - date: "2026-10-07"
+        cible: tools/security/keygen-ceremony.ts
+  - id: PRV-05
+    nom: Détection sur les agents
+    role: Rejoue les observations signées des appels d'outil d'un agent et rend un verdict fermé et déterministe, sans lire de contenu et sans acquérir d'autorité.
+    depend_de: [IDN-04]
+    invariants: [I-18, I-33]
+    decisions: [ADR-0045, ADR-0046, D66, D67]
+    depots: [libre-ai/execution-continuity-evaluator, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    # Les signatures des vecteurs sont des octets nuls : aucune signature de
+    # harness n'y est vérifiée.
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/tool_observation.rs
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/fixtures/tool-invocation-observation-v1/vectors.json
+  - id: PRV-06
+    nom: Adversaire continu
+    role: Rejoue contre les seuls systèmes de Libre AI des sondes et des contrepreuves qui doivent rougir dès qu'une défense est neutralisée.
+    depend_de: []
+    invariants: [I-30]
+    decisions: [ADR-0038, D44]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-14"
+        cible: tools/attestation/neutralise-check.ts
+  - id: PRV-07
+    nom: Modèle de menace par produit
+    role: Tient pour chaque surface et chaque produit la liste des menaces, le contrôle ou l'invariant qui porte chacune, et le registre des risques résiduels.
+    depend_de: []
+    # Le modèle cite des invariants menace par menace ; aucun ne demande qu'un
+    # modèle de menace existe.
+    invariants: []
+    decisions: [ADR-0049, D71]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-09"
+        cible: tools/quality/check-threat-model-citations.ts
+      - date: "2026-11-09"
+        cible: docs/security/THREAT-MODEL.md
+  - id: PRV-08
+    nom: Coupe-circuit
+    role: Arrête une mission dès que son budget d'erreur est dépassé et consigne l'arrêt, au lieu d'émettre une alerte.
+    depend_de: [PRV-01]
+    invariants: []
+    # ADR-0011 D6 est cité comme voisin le plus proche : il arrête un run
+    # autonome de vague sur des seuils d'échec chiffrés, pas une mission sur un
+    # budget d'erreur.
+    decisions: [ADR-0011, ADR-0034, ADR-0046, D40, D67]
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: PRV-09
+    nom: Nomenclature des modèles et données
+    role: Liste les modèles, les poids et les jeux de données qu'un produit embarque ou appelle, chacun avec son empreinte, sa source et sa licence.
+    depend_de: []
+    invariants: []
+    decisions: [ADR-0021, D30]
+    # ADR-0021 donne à la flotte l'état du monde des avis sur les dépendances
+    # de code ; la brique n'a ni dépôt porteur ni preuve.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: PRV-10
+    nom: Signature des modèles
+    role: Vérifie la signature des poids d'un modèle contre une clé connue avant tout chargement, et refuse fermé un modèle non signé.
+    depend_de: [PRV-03]
+    invariants: []
+    decisions: [ADR-0063]
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: PRV-11
+    nom: Coffre et injection par mandat
+    role: Garde les secrets hors des dépôts et du contexte des modèles, et n'en remet un à une mission qu'au point d'usage, pour la portée et la durée de son mandat.
+    depend_de: [IDN-02, IDN-04]
+    invariants: []
+    decisions: [ADR-0042, D53]
+    # Brique de méthode. Le produit P37 du catalogue d'ADR-0042 §1 n'est pas
+    # cette brique.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # Proposition de l'agent, non arbitrée : la remise d'un secret reste un acte
+    # du propriétaire tant qu'aucune décision ne la délègue.
+    autonomie: discover
+    preuve: []
+  - id: PRV-12
+    nom: Collaboration chiffrée de bout en bout
+    role: Fait circuler tout contenu échangé entre les membres d'un groupe comme message MLS natif, dont le destinataire vérifie la signature de l'expéditeur avant toute application.
+    depend_de: []
+    invariants: [I-34]
+    decisions: [ADR-0048, D70]
+    depots: [libre-ai/collaborative-data-sync, libre-ai/schemas-and-contracts]
+    origine:
+      type: propre
+    # ADR-0048 tient l'intégration MLS pour un incrément cadré, non délégable.
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/fixtures/mls-sender-authentication-candidate/red-vectors.v1.json
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:tools/quality/mls-sender-authentication.ts

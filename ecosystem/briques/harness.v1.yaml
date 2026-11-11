@@ -1,0 +1,199 @@
+schema_version: libre-ai.brique.v1
+couche: harness
+# Conduire les agents (ADR-0064 D1, proposé). Deux sens du mot « harness »
+# coexistent dans la doctrine, et le LEXICON relève l'ambiguïté sans la
+# trancher : le cadre d'exécution des agents de la méthode, et l'outil
+# agentique d'ingénierie. Cette couche décrit le premier ; seuls des dépôts de
+# la flotte y sont cités en `depots` et en `preuve`.
+briques:
+  - id: HAR-01
+    nom: Contrat de brique
+    role: "Déclare pour toute brique exécutable ses entrées, ses sorties, ses effets et la preuve attendue, sous une forme qu'un gate peut lire."
+    depend_de: [GOV-07]
+    invariants: [I-03]
+    decisions: [ADR-0034]
+    # Aucun dépôt porteur déclaré : le schéma de la carte déclare le rôle, les
+    # dépendances et les preuves, pas les effets.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: HAR-02
+    nom: Session confinée
+    role: "Fait de chaque session d'agent un objet qui porte son identité, sa zone de confinement et son journal, et qui refuse de démarrer sans eux."
+    depend_de: [EXE-01, IDN-02, IDN-04]
+    invariants: [I-18, I-38]
+    decisions: [ADR-0018, ADR-0042]
+    depots: [libre-ai/ai-work-supervision, libre-ai/execution-sandbox]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-pty/src/session.rs
+      - date: "2026-10-24"
+        cible: libre-ai/execution-sandbox@f45bb3e1a1152c0e2b2f6e4944584a5c0298c8c0:src/host/run.rs
+  - id: HAR-03
+    nom: Registre d'outils signé
+    role: "Tient la liste fermée des outils qu'un agent peut appeler, chacun avec son empreinte SHA-256 et sa classe de données maximale, et refuse tout outil qui n'y figure pas."
+    depend_de: []
+    invariants: []
+    decisions: [ADR-0045, ADR-0046, ADR-0056, D67]
+    # Aucune preuve citée. Le premier dépôt porte le verdict rendu, après
+    # l'appel, sur un outil que le plan autorisé ne nomme pas ; le second porte
+    # le contrat de plan, où vit la liste des outils d'une exécution. Ce sont
+    # les formes voisines que la fiche nomme ; aucune n'est citée en preuve.
+    depots: [libre-ai/execution-continuity-evaluator, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve: []
+  - id: HAR-04
+    nom: Garde-fous exécutables, juge en second
+    role: "Fait juger chaque appel d'outil par un garde déterministe avant son exécution, et n'admet un juge par modèle qu'en second, pour ce que le garde ne lit pas, avec son taux de faux positifs mesuré."
+    depend_de: [HAR-03]
+    invariants: [I-17, I-32]
+    decisions: [ADR-0045, D66]
+    depots: [libre-ai/pi-harness-challenger]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-13"
+        cible: libre-ai/pi-harness-challenger@e0a0bde13553a64ae5d0b637f4243be29ef9c0ea:extensions/policy-gate/policy.mjs
+      - date: "2026-10-13"
+        cible: libre-ai/pi-harness-challenger@e0a0bde13553a64ae5d0b637f4243be29ef9c0ea:test/policy-gate.test.mjs
+  - id: HAR-05
+    nom: Surfaces de pilotage
+    role: "Montre les missions et les sessions d'agents et recueille les décisions qui reviennent au propriétaire, sans pont du navigateur vers un terminal."
+    depend_de: [HAR-02, HAR-07]
+    invariants: [I-24, I-37]
+    decisions: [ADR-0042]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cockpit/src/lib.rs
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/src/tui.rs
+  - id: HAR-06
+    nom: Dialogue entre agents
+    role: "Fait circuler tout message d'agent à agent comme une métadonnée typée, jamais comme un texte libre placé dans le contexte d'un modèle qui détient un outil à effet."
+    depend_de: [HAR-02, IDN-04]
+    invariants: [I-18, I-32]
+    decisions: [ADR-0045, D66]
+    # Aucune preuve citée. Le dépôt porte une forme voisine, que la fiche
+    # nomme : une session déclare son état au démon sous un vocabulaire fermé.
+    # Ce n'est pas un message d'un agent à un autre.
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: HAR-07
+    nom: File d'arrêts
+    role: "Range chaque arrêt déclaré d'un agent dans une file que le propriétaire lit et tranche, avec la situation qui l'a provoqué et l'intervalle mesuré entre son ouverture et sa réponse."
+    depend_de: [GOV-01, HAR-02]
+    invariants: [I-17, I-24]
+    decisions: [ADR-0022, ADR-0034, ADR-0051, D74]
+    depots: [libre-ai/ai-work-supervision, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/coordination.rs
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/human-decision-request.v1.schema.json
+  - id: HAR-08
+    nom: Contexte versionné
+    role: "Versionne le contexte donné aux agents, fichiers d'instructions de dépôt et skills gouvernées, et le rend citable par son empreinte dans une preuve de mission."
+    depend_de: []
+    invariants: []
+    decisions: [ADR-0050, D73]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-08"
+        cible: ecosystem/check-context-conformance.ts
+      - date: "2026-10-14"
+        cible: tools/skills/build-skills-manifest.ts
+  - id: HAR-09
+    nom: Moteur natif commun
+    role: "Exécute en Rust, sans effet ni dépendance à un framework d'agent, le graphe d'exécution autorisé qui doit servir à la fois la fabrique et le harnais."
+    depend_de: [HAR-10]
+    invariants: [I-06]
+    # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
+    # worker TypeScript ; ADR-0063 (proposé) le renverserait et étendrait le
+    # cœur natif à la fabrique et au harnais.
+    decisions: [ADR-0034, ADR-0037, ADR-0058, ADR-0063, D40, D43]
+    depots: [libre-ai/execution-continuity-evaluator]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/authorized_execution/graph.rs
+      - date: "2026-10-26"
+        cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:tests/authorized_execution_vectors.rs
+  - id: HAR-10
+    nom: Protocole unique
+    role: "Fixe en contrats versionnés le seul protocole par lequel le moteur, le harnais et les workers échangent plans, invocations, événements et attestations."
+    depend_de: [GOV-07]
+    invariants: [I-03, I-08, I-17]
+    decisions: [ADR-0034, ADR-0036, D42]
+    depots: [libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/step-invocation.v1.schema.json
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/fixtures/authorized-execution-v1/semantic-vectors.v1.json
+  - id: HAR-11
+    nom: Modules isolés signés
+    role: "Fait de chaque skill et de chaque règle un module admis par gate, distribué par un manifeste généré et chargé par son empreinte."
+    depend_de: [HAR-08]
+    invariants: [I-25]
+    decisions: [ADR-0025, ADR-0050, ADR-0053, D77]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-14"
+        cible: tools/skills/check-skills.ts
+      - date: "2026-10-13"
+        cible: tools/skills/check-skills-cascade.ts
+  - id: HAR-12
+    nom: Niveaux d'autonomie par produit
+    role: "Fixe par produit et par classe de données ce qu'un agent peut faire seul, de la proposition au déploiement sous budget d'erreur, et l'écrit dans la charte du produit."
+    depend_de: [GOV-01]
+    invariants: [I-17]
+    decisions: [ADR-0011, ADR-0064, D32]
+    # Les règles qui graduent déjà l'autonomie (ADR-0011 D4 et D6, le champ
+    # `autonomie` de la carte) vivent dans ce dépôt. Aucune n'est citée en
+    # preuve : aucune ne fixe un niveau par produit et par classe.
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve: []
