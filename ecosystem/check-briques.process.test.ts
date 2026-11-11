@@ -3,6 +3,8 @@ import {
   copyFileSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -14,18 +16,20 @@ import { dirname, join } from "node:path";
 import { FICHE_SECTIONS, LAYERS, SCHEMA_VERSION } from "./briques";
 
 /**
- * The brick-map gate run as a process, against a real tree.
+ * The brick-map gate run as a process, against a real repository.
  *
  * WHY A PROCESS. `briques.test.ts` judges a map held in memory: it proves the
- * rules, and nothing about the half that reads the disk. Whether a symbolic
- * link is seen as a link, whether an unreadable doctrine file becomes a
- * failure, whether the name of the repository is derived from the remote, and
- * whether a violation reaches the exit code are all decided in
+ * rules, and nothing about the half that reads git and the disk. Whether a
+ * symbolic link is seen as a link, whether a proof target is a tracked file
+ * and not merely something `existsSync` finds, whether an unreadable doctrine
+ * file becomes a failure, whether the name of the repository is derived from
+ * the remote, and whether a violation reaches the exit code are all decided in
  * `check-briques.ts`. These probes run that file.
  *
- * WHY A SCRUBBED ENVIRONMENT. A child inheriting `GIT_DIR` or a global git
- * configuration would read another remote than the fixture's, and
- * `GATE_VERBOSE` would change the output: each child gets only what it declares.
+ * WHY A SCRUBBED ENVIRONMENT. A child inheriting `GIT_DIR`, `GIT_INDEX_FILE`
+ * or a global git configuration would read another index or another remote
+ * than the fixture's, and `GATE_VERBOSE` would change the output: each child
+ * gets only what it declares.
  */
 
 const GATE = join(import.meta.dir, "check-briques.ts");
@@ -57,6 +61,14 @@ function run(argv: readonly string[], cwd: string): Run {
     exitCode: result.exitCode ?? 1,
     output: `${decode(result.stdout)}${decode(result.stderr)}`,
   };
+}
+
+/** Run git for the fixture; a failure is a setup failure, not a verdict. */
+function git(cwd: string, ...argv: string[]): void {
+  const outcome = run(["git", ...argv], cwd);
+  if (outcome.exitCode !== 0) {
+    throw new Error(`fixture setup failed: git ${argv.join(" ")} — ${outcome.output.trim()}`);
+  }
 }
 
 function write(root: string, path: string, text: string): void {
@@ -131,27 +143,39 @@ function plantTree(root: string): void {
     write(
       root,
       `ecosystem/briques/${layer.slug}.v1.yaml`,
-      JSON.stringify({ schema_version: SCHEMA_VERSION, couche: layer.slug, briques: [brick] }),
+      JSON.stringify(
+        { schema_version: SCHEMA_VERSION, couche: layer.slug, briques: [brick] },
+        null,
+        2,
+      ),
     );
     const sections = FICHE_SECTIONS.map((title) => `## ${title}\n\nTexte.`).join("\n\n");
+    const cited = [...dependencyOf(layer.slug), "I-08", "ADR-0064", "D01"].join(", ");
     write(
       root,
       `ecosystem/briques/${layer.slug}/${id}.md`,
-      `# ${id} — Brique ${id}\n\n${sections}\n`,
+      `# ${id} — Brique ${id}\n\n${sections}\n\nCite : ${cited}.\n`,
     );
   }
 }
 
+/** Point the proof of one layer at another target, in the working copy. */
+function retarget(root: string, slug: string, cible: string): void {
+  const path = join(root, `ecosystem/briques/${slug}.v1.yaml`);
+  const text = readFileSync(path, "utf8");
+  writeFileSync(path, text.replace('"cible": "docs/proof.md"', `"cible": "${cible}"`));
+}
+
 let workspace: string;
 
+/** A committed-to-the-index fixture: the gate reads what git tracks. */
 function freshTree(name: string, origin: string | null = ORIGIN): string {
   const root = join(workspace, name);
   mkdirSync(root);
   plantTree(root);
-  expect(run(["git", "init", "--quiet"], root).exitCode).toBe(0);
-  if (origin !== null) {
-    expect(run(["git", "remote", "add", "origin", origin], root).exitCode).toBe(0);
-  }
+  git(root, "init", "--quiet");
+  if (origin !== null) git(root, "remote", "add", "origin", origin);
+  git(root, "add", "--all");
   return root;
 }
 
@@ -172,11 +196,35 @@ describe("check-briques as a process", () => {
     expect(outcome.output).toContain(
       `${LAYERS.length} brick(s) in ${LAYERS.length} of ${LAYERS.length} layer file(s)`,
     );
+    expect(outcome.output).toContain(
+      `${LAYERS.length * 2} tracked entry(ies) under ecosystem/briques/ = ${LAYERS.length} layer file(s) + ${LAYERS.length} fiche(s) + 0 README + 0 refused`,
+    );
     expect(outcome.output).toContain(`${LAYERS.length} on this tree, 0 pinned`);
     expect(outcome.output).toContain(
       "2 in the catalogue of ADR-0042 §1 = 1 as bricks + 1 outside the map",
     );
     expect(outcome.exitCode).toBe(0);
+  });
+
+  test("an untracked file under the map is not part of the map", () => {
+    const root = freshTree("untracked");
+    write(root, "ecosystem/briques/.DS_Store", "x");
+    write(root, "ecosystem/briques/preuve/notes.txt", "x");
+    const outcome = judge(root);
+    expect(outcome.output).toContain("Brick map verified:");
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test("nothing staged: the map is empty, and that is a failure", () => {
+    const root = join(workspace, "unstaged");
+    mkdirSync(root);
+    plantTree(root);
+    git(root, "init", "--quiet");
+    git(root, "remote", "add", "origin", ORIGIN);
+    const outcome = judge(root);
+    expect(outcome.output).toContain("ecosystem/briques/gouvernance.v1.yaml: layer file missing");
+    expect(outcome.output).toContain("0 tracked entry(ies) under ecosystem/briques/");
+    expect(outcome.exitCode).toBe(1);
   });
 
   test("a fiche that is a symbolic link is refused as a link, not read as its target", () => {
@@ -186,15 +234,27 @@ describe("check-briques as a process", () => {
     copyFileSync(fiche, target);
     unlinkSync(fiche);
     symlinkSync(target, fiche);
+    git(root, "add", "--all");
     const outcome = judge(root);
     expect(outcome.output).toContain("preuve/PRV-01.md (link)");
     expect(outcome.output).toContain("Brick map volume:");
     expect(outcome.exitCode).toBe(1);
   });
 
-  test("a layer file removed from the tree is a failure, with the volume it was found in", () => {
+  test("the map itself tracked as a symbolic link is refused, not followed", () => {
+    const root = freshTree("root-link");
+    renameSync(join(root, "ecosystem/briques"), join(root, "ecosystem/briques-real"));
+    symlinkSync("briques-real", join(root, "ecosystem/briques"));
+    git(root, "add", "--all");
+    const outcome = judge(root);
+    expect(outcome.output).toContain(". (link)");
+    expect(outcome.output).toContain("ecosystem/briques/gouvernance.v1.yaml: layer file missing");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a layer file removed from the index is a failure, with the volume it was found in", () => {
     const root = freshTree("missing");
-    unlinkSync(join(root, "ecosystem/briques/identite.v1.yaml"));
+    git(root, "rm", "--quiet", "--cached", "ecosystem/briques/identite.v1.yaml");
     const outcome = judge(root);
     expect(outcome.output).toContain("ecosystem/briques/identite.v1.yaml: layer file missing");
     expect(outcome.output).toContain(`in ${LAYERS.length - 1} of ${LAYERS.length} layer file(s)`);
@@ -206,6 +266,22 @@ describe("check-briques as a process", () => {
     unlinkSync(join(root, "docs/decisions/INVARIANTS.md"));
     const outcome = judge(root);
     expect(outcome.output).toContain("docs/decisions/INVARIANTS.md: 0 invariant row(s) read");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an unreadable decision register fails by name", () => {
+    const root = freshTree("register");
+    unlinkSync(join(root, "docs/decisions/DECISION-REGISTER.md"));
+    const outcome = judge(root);
+    expect(outcome.output).toContain("docs/decisions/DECISION-REGISTER.md: 0 decision row(s) read");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("two files carrying the catalogue number: neither is chosen by directory order", () => {
+    const root = freshTree("two-catalogues");
+    write(root, "docs/adr/0042-autre.md", "### 1. Le catalogue d'applications\n\n| A | P09 |\n");
+    const outcome = judge(root);
+    expect(outcome.output).toContain("catalogue of ADR-0042 §1: 0 product(s) read");
     expect(outcome.exitCode).toBe(1);
   });
 
@@ -221,11 +297,50 @@ describe("check-briques as a process", () => {
     expect(outcome.exitCode).toBe(1);
   });
 
-  test("a proof target absent from the tree is a failure", () => {
-    const root = freshTree("absent");
-    unlinkSync(join(root, "docs/proof.md"));
+  test.each([
+    ["a directory", "docs", (_root: string) => {}, "proof target docs is not a tracked file"],
+    [
+      "a file that exists on disk and is not tracked",
+      "scratch.md",
+      (root: string) => write(root, "scratch.md", "# brouillon\n"),
+      "proof target scratch.md is not a tracked file",
+    ],
+    [
+      "a tracked symbolic link to a file outside the tree",
+      "docs/link.md",
+      (root: string) => {
+        symlinkSync("/etc/hosts", join(root, "docs/link.md"));
+        git(root, "add", "docs/link.md");
+      },
+      "proof target docs/link.md is a symbolic link",
+    ],
+    [
+      "a tracked empty file",
+      "docs/empty.md",
+      (root: string) => {
+        write(root, "docs/empty.md", "");
+        git(root, "add", "docs/empty.md");
+      },
+      "proof target docs/empty.md is an empty file",
+    ],
+    [
+      "a tracked file deleted from the working copy",
+      "docs/proof.md",
+      (root: string) => unlinkSync(join(root, "docs/proof.md")),
+      "proof target docs/proof.md is not a tracked file",
+    ],
+    [
+      "the fiche of the brick itself",
+      "ecosystem/briques/preuve/PRV-01.md",
+      (_root: string) => {},
+      "is part of the map itself",
+    ],
+  ])("a proof target that is %s does not hold", (_name, cible, prepare, expected) => {
+    const root = freshTree(`target-${cible.replaceAll("/", "_")}`);
+    prepare(root);
+    retarget(root, "preuve", cible);
     const outcome = judge(root);
-    expect(outcome.output).toContain("proof target docs/proof.md does not exist");
+    expect(outcome.output).toContain(expected);
     expect(outcome.exitCode).toBe(1);
   });
 });

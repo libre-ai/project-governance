@@ -28,8 +28,14 @@ jobs:
   brick-map:
     name: Brick map layers, bricks and derived status
     runs-on: ubuntu-latest
+    # The gate reads the index and a few doctrine files: seconds. A run that
+    # lasts is a defect, and it fails closed here rather than at the runner's limit.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `bun install` runs after this step: the token is not left in the clone.
+          persist-credentials: false
       - name: Install archived Bun toolchain
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip

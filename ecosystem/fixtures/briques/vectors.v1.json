@@ -20,7 +20,12 @@
               "source": "vision externe en briques inspectée le 2026-11-09"
             },
             "autonomie": "modify",
-            "preuve": [{ "date": "2026-10-10", "cible": "docs/security/THREAT-MODEL.md" }]
+            "preuve": [
+              {
+                "date": "2026-10-10",
+                "cible": "docs/security/THREAT-MODEL.md"
+              }
+            ]
           }
         ]
       }
@@ -39,7 +44,10 @@
             "invariants": ["I-10"],
             "decisions": ["ADR-0054"],
             "depots": ["libre-ai/information-watch"],
-            "origine": { "type": "observed", "date": "2026-10-22" },
+            "origine": {
+              "type": "observed",
+              "date": "2026-10-22"
+            },
             "autonomie": "modify",
             "preuve": [
               {
@@ -55,7 +63,10 @@
               "refus": ["Stocker une donnée de paiement dans l'application."]
             },
             "jetable": "until=la fiche du dépôt porteur reprend la charte",
-            "retrait": { "decision": "D103", "date": "2026-11-09" }
+            "retrait": {
+              "decision": "D103",
+              "date": "2026-11-09"
+            }
           }
         ]
       }
@@ -65,43 +76,68 @@
     {
       "name": "a typed status",
       "because": "ADR-0064 D4: the status is derived, never typed",
-      "set": { "path": ["briques", 0, "statut"], "value": "prototypee" },
+      "set": {
+        "path": ["briques", 0, "statut"],
+        "value": "prototypee"
+      },
       "expect": "ADR-0064 D4"
     },
     {
       "name": "an unknown field",
       "because": "the schema is closed: an unread field is a claim nothing checks",
-      "set": { "path": ["briques", 0, "maturite"], "value": "haute" },
+      "set": {
+        "path": ["briques", 0, "maturite"],
+        "value": "haute"
+      },
       "expect": "additionalProperties"
     },
     {
       "name": "an identifier without a layer prefix",
       "because": "the prefix is how a dependency names its layer",
-      "set": { "path": ["briques", 0, "id"], "value": "SEC-07" },
+      "set": {
+        "path": ["briques", 0, "id"],
+        "value": "SEC-07"
+      },
       "expect": "/briques/0/id"
     },
     {
       "name": "an unknown layer",
       "because": "ADR-0064 D1 names eleven layers",
-      "set": { "path": ["couche"], "value": "securite" },
+      "set": {
+        "path": ["couche"],
+        "value": "securite"
+      },
       "expect": "/couche"
     },
     {
       "name": "an inspection without its source",
       "because": "I-33: an origin by inspection names what was inspected",
-      "set": { "path": ["briques", 0, "origine"], "value": { "type": "inspection" } },
+      "set": {
+        "path": ["briques", 0, "origine"],
+        "value": {
+          "type": "inspection"
+        }
+      },
       "expect": "/briques/0/origine"
     },
     {
       "name": "an observation without its date",
       "because": "an observed origin is a dated fact",
-      "set": { "path": ["briques", 0, "origine"], "value": { "type": "observed" } },
+      "set": {
+        "path": ["briques", 0, "origine"],
+        "value": {
+          "type": "observed"
+        }
+      },
       "expect": "/briques/0/origine"
     },
     {
       "name": "an autonomy outside the three levels",
       "because": "ADR-0064 D2 names discover, modify and govern",
-      "set": { "path": ["briques", 0, "autonomie"], "value": "full" },
+      "set": {
+        "path": ["briques", 0, "autonomie"],
+        "value": "full"
+      },
       "expect": "/briques/0/autonomie"
     },
     {
@@ -109,33 +145,218 @@
       "because": "a proof is dated, or it is a claim",
       "set": {
         "path": ["briques", 0, "preuve"],
-        "value": [{ "cible": "docs/security/THREAT-MODEL.md" }]
+        "value": [
+          {
+            "cible": "docs/security/THREAT-MODEL.md"
+          }
+        ]
       },
       "expect": "/briques/0/preuve/0"
     },
     {
       "name": "a decision that is neither an ADR nor a register row",
       "because": "a decision is cited by its identifier, so that it resolves",
-      "set": { "path": ["briques", 0, "decisions"], "value": ["décision du 9 novembre"] },
+      "set": {
+        "path": ["briques", 0, "decisions"],
+        "value": ["décision du 9 novembre"]
+      },
       "expect": "/briques/0/decisions/0"
     },
     {
       "name": "a transitional brick without its condition",
       "because": "jetable names the condition that ends the brick",
-      "set": { "path": ["briques", 0, "jetable"], "value": "bientôt" },
+      "set": {
+        "path": ["briques", 0, "jetable"],
+        "value": "bientôt"
+      },
       "expect": "/briques/0/jetable"
     },
     {
       "name": "a layer file with no brick",
       "because": "an empty layer is a missing source, not zero bricks",
-      "set": { "path": ["briques"], "value": [] },
+      "set": {
+        "path": ["briques"],
+        "value": []
+      },
       "expect": "/briques"
     },
     {
       "name": "another schema version",
       "because": "the reader knows one version",
-      "set": { "path": ["schema_version"], "value": "libre-ai.brique.v2" },
+      "set": {
+        "path": ["schema_version"],
+        "value": "libre-ai.brique.v2"
+      },
       "expect": "/schema_version"
+    },
+    {
+      "name": "a name carrying a line break",
+      "because": "a name is printed by the gate: a control character could forge a line of its output",
+      "set": {
+        "path": ["briques", 0, "nom"],
+        "value": "Sonde\n::error::forged"
+      },
+      "expect": "/briques/0/nom"
+    },
+    {
+      "name": "a role that says nothing",
+      "because": "a role is one sentence",
+      "set": {
+        "path": ["briques", 0, "role"],
+        "value": "Fait."
+      },
+      "expect": "/briques/0/role"
+    },
+    {
+      "name": "a role on two lines",
+      "because": "a phrase is one line",
+      "set": {
+        "path": ["briques", 0, "role"],
+        "value": "Tient la liste des menaces.\nEt la preuve de chacune."
+      },
+      "expect": "/briques/0/role"
+    },
+    {
+      "name": "the same proof twice",
+      "because": "one artefact cited twice is still one proof",
+      "set": {
+        "path": ["briques", 0, "preuve"],
+        "value": [
+          {
+            "date": "2026-10-10",
+            "cible": "docs/security/THREAT-MODEL.md"
+          },
+          {
+            "date": "2026-10-10",
+            "cible": "docs/security/THREAT-MODEL.md"
+          }
+        ]
+      },
+      "expect": "/briques/0/preuve"
+    },
+    {
+      "name": "a proof with a field the reader does not know",
+      "because": "the schema is closed at every depth",
+      "set": {
+        "path": ["briques", 0, "preuve"],
+        "value": [
+          {
+            "date": "2026-10-10",
+            "cible": "docs/security/THREAT-MODEL.md",
+            "statut": "prototypee"
+          }
+        ]
+      },
+      "expect": "/briques/0/preuve/0"
+    },
+    {
+      "name": "a proof target holding a space",
+      "because": "a target is one token: a path or a pinned citation",
+      "set": {
+        "path": ["briques", 0, "preuve"],
+        "value": [
+          {
+            "date": "2026-10-10",
+            "cible": "docs/security/THREAT MODEL.md"
+          }
+        ]
+      },
+      "expect": "/briques/0/preuve/0/cible"
+    },
+    {
+      "name": "a proof dated otherwise than by an ISO date",
+      "because": "a date is compared, so it is a date",
+      "set": {
+        "path": ["briques", 0, "preuve"],
+        "value": [
+          {
+            "date": "10 octobre 2026",
+            "cible": "docs/security/THREAT-MODEL.md"
+          }
+        ]
+      },
+      "expect": "/briques/0/preuve/0/date"
+    },
+    {
+      "name": "a carrier without its owner",
+      "because": "a carrier is written as the inventory writes it",
+      "set": {
+        "path": ["briques", 0, "depots"],
+        "value": ["project-governance"]
+      },
+      "expect": "/briques/0/depots/0"
+    },
+    {
+      "name": "an invariant written loosely",
+      "because": "an invariant is cited by its identifier, so that it resolves",
+      "set": {
+        "path": ["briques", 0, "invariants"],
+        "value": ["I-8"]
+      },
+      "expect": "/briques/0/invariants/0"
+    },
+    {
+      "name": "the same invariant twice",
+      "because": "a citation is made once",
+      "set": {
+        "path": ["briques", 0, "invariants"],
+        "value": ["I-08", "I-08"]
+      },
+      "expect": "/briques/0/invariants"
+    },
+    {
+      "name": "a dependency that is not a brick identifier",
+      "because": "a dependency names a brick",
+      "set": {
+        "path": ["briques", 0, "depend_de"],
+        "value": ["le journal"]
+      },
+      "expect": "/briques/0/depend_de/0"
+    },
+    {
+      "name": "a withdrawal that cites an ADR instead of a register row",
+      "because": "a withdrawal is a decision of the register",
+      "set": {
+        "path": ["briques", 0, "retrait"],
+        "value": {
+          "decision": "ADR-0049",
+          "date": "2026-11-09"
+        }
+      },
+      "expect": "/briques/0/retrait/decision"
+    },
+    {
+      "name": "an origin with a field the reader does not know",
+      "because": "the three origins are closed shapes",
+      "set": {
+        "path": ["briques", 0, "origine"],
+        "value": {
+          "type": "propre",
+          "source": "une source"
+        }
+      },
+      "expect": "/briques/0/origine"
+    },
+    {
+      "name": "a brick without its role",
+      "because": "every listed field is required",
+      "set": {
+        "path": ["briques", 0],
+        "value": {
+          "id": "PRV-07",
+          "nom": "Modèle de menace par produit",
+          "depend_de": [],
+          "invariants": [],
+          "decisions": [],
+          "depots": [],
+          "origine": {
+            "type": "propre"
+          },
+          "autonomie": "modify",
+          "preuve": []
+        }
+      },
+      "expect": "/briques/0"
     }
   ]
 }

@@ -1,8 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { repositoryFromRemote, validateConfig } from "../tools/quality/check-pinned-citations";
+import {
+  exemptionKey,
+  repositoryFromRemote,
+  validateConfig,
+} from "../tools/quality/check-pinned-citations";
 import { concludeGate } from "../tools/quality/gate-report";
 import {
   BRIQUES_ROOT,
@@ -10,6 +14,7 @@ import {
   type BriquesOutcome,
   type EntryKind,
   evaluateBriques,
+  type LocalTarget,
   parseCatalogue,
   parseInvariants,
   parseRegisterDecisions,
@@ -20,48 +25,62 @@ import {
 /**
  * Brick-map gate (`bun run check:briques`, ADR-0064 D5).
  *
- * The effectful half of `briques.ts`: it reads the tree under
- * `ecosystem/briques/` and the doctrine files a brick cites, hands them to
- * `evaluateBriques`, prints the counters and exits non-zero on any violation.
- * It never goes to the network; proofs held by another repository are pinned
- * citations, resolved over git by the pinned-citations gate, and this gate
- * fails when that gate's scope does not list `ecosystem/briques/`.
+ * The effectful half of `briques.ts`: it reads the index of the repository and
+ * the doctrine files a brick cites, hands them to `evaluateBriques`, prints
+ * the counters and exits non-zero on any violation. It never goes to the
+ * network; proofs held by another repository are pinned citations, resolved
+ * over git by the pinned-citations gate.
  *
- * It reads the working tree, as `validate-cards` does: stage a new fiche or a
- * new proof target before trusting a local green, since CI sees only what is
- * committed (AGENTS.md).
+ * THE INDEX, NOT THE DISK. What is under `ecosystem/briques/`, and whether a
+ * local proof target is a file, are both asked of `git ls-files --stage`. The
+ * first version walked the directory and asked `existsSync`: a directory, a
+ * symbolic link out of the tree, an untracked scratch file and
+ * `node_modules/…` all « existed », and `ecosystem/briques` itself could be a
+ * link the walk followed (review of 2026-11-11, F1 and F3). The mode of the
+ * index says what an entry is without following anything. Stage a new fiche or
+ * a new proof target before trusting a local run (AGENTS.md).
  */
 
 const CITATIONS_CONFIG = "tools/quality/pinned-citations.v1.json";
 const CATALOGUE_ADR = "0042";
 
-function kindOf(entry: {
-  isSymbolicLink(): boolean;
-  isFile(): boolean;
-  isDirectory(): boolean;
-}): EntryKind {
-  // The link test comes first: readdir does not follow links, and a link to a
-  // file must not be read as the file it points to.
-  if (entry.isSymbolicLink()) return "link";
-  if (entry.isFile()) return "file";
-  if (entry.isDirectory()) return "directory";
-  return "other";
+function kindOfMode(mode: string): EntryKind {
+  if (mode === "120000") return "link";
+  return mode === "100644" || mode === "100755" ? "file" : "other";
 }
 
-/** Every entry under the briques root, at any depth, links not followed. */
-function listEntries(root: string): TreeEntry[] {
-  const base = join(root, BRIQUES_ROOT);
-  if (!existsSync(base)) return [];
+/** Tracked path to git mode, for the whole repository. Null when git cannot list it. */
+function trackedModes(root: string): Map<string, string> | null {
+  let listing: string;
+  try {
+    listing = execFileSync("git", ["ls-files", "--stage", "-z"], {
+      encoding: "utf8",
+      cwd: root,
+      maxBuffer: 256 * 1024 * 1024,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+  } catch {
+    return null;
+  }
+  const modes = new Map<string, string>();
+  for (const record of listing.split("\0")) {
+    // `<mode> <object> <stage>\t<path>`
+    const tab = record.indexOf("\t");
+    if (tab === -1) continue;
+    modes.set(record.slice(tab + 1), record.slice(0, 6));
+  }
+  return modes;
+}
+
+/** The tracked entries of the map, relative to its root; the root itself is `.`. */
+function entriesOf(modes: ReadonlyMap<string, string>): TreeEntry[] {
   const entries: TreeEntry[] = [];
-  const walk = (relative: string): void => {
-    for (const entry of readdirSync(join(base, relative), { withFileTypes: true })) {
-      const path = relative === "" ? entry.name : `${relative}/${entry.name}`;
-      const kind = kindOf(entry);
-      entries.push({ path, kind });
-      if (kind === "directory") walk(path);
+  for (const [path, mode] of modes) {
+    if (path === BRIQUES_ROOT) entries.push({ path: ".", kind: kindOfMode(mode) });
+    else if (path.startsWith(`${BRIQUES_ROOT}/`)) {
+      entries.push({ path: path.slice(BRIQUES_ROOT.length + 1), kind: kindOfMode(mode) });
     }
-  };
-  walk("");
+  }
   return entries.sort((left, right) => left.path.localeCompare(right.path, "en"));
 }
 
@@ -97,16 +116,24 @@ function originOf(root: string): string | null {
 /**
  * Everything `evaluateBriques` needs, read from the tree at `root`.
  *
- * A doctrine source that cannot be read becomes an empty collection, which the
+ * A source that cannot be read becomes an empty collection, which the
  * evaluation fails by name: unreadable is never zero.
  */
 export function readBriquesInput(root: string): BriquesInput {
+  const modes = trackedModes(root) ?? new Map<string, string>();
+
   const adrDirectory = join(root, "docs/adr");
   const adrFiles = existsSync(adrDirectory) ? readdirSync(adrDirectory) : [];
   const adrNumbers = new Set(
     adrFiles.flatMap((name) => /^([0-9]{4})-.+\.md$/.exec(name)?.[1] ?? []),
   );
-  const catalogueFile = adrFiles.find((name) => name.startsWith(`${CATALOGUE_ADR}-`));
+  // Exactly one file may carry the catalogue: with two, the directory order
+  // would choose which catalogue the gate reads.
+  const catalogueFiles = adrFiles.filter((name) => name.startsWith(`${CATALOGUE_ADR}-`));
+  const catalogueText =
+    catalogueFiles.length === 1
+      ? (readOrNull(join(adrDirectory, catalogueFiles[0] as string)) ?? "")
+      : "";
 
   let repositories: unknown = null;
   try {
@@ -118,19 +145,44 @@ export function readBriquesInput(root: string): BriquesInput {
   // The citations configuration is validated by its own gate's reader, so a
   // malformed file fails here the way it fails there; unreadable gives an empty
   // scope, which the evaluation refuses.
-  let citations: BriquesInput["citations"] = { organization: "", scope: [] };
+  let citations: BriquesInput["citations"] = {
+    organization: "",
+    scope: [],
+    exemptions: new Set(),
+  };
   try {
     const config = validateConfig(JSON.parse(readOrNull(join(root, CITATIONS_CONFIG)) ?? ""));
-    citations = { organization: config.organization, scope: config.scope };
+    citations = {
+      organization: config.organization,
+      scope: config.scope,
+      exemptions: new Set(
+        config.exemptions.map((exemption) => exemptionKey(exemption.file, exemption.citation)),
+      ),
+    };
   } catch {
-    citations = { organization: "", scope: [] };
+    // Left empty: the evaluation names the configuration as the failing source.
   }
 
   const origin = originOf(root);
   const selfName = origin === null ? null : repositoryFromRemote(origin, citations.organization);
 
+  const localTarget = (path: string): LocalTarget => {
+    const mode = modes.get(path);
+    if (mode === undefined) return "absent";
+    const kind = kindOfMode(mode);
+    if (kind !== "file") return kind;
+    try {
+      // Tracked and regular in the index; the working copy must still hold it.
+      const stat = statSync(join(root, path));
+      if (!stat.isFile()) return "other";
+      return stat.size > 0 ? "regular" : "empty";
+    } catch {
+      return "absent";
+    }
+  };
+
   return {
-    entries: listEntries(root),
+    entries: entriesOf(modes),
     read: (path) => readOrNull(join(root, BRIQUES_ROOT, path)),
     invariants: parseInvariants(readOrNull(join(root, "docs/decisions/INVARIANTS.md")) ?? ""),
     adrNumbers,
@@ -138,11 +190,9 @@ export function readBriquesInput(root: string): BriquesInput {
       readOrNull(join(root, "docs/decisions/DECISION-REGISTER.md")) ?? "",
     ),
     repositories: parseRepositories(repositories),
-    catalogue: parseCatalogue(
-      catalogueFile === undefined ? "" : (readOrNull(join(adrDirectory, catalogueFile)) ?? ""),
-    ),
+    catalogue: parseCatalogue(catalogueText),
     selfRepository: selfName === null ? null : `${citations.organization}/${selfName}`,
-    localTargetExists: (path) => existsSync(join(root, path)),
+    localTarget,
     citations,
     latestDate: latestAcceptableIso(),
   };

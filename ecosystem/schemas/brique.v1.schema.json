@@ -39,7 +39,8 @@
       "type": "string",
       "minLength": 12,
       "maxLength": 600,
-      "pattern": "\\S"
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*\\S[^\\u0000-\\u001f\\u007f]*$",
+      "description": "One line of prose: no control character, so that a value printed by the gate cannot forge a line of its output."
     },
     "date": {
       "type": "string",
@@ -74,7 +75,8 @@
         "nom": {
           "type": "string",
           "minLength": 3,
-          "maxLength": 80
+          "maxLength": 80,
+          "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
         },
         "role": {
           "description": "One sentence: what the brick does.",
@@ -114,7 +116,7 @@
           }
         },
         "origine": {
-          "description": "Where the brick comes from (I-33, ADR-0056): derived by inspection of a named source, observed on a dated fact, or Libre AI own.",
+          "description": "Where the brick comes from (ADR-0056, origin declared): derived by inspection of a designated source, observed on a dated fact, or Libre AI own.",
           "oneOf": [
             {
               "type": "object",
@@ -162,7 +164,7 @@
           "enum": ["discover", "modify", "govern"]
         },
         "preuve": {
-          "description": "Dated proofs. A target is either a path of this repository, or a pinned citation `<organisation>/<repository>@<40-hex sha>:<path>` of a public carrier repository, which the pinned-citations gate resolves over git.",
+          "description": "Dated proofs. A target is either a path of this repository, which must be a tracked, regular, non-empty file outside ecosystem/briques/, or a pinned citation `<organisation>/<repository>@<40-hex sha>:<path>` of a public carrier repository, which the pinned-citations gate resolves over git. The date is that of the last commit of the local file, or of the pinned commit.",
           "type": "array",
           "items": {
             "type": "object",
@@ -179,7 +181,8 @@
                 "pattern": "^\\S+$"
               }
             }
-          }
+          },
+          "uniqueItems": true
         },
         "preuve_produite": {
           "description": "For the fabrique layer only, and required there: the proof the brick produces (ADR-0064 D1).",
@@ -218,7 +221,7 @@
         "jetable": {
           "description": "A transitional brick: the condition that ends it.",
           "type": "string",
-          "pattern": "^until=\\S.{7,}$"
+          "pattern": "^until=[^\\u0000-\\u001f\\u007f\\s][^\\u0000-\\u001f\\u007f]{7,}$"
         },
         "retrait": {
           "description": "A withdrawn brick: the register decision that withdrew it. The fiche is kept.",

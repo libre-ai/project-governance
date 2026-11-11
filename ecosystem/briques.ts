@@ -1,7 +1,7 @@
 import Ajv2020, { type ErrorObject } from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
-import { validateCitedPath } from "../tools/quality/check-pinned-citations";
+import { exemptionKey, scanText, validateCitedPath } from "../tools/quality/check-pinned-citations";
 import { GateReport } from "../tools/quality/gate-report";
 
 /**
@@ -31,14 +31,31 @@ import { GateReport } from "../tools/quality/gate-report";
  * shortcut: no brick can reach `prototypee` in v1; upgrade trigger: the first
  * signed release linked to its evidence (ADR-0064 D8, PRD-02).
  *
- * PROOFS. A target is a path of this repository, checked on the tree, or a
- * pinned citation `<organisation>/<repository>@<40-hex sha>:<path>` of a PUBLIC
- * carrier repository. This module does not go to the network: it checks the
- * form, the carrier and the visibility, and asserts that the pinned-citations
- * gate reads `ecosystem/briques/` (its `scope`, in data), which is the gate
- * that resolves every such citation over git. A proof in a private repository
- * cannot be cited (I-15: nothing is exposed before something is verifiable),
- * so a brick carried only by a private repository stays `decrite`.
+ * PROOFS. A target is a path of this repository or a pinned citation
+ * `<organisation>/<repository>@<40-hex sha>:<path>` of a PUBLIC carrier
+ * repository.
+ *   - A local target holds on a TRACKED, regular, non-empty file outside the
+ *     map itself. « It exists on disk » was the first rule, and a directory, a
+ *     link to a file outside the tree, an untracked file and the brick's own
+ *     fiche all satisfied it (review of 2026-11-11, F1).
+ *   - A pinned target is not resolved here: this module does not go to the
+ *     network. It checks the form, the carrier and the visibility, then holds
+ *     the delegation to the pinned-citations gate to three facts: that gate's
+ *     scope lists `ecosystem/briques/`; its own reader (`scanText`) finds this
+ *     very citation in the raw text of the layer file, since a value the YAML
+ *     decoder rebuilds from an escape is a citation nobody resolves (F2); and
+ *     the citation is not exempted there, an exemption meaning « not resolved ».
+ * A proof in a private repository cannot be cited: this module refuses it, on
+ * the reading that nothing is exposed before something is verifiable (I-15).
+ * A brick carried only by a private repository stays `decrite`.
+ *
+ * THE MAP IS WHAT GIT TRACKS. The entries under `ecosystem/briques/` are read
+ * from the index, with their mode: a symbolic link is refused, at the root as
+ * anywhere below it, and an untracked file is not part of the map.
+ *
+ * WHAT THE YAML CITES, THE FICHE NAMES. Every dependency, invariant and
+ * decision of the YAML must be named in the fiche: a citation whose reason
+ * nobody can read was the common form of a filler in the first map.
  *
  * LAYER RULES. Three rules of D1 are verified here (no dependency outside the
  * table; a fabrique brick declares the proof it produces; a produit brick is a
@@ -204,15 +221,17 @@ export const FICHE_SECTIONS: readonly string[] = [
 
 /**
  * A `degel` or an `abandon` names an observable fact, never a delay or an
- * effort (charter review of 2026-11-09). `\p{L}` on both sides, so that
- * « jours » is refused and « toujours » is not.
+ * effort. The list is the one the charter review of 2026-11-09 fixed, word for
+ * word, and nothing more: `\p{L}` on both sides, so that « jours » is refused
+ * and « toujours » or « mise à jour » are not. It is a floor, not a grammar of
+ * delays: « dans un an » passes it, and a reader still has to read the charter.
  */
-const DELAY_WORDS = /(?<!\p{L})(bient[oô]t|rapidement|jours?|semaines?|mois)(?!\p{L})/iu;
+const DELAY_WORDS = /(?<!\p{L})(bient[oô]t|rapidement|jours|semaines|mois)(?!\p{L})/iu;
 
 export type Status = "decrite" | "en_cours" | "prototypee" | "retiree";
 export const STATUSES: readonly Status[] = ["decrite", "en_cours", "prototypee", "retiree"];
-/** The machine values of the status, which no fiche writes (D4). */
-const TYPED_STATUS = /(?<![\p{L}_])(decrite|en_cours|prototypee|retiree)(?![\p{L}_])/u;
+/** The machine values of the status, which neither a fiche nor a YAML text writes (D4). */
+const TYPED_STATUS = /(?<![\p{L}_])(decrite|en_cours|prototypee|retiree)(?![\p{L}_])/iu;
 
 export interface Proof {
   readonly date: string;
@@ -291,16 +310,20 @@ export interface Counters {
 
 export type InvariantStanding = "en vigueur" | "retiré";
 
-export type EntryKind = "file" | "directory" | "link" | "other";
+/** What a tracked path is, from its git mode: a link is never followed. */
+export type EntryKind = "file" | "link" | "other";
 
 export interface TreeEntry {
-  /** Relative to `BRIQUES_ROOT`, with `/` separators. */
+  /** Relative to `BRIQUES_ROOT`, with `/` separators; `.` for the root itself. */
   readonly path: string;
   readonly kind: EntryKind;
 }
 
+/** What a repository-relative path is in the tree under review. */
+export type LocalTarget = "regular" | "absent" | "link" | "empty" | "other";
+
 export interface BriquesInput {
-  /** Every entry under `BRIQUES_ROOT`, at any depth. Links are not followed. */
+  /** Every TRACKED entry under `BRIQUES_ROOT`. An untracked file is not part of the map. */
   readonly entries: readonly TreeEntry[];
   /** The text of a file under `BRIQUES_ROOT`, or null when it cannot be read. */
   readonly read: (path: string) => string | null;
@@ -315,11 +338,16 @@ export interface BriquesInput {
   readonly catalogue: ReadonlySet<string>;
   /** `owner/name` of this checkout, or null when it could not be derived. */
   readonly selfRepository: string | null;
-  /** Whether a repository-relative path exists in the tree under review. */
-  readonly localTargetExists: (path: string) => boolean;
+  /** What a repository-relative path is: a proof holds on a tracked, regular, non-empty file. */
+  readonly localTarget: (path: string) => LocalTarget;
   /** The configuration of the pinned-citations gate, which resolves foreign proofs. */
-  readonly citations: { readonly organization: string; readonly scope: readonly string[] };
-  /** The latest acceptable proof date, ISO (tomorrow: the cards' tolerance). */
+  readonly citations: {
+    readonly organization: string;
+    readonly scope: readonly string[];
+    /** `exemptionKey(file, citation)` of every exemption: an exempted citation is not resolved. */
+    readonly exemptions: ReadonlySet<string>;
+  };
+  /** The latest acceptable date, ISO (tomorrow: the cards' tolerance). */
   readonly latestDate: string;
 }
 
@@ -332,14 +360,17 @@ export interface BriquesOutcome {
 
 // ---------------------------------------------------------------- parsers ---
 
-/** `| I-NN | text … |` rows of INVARIANTS.md. A row whose text opens with « Retiré » is withdrawn. */
+/**
+ * `| I-NN | text … |` rows of INVARIANTS.md. A row whose text opens with
+ * « Retiré », whatever the emphasis or the case around it, is withdrawn.
+ */
 export function parseInvariants(markdown: string): Map<string, InvariantStanding> {
   const found = new Map<string, InvariantStanding>();
   for (const line of markdown.split("\n")) {
-    const row = /^\|\s*(I-[0-9]{2})\s*\|\s*(.*)$/.exec(line);
+    const row = /^\|\s*(I-[0-9]{2,3})\s*\|\s*(.*)$/.exec(line);
     if (row === null) continue;
     const [, id, rest] = row as unknown as [string, string, string];
-    found.set(id, /^\*{0,2}Retiré/.test(rest) ? "retiré" : "en vigueur");
+    found.set(id, /^[\s*_~]*retir[ée]/i.test(rest) ? "retiré" : "en vigueur");
   }
   return found;
 }
@@ -356,19 +387,21 @@ export function parseRegisterDecisions(markdown: string): Set<string> {
 
 /**
  * The products of ADR-0042 §1: every `Pnn` of the table under the heading
- * « Le catalogue d'applications », up to the next heading. The count is never
- * written here; it is whatever the decision record lists.
+ * « Le catalogue d'applications » (numbered or not), up to the next heading.
+ * The count is never written here; it is whatever the decision record lists.
  */
 export function parseCatalogue(adr0042: string): Set<string> {
   const found = new Set<string>();
   let inside = false;
   for (const line of adr0042.split("\n")) {
     if (/^#{2,6}\s/.test(line)) {
-      inside = /catalogue d'applications/i.test(line);
+      inside = /^#{2,6}\s+(?:[0-9]+\.\s+)?Le catalogue d'applications\s*$/i.test(line);
       continue;
     }
     if (!inside || !line.startsWith("|")) continue;
-    for (const match of line.matchAll(/(?<![A-Za-z0-9])P[0-9]{2}(?![0-9])/g)) found.add(match[0]);
+    for (const match of line.matchAll(/(?<![A-Za-z0-9])P[0-9]{2}(?![A-Za-z0-9])/g)) {
+      found.add(match[0]);
+    }
   }
   return found;
 }
@@ -389,29 +422,60 @@ export function parseRepositories(value: unknown): Map<string, { visibility: str
 }
 
 export interface ParsedFiche {
-  /** The text of the first `# ` heading, or null. */
-  readonly title: string | null;
+  /** The `# ` headings, in order: a fiche has exactly one. */
+  readonly titles: readonly string[];
+  /** The text between the title and the first section: a fiche has none. */
+  readonly preamble: string;
   readonly sections: readonly FicheSection[];
 }
 
-/** A fiche: one `# ` title, then `## ` sections. HTML comments (licence headers) are ignored. */
+/** `<!-- … -->` spans removed in one pass; an unterminated comment is kept as text. */
+function withoutComments(text: string): string {
+  let out = "";
+  let cursor = 0;
+  for (;;) {
+    const open = text.indexOf("<!--", cursor);
+    if (open === -1) break;
+    const close = text.indexOf("-->", open + 4);
+    if (close === -1) break;
+    out += text.slice(cursor, open);
+    cursor = close + 3;
+  }
+  return out + text.slice(cursor);
+}
+
+/**
+ * A fiche: one `# ` title, then `## ` sections. Licence comments are not
+ * content, and a `#` inside a fenced code block is not a heading.
+ */
 export function parseFiche(text: string): ParsedFiche {
-  let title: string | null = null;
+  const titles: string[] = [];
+  const preamble: string[] = [];
   const sections: { title: string; lines: string[] }[] = [];
-  for (const line of text.replace(/<!--[\s\S]*?-->/g, "").split("\n")) {
-    const heading = /^(#{1,2})\s+(.+?)\s*$/.exec(line);
+  let fence: string | null = null;
+  for (const line of withoutComments(text).split("\n")) {
+    const fenced = /^\s*(```|~~~)/.exec(line);
+    if (fenced !== null) {
+      if (fence === null) fence = fenced[1] as string;
+      else if (fence === fenced[1]) fence = null;
+    }
+    const heading =
+      fence === null && fenced === null ? /^(#{1,2})\s+(.+?)(?:\s+#+)?\s*$/.exec(line) : null;
     if (heading !== null && heading[1] === "#") {
-      if (title === null) title = heading[2] as string;
+      titles.push(heading[2] as string);
       continue;
     }
     if (heading !== null) {
       sections.push({ title: heading[2] as string, lines: [] });
       continue;
     }
-    sections.at(-1)?.lines.push(line);
+    const current = sections.at(-1);
+    if (current === undefined) preamble.push(line);
+    else current.lines.push(line);
   }
   return {
-    title,
+    titles,
+    preamble: preamble.join("\n").trim(),
     sections: sections.map((section) => ({
       title: section.title,
       body: section.lines.join("\n").trim(),
@@ -436,7 +500,11 @@ function renderSchemaError(error: ErrorObject): string {
   return `${error.instancePath || "/"}: ${error.message ?? "invalid"}${detail} (${error.keyword})`;
 }
 
-/** A typed-in status, at any depth of a brick: refused by name (ADR-0064 D4). */
+/**
+ * A typed-in status among the fields of a brick: refused under the name of its
+ * rule (ADR-0064 D4), before the schema would refuse it as an unknown field.
+ * A status field nested deeper is refused by the closed schema.
+ */
 function typedStatusPaths(value: unknown): string[] {
   const bricks = (value as { briques?: unknown } | null)?.briques;
   if (!Array.isArray(bricks)) return [];
@@ -465,33 +533,67 @@ export function validateLayerFile(value: unknown): string[] {
 interface LoadedLayer {
   readonly rule: LayerRule;
   readonly bricks: readonly BrickData[];
+  /** The pinned citations the citations gate reads in the raw text of the file. */
+  readonly pinned: ReadonlySet<string>;
 }
 
 function layerOfId(id: string): LayerRule | undefined {
   return LAYER_BY_PREFIX.get(id.slice(0, 3));
 }
 
-/** The first dependency cycle reachable from `start`, as the ids it goes through, or null. */
-export function findCycle(
-  start: string,
+/**
+ * Every brick that is on a dependency cycle, with one cycle it is on, written
+ * from that brick. One depth-first pass with three colours: linear in the
+ * number of bricks and dependencies, whatever the shape of the graph.
+ */
+export function findCycles(
   dependencies: ReadonlyMap<string, readonly string[]>,
-): string[] | null {
+): Map<string, string[]> {
+  const cycles = new Map<string, string[]>();
+  const done = new Set<string>();
   const path: string[] = [];
-  const visit = (id: string): string[] | null => {
-    const seenAt = path.indexOf(id);
-    if (seenAt !== -1) return [...path.slice(seenAt), id];
-    path.push(id);
-    for (const next of dependencies.get(id) ?? []) {
-      const cycle = visit(next);
-      if (cycle !== null) return cycle;
+  const onPath = new Set<string>();
+  const visit = (id: string): void => {
+    if (done.has(id)) return;
+    if (onPath.has(id)) {
+      const loop = path.slice(path.indexOf(id));
+      loop.forEach((member, index) => {
+        if (!cycles.has(member)) {
+          cycles.set(member, [...loop.slice(index), ...loop.slice(0, index), member]);
+        }
+      });
+      return;
     }
+    path.push(id);
+    onPath.add(id);
+    for (const next of dependencies.get(id) ?? []) visit(next);
     path.pop();
-    return null;
+    onPath.delete(id);
+    done.add(id);
   };
-  const cycle = visit(start);
-  // Only the cycles `start` is part of: a brick that merely leads to a cycle is
-  // not reported once per ancestor.
-  return cycle !== null && cycle[0] === start ? cycle : null;
+  for (const id of dependencies.keys()) visit(id);
+  return cycles;
+}
+
+/** Every string a brick carries, at any depth, for the checks that read its prose. */
+function textsOf(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(textsOf);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(textsOf);
+  return [];
+}
+
+/** Whether `text` names `identifier` as a whole token (`D10` is not named by `D103`). */
+function names(text: string, identifier: string): boolean {
+  let from = 0;
+  for (;;) {
+    const at = text.indexOf(identifier, from);
+    if (at === -1) return false;
+    const before = at === 0 ? "" : (text[at - 1] as string);
+    const after = text[at + identifier.length] ?? "";
+    if (!/[A-Za-z0-9-]/.test(before) && !/[A-Za-z0-9]/.test(after)) return true;
+    from = at + 1;
+  }
 }
 
 interface ProofVerdict {
@@ -500,7 +602,19 @@ interface ProofVerdict {
   readonly note: string;
 }
 
-function judgeProof(brick: BrickData, proof: Proof, input: BriquesInput): ProofVerdict {
+const LOCAL_TARGET_REFUSAL: Readonly<Record<Exclude<LocalTarget, "regular">, string>> = {
+  absent: "is not a tracked file of this repository (stage a new file before running the gate)",
+  link: "is a symbolic link, and a link is not followed",
+  empty: "is an empty file",
+  other: "is not a regular file",
+};
+
+function judgeProof(
+  brick: BrickData,
+  proof: Proof,
+  layer: LoadedLayer,
+  input: BriquesInput,
+): ProofVerdict {
   const pinned = /^([^/@\s]+)\/([^/@\s]+)@([^:]*):(.*)$/.exec(proof.cible);
   if (proof.date > input.latestDate) {
     return {
@@ -510,27 +624,28 @@ function judgeProof(brick: BrickData, proof: Proof, input: BriquesInput): ProofV
     };
   }
   if (pinned === null) {
+    const refuse = (note: string): ProofVerdict => ({ ok: false, kind: "locale", note });
     const invalid = validateCitedPath(proof.cible);
-    if (invalid !== null) {
-      return { ok: false, kind: "locale", note: `proof target ${proof.cible}: ${invalid}` };
+    if (invalid !== null) return refuse(`proof target ${proof.cible}: ${invalid}`);
+    if (proof.cible === BRIQUES_ROOT || proof.cible.startsWith(`${BRIQUES_ROOT}/`)) {
+      return refuse(
+        `proof target ${proof.cible} is part of the map itself: a brick is not proved by its own description`,
+      );
     }
     if (input.selfRepository === null) {
-      return {
-        ok: false,
-        kind: "locale",
-        note: "the name of this repository could not be derived, so a local proof names no carrier",
-      };
+      return refuse(
+        "the name of this repository could not be derived, so a local proof names no carrier",
+      );
     }
     if (!brick.depots.includes(input.selfRepository)) {
-      return {
-        ok: false,
-        kind: "locale",
-        note: `proof target ${proof.cible} is a path of ${input.selfRepository}, which is not a carrier (depots) of the brick`,
-      };
+      return refuse(
+        `proof target ${proof.cible} is a path of ${input.selfRepository}, which is not a carrier (depots) of the brick`,
+      );
     }
-    return input.localTargetExists(proof.cible)
+    const target = input.localTarget(proof.cible);
+    return target === "regular"
       ? { ok: true, kind: "locale", note: proof.cible }
-      : { ok: false, kind: "locale", note: `proof target ${proof.cible} does not exist` };
+      : refuse(`proof target ${proof.cible} ${LOCAL_TARGET_REFUSAL[target]}`);
   }
   const [, owner, name, sha, path] = pinned as unknown as [string, string, string, string, string];
   const repository = `${owner}/${name}`;
@@ -541,7 +656,7 @@ function judgeProof(brick: BrickData, proof: Proof, input: BriquesInput): ProofV
     );
   }
   if (!/^[0-9a-f]{40}$/.test(sha)) {
-    return fail(`pinned proof ${proof.cible}: the commit must be a full 40-hex sha`);
+    return fail(`pinned proof ${proof.cible}: the commit must be a full 40-hex sha, in lower case`);
   }
   const invalid = validateCitedPath(path);
   if (invalid !== null) return fail(`pinned proof ${proof.cible}: ${invalid}`);
@@ -559,6 +674,21 @@ function judgeProof(brick: BrickData, proof: Proof, input: BriquesInput): ProofV
   if (visibility !== "public") {
     return fail(
       `pinned proof ${proof.cible}: ${repository} is ${visibility || "not in the inventory"}, and only a public repository can be cited (I-15)`,
+    );
+  }
+  // The delegation is checked, not assumed: the citations gate reads the raw
+  // text of the file, so the proof holds only if that reader finds this very
+  // citation there. A value the YAML decoder rebuilds from an escape, or one
+  // followed by a character the reader strips, is a citation nobody resolves.
+  if (!layer.pinned.has(proof.cible)) {
+    return fail(
+      `pinned proof ${proof.cible}: the pinned-citations gate does not read this citation in the text of the layer file; write it plainly, unquoted or in double quotes, with nothing after it`,
+    );
+  }
+  const file = `${BRIQUES_ROOT}/${layer.rule.slug}.v1.yaml`;
+  if (input.citations.exemptions.has(exemptionKey(file, proof.cible))) {
+    return fail(
+      `pinned proof ${proof.cible} is exempted in the pinned-citations configuration: an exempted citation is not resolved, so it proves nothing`,
     );
   }
   return { ok: true, kind: "epinglee", note: proof.cible };
@@ -611,17 +741,15 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
       : `its scope does not list ${CITATIONS_SCOPE_ENTRY}: no gate would resolve a pinned proof`,
   );
 
-  // The universe: every entry under the root falls in exactly one class.
+  // The universe: every tracked entry under the root falls in exactly one class.
   const layerFiles = new Map<string, TreeEntry>();
   const ficheEntries = new Map<string, TreeEntry>();
-  let directories = 0;
   let readmes = 0;
   const strays: string[] = [];
   for (const entry of input.entries) {
     const layerFile = /^([a-z]+)\.v1\.yaml$/.exec(entry.path);
     const fiche = /^([a-z]+)\/([A-Z]{3}-[0-9]{2})\.md$/.exec(entry.path);
-    if (entry.kind === "directory" && LAYER_BY_SLUG.has(entry.path)) directories += 1;
-    else if (entry.kind === "file" && entry.path === "README.md") readmes += 1;
+    if (entry.kind === "file" && entry.path === "README.md") readmes += 1;
     else if (
       entry.kind === "file" &&
       layerFile !== null &&
@@ -636,8 +764,8 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     `${BRIQUES_ROOT}/`,
     strays.length === 0,
     strays.length === 0
-      ? `${input.entries.length} entry(ies), each one a layer file, a layer directory, a fiche or the README`
-      : `entry(ies) that are neither a layer file, a layer directory, a fiche nor the README (a link is not followed): ${strays.join(", ")}`,
+      ? `${input.entries.length} tracked entry(ies), each one a layer file, a fiche or the README`
+      : `tracked entry(ies) that are neither a layer file, a fiche nor the README (a link is not followed): ${strays.join(", ")}`,
   );
 
   // Layer files: all eleven, each readable and valid.
@@ -671,27 +799,43 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         `/couche: the file declares « ${String(declared)} », its name says « ${rule.slug} »`,
       );
     }
+    // What the citations gate reads in this file, by its own reader.
+    const scanned = scanText(text, input.citations.organization, []);
+    for (const rejected of scanned.rejected) {
+      errors.push(
+        `line ${rejected.line}: the pinned-citations gate refuses « ${rejected.text} » (${rejected.reason})`,
+      );
+    }
     if (errors.length > 0) {
       report.check(item, false, errors.join("; "));
       continue;
     }
     const bricks = (value as { briques: BrickData[] }).briques;
     report.check(item, true, `${bricks.length} brick(s), schema ${SCHEMA_VERSION}`);
-    loaded.push({ rule, bricks });
+    loaded.push({
+      rule,
+      bricks,
+      pinned: new Set(
+        scanned.pinned
+          .filter((citation) => citation.path !== null && citation.lines === null)
+          .map((citation) => citation.text),
+      ),
+    });
   }
 
   // Identifiers: one brick per id, across every layer.
   const owners = new Map<string, LayerSlug[]>();
+  const dependencies = new Map<string, readonly string[]>();
+  const withdrawn = new Set<string>();
   for (const layer of loaded) {
     for (const brick of layer.bricks) {
       owners.set(brick.id, [...(owners.get(brick.id) ?? []), layer.rule.slug]);
+      dependencies.set(brick.id, brick.depend_de);
+      if (brick.retrait !== undefined) withdrawn.add(brick.id);
     }
   }
-  const dependencies = new Map<string, readonly string[]>();
-  for (const layer of loaded) {
-    for (const brick of layer.bricks) dependencies.set(brick.id, brick.depend_de);
-  }
   const dependedOn = new Set<string>([...dependencies.values()].flat());
+  const cycles = findCycles(dependencies);
 
   const built: Brick[] = [];
   const seenFiches = new Set<string>();
@@ -711,7 +855,7 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         );
       }
 
-      // Dependencies: resolved, admitted by the layer table, acyclic.
+      // Dependencies: resolved, admitted by the layer table, standing, acyclic.
       for (const dependency of brick.depend_de) {
         const target = layerOfId(dependency);
         if (dependency === brick.id) {
@@ -726,10 +870,14 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           errors.push(
             `depends on ${dependency} (${target.slug}): ADR-0064 D1, layer ${rule.slug} may depend on ${rule.mayDependOn.join(", ") || "no other layer"}`,
           );
+        } else if (withdrawn.has(dependency) && brick.retrait === undefined) {
+          errors.push(`depends on ${dependency}, which is withdrawn`);
         }
       }
-      const cycle = findCycle(brick.id, dependencies);
-      if (cycle !== null) errors.push(`dependency cycle: ${cycle.join(" → ")}`);
+      const cycle = cycles.get(brick.id);
+      if (cycle !== undefined && !brick.depend_de.includes(brick.id)) {
+        errors.push(`dependency cycle: ${cycle.join(" → ")}`);
+      }
 
       // Doctrine citations. A brick outside the gouvernance layer that cites no
       // invariant is COUNTED and named in the volume, not refused: refused, the
@@ -814,11 +962,17 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           `origine dated ${brick.origine.date} is in the future (bound: ${input.latestDate})`,
         );
       }
+      const typedInData = TYPED_STATUS.exec(textsOf(brick).join("\n"));
+      if (typedInData !== null) {
+        errors.push(
+          `a field states a status (« ${typedInData[0]} »): ADR-0064 D4, the status is derived, never typed`,
+        );
+      }
 
       // Proofs.
       let held = 0;
       for (const proof of brick.preuve) {
-        const verdict = judgeProof(brick, proof, input);
+        const verdict = judgeProof(brick, proof, layer, input);
         if (!verdict.ok) {
           errors.push(verdict.note);
           continue;
@@ -828,7 +982,9 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         else pinnedProofs += 1;
       }
 
-      // The fiche: present, titled like the brick, with its four sections.
+      // The fiche: present, titled like the brick, with its four sections, and
+      // naming everything the YAML cites — a citation the fiche never names is
+      // a citation nobody can read the reason of.
       const fichePath = `${rule.slug}/${brick.id}.md`;
       let sections: readonly FicheSection[] = [];
       seenFiches.add(fichePath);
@@ -841,8 +997,13 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
         } else {
           const fiche = parseFiche(text);
           const expected = `${brick.id} — ${brick.nom}`;
-          if (fiche.title !== expected) {
-            errors.push(`fiche title is « ${fiche.title ?? ""} », the YAML says « ${expected} »`);
+          if (fiche.titles.length !== 1 || fiche.titles[0] !== expected) {
+            errors.push(
+              `fiche title is « ${fiche.titles.join(" » then « ")} », the YAML says « ${expected} », once`,
+            );
+          }
+          if (fiche.preamble.length > 0) {
+            errors.push("fiche carries text between its title and its first section");
           }
           const titles = fiche.sections.map((section) => section.title);
           if (titles.join(" | ") !== FICHE_SECTIONS.join(" | ")) {
@@ -858,13 +1019,21 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
           }
           // A status written in prose goes stale the day a proof lands, and a
           // reader cannot tell it from the derived one. The machine values are
-          // refused; the fiche says which proof exists and which one is awaited.
-          const stated = TYPED_STATUS.exec(
-            fiche.sections.map((section) => section.body).join("\n"),
-          );
+          // refused wherever they are written in the fiche, in any case, and
+          // with or without a Markdown escape.
+          const prose = withoutComments(text).replaceAll("\\", "");
+          const stated = TYPED_STATUS.exec(prose);
           if (stated !== null) {
             errors.push(
               `fiche states a status (« ${stated[0]} »): ADR-0064 D4, the status is derived, never typed`,
+            );
+          }
+          const unnamed = [...brick.depend_de, ...brick.invariants, ...brick.decisions].filter(
+            (identifier) => !names(prose, identifier),
+          );
+          if (unnamed.length > 0) {
+            errors.push(
+              `the YAML cites ${unnamed.join(", ")}, which the fiche never names: say in the fiche what each one binds, or remove it`,
             );
           }
           sections = fiche.sections;
@@ -940,11 +1109,11 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
   );
   const volume =
     `${counters.briques} brick(s) in ${loaded.length} of ${LAYERS.length} layer file(s) (${perLayer}); ` +
-    `${input.entries.length} entry(ies) under ${BRIQUES_ROOT}/ = ${layerFiles.size} layer file(s) + ${directories} layer directory(ies) + ${ficheEntries.size} fiche(s) + ${readmes} README + ${strays.length} refused; ` +
+    `${input.entries.length} tracked entry(ies) under ${BRIQUES_ROOT}/ = ${layerFiles.size} layer file(s) + ${ficheEntries.size} fiche(s) + ${readmes} README + ${strays.length} refused; ` +
     `status derived: ${STATUSES.map((status) => `${status} ${counters.par_statut[status]}`).join(", ")} (prototypee cannot be reached in v1: no instrument verifies a signed release); ` +
-    `proofs held: ${localProofs} on this tree, ${pinnedProofs} pinned and left to the pinned-citations gate; ` +
+    `proofs held: ${localProofs} on this tree, ${pinnedProofs} pinned, each read by the pinned-citations gate and left to it to resolve; ` +
     `products: ${counters.catalogue_produits} in the catalogue of ADR-0042 §1 = ${counters.produits_en_brique} as bricks + ${counters.catalogue_produits - counters.produits_en_brique} outside the map; ` +
-    `layer rules: ${verified.length} verified (${verified.join(", ")}), ${LAYERS.length - verified.length} declarative, not verified by this gate; ` +
+    `layer rules: ${verified.length} verified (${verified.join(", ")}; for gouvernance, its dependency half), ${LAYERS.length - verified.length} declarative, not verified by this gate; ` +
     `origin: ${counters.par_origine.inspection} inspection, ${counters.par_origine.observed} observed, ${counters.par_origine.propre} propre; ` +
     `autonomy: ${counters.par_autonomie.discover} discover, ${counters.par_autonomie.modify} modify, ${counters.par_autonomie.govern} govern; ` +
     `${counters.sans_depot_porteur} brick(s) without a carrier repository, ${counters.jetables} transitional; ` +
