@@ -6,6 +6,7 @@ import { exemptionKey } from "../tools/quality/check-pinned-citations";
 import {
   type BrickData,
   type BriquesInput,
+  CONTROL_CHARACTERS,
   type EntryKind,
   evaluateBriques,
   FICHE_SECTIONS,
@@ -139,6 +140,11 @@ function reference(): World {
       selfRepository: SELF,
       localTarget: (path): LocalTarget => (path === PROOF ? "regular" : "absent"),
       unstaged: new Set(),
+      doctrineSources: [
+        "docs/decisions/INVARIANTS.md",
+        "docs/decisions/DECISION-REGISTER.md",
+        "ecosystem/repositories.v1.yaml",
+      ],
       citations: {
         organization: "libre-ai",
         scope: ["docs/", "ecosystem/briques/"],
@@ -1272,9 +1278,88 @@ describe("what a reader sees (second review, G3 to G10)", () => {
     const violations = judge(world).report.violations;
     expect(violations.length).toBeGreaterThan(0);
     for (const violation of violations) {
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: the control range is the point.
-      expect(violation).not.toMatch(/[\u0000-\u001f\u007f]/);
+      expect(violation.replace(CONTROL_CHARACTERS, "")).toBe(violation);
     }
-    expect(violations.join(" ")).toContain("\\x0");
+    expect(violations.join(" ")).toContain("\\u000");
+  });
+
+  test.each([
+    ["DEL", 0x7f],
+    ["ESC", 0x1b],
+    ["TAB", 0x09],
+    ["NUL", 0x00],
+    ["NEL", 0x85],
+    ["LINE SEPARATOR", 0x2028],
+  ])("%s in the name of a tracked entry is printed as an escape", (_name, code) => {
+    const world = reference();
+    const character = String.fromCharCode(code);
+    world.extraEntries.push({ path: `a${character}b`, kind: "file" });
+    const violations = judge(world).report.violations.join("\n");
+    expect(violations).not.toContain(character);
+    expect(violations).toContain(`a\\u${code.toString(16).padStart(4, "0")}b (file)`);
+  });
+
+  test.each([
+    ["preuve_produite", "fabrique"],
+    ["origine.source", "identite"],
+    ["charte.valeur", "produit"],
+    ["charte.pour_qui", "produit"],
+    ["charte.degel", "produit"],
+    ["charte.abandon", "produit"],
+  ] as const)("a status written in %s is refused", (field, slug) => {
+    const world = reference();
+    const draft = first(world, slug);
+    const text = "Une phrase qui écrit prototypee en toutes lettres.";
+    if (field === "preuve_produite") draft.preuve_produite = text;
+    else if (field === "origine.source") draft.origine = { type: "inspection", source: text };
+    else {
+      const key = field.slice("charte.".length) as "valeur" | "pour_qui" | "degel" | "abandon";
+      draft.charte = { ...CHARTER, [key]: text };
+    }
+    expect(violationsOf(world)).toContain(`${draft.id}: a field states a status (« prototypee »)`);
+  });
+
+  test.each([
+    ["#mot", [] as string[]],
+    ["### Niveau trois", [] as string[]],
+    ["#\tTitre", ["Titre"]],
+    ["# #", [] as string[]],
+  ])("the heading reader on %j", (line, titles) => {
+    expect(parseFiche(`${line}\n`).titles).toEqual(titles);
+  });
+
+  test("a section title after a tab is a section", () => {
+    expect(parseFiche("# A\n\n##\tContexte\n\nx\n").sections[0]?.title).toBe("Contexte");
+  });
+
+  test("a line of opening brackets is read in linear time", () => {
+    const world = reference();
+    const draft = first(world, "identite");
+    setFiche(world, "identite/IDN-01.md", `${ficheOf(draft)}\n${"<".repeat(300_000)}\n`);
+    const started = performance.now();
+    judge(world);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  });
+});
+
+describe("the doctrine sources (third review, H2)", () => {
+  test.each([
+    "docs/decisions/INVARIANTS.md",
+    "docs/decisions/DECISION-REGISTER.md",
+    "ecosystem/repositories.v1.yaml",
+    "ecosystem/briques/README.md",
+  ])("%s changed on disk and not staged is refused", (source) => {
+    const world = reference();
+    world.input.unstaged = new Set([source]);
+    expect(violationsOf(world)).toContain(
+      `doctrine sources: ${source}: its working copy differs from the index`,
+    );
+  });
+
+  test("the sources read as indexed are counted", () => {
+    const outcome = judge(reference());
+    expect(outcome.report.checks.find((check) => check.item === "doctrine sources")?.note).toBe(
+      "3 doctrine file(s) read, each one as indexed",
+    );
   });
 });

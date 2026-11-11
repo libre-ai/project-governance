@@ -13,7 +13,13 @@ Le YAML est la source du vérificateur et de la page vision ; la fiche est la so
 
 La carte est ce que git suit : un fichier non indexé n'en fait pas partie, et un lien symbolique est refusé. Un fichier de la carte, ou une cible de preuve, dont la copie de travail diffère de l'index est refusé lui aussi : le gate ne répond pas d'un contenu que git ne suit pas.
 
-Trois limites du lecteur, déclarées : dans un fichier de couche, une clé écrite deux fois pour une même brique ne provoque pas d'erreur, le lecteur YAML garde la dernière ; le gate lit les titres `# ` et `## ` en début de ligne, pas tout ce qu'un moteur Markdown rendrait comme un titre ; il refuse les quatre valeurs de statut écrites en toutes lettres, pas une graphie qui les imiterait.
+Limites du lecteur, déclarées. Le gate lit du texte, il ne rend pas le Markdown :
+
+- dans un fichier de couche, une clé écrite deux fois pour une même brique ne provoque pas d'erreur, le lecteur YAML garde la dernière ;
+- il lit les titres `# ` et `## ` en début de ligne, pas tout ce qu'un moteur Markdown rendrait comme un titre ;
+- il refuse les quatre valeurs de statut écrites telles quelles, pas une graphie qui les imiterait ;
+- la règle « la fiche le nomme » est un plancher : elle écarte les titres, les commentaires, les définitions de lien et les balises d'une ligne, pas toute forme qu'un rendu masquerait ;
+- une citation épinglée écrite avec un échappement est refusée, sauf si la même citation figure aussi en clair ailleurs dans le fichier, par exemple dans un commentaire.
 
 ## Ce que le YAML cite, la fiche le nomme
 
@@ -47,7 +53,7 @@ Une preuve montre ce que montre son artefact, rien de plus. La section « Mesure
 ## Vérifier
 
 ```bash
-git add ecosystem/briques && bun run check:briques
+git add <ce que tu as modifié> && bun run check:briques
 ```
 
-Le gate imprime ce qu'il a lu : briques par couche, statuts dérivés, preuves tenues, produits du catalogue d'ADR-0042 en brique et hors carte, règles de couche vérifiées et règles seulement déclarées, briques sans invariant, cibles de preuve partagées.
+Le gate juge ce que git suit : il refuse un fichier de la carte, une cible de preuve ou une source de doctrine dont le contenu sur le disque n'est pas celui de l'index. Il imprime ce qu'il a lu : briques par couche, statuts dérivés, preuves tenues, produits du catalogue d'ADR-0042 en brique et hors carte, règles de couche vérifiées et règles seulement déclarées, briques sans invariant, cibles de preuve partagées.

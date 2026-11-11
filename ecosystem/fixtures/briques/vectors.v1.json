@@ -12,7 +12,7 @@
             "nom": "Modèle de menace par produit",
             "role": "Tient, pour chaque produit, la liste des menaces et la preuve qui ferme chacune.",
             "depend_de": [],
-            "invariants": ["I-08"],
+            "invariants": ["I-08", "I-100"],
             "decisions": ["ADR-0049", "D103"],
             "depots": ["libre-ai/project-governance"],
             "origine": {
@@ -357,6 +357,15 @@
         }
       },
       "expect": "/briques/0"
+    },
+    {
+      "name": "an invariant with four digits",
+      "because": "the register numbers its invariants on two or three digits",
+      "set": {
+        "path": ["briques", 0, "invariants"],
+        "value": ["I-1000"]
+      },
+      "expect": "/briques/0/invariants/0"
     }
   ]
 }

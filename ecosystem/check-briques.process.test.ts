@@ -8,6 +8,7 @@ import {
   rmSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -321,6 +322,42 @@ describe("check-briques as a process", () => {
     symlinkSync("briques-real", join(root, "ecosystem/briques"));
     const outcome = judge(root);
     expect(outcome.output).toContain("its working copy differs from the index");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a file whose bytes did not change is not refused for its timestamps", () => {
+    // The comparison is by content: a touched file, or a tree copied with new
+    // timestamps, holds the indexed bytes and is judged.
+    const root = freshTree("touched");
+    const past = new Date("2020-01-01T00:00:00Z");
+    for (const path of [
+      "ecosystem/briques/identite/IDN-01.md",
+      "ecosystem/briques/identite.v1.yaml",
+      "docs/proof.md",
+      "docs/decisions/INVARIANTS.md",
+    ]) {
+      utimesSync(join(root, path), past, past);
+    }
+    const outcome = judge(root);
+    expect(outcome.output).toContain("Brick map verified:");
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test.each([
+    ["docs/decisions/INVARIANTS.md", "| I-99 | Ajouté sur le disque seulement |\n"],
+    ["docs/decisions/DECISION-REGISTER.md", "| D9999 | Ajoutée sur le disque seulement |\n"],
+    [
+      "ecosystem/repositories.v1.yaml",
+      "  - repository: libre-ai/fantome\n    visibility: public\n",
+    ],
+  ])("the doctrine source %s changed on disk and not staged is refused", (source, added) => {
+    const root = freshTree(`doctrine-${source.replaceAll(/[^a-z]+/gi, "-")}`);
+    const file = join(root, source);
+    writeFileSync(file, `${readFileSync(file, "utf8")}${added}`);
+    const outcome = judge(root);
+    expect(outcome.output).toContain(
+      `doctrine sources: ${source}: its working copy differs from the index`,
+    );
     expect(outcome.exitCode).toBe(1);
   });
 

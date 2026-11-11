@@ -347,6 +347,12 @@ export interface BriquesInput {
    * set was judged on a content git does not track, so it is refused (G1).
    */
   readonly unstaged: ReadonlySet<string>;
+  /**
+   * Repository-relative paths of the doctrine files the collections above were
+   * read from: one of them changed on disk and not staged is refused like a
+   * file of the map (third review, H2).
+   */
+  readonly doctrineSources: readonly string[];
   /** The configuration of the pinned-citations gate, which resolves foreign proofs. */
   readonly citations: {
     readonly organization: string;
@@ -457,8 +463,9 @@ function withoutComments(text: string): string {
  * expression backtrack quadratically (review of 2026-11-11, G8).
  */
 function headingOf(line: string): { level: 1 | 2; text: string } | null {
-  const level = line.startsWith("## ") ? 2 : line.startsWith("# ") ? 1 : null;
-  if (level === null) return null;
+  // One or two `#`, then a space or a tab: `#mot` and `### x` are not read.
+  const level = line.startsWith("##") ? 2 : line.startsWith("#") ? 1 : null;
+  if (level === null || (line[level] !== " " && line[level] !== "\t")) return null;
   let text = line.slice(level + 1).trim();
   let end = text.length;
   while (end > 0 && text[end - 1] === "#") end -= 1;
@@ -480,18 +487,39 @@ function readableProse(text: string): string {
   // What is left of a comment marker is an unterminated comment: hidden to the end.
   const unterminated = closed.indexOf("<!--");
   const visible = unterminated === -1 ? closed : closed.slice(0, unterminated);
-  return visible
-    .split("\n")
-    .filter((line) => headingOf(line) === null && !/^\s*\[[^\]]*\]:\s/.test(line))
-    .join("\n")
-    .replace(/<[^>\n]*>/g, " ");
+  return (
+    visible
+      .split("\n")
+      .filter((line) => headingOf(line) === null && !/^\s*\[[^\]]*\]:\s/.test(line))
+      .join("\n")
+      // `[^<>\n]`, not `[^>\n]`: on a line of `<<<<…` the wider class rescanned
+      // the line from every `<` (third review, H7).
+      .replace(/<[^<>\n]*>/g, " ")
+  );
 }
+
+/**
+ * C0, DEL, C1, and the two Unicode line separators a terminal or a runner may
+ * break on. Built from code points: a source file must not carry these
+ * characters, and two of them end a line inside a regular-expression literal.
+ */
+export const CONTROL_CHARACTERS = new RegExp(
+  `[${[
+    [0x00, 0x1f],
+    [0x7f, 0x9f],
+    [0x2028, 0x2029],
+  ]
+    .map(
+      ([from, to]) => `${String.fromCharCode(from as number)}-${String.fromCharCode(to as number)}`,
+    )
+    .join("")}]`,
+  "g",
+);
 
 /** Control characters made visible: a value of the data never forges a line of the output. */
 function printable(text: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: the control range is the point.
-  return text.replace(/[\u0000-\u001f\u007f]/g, (character) => {
-    return `\\x${character.charCodeAt(0).toString(16).padStart(2, "0")}`;
+  return text.replace(CONTROL_CHARACTERS, (character) => {
+    return `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`;
   });
 }
 
@@ -813,6 +841,19 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     delegated
       ? `its scope lists ${CITATIONS_SCOPE_ENTRY}: pinned proofs are resolved over git by that gate`
       : `its scope does not list ${CITATIONS_SCOPE_ENTRY}: no gate would resolve a pinned proof`,
+  );
+  // The doctrine was read on disk: a source changed there and not staged is a
+  // doctrine git does not track. Checked for each one, so the volume says how
+  // many sources the verdict rests on.
+  const driftedSources = [...input.doctrineSources, `${BRIQUES_ROOT}/README.md`].filter((path) =>
+    input.unstaged.has(path),
+  );
+  report.check(
+    "doctrine sources",
+    driftedSources.length === 0,
+    driftedSources.length === 0
+      ? `${input.doctrineSources.length} doctrine file(s) read, each one as indexed`
+      : `${driftedSources.join(", ")}: ${STAGE_FIRST}`,
   );
 
   // The universe: every tracked entry under the root falls in exactly one class.
