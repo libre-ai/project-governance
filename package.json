@@ -33,6 +33,7 @@
     "check:forgotten": "bun run check:bun:runtime && bun tools/quality/check-forgotten.ts",
     "check:refusals": "bun run check:bun:runtime && bun tools/quality/check-refusals.ts",
     "check:cards": "bun run check:bun:runtime && bun ecosystem/validate-cards.ts",
+    "check:briques": "bun run check:bun:runtime && bun ecosystem/check-briques.ts",
     "check:attestation": "bun run check:bun:runtime && bun tools/attestation/neutralise-check.ts",
     "heal:card-status": "bun run check:bun:runtime && bun tools/presentation/heal-card-status.ts",
     "check:objects": "bun run check:bun:runtime && bun tools/quality/validate-knowledge-objects.ts",

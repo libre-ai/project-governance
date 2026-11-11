@@ -157,6 +157,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^distribution\/templates\/langgraph-gates\/langgraph-advisory-floor\.v1\.txt$/,
   // validate-cards / validate-knowledge-objects: what a card or an object must carry.
   /^ecosystem\/schemas\/project\.v1\.schema\.json$/,
+  // check-briques.ts: what a brick must carry, and the closed list of its fields (ADR-0064 D2).
+  /^ecosystem\/schemas\/brique\.v1\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
   // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
@@ -192,6 +194,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   ":(glob)**/bunfig.toml",
   "distribution/templates/langgraph-gates/langgraph-advisory-floor.v1.txt",
   "ecosystem/schemas/project.v1.schema.json",
+  "ecosystem/schemas/brique.v1.schema.json",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
   "distribution/templates/dependabot/cargo.yml",

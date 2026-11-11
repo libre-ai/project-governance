@@ -1,0 +1,141 @@
+{
+  "description": "Schema vectors of libre-ai.brique.v1 (ADR-0064 D2). Each invalid vector is the first valid one with one change, named in `because`; briques.test.ts applies the change and expects the schema to refuse it.",
+  "valid": [
+    {
+      "name": "a method brick with a local proof",
+      "value": {
+        "schema_version": "libre-ai.brique.v1",
+        "couche": "preuve",
+        "briques": [
+          {
+            "id": "PRV-07",
+            "nom": "Modèle de menace par produit",
+            "role": "Tient, pour chaque produit, la liste des menaces et la preuve qui ferme chacune.",
+            "depend_de": [],
+            "invariants": ["I-08"],
+            "decisions": ["ADR-0049", "D103"],
+            "depots": ["libre-ai/project-governance"],
+            "origine": {
+              "type": "inspection",
+              "source": "vision externe en briques inspectée le 2026-11-09"
+            },
+            "autonomie": "modify",
+            "preuve": [{ "date": "2026-10-10", "cible": "docs/security/THREAT-MODEL.md" }]
+          }
+        ]
+      }
+    },
+    {
+      "name": "a product brick with its charter, an observed origin and a pinned proof",
+      "value": {
+        "schema_version": "libre-ai.brique.v1",
+        "couche": "produit",
+        "briques": [
+          {
+            "id": "PRD-02",
+            "nom": "Veille documentaire",
+            "role": "Suit des sources depuis le poste et garde hors ligne ce qui a été conservé.",
+            "depend_de": ["PLT-01"],
+            "invariants": ["I-10"],
+            "decisions": ["ADR-0054"],
+            "depots": ["libre-ai/information-watch"],
+            "origine": { "type": "observed", "date": "2026-10-22" },
+            "autonomie": "modify",
+            "preuve": [
+              {
+                "date": "2026-10-23",
+                "cible": "libre-ai/information-watch@0123456789abcdef0123456789abcdef01234567:project.v1.yaml"
+              }
+            ],
+            "charte": {
+              "valeur": "Suivre des sources depuis son poste sans qu'un serveur tiers sache ce qu'on lit.",
+              "pour_qui": "Une personne ou une organisation qui veille des sources.",
+              "degel": "Les trois surfaces construites sur le même cœur, sur une release signée.",
+              "abandon": "Le parseur isolé ne tient pas le seuil mémoire sur un corpus réel.",
+              "refus": ["Stocker une donnée de paiement dans l'application."]
+            },
+            "jetable": "until=la fiche du dépôt porteur reprend la charte",
+            "retrait": { "decision": "D103", "date": "2026-11-09" }
+          }
+        ]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a typed status",
+      "because": "ADR-0064 D4: the status is derived, never typed",
+      "set": { "path": ["briques", 0, "statut"], "value": "prototypee" },
+      "expect": "ADR-0064 D4"
+    },
+    {
+      "name": "an unknown field",
+      "because": "the schema is closed: an unread field is a claim nothing checks",
+      "set": { "path": ["briques", 0, "maturite"], "value": "haute" },
+      "expect": "additionalProperties"
+    },
+    {
+      "name": "an identifier without a layer prefix",
+      "because": "the prefix is how a dependency names its layer",
+      "set": { "path": ["briques", 0, "id"], "value": "SEC-07" },
+      "expect": "/briques/0/id"
+    },
+    {
+      "name": "an unknown layer",
+      "because": "ADR-0064 D1 names eleven layers",
+      "set": { "path": ["couche"], "value": "securite" },
+      "expect": "/couche"
+    },
+    {
+      "name": "an inspection without its source",
+      "because": "I-33: an origin by inspection names what was inspected",
+      "set": { "path": ["briques", 0, "origine"], "value": { "type": "inspection" } },
+      "expect": "/briques/0/origine"
+    },
+    {
+      "name": "an observation without its date",
+      "because": "an observed origin is a dated fact",
+      "set": { "path": ["briques", 0, "origine"], "value": { "type": "observed" } },
+      "expect": "/briques/0/origine"
+    },
+    {
+      "name": "an autonomy outside the three levels",
+      "because": "ADR-0064 D2 names discover, modify and govern",
+      "set": { "path": ["briques", 0, "autonomie"], "value": "full" },
+      "expect": "/briques/0/autonomie"
+    },
+    {
+      "name": "a proof without a date",
+      "because": "a proof is dated, or it is a claim",
+      "set": {
+        "path": ["briques", 0, "preuve"],
+        "value": [{ "cible": "docs/security/THREAT-MODEL.md" }]
+      },
+      "expect": "/briques/0/preuve/0"
+    },
+    {
+      "name": "a decision that is neither an ADR nor a register row",
+      "because": "a decision is cited by its identifier, so that it resolves",
+      "set": { "path": ["briques", 0, "decisions"], "value": ["décision du 9 novembre"] },
+      "expect": "/briques/0/decisions/0"
+    },
+    {
+      "name": "a transitional brick without its condition",
+      "because": "jetable names the condition that ends the brick",
+      "set": { "path": ["briques", 0, "jetable"], "value": "bientôt" },
+      "expect": "/briques/0/jetable"
+    },
+    {
+      "name": "a layer file with no brick",
+      "because": "an empty layer is a missing source, not zero bricks",
+      "set": { "path": ["briques"], "value": [] },
+      "expect": "/briques"
+    },
+    {
+      "name": "another schema version",
+      "because": "the reader knows one version",
+      "set": { "path": ["schema_version"], "value": "libre-ai.brique.v2" },
+      "expect": "/schema_version"
+    }
+  ]
+}

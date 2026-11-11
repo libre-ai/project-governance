@@ -199,6 +199,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "ecosystem/schemas/brique.v1.schema.json",
+      [
+        "ecosystem/schemas/brique.v2.schema.json",
+        "ecosystem/schemas/brique.v1.schema.json.bak",
+        "docs/ecosystem/schemas/brique.v1.schema.json",
+        "ecosystem/briques.ts",
+      ],
+    ],
+    [
       "ecosystem/schemas/knowledge-object.schema.json",
       [
         "ecosystem/schemas/knowledge-object.v2.schema.json",

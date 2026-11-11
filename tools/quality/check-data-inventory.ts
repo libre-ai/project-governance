@@ -217,6 +217,12 @@ export const NOT_GATED: readonly NotGated[] = [
       "project cards, validated against ecosystem/schemas/project.v1.schema.json, which is gated",
   },
   {
+    path: "ecosystem/briques/",
+    extensions: [".yaml"],
+    because:
+      "the brick map (ADR-0064), validated against ecosystem/schemas/brique.v1.schema.json, which is gated; the layer table that bounds its dependencies is in the code of ecosystem/briques.ts, not in these files",
+  },
+  {
     path: "ecosystem/objects/",
     extensions: [".json"],
     because:

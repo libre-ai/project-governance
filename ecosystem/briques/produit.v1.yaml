@@ -1,0 +1,53 @@
+schema_version: libre-ai.brique.v1
+couche: produit
+# Deux produits du catalogue d'ADR-0042 §1 sont des briques : ceux qui ont un
+# ADR de sortie de gel et une charte (docs/reviews/product-charters-2026-11-09).
+# Les autres produits du catalogue restent hors de la carte tant qu'ils n'ont
+# pas de charte ; `check-briques` imprime le compte des deux côtés.
+briques:
+  - id: PRD-02
+    nom: Veille documentaire
+    role: Suit des sources depuis le poste de l'utilisateur et garde lisible hors ligne ce qu'il a conservé, sans qu'un serveur tiers sache ce qu'il lit.
+    depend_de: [PLT-01, PLT-02, PLT-05, PLT-07, EXE-04]
+    invariants: [I-06, I-08, I-10, I-15, I-27, I-30]
+    decisions: [ADR-0042, ADR-0054, ADR-0063, ADR-0064, D81, D85]
+    # Le dépôt porteur existe, privé, et n'est pas encore à l'inventaire de la
+    # flotte (I-30 : attestation, puis publication, puis enregistrement). Tant
+    # qu'il n'y est pas, la brique n'a ni porteur déclaré ni preuve citable.
+    depots: []
+    origine:
+      type: propre
+    autonomie: modify
+    preuve: []
+    charte:
+      valeur: Suivre des sources (flux, pages, documents) depuis son poste et lire hors ligne ce qu'on a conservé, sans qu'aucun serveur tiers ne sache ce qu'on lit.
+      pour_qui: Une personne ou une organisation qui veille des sources et veut garder cette veille chez elle ; en second, les organisations qui préfèrent l'offre hébergée payante, sans donnée de paiement dans l'application.
+      degel: Les trois surfaces (web, application macOS, extension navigateur) construites sur le même cœur et la même API, avec les preuves par surface d'ADR-0054 §3, sur une release signée dont l'évidence est publiée.
+      abandon: Le parseur isolé par processus fils ne tient pas le seuil de mémoire ou de latence fixé par la spécification sur un corpus réel, ou l'offre hébergée exige une donnée que l'auto-hébergement ne peut pas garantir.
+      refus:
+        - Parser des flux dans l'application macOS ou dans l'extension, qui délèguent à l'API.
+        - Stocker une donnée de paiement.
+        - Ouvrir mobile, Windows ou Linux au premier palier.
+        - Dépendre d'un service managé pour le cœur.
+  - id: PRD-15
+    nom: Projets, tickets et support
+    role: Capture un signalement là où se trouve son émetteur et le relaie vers l'outil où l'équipe travaille déjà, avec un reçu que l'émetteur peut vérifier.
+    depend_de: [PAS-02, PLT-06, PLT-07]
+    invariants: [I-08, I-15, I-22, I-32]
+    decisions: [ADR-0042, ADR-0055, ADR-0064, D94]
+    depots: [libre-ai/signalement]
+    origine:
+      type: propre
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/signalement@0b4842d4c8ce8425daaa1bea95bd513e8df5541e:apps/extension-shared/capture.ts
+    charte:
+      valeur: Un signalement part d'où l'on est (formulaire, courriel, extension) et arrive là où l'équipe travaille, avec un reçu que l'émetteur peut vérifier.
+      pour_qui: Une organisation qui reçoit des signalements de tiers (usagers, clients, habitants) et les traite dans des outils qu'elle a déjà.
+      degel: Un signalement réel, émis depuis une surface publique, relayé vers un connecteur réel, avec un reçu de projection vérifiable, sur une release signée dont l'évidence est publiée.
+      abandon: Aucune organisation n'a relayé un signalement réel à la deuxième release signée, ou le relais exige un connecteur qui n'existe que par un service hébergé que Libre AI ne peut pas auto-héberger.
+      refus:
+        - Devenir un back-office de tickets à la place de l'outil cible.
+        - Imposer une file de messages hébergée.
+        - Lire le navigateur de l'utilisateur au-delà de la page signalée.

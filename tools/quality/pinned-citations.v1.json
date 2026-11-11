@@ -1,6 +1,6 @@
 {
   "organization": "libre-ai",
-  "scope": ["docs/"],
+  "scope": ["docs/", "ecosystem/briques/"],
   "adr": {
     "directory": "docs/adr/",
     "bareCitationsGuardedAbove": 53,
