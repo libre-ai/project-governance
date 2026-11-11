@@ -2,9 +2,9 @@
 
 ## Contexte
 
-P02 est le produit de veille du catalogue d'ADR-0042 §1. ADR-0054 le sort du gel et fixe sa première version : un serveur entièrement en Rust, et trois surfaces qui parlent à la même API (une application web installable, une application macOS sous Tauri 2, une extension de navigateur sans accès réseau). ADR-0064 D8 en fait la première brique `produit` qui doit atteindre `prototypee`, sous la pile d'ADR-0063.
+P02 est le produit de veille du catalogue d'ADR-0042 §1. ADR-0054 le sort du gel et fixe sa première version : un serveur entièrement en Rust, et trois surfaces qui parlent à la même API (une application web installable, une application macOS sous Tauri 2, une extension de navigateur sans accès réseau). ADR-0064 D8 en fait la première brique `produit` à prouver par une release signée, sous la pile d'ADR-0063.
 
-Son dépôt porteur existe et reste privé : I-30 sépare l'attestation, la publication et l'enregistrement à l'inventaire, et aucun des trois n'est fait. Cette fiche ne nomme donc aucun porteur dans ses données et ne cite aucune preuve.
+ADR-0054 §2 lui donne un dépôt dédié. Ce dépôt existe et reste privé : I-30 sépare l'attestation, la publication et l'enregistrement à l'inventaire, et aucun des trois n'est fait. Le code P02 plus ancien du dépôt du domaine Connaissance devient une référence, selon le même paragraphe. Cette fiche ne nomme donc aucun porteur dans ses données et ne cite aucune preuve.
 
 ## Ce que la brique ferme
 

@@ -1,0 +1,87 @@
+schema_version: libre-ai.brique.v1
+couche: identite
+# Qui agit, avec quel mandat (ADR-0064 D1). La couche ne dépend que de
+# `gouvernance` et d'elle-même. Ses ancrages sont I-09 (OIDC neutre, session
+# opaque, Biscuit Ed25519 atténué) et I-18 (identité des agents, révocation
+# par agent). Ce qui existe est porté par des dépôts publics de la flotte :
+# les contrats dans `schemas-and-contracts`, les jetons et la révocation dans
+# `capability-authorization`, la frontière OIDC dans `ai-work-supervision`.
+briques:
+  - id: IDN-01
+    nom: Identité provider-neutre
+    role: Authentifie une personne par OIDC auprès d'un fournisseur remplaçable et lui ouvre une session navigateur opaque, sans qu'un jeton interne atteigne le navigateur.
+    depend_de: [GOV-07]
+    invariants: [I-09]
+    decisions: [ADR-0002, ADR-0028, ADR-0064, D09, D16, D35]
+    depots: [libre-ai/schemas-and-contracts, libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/openapi/auth.v1.yaml
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:packages/auth-web/src/oidc/transaction.ts
+  - id: IDN-02
+    nom: Jetons atténués
+    role: Émet des jetons Biscuit Ed25519 courts, bornés à un tenant, une ressource et des opérations, que chaque délégation ne peut que restreindre.
+    depend_de: [GOV-07]
+    invariants: [I-09, I-28]
+    decisions: [ADR-0002, ADR-0028, ADR-0031, ADR-0064, D09, D15, D37]
+    depots: [libre-ai/capability-authorization, libre-ai/schemas-and-contracts]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # Dépôt de couche 3 et contrats verrouillés : toute écriture passe par la
+    # revue et la fusion du propriétaire (I-17, contrôle K4).
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/capability-authorization@a20895af599b7f9c0d02220bd9584ac012088905:src/token.rs
+      - date: "2026-10-24"
+        cible: libre-ai/capability-authorization@a20895af599b7f9c0d02220bd9584ac012088905:tests/authz.rs
+  - id: IDN-03
+    nom: Racine par organisation
+    role: Rattache chaque jeton à la racine de confiance de son organisation, avec une sous-racine par produit, de sorte qu'aucune clé ne signe pour deux organisations.
+    depend_de: [IDN-02]
+    invariants: [I-09, I-21]
+    decisions: [ADR-0002, ADR-0042, ADR-0064, D15, D55, D61]
+    # Le tenant obligatoire existe dans chaque jeton ; aucune clé propre à une
+    # organisation n'existe, donc aucun dépôt ne porte la brique.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve: []
+  - id: IDN-04
+    nom: Identité des agents et des runners
+    role: Donne à chaque agent une identité liée à une flotte, une mission et un périmètre de capacités, et à chaque runner une identité attestée sans secret de longue durée.
+    depend_de: [IDN-02]
+    invariants: [I-09, I-18]
+    decisions: [ADR-0009, ADR-0018, ADR-0064]
+    depots: [libre-ai/schemas-and-contracts, libre-ai/capability-authorization]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/authz/authority-v2.datalog
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/authz/agent-runs-v2.datalog
+  - id: IDN-05
+    nom: Révocation continue
+    role: Propage la révocation d'un jeton ou d'un agent à tous les vérificateurs, de sorte qu'un jeton révoqué soit refusé avant son échéance.
+    depend_de: [IDN-02, IDN-04]
+    invariants: [I-09, I-18]
+    decisions: [ADR-0002, ADR-0009, ADR-0064]
+    depots: [libre-ai/capability-authorization]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: discover
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/capability-authorization@a20895af599b7f9c0d02220bd9584ac012088905:src/revocation.rs

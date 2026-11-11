@@ -44,6 +44,9 @@ import { GateReport } from "../tools/quality/gate-report";
  * table; a fabrique brick declares the proof it produces; a produit brick is a
  * dependency of nothing). The eight others are statements about behaviour that
  * no data can show; they are printed as declarative, never counted as verified.
+ * The second half of the gouvernance rule (« every other brick cites at least
+ * one invariant ») is counted, not enforced: the bricks it would refuse are
+ * named in the volume, so the gap is read instead of being papered over.
  */
 
 export const SCHEMA_VERSION = "libre-ai.brique.v1";
@@ -277,6 +280,10 @@ export interface Counters {
   readonly preuves_locales: number;
   readonly preuves_epinglees: number;
   readonly sans_depot_porteur: number;
+  /** Identifiers of the bricks outside the gouvernance layer that cite no invariant. */
+  readonly sans_invariant: readonly string[];
+  /** Proof targets cited by more than one brick: one artefact, several bricks. */
+  readonly cibles_partagees: number;
   readonly jetables: number;
   readonly catalogue_produits: number;
   readonly produits_en_brique: number;
@@ -724,12 +731,11 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
       const cycle = findCycle(brick.id, dependencies);
       if (cycle !== null) errors.push(`dependency cycle: ${cycle.join(" → ")}`);
 
-      // Doctrine citations.
-      if (rule.slug !== "gouvernance" && brick.invariants.length === 0) {
-        errors.push(
-          "ADR-0064 D1 — a brick outside the gouvernance layer cites at least one invariant",
-        );
-      }
+      // Doctrine citations. A brick outside the gouvernance layer that cites no
+      // invariant is COUNTED and named in the volume, not refused: refused, the
+      // first complete map came back with invariants cited from afar to satisfy
+      // the rule, and a filler cannot be told from a citation that binds. The
+      // gap is the information (ADR-0064, implementation notes of 2026-11-11).
       for (const invariant of brick.invariants) {
         const standing = input.invariants.get(invariant);
         if (standing === undefined)
@@ -889,6 +895,15 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
   }
 
   const products = built.filter((brick) => brick.couche === "produit");
+  const unbound = built
+    .filter((brick) => brick.couche !== "gouvernance" && brick.invariants.length === 0)
+    .map((brick) => brick.id);
+  const citedBy = new Map<string, number>();
+  for (const brick of built) {
+    for (const target of new Set(brick.preuve.map((proof) => proof.cible))) {
+      citedBy.set(target, (citedBy.get(target) ?? 0) + 1);
+    }
+  }
   const counters: Counters = {
     briques: built.length,
     par_couche: Object.fromEntries(
@@ -912,6 +927,8 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     preuves_locales: localProofs,
     preuves_epinglees: pinnedProofs,
     sans_depot_porteur: built.filter((brick) => brick.depots.length === 0).length,
+    sans_invariant: unbound,
+    cibles_partagees: [...citedBy.values()].filter((bricks) => bricks > 1).length,
     jetables: built.filter((brick) => brick.jetable !== undefined).length,
     catalogue_produits: input.catalogue.size,
     produits_en_brique: products.length,
@@ -930,7 +947,9 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     `layer rules: ${verified.length} verified (${verified.join(", ")}), ${LAYERS.length - verified.length} declarative, not verified by this gate; ` +
     `origin: ${counters.par_origine.inspection} inspection, ${counters.par_origine.observed} observed, ${counters.par_origine.propre} propre; ` +
     `autonomy: ${counters.par_autonomie.discover} discover, ${counters.par_autonomie.modify} modify, ${counters.par_autonomie.govern} govern; ` +
-    `${counters.sans_depot_porteur} brick(s) without a carrier repository, ${counters.jetables} transitional`;
+    `${counters.sans_depot_porteur} brick(s) without a carrier repository, ${counters.jetables} transitional; ` +
+    `${unbound.length} brick(s) outside the gouvernance layer bound by no invariant${unbound.length > 0 ? ` (${unbound.join(", ")})` : ""}; ` +
+    `${counters.cibles_partagees} proof target(s) cited by more than one brick`;
   report.volume(volume);
 
   const map: BrickMap | null =

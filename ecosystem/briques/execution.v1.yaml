@@ -1,0 +1,131 @@
+schema_version: libre-ai.brique.v1
+couche: execution
+# Plan de données confiné (ADR-0064 D1) : tout ce qui traite du contenu est ici,
+# et seulement ici. La couche ne dépend que de `passerelle`, d'`identite` et
+# d'elle-même. Une brique sans dépôt porteur le dit par `depots: []` : c'est une
+# information, pas un défaut.
+briques:
+  - id: EXE-01
+    nom: Confinement par tâche
+    role: "Exécute chaque tâche d'agent sous un profil de confinement déclaré (fichiers, réseau, ressources, identité de processus) et refuse de la démarrer quand un contrôle prescrit ne peut pas être appliqué."
+    depend_de: [IDN-04]
+    invariants: [I-32, I-33, I-38]
+    decisions: [ADR-0018, ADR-0030, ADR-0042, ADR-0064, D36, D52]
+    depots: [libre-ai/execution-sandbox]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    # Les deux cibles montrent qu'une prescription sans mécanisme est refusée.
+    # Elles ne montrent pas qu'une tâche a tourné confinée : au commit cité,
+    # l'exécution attestée refuse de démarrer le processus.
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/execution-sandbox@f45bb3e1a1152c0e2b2f6e4944584a5c0298c8c0:src/confinement.rs
+      - date: "2026-10-24"
+        cible: libre-ai/execution-sandbox@f45bb3e1a1152c0e2b2f6e4944584a5c0298c8c0:tests/confinement_plan_core.rs
+  - id: EXE-02
+    nom: Hôtes maîtrisés
+    role: "Fait tourner les services de la flotte sur des hôtes situés dans l'Union européenne, dont le titulaire, le type et la zone sont vérifiés par du code avant tout déploiement."
+    depend_de: [PAS-02, EXE-05]
+    invariants: [I-07, I-21]
+    decisions: [ADR-0035, ADR-0064, D41]
+    depots: [libre-ai/project-website]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # I-07 et ADR-0035 : chaque release passe par un environnement choisi par le
+    # propriétaire, et les identifiants d'hébergement sont des secrets d'exécution.
+    autonomie: discover
+    preuve:
+      - date: "2026-11-09"
+        cible: libre-ai/project-website@ce582756e0f2911be7fa9cf57cb8a2d34912e204:tools/clever/context.ts
+      - date: "2026-11-09"
+        cible: libre-ai/project-website@ce582756e0f2911be7fa9cf57cb8a2d34912e204:tools/clever/context.test.ts
+  - id: EXE-03
+    nom: Serveur de modèles local
+    role: "Sert les modèles admis depuis le poste de l'utilisateur ou un hôte maîtrisé, de sorte qu'une inférence n'envoie par défaut aucun contenu à un tiers."
+    depend_de: [PAS-01, PAS-04]
+    invariants: [I-07, I-10, I-21]
+    decisions: [ADR-0042, ADR-0063, ADR-0064, ADR-0065]
+    # Une recherche de code du 2026-11-11 n'a trouvé aucun serveur de modèles
+    # dans les dépôts de l'inventaire ; ADR-0063 renvoie le choix du serveur
+    # aux fiches de la carte.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: EXE-04
+    nom: Services de documents
+    role: "Extrait le texte et la structure de documents, de flux, d'images et d'enregistrements dans des processus fils isolés, et ne rend à l'appelant qu'une sortie typée."
+    depend_de: [EXE-01]
+    invariants: [I-06, I-32]
+    decisions: [ADR-0042, ADR-0045, ADR-0054, ADR-0063, ADR-0064, D66, D85]
+    # Le parseur isolé décidé par ADR-0054 vit dans un dépôt qui n'est pas à
+    # l'inventaire de la flotte : ni porteur déclaré, ni preuve citable.
+    depots: []
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve: []
+  - id: EXE-05
+    nom: Tout en code
+    role: "Tient en fichiers versionnés la configuration des hôtes, les workflows et la politique de forge attendue, pour que l'état réel se compare à une déclaration et se rejoue."
+    depend_de: []
+    invariants: [I-07, I-12, I-17]
+    decisions: [ADR-0029, ADR-0035, ADR-0038, ADR-0064, D41, D44]
+    depots: [libre-ai/project-governance]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # Workflows et rulesets sont des garde-fous : leur mutation relève de la
+    # touche humaine (I-17), et un déploiement attend la sélection du propriétaire.
+    autonomie: discover
+    # La première cible compare les checks requis d'une protection de branche à
+    # ceux que la CI produit (ADR-0029 §2.4). La seconde juge la politique
+    # attendue d'un dépôt gelé avant sa première publication (ADR-0038 D5).
+    # Aucun fichier ne déclare encore les rulesets d'un dépôt de la flotte.
+    preuve:
+      - date: "2026-10-14"
+        cible: tools/security/check-branch-protection.ts
+      - date: "2026-10-14"
+        cible: tools/attestation/provider-policy.frozen-check.jq
+  - id: EXE-06
+    nom: Mémoire d'agent intègre
+    role: "Garde ce qu'un agent retient d'une exécution à l'autre sous une enveloppe d'intégrité vérifiable, et le rend à un modèle comme une donnée non fiable, jamais comme une instruction."
+    depend_de: [EXE-01, IDN-04]
+    invariants: [I-18, I-32]
+    decisions: [ADR-0009, ADR-0045, ADR-0064, D66]
+    # `schemas-and-contracts` porte l'enveloppe ; `execution-continuity-evaluator`
+    # porte la spécification du service de mémoire, à l'état de brouillon.
+    depots: [libre-ai/schemas-and-contracts, libre-ai/execution-continuity-evaluator]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    # L'enveloppe et le schéma de mémoire sont des briques de couche 3 : aucune
+    # fusion automatique sur ces chemins (I-17, I-18).
+    autonomie: discover
+    preuve:
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:packages/envelope/src/index.ts
+      - date: "2026-10-26"
+        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:packages/envelope/src/envelope.test.ts
+  - id: EXE-07
+    nom: Environnements éphémères
+    role: "Donne à chaque mission un environnement de travail qui lui est propre, créé à son ouverture et retiré à sa clôture, chaque étape étant inscrite au journal."
+    depend_de: []
+    invariants: []
+    decisions: [ADR-0042, ADR-0064, D62]
+    depots: [libre-ai/ai-work-supervision]
+    origine:
+      type: inspection
+      source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
+    autonomie: modify
+    preuve:
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-worktree/src/lib.rs
+      - date: "2026-10-24"
+        cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-worktree/tests/lifecycle.rs

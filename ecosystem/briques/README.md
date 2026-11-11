@@ -23,6 +23,12 @@ Une preuve est un artefact qui réalise ou exerce la brique (un gate, un contrat
 
 Un dépôt privé ne peut pas être cité (I-15) : une brique portée seulement par un dépôt privé reste `decrite`.
 
+Une preuve montre ce que montre son artefact, rien de plus. La section « Mesure » de la fiche dit exactement quoi, et nomme le fait observable qui ferait la preuve suivante. Un même artefact peut être cité par plusieurs briques ; le gate compte ces cibles partagées.
+
+## Invariants
+
+Une brique cite les invariants qui la lient : ceux qu'elle réalise ou qui la contraignent directement. Une brique qu'aucun invariant ne lie le dit par une liste vide. Hors de la couche `gouvernance`, le gate compte ces briques et imprime leurs identifiants : c'est la liste de ce que la doctrine ne porte pas encore.
+
 ## Vérifier
 
 ```bash

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:libre-ai:schema:brique:v1",
   "title": "libre-ai.brique.v1 — one layer of the brick map",
-  "description": "One file per layer under ecosystem/briques/ (ADR-0064 D2, D3). A brick is a typed unit of the Libre AI vision: what it is, what it depends on, which invariants and decisions bind it, which repositories carry it, and the dated proofs it can show. No status field exists by construction: the status is derived from the proofs by ecosystem/check-briques.ts (ADR-0064 D4), and a typed-in status is refused by name before this schema is applied. Three rules depend on the layer and are enforced by the checker, each under its own name, not by this schema: a produit brick carries a charte and no other layer does; a fabrique brick declares the proof it produces and no other layer does; every brick outside the gouvernance layer cites at least one invariant.",
+  "description": "One file per layer under ecosystem/briques/ (ADR-0064 D2, D3). A brick is a typed unit of the Libre AI vision: what it is, what it depends on, which invariants and decisions bind it, which repositories carry it, and the dated proofs it can show. No status field exists by construction: the status is derived from the proofs by ecosystem/check-briques.ts (ADR-0064 D4), and a typed-in status is refused by name before this schema is applied. Three rules depend on the layer and are enforced by the checker, each under its own name, not by this schema: a produit brick carries a charte and no other layer does; a fabrique brick declares the proof it produces and no other layer does; a brick of the gouvernance layer carries the discover autonomy. A brick outside the gouvernance layer that cites no invariant is counted and named by the checker, not refused.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "couche", "briques"],
@@ -89,7 +89,7 @@
           }
         },
         "invariants": {
-          "description": "Invariants of docs/decisions/INVARIANTS.md the brick is bound by. At least one outside the gouvernance layer.",
+          "description": "Invariants of docs/decisions/INVARIANTS.md that bind the brick: those it realises or is directly constrained by. Empty when none does; the checker counts and names such bricks outside the gouvernance layer.",
           "type": "array",
           "uniqueItems": true,
           "items": {
@@ -110,7 +110,7 @@
           "uniqueItems": true,
           "items": {
             "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9._-]*$"
+            "pattern": "^[a-z0-9][a-z0-9-]*/[A-Za-z0-9._-]*[A-Za-z0-9][A-Za-z0-9._-]*$"
           }
         },
         "origine": {

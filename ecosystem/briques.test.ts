@@ -519,10 +519,30 @@ describe("dependencies", () => {
 });
 
 describe("doctrine citations", () => {
-  test("a brick outside the gouvernance layer cites at least one invariant", () => {
+  test("a brick bound by no invariant is counted and named, not refused", () => {
+    // Refused, it was satisfied by a filler: the gap is the information.
     const world = reference();
     first(world, "identite").invariants = [];
-    expect(violationsOf(world)).toContain("IDN-01: ADR-0064 D1 — a brick outside the gouvernance");
+    const outcome = judge(world);
+    expect(outcome.report.violations).toEqual([]);
+    expect(outcome.map?.compteurs.sans_invariant).toEqual(["IDN-01"]);
+    expect(outcome.volume).toContain(
+      "1 brick(s) outside the gouvernance layer bound by no invariant (IDN-01)",
+    );
+    // The gouvernance brick of the reference cites none either, and is not counted.
+    expect(judge(reference()).map?.compteurs.sans_invariant).toEqual([]);
+  });
+
+  test("a proof target cited by two bricks is counted once as shared", () => {
+    const world = reference();
+    first(world, "publication").depots = [SELF];
+    first(world, "publication").preuve = [
+      { date: "2026-10-10", cible: "docs/security/THREAT-MODEL.md" },
+    ];
+    const outcome = judge(world);
+    expect(outcome.report.violations).toEqual([]);
+    expect(outcome.map?.compteurs.cibles_partagees).toBe(1);
+    expect(judge(reference()).map?.compteurs.cibles_partagees).toBe(0);
   });
 
   test("an invariant the register does not list, and a withdrawn one", () => {
