@@ -85,3 +85,10 @@ jobs:
             echo "::error::distribution/vision is stale — run 'bun run build:vision' and commit the result"
             exit 1
           fi
+          # The page and its stylesheet, and nothing else: a script dropped next
+          # to the page is source to the data inventory, which does not see it.
+          tracked="$(git ls-files distribution/vision | sort | tr '\n' ' ')"
+          if [ "$tracked" != "distribution/vision/index.html distribution/vision/vision.css " ]; then
+            echo "::error::distribution/vision holds something else than the page and its stylesheet: $tracked"
+            exit 1
+          fi

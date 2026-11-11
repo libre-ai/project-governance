@@ -1,4 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   type Brick,
@@ -12,6 +15,7 @@ import {
   escapeHtml,
   layerDependencies,
   projectVision,
+  readDecisionRecords,
   renderBody,
   renderLayerMatrix,
   renderVisionHtml,
@@ -186,7 +190,9 @@ describe("escaping", () => {
     const hostile: BrickMap = {
       ...map,
       couches: map.couches.map((layer) =>
-        layer.slug === "gouvernance" ? { ...layer, slug: marker("slug") as never } : layer,
+        layer.slug === "gouvernance"
+          ? { ...layer, slug: marker("slug") as never, ownRuleVerifiedOnly: marker("part") }
+          : layer,
       ),
     };
     const html = renderVisionHtml(hostile, "proposed");
@@ -194,6 +200,19 @@ describe("escaping", () => {
     expect(html).toContain(`href="#couche-${escaped("slug")}"`);
     expect(html).toContain(`id="couche-${escaped("slug")}"`);
     expect(html).toContain(`statut-${escaped("statut")}`);
+    expect(html).toContain(`vérifiée par le gate ${escaped("part")}</span>`);
+  });
+
+  test("a blank line separates two paragraphs, and two lines of one paragraph are joined", () => {
+    expect(renderBody("Une ligne\nsa suite.\n\nUn autre paragraphe.")).toBe(
+      "<p>Une ligne sa suite.</p><p>Un autre paragraphe.</p>",
+    );
+  });
+
+  test("a paragraph that follows a list without a blank line is a paragraph, after the list", () => {
+    expect(renderBody("Avant.\n- un point\nAprès.")).toBe(
+      "<p>Avant.</p><ul><li>un point</li></ul><p>Après.</p>",
+    );
   });
 });
 
@@ -338,6 +357,91 @@ describe("the page", () => {
   test("is the same text for the same map", () => {
     expect(renderVisionHtml(SMALL, "proposed")).toBe(renderVisionHtml(SMALL, "proposed"));
   });
+
+  test("counts the layers of the map it was given", () => {
+    const two: BrickMap = { ...SMALL, couches: SMALL.couches.slice(0, 2) };
+    expect(renderVisionHtml(two, "proposed")).toContain("en 2 couches");
+  });
+
+  test("agrees the bricks no invariant binds in the plural when there are several", () => {
+    const html = renderVisionHtml(
+      mapOf([brick("IDN-01", "identite"), brick("IDN-02", "identite")]),
+      "proposed",
+    );
+    expect(html).toContain(
+      '2 briques hors de la couche gouvernance ne sont liées par aucun invariant : <a href="#IDN-01"><code>IDN-01</code></a>, <a href="#IDN-02">',
+    );
+  });
+
+  test("says of an empty field that it is empty", () => {
+    const html = renderVisionHtml(mapOf([brick("GOV-01", "gouvernance")]), "proposed");
+    expect(html).toContain("<dt>Dépend de</dt><dd>aucune</dd>");
+    expect(html).toContain("<dt>Invariants qui la lient</dt><dd>aucun</dd>");
+    expect(html).toContain("<dt>Décisions</dt><dd>aucune</dd>");
+    expect(html).toContain("<dt>Dépôts porteurs</dt><dd>aucun</dd>");
+    expect(html).toContain("<h4>Preuves datées</h4><p>Preuve citée : aucune.</p>");
+  });
+
+  test("gives each layer its role, the layers it may depend on by their name, and its rule", () => {
+    const html = renderVisionHtml(SMALL, "proposed");
+    const labelOf = (slug: string) => LAYERS.find((layer) => layer.slug === slug)?.label ?? "";
+    for (const layer of LAYERS) {
+      const row =
+        html
+          .slice(html.lastIndexOf(`<tr><th scope="row"><a href="#couche-${layer.slug}">`))
+          .split("</tr>")[0] ?? "";
+      const allowed =
+        layer.mayDependOn.length === 0 ? "aucune" : layer.mayDependOn.map(labelOf).join(", ");
+      // A rule is written with code spans, like a fiche: `exécution` is shown as code.
+      const rule = escapeHtml(layer.ownRule).replace(/`([^`]+)`/g, "<code>$1</code>");
+      expect(row).toContain(
+        `${escapeHtml(layer.label)}</a></th><td>${escapeHtml(layer.role)}</td><td>${escapeHtml(allowed)}</td><td>${rule} <span class="regle">`,
+      );
+    }
+    // The name of ADR-0064 D1, not the ASCII slug of the file: « identité », « exécution ».
+    expect(html).toContain("<td>identité, gouvernance</td>");
+  });
+
+  test("gives every header cell its scope", () => {
+    const html = renderVisionHtml(SMALL, "proposed");
+    // `<th ` or `<th>`, never `<thead>`.
+    const headers = html.match(/<th[ >]/g)?.length ?? 0;
+    expect(headers).toBeGreaterThan(40);
+    expect(html.match(/<th scope="(?:col|row)">/g)?.length).toBe(headers);
+  });
+
+  test("puts each brick on a line of its own, so two changes do not meet on one line", () => {
+    const html = renderVisionHtml(
+      mapOf([brick("GOV-01", "gouvernance"), brick("GOV-02", "gouvernance")]),
+      "proposed",
+    );
+    const lines = html.split("\n").filter((line) => line.includes('<details class="brique"'));
+    expect(lines.length).toBe(2);
+    expect(lines.every((line) => line.startsWith("<details") && line.endsWith("</details>"))).toBe(
+      true,
+    );
+  });
+
+  test("carries its fixed text: what a status means, what the matrix shows, who decides", () => {
+    const html = renderVisionHtml(SMALL, "proposed");
+    for (const sentence of [
+      '<meta name="robots" content="noindex">',
+      "Ni les comptes, ni les statuts, ni les fiches n'y sont saisis",
+      "son texte fixe (titres, légendes, sens de chaque statut) est écrit dans le générateur",
+      "son acceptation est un acte du propriétaire",
+      '<span class="statut statut-decrite">décrite</span></th><td class="nombre">1</td><td>une fiche et des données, aucune preuve</td>',
+      '<span class="statut statut-en_cours">en cours</span></th><td class="nombre">1</td><td>au moins une preuve datée est citée et tient : un fichier suivi de ce dépôt, ou une citation épinglée, que le gate des citations résout de son côté ; cela ne dit pas que la brique fonctionne</td>',
+      '<span class="statut statut-prototypee">prototypée</span></th><td class="nombre">0</td><td>une release signée liée à son évidence ; aucun instrument ne la vérifie encore, donc aucune brique ne peut l&#39;être</td>',
+      '<span class="statut statut-retiree">retirée</span></th><td class="nombre">0</td><td>retirée par une décision du registre, fiche conservée</td>',
+      "<caption>Une ligne est une couche ; une colonne est une couche dont ses briques pourraient dépendre. " +
+        "Un nombre, zéro compris, dans une cellule encadrée : la dépendance est admise par la table d'ADR-0064 D1, et c'est le nombre de dépendances que les briques déclarent. " +
+        "Un tiret : la dépendance n'est pas admise, et aucune brique ne la déclare. " +
+        "Sur la diagonale, là où la ligne et la colonne portent le même nom, en italique : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>",
+      "C'est la liste de ce que la doctrine ne porte pas encore.",
+    ]) {
+      expect({ sentence, printed: html.includes(sentence) }).toEqual({ sentence, printed: true });
+    }
+  });
 });
 
 describe("the layer matrix", () => {
@@ -385,6 +489,28 @@ describe("the layer matrix", () => {
     ]);
     expect(renderLayerMatrix(map)).toContain('<td class="refusee">1</td>');
   });
+
+  test("prints on the diagonal the dependencies between bricks of one layer", () => {
+    const html = renderLayerMatrix(
+      mapOf([
+        brick("GOV-01", "gouvernance"),
+        brick("GOV-02", "gouvernance", { depend_de: ["GOV-01"] }),
+        brick("GOV-03", "gouvernance", { depend_de: ["GOV-01"] }),
+      ]),
+    );
+    expect(html).toContain(
+      '<a href="#couche-gouvernance">gouvernance</a></th><td class="interne">2</td>',
+    );
+  });
+
+  test("gives its header cells a scope, and its columns the name of the layer", () => {
+    const html = renderLayerMatrix(SMALL);
+    expect(html).toContain(
+      '<th scope="col">dépend de →</th><th scope="col"><span>gouvernance</span></th>',
+    );
+    expect(html).toContain('<th scope="col"><span>identité</span></th>');
+    expect(html.split('<tr><th scope="row"><a href="#couche-').length - 1).toBe(LAYERS.length);
+  });
 });
 
 describe("the standing of the decision record", () => {
@@ -415,6 +541,60 @@ describe("the standing of the decision record", () => {
     expect(standingOf("Le statut passera de proposé à accepted.")).toBeNull();
     expect(standingOf("- **Statut :** proposé\n- **Statut :** accepted")).toBeNull();
     expect(standingOf("- **Statut :** Accepted")).toBeNull();
+    expect(standingOf("- **Statut :** accepté")).toBeNull();
+    expect(standingOf("- **Statut :** acceptedly")).toBeNull();
+  });
+
+  test("reads the English word of a proposed record too", () => {
+    expect(standingOf("- **Statut :** proposed — awaiting the owner.")).toBe("proposed");
+  });
+
+  test("is read at the start of a line only: a quoted status line is not the status", () => {
+    expect(standingOf("> - **Statut :** accepted")).toBeNull();
+    expect(
+      standingOf("- **Statut :** proposé\n\nL'ancienne ligne disait : - **Statut :** accepted"),
+    ).toBe("proposed");
+  });
+});
+
+describe("the decision record is read from the index", () => {
+  let root: string;
+  const git = (...args: string[]) => {
+    const done = Bun.spawnSync(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+    if (done.exitCode !== 0) throw new Error(new TextDecoder().decode(done.stderr));
+  };
+  const record = (name: string) => join(root, "docs/adr", name);
+
+  beforeAll(() => {
+    root = mkdtempSync(join(tmpdir(), "build-vision-"));
+    mkdirSync(join(root, "docs/adr"), { recursive: true });
+    git("init", "--quiet");
+    writeFileSync(record("0064-brick-map.md"), "- **Statut :** proposé\n");
+    writeFileSync(record("0063-other.md"), "- **Statut :** accepted\n");
+    writeFileSync(record("10064-not-this-one.md"), "- **Statut :** accepted\n");
+    git("add", "--all");
+  });
+
+  afterAll(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("only the record that carries the number, and as git tracks it", () => {
+    expect(readDecisionRecords(root)).toEqual(["- **Statut :** proposé\n"]);
+  });
+
+  test("an edit that is not staged does not change what is read; staged, it does", () => {
+    writeFileSync(record("0064-brick-map.md"), "- **Statut :** accepted\n");
+    expect(readDecisionRecords(root)).toEqual(["- **Statut :** proposé\n"]);
+    git("add", "--all");
+    expect(readDecisionRecords(root)).toEqual(["- **Statut :** accepted\n"]);
+  });
+
+  test("an untracked file with the number is not read; tracked, both are returned", () => {
+    writeFileSync(record("0064-a-second-one.md"), "- **Statut :** proposé\n");
+    expect(readDecisionRecords(root).length).toBe(1);
+    git("add", "--all");
+    expect(readDecisionRecords(root).length).toBe(2);
   });
 });
 

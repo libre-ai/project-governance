@@ -6,7 +6,7 @@ couche: publication
 briques:
   - id: PUB-01
     nom: Page vision générée
-    role: Génère la page vision depuis les seules sorties du vérificateur de la carte (graphe des couches, fiches, compteurs par statut), sans qu'aucun texte y soit saisi.
+    role: Génère la page vision depuis la carte jugée par son vérificateur (matrice des couches, fiches, compteurs par statut), sans qu'aucun compte ni aucun statut y soit saisi.
     # La page lit les sorties du vérificateur de la carte, qui est une brique de
     # la couche fabrique. La table d'ADR-0064 D1 n'admet pas cette dépendance
     # pour la couche publication : la décision D6 est citée, la dépendance non.

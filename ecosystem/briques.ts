@@ -1239,7 +1239,8 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
   };
 
   const verified = LAYERS.filter((layer) => layer.ownRuleVerified).map((layer) => layer.slug);
-  // The same field the page prints: the volume and the page cannot disagree on which rule is partial.
+  // The partial rule is named from the field the page prints. The sentence below describes the
+  // gouvernance rule only: the test suite holds the field to that one layer, on a verified rule.
   const partly = LAYERS.filter((layer) => layer.ownRuleVerifiedOnly !== undefined).map(
     (layer) => layer.slug,
   );

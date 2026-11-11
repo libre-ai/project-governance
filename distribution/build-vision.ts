@@ -1,12 +1,14 @@
 /**
  * Vision page generator (ADR-0064 D6).
  *
- * The page is a projection of the brick map, never an authority: everything it
- * shows comes from `checkBriques`, the same evaluation the gate runs. Nothing
- * is typed here — no count, no status, no list of layers. A map with a single
- * violation gives no page: the generator exits non-zero and prints the
- * violations, because a page generated from a red map would publish a status
- * nobody derived.
+ * The page is a projection of the brick map, never an authority: its counts,
+ * statuses, layers and fiches come from `checkBriques`, the same evaluation
+ * the gate runs, and none of them is typed here. Two things are not from the
+ * map: the fixed text of the page (titles, legends, the meaning of each
+ * status), written below, and the standing of ADR-0064, read from the status
+ * line of that record. A map with a single violation gives no page: the
+ * generator exits non-zero and prints the violations, because a page generated
+ * from a red map would publish a status nobody derived.
  *
  * Determinism contract (same as `build-feeds.ts`): no execution timestamp,
  * the order is the order of the map, so the committed page changes only when
@@ -53,7 +55,8 @@ const STATUS_LABEL: Readonly<Record<Status, string>> = {
 
 const STATUS_MEANING: Readonly<Record<Status, string>> = {
   decrite: "une fiche et des données, aucune preuve",
-  en_cours: "au moins un artefact daté existe ; cela ne dit pas que la brique fonctionne",
+  en_cours:
+    "au moins une preuve datée est citée et tient : un fichier suivi de ce dépôt, ou une citation épinglée, que le gate des citations résout de son côté ; cela ne dit pas que la brique fonctionne",
   prototypee:
     "une release signée liée à son évidence ; aucun instrument ne la vérifie encore, donc aucune brique ne peut l'être",
   retiree: "retirée par une décision du registre, fiche conservée",
@@ -175,9 +178,9 @@ export function renderLayerMatrix(map: BrickMap): string {
   return scrollable(
     "Matrice des dépendances entre couches",
     `<table class="matrice"><caption>Une ligne est une couche ; une colonne est une couche dont ses briques pourraient dépendre. ` +
-      `Une cellule encadrée : la dépendance est admise par la table d'ADR-0064 D1, et son nombre est celui des dépendances que les briques déclarent. ` +
+      `Un nombre, zéro compris, dans une cellule encadrée : la dépendance est admise par la table d'ADR-0064 D1, et c'est le nombre de dépendances que les briques déclarent. ` +
       `Un tiret : la dépendance n'est pas admise, et aucune brique ne la déclare. ` +
-      `Sur la diagonale, en italique : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>` +
+      `Sur la diagonale, là où la ligne et la colonne portent le même nom, en italique : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>` +
       `<thead><tr><th scope="col">dépend de →</th>${head}</tr></thead><tbody>${rows}</tbody></table>`,
   );
 }
@@ -278,9 +281,10 @@ export function renderVisionHtml(map: BrickMap, standing: AdrStanding): string {
     .map(
       (layer) =>
         `<section class="couche" id="couche-${escapeHtml(layer.slug)}"><h3>${escapeHtml(layer.label)} <span class="compte">${count(layer.briques.length, "brique", "briques")}</span></h3>` +
-        `<p>${escapeHtml(layer.role)}.</p>${layer.briques.map(renderBrick).join("")}</section>`,
+        // One brick per line of the file: two changes to two bricks do not touch the same line.
+        `<p>${escapeHtml(layer.role)}.</p>\n${layer.briques.map(renderBrick).join("\n")}\n</section>`,
     )
-    .join("");
+    .join("\n");
   const unbound =
     counters.sans_invariant.length === 0
       ? "<p>Toutes les briques hors de la couche gouvernance citent au moins un invariant.</p>"
@@ -398,21 +402,26 @@ export function projectVision(
   };
 }
 
+/**
+ * The text of every tracked file of `docs/adr` that carries the number of the
+ * decision record, as the index holds it. The standing is read from the index,
+ * like the map: an edit of the record that git does not track yet does not
+ * change the page.
+ */
+export function readDecisionRecords(root: string): string[] {
+  const git = (args: readonly string[]): string =>
+    execFileSync("git", args, { encoding: "utf8", cwd: root });
+  return git(["ls-files", "-z", "docs/adr"])
+    .split("\0")
+    .filter((path) => path.startsWith(`docs/adr/${DECISION.slice(4)}-`))
+    .map((path) => git(["show", `:${path}`]));
+}
+
 if (import.meta.main) {
   // One root, the repository this script belongs to: the map is read there and
   // the page is written there, whatever the directory the script is run from.
   const root = fileURLToPath(new URL("..", import.meta.url));
-  const git = (args: readonly string[]): string =>
-    execFileSync("git", args, { encoding: "utf8", cwd: root });
-  // The standing is read from the index, like the map: an edit of the decision
-  // record that git does not track yet does not change the page.
-  const adrFiles = git(["ls-files", "-z", "docs/adr"])
-    .split("\0")
-    .filter((path) => path.startsWith(`docs/adr/${DECISION.slice(4)}-`));
-  const projection = projectVision(
-    checkBriques(root),
-    adrFiles.map((path) => git(["show", `:${path}`])),
-  );
+  const projection = projectVision(checkBriques(root), readDecisionRecords(root));
   if (!projection.ok) {
     for (const line of projection.lines) console.error(line);
     process.exit(1);

@@ -1,0 +1,472 @@
+[
+  {
+    "name": "ampersand not escaped",
+    "find": ".replaceAll(\"&\", \"&amp;\")",
+    "replace": ".replaceAll(\"&\", \"&\")"
+  },
+  {
+    "name": "opening angle bracket not escaped",
+    "find": ".replaceAll(\"<\", \"&lt;\")",
+    "replace": ".replaceAll(\"<\", \"<\")"
+  },
+  {
+    "name": "closing angle bracket not escaped",
+    "find": ".replaceAll(\">\", \"&gt;\")",
+    "replace": ".replaceAll(\">\", \">\")"
+  },
+  {
+    "name": "double quote not escaped",
+    "find": ".replaceAll('\"', \"&quot;\")",
+    "replace": ".replaceAll('\"', '\"')"
+  },
+  {
+    "name": "single quote not escaped",
+    "find": ".replaceAll(\"'\", \"&#39;\");",
+    "replace": ".replaceAll(\"'\", \"'\");"
+  },
+  {
+    "name": "inline text not escaped before code spans",
+    "find": "return escapeHtml(text).replace(/`([^`]+)`/g, \"<code>$1</code>\");",
+    "replace": "return text.replace(/`([^`]+)`/g, \"<code>$1</code>\");"
+  },
+  {
+    "name": "list item continuation dropped",
+    "find": "items[items.length - 1] = `${items.at(-1)} ${line}`;",
+    "replace": "items[items.length - 1] = `${items.at(-1)}`;"
+  },
+  {
+    "name": "count of one agreed in the plural",
+    "find": "return `${value} ${value > 1 ? plural : singular}`;",
+    "replace": "return `${value} ${plural}`;"
+  },
+  {
+    "name": "table left outside a scrollable region",
+    "find": "return `<section class=\"defilante\" aria-label=\"${escapeHtml(label)}\">${table}</section>`;",
+    "replace": "return table;"
+  },
+  {
+    "name": "dependency count not accumulated",
+    "find": "row.set(target, (row.get(target) ?? 0) + 1);",
+    "replace": "row.set(target, 1);"
+  },
+  {
+    "name": "dependency on an unknown brick counted",
+    "find": "if (target !== undefined) row.set(",
+    "replace": "row.set((target ?? layer.slug),"
+  },
+  {
+    "name": "admitted cell decided by the wrong layer",
+    "find": "return layer.mayDependOn.includes(target.slug)",
+    "replace": "return target.mayDependOn.includes(layer.slug)"
+  },
+  {
+    "name": "diagonal not told apart",
+    "find": "if (target.slug === layer.slug) return `<td class=\"interne\">${declared}</td>`;",
+    "replace": "if (target.slug === \"never\") return `<td class=\"interne\">${declared}</td>`;"
+  },
+  {
+    "name": "non-admitted declared dependency hidden behind a dash",
+    "find": "${declared === 0 ? \"—\" : declared}",
+    "replace": "${\"—\"}"
+  },
+  {
+    "name": "matrix row slug not escaped",
+    "find": "return `<tr><th scope=\"row\"><a href=\"#couche-${escapeHtml(layer.slug)}\">",
+    "replace": "return `<tr><th scope=\"row\"><a href=\"#couche-${layer.slug}\">"
+  },
+  {
+    "name": "dependency link points nowhere",
+    "find": ".map((id) => `<a href=\"#${escapeHtml(id)}\"><code>${escapeHtml(id)}</code></a>`)\n          .join(\", \");",
+    "replace": ".map((id) => `<code>${escapeHtml(id)}</code>`)\n          .join(\", \");"
+  },
+  {
+    "name": "proofs never shown",
+    "find": "`<h4>Preuves datées</h4>${proofs}${charter}${sections}` +",
+    "replace": "`<h4>Preuves datées</h4>${charter}${sections}` +"
+  },
+  {
+    "name": "charter never shown",
+    "find": "`<h4>Preuves datées</h4>${proofs}${charter}${sections}` +",
+    "replace": "`<h4>Preuves datées</h4>${proofs}${sections}` +"
+  },
+  {
+    "name": "fiche sections dropped",
+    "find": "`<h4>Preuves datées</h4>${proofs}${charter}${sections}` +",
+    "replace": "`<h4>Preuves datées</h4>${proofs}${charter}` +"
+  },
+  {
+    "name": "brick id attribute not escaped",
+    "find": "`<details class=\"brique\" id=\"${escapeHtml(brick.id)}\">` +",
+    "replace": "`<details class=\"brique\" id=\"${brick.id}\">` +"
+  },
+  {
+    "name": "brick id text not escaped",
+    "find": "<span class=\"id\">${escapeHtml(brick.id)}</span>",
+    "replace": "<span class=\"id\">${brick.id}</span>"
+  },
+  {
+    "name": "brick name not escaped",
+    "find": "<span class=\"nom\">${escapeHtml(brick.nom)}</span>",
+    "replace": "<span class=\"nom\">${brick.nom}</span>"
+  },
+  {
+    "name": "status class not escaped",
+    "find": "statut-${escapeHtml(brick.statut)}\">",
+    "replace": "statut-${brick.statut}\">"
+  },
+  {
+    "name": "status shown is not the derived one",
+    "find": "\">${STATUS_LABEL[brick.statut]}</span></summary>",
+    "replace": "\">${STATUS_LABEL.decrite}</span></summary>"
+  },
+  {
+    "name": "invariants not listed",
+    "find": "${list(brick.invariants, \"aucun\")}",
+    "replace": "${list([], \"aucun\")}"
+  },
+  {
+    "name": "decisions not listed",
+    "find": "${list(brick.decisions, \"aucune\")}",
+    "replace": "${list([], \"aucune\")}"
+  },
+  {
+    "name": "carrier repositories not listed",
+    "find": "${list(brick.depots, \"aucun\")}",
+    "replace": "${list([], \"aucun\")}"
+  },
+  {
+    "name": "listed value not escaped",
+    "find": "values.map((value) => `<code>${escapeHtml(value)}</code>`).join(\", \");",
+    "replace": "values.map((value) => `<code>${value}</code>`).join(\", \");"
+  },
+  {
+    "name": "origin not escaped",
+    "find": ".filter((part) => part !== undefined)\n    .map(escapeHtml)",
+    "replace": ".filter((part) => part !== undefined)"
+  },
+  {
+    "name": "origin source not shown",
+    "find": "[brick.origine.type, brick.origine.source, brick.origine.date]",
+    "replace": "[brick.origine.type, brick.origine.date]"
+  },
+  {
+    "name": "origin date not shown",
+    "find": "[brick.origine.type, brick.origine.source, brick.origine.date]",
+    "replace": "[brick.origine.type, brick.origine.source]"
+  },
+  {
+    "name": "autonomy not escaped",
+    "find": "<dd>${escapeHtml(brick.autonomie)}</dd>",
+    "replace": "<dd>${brick.autonomie}</dd>"
+  },
+  {
+    "name": "transitional mark not shown",
+    "find": "(brick.jetable === undefined\n      ? \"\"",
+    "replace": "(brick.jetable !== undefined\n      ? \"\""
+  },
+  {
+    "name": "withdrawal not shown",
+    "find": "(brick.retrait === undefined\n      ? \"\"",
+    "replace": "(brick.retrait !== undefined\n      ? \"\""
+  },
+  {
+    "name": "proof target not escaped",
+    "find": "<code>${escapeHtml(proof.cible)}</code></li>",
+    "replace": "<code>${proof.cible}</code></li>"
+  },
+  {
+    "name": "fiche section title not escaped",
+    "find": "`<h4>${escapeHtml(section.title)}</h4>${renderBody(section.body)}`",
+    "replace": "`<h4>${section.title}</h4>${renderBody(section.body)}`"
+  },
+  {
+    "name": "status count typed",
+    "find": "<td class=\"nombre\">${counters.par_statut[status]}</td>",
+    "replace": "<td class=\"nombre\">${0}</td>"
+  },
+  {
+    "name": "status count read from another status",
+    "find": "<td class=\"nombre\">${counters.par_statut[status]}</td>",
+    "replace": "<td class=\"nombre\">${counters.par_statut.decrite}</td>"
+  },
+  {
+    "name": "declared rule printed as verified",
+    "find": "const verification = !layer.ownRuleVerified",
+    "replace": "const verification = layer.ownRuleVerified"
+  },
+  {
+    "name": "partial rule printed as wholly verified",
+    "find": ": layer.ownRuleVerifiedOnly === undefined",
+    "replace": ": layer.ownRuleVerifiedOnly !== \"never\""
+  },
+  {
+    "name": "layer row count typed",
+    "find": "`<td class=\"nombre\">${layer.briques.length}</td></tr>`",
+    "replace": "`<td class=\"nombre\">${0}</td></tr>`"
+  },
+  {
+    "name": "layer heading count typed",
+    "find": "<span class=\"compte\">${count(layer.briques.length, \"brique\", \"briques\")}</span>",
+    "replace": "<span class=\"compte\">${count(0, \"brique\", \"briques\")}</span>"
+  },
+  {
+    "name": "layer section id not escaped",
+    "find": "<section class=\"couche\" id=\"couche-${escapeHtml(layer.slug)}\">",
+    "replace": "<section class=\"couche\" id=\"couche-${layer.slug}\">"
+  },
+  {
+    "name": "unbound brick id not escaped",
+    "find": "counters.sans_invariant.map((id) => `<a href=\"#${escapeHtml(id)}\"><code>${escapeHtml(id)}</code></a>`)",
+    "replace": "counters.sans_invariant.map((id) => `<a href=\"#${id}\"><code>${id}</code></a>`)"
+  },
+  {
+    "name": "bricks without invariant not named",
+    "find": "counters.sans_invariant.length === 0\n      ? \"<p>Toutes",
+    "replace": "counters.sans_invariant.length >= 0\n      ? \"<p>Toutes"
+  },
+  {
+    "name": "brick count typed instead of read",
+    "find": "en données : ${count(counters.briques, \"brique\", \"briques\")}",
+    "replace": "en données : ${count(2, \"brique\", \"briques\")}"
+  },
+  {
+    "name": "local proof count swapped with pinned",
+    "find": "Preuves tenues : ${counters.preuves_locales} dans ce dépôt, ${counters.preuves_epinglees} sous",
+    "replace": "Preuves tenues : ${counters.preuves_epinglees} dans ce dépôt, ${counters.preuves_locales} sous"
+  },
+  {
+    "name": "pinned proof count typed",
+    "find": "dans ce dépôt, ${counters.preuves_epinglees} sous",
+    "replace": "dans ce dépôt, ${5} sous"
+  },
+  {
+    "name": "shared target count typed",
+    "find": "${count(counters.cibles_partagees, \"cible\", \"cibles\")}",
+    "replace": "${count(2, \"cible\", \"cibles\")}"
+  },
+  {
+    "name": "bricks without carrier count typed",
+    "find": "${count(counters.sans_depot_porteur, \"brique\", \"briques\")}",
+    "replace": "${count(2, \"brique\", \"briques\")}"
+  },
+  {
+    "name": "catalogue count typed",
+    "find": "${count(counters.catalogue_produits, \"produit\", \"produits\")}",
+    "replace": "${count(40, \"produit\", \"produits\")}"
+  },
+  {
+    "name": "products outside the map not subtracted",
+    "find": "const outside = counters.catalogue_produits - counters.produits_en_brique;",
+    "replace": "const outside = counters.catalogue_produits;"
+  },
+  {
+    "name": "accepted standing printed as proposed",
+    "find": "${standing === \"accepted\" ? \"accepté\"",
+    "replace": "${standing === \"never\" ? \"accepté\""
+  },
+  {
+    "name": "standing read from any line naming the word",
+    "find": "/^- \\*\\*Statut :\\*\\* (\\p{L}+)/u.exec(line)?.[1]",
+    "replace": "/(accepted|proposé|proposed)/u.exec(line)?.[1]"
+  },
+  {
+    "name": "standing read from any word of the status line",
+    "find": "/^- \\*\\*Statut :\\*\\* (\\p{L}+)/u.exec(line)?.[1]",
+    "replace": "/^- \\*\\*Statut :\\*\\* .*?(accepted)/u.exec(line)?.[1] ?? /^- \\*\\*Statut :\\*\\* (\\p{L}+)/u.exec(line)?.[1]"
+  },
+  {
+    "name": "status word matched without its case",
+    "find": "/^- \\*\\*Statut :\\*\\* (\\p{L}+)/u.exec(line)?.[1]",
+    "replace": "/^- \\*\\*Statut :\\*\\* (\\p{L}+)/u.exec(line)?.[1]?.toLowerCase()"
+  },
+  {
+    "name": "several status lines accepted",
+    "find": "if (statuses.length !== 1) return null;",
+    "replace": "if (statuses.length < 1) return null;"
+  },
+  {
+    "name": "accepted standing never read",
+    "find": "if (statuses[0] === \"accepted\") return \"accepted\";",
+    "replace": "if (statuses[0] === \"never\") return \"accepted\";"
+  },
+  {
+    "name": "unknown status printed as proposed",
+    "find": "? \"proposed\" : null;",
+    "replace": "? \"proposed\" : \"proposed\";"
+  },
+  {
+    "name": "page generated from a red map",
+    "find": "if (outcome.map === null) {",
+    "replace": "if (outcome.map === undefined) {"
+  },
+  {
+    "name": "violations not printed",
+    "find": "...outcome.report.violations.map((violation) => `Vision: ${violation}`),",
+    "replace": ""
+  },
+  {
+    "name": "ambiguous decision record accepted",
+    "find": "if (adrTexts.length !== 1) {",
+    "replace": "if (adrTexts.length < 0) {"
+  },
+  {
+    "name": "unknown standing gives a page",
+    "find": "if (standing === null) {",
+    "replace": "if (standing === undefined) {"
+  },
+  {
+    "name": "stylesheet inlined instead of linked",
+    "find": "'<link rel=\"stylesheet\" href=\"vision.css\">',",
+    "replace": "'<style>body{margin:0}</style>',"
+  },
+  {
+    "name": "page language dropped",
+    "find": "'<html lang=\"fr\">',",
+    "replace": "'<html>',"
+  },
+  {
+    "name": "layer count typed",
+    "find": "${count(map.couches.length, \"couche\", \"couches\")}",
+    "replace": "${count(11, \"couche\", \"couches\")}"
+  },
+  {
+    "name": "diagonal count zeroed",
+    "find": "return `<td class=\"interne\">${declared}</td>`;",
+    "replace": "return `<td class=\"interne\">${0}</td>`;"
+  },
+  {
+    "name": "legend says a dash is an admitted dependency",
+    "find": "`Un tiret : la dépendance n'est pas admise, et aucune brique ne la déclare. ` +",
+    "replace": "`Un tiret : la dépendance est admise. ` +"
+  },
+  {
+    "name": "meaning of the first status emptied",
+    "find": "decrite: \"une fiche et des données, aucune preuve\",",
+    "replace": "decrite: \"\","
+  },
+  {
+    "name": "meaning of the withdrawn status emptied",
+    "find": "retiree: \"retirée par une décision du registre, fiche conservée\",",
+    "replace": "retiree: \"\","
+  },
+  {
+    "name": "label of the withdrawn status emptied",
+    "find": "retiree: \"retirée\",",
+    "replace": "retiree: \"\","
+  },
+  {
+    "name": "label of the prototyped status emptied",
+    "find": "prototypee: \"prototypée\",",
+    "replace": "prototypee: \"\","
+  },
+  {
+    "name": "noindex dropped",
+    "find": "'<meta name=\"robots\" content=\"noindex\">',",
+    "replace": "'',"
+  },
+  {
+    "name": "sentence on the fixed text dropped",
+    "find": " ; son texte fixe (titres, légendes, sens de chaque statut) est écrit dans le générateur.</p>`,",
+    "replace": ".</p>`,"
+  },
+  {
+    "name": "role column emptied",
+    "find": "`<td>${escapeHtml(layer.role)}</td>` +",
+    "replace": "`<td></td>` +"
+  },
+  {
+    "name": "admitted layer printed by its slug",
+    "find": "LAYERS.find((candidate) => candidate.slug === slug)?.label ?? slug",
+    "replace": "slug"
+  },
+  {
+    "name": "rule column emptied",
+    "find": "`<td>${inline(layer.ownRule)} <span class=\"regle\">",
+    "replace": "`<td> <span class=\"regle\">"
+  },
+  {
+    "name": "partial rule text not escaped",
+    "find": "<span class=\"regle\">${escapeHtml(verification)}</span>",
+    "replace": "<span class=\"regle\">${verification}</span>"
+  },
+  {
+    "name": "blank line does not separate paragraphs",
+    "find": "if (line.length === 0) {",
+    "replace": "if (line.length < 0) {"
+  },
+  {
+    "name": "lines of a paragraph joined without a space",
+    "find": "inline(paragraph.join(\" \"))",
+    "replace": "inline(paragraph.join(\"\"))"
+  },
+  {
+    "name": "paragraph after a list glued to the list",
+    "find": "if (items.length > 0) flush();",
+    "replace": ""
+  },
+  {
+    "name": "status line read anywhere in a line",
+    "find": "/^- \\*\\*Statut :\\*\\* (\\p{L}+)/u",
+    "replace": "/- \\*\\*Statut :\\*\\* (\\p{L}+)/u"
+  },
+  {
+    "name": "english word of a proposed record not read",
+    "find": "statuses[0] === \"proposé\" || statuses[0] === \"proposed\"",
+    "replace": "statuses[0] === \"proposé\""
+  },
+  {
+    "name": "any word starting like accepted is accepted",
+    "find": "if (statuses[0] === \"accepted\") return \"accepted\";",
+    "replace": "if (statuses[0]?.startsWith(\"accept\")) return \"accepted\";"
+  },
+  {
+    "name": "empty dependency label dropped",
+    "find": "? \"aucune\"\n      : brick.depend_de",
+    "replace": "? \"\"\n      : brick.depend_de"
+  },
+  {
+    "name": "empty list label dropped",
+    "find": "return values.length === 0\n    ? empty",
+    "replace": "return values.length === 0\n    ? \"\""
+  },
+  {
+    "name": "absence of proof not said",
+    "find": "? \"<p>Preuve citée : aucune.</p>\"",
+    "replace": "? \"\""
+  },
+  {
+    "name": "matrix column header without scope",
+    "find": "`<th scope=\"col\"><span>${escapeHtml(layer.label)}</span></th>`",
+    "replace": "`<th><span>${escapeHtml(layer.label)}</span></th>`"
+  },
+  {
+    "name": "matrix row header without scope",
+    "find": "return `<tr><th scope=\"row\"><a href=\"#couche-${escapeHtml(layer.slug)}\">",
+    "replace": "return `<tr><th><a href=\"#couche-${escapeHtml(layer.slug)}\">"
+  },
+  {
+    "name": "several unbound bricks agreed in the singular",
+    "find": "counters.sans_invariant.length > 1 ? \"ne sont liées\" : \"n'est liée\"",
+    "replace": "\"n'est liée\""
+  },
+  {
+    "name": "bricks joined on one line",
+    "find": "layer.briques.map(renderBrick).join(\"\\n\")",
+    "replace": "layer.briques.map(renderBrick).join(\"\")"
+  },
+  {
+    "name": "decision record read on disk",
+    "find": ".map((path) => git([\"show\", `:${path}`]));",
+    "replace": ".map((path) => require(\"node:fs\").readFileSync(join(root, path), \"utf8\"));"
+  },
+  {
+    "name": "decision record filter widened",
+    "find": ".filter((path) => path.startsWith(`docs/adr/${DECISION.slice(4)}-`))",
+    "replace": ".filter((path) => path.includes(DECISION.slice(4)))"
+  },
+  {
+    "name": "untracked decision record listed",
+    "find": "git([\"ls-files\", \"-z\", \"docs/adr\"])",
+    "replace": "git([\"ls-files\", \"-z\", \"--cached\", \"--others\", \"docs/adr\"])"
+  }
+]
