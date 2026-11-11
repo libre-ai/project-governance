@@ -2,26 +2,27 @@
 
 ## Contexte
 
-P02 est le produit de veille du catalogue d'ADR-0042 §1. ADR-0054 le sort du gel et fixe sa première version : un serveur entièrement en Rust, et trois surfaces qui parlent à la même API (une application web installable, une application macOS sous Tauri 2, une extension de navigateur sans accès réseau). ADR-0064 D8 en fait la première brique `produit` à prouver par une release signée, sous la pile d'ADR-0063.
+ADR-0042 §1 inscrit P02 au catalogue et le sort du gel. ADR-0054 fixe sa première version et lève le moratoire pour son dépôt dédié : un serveur en Rust (D85), que I-06 amendé admet quand l'ADR du produit le décide, et trois surfaces sur la même API. Il porte aussi une offre hébergée payante (D81). ADR-0064 D8 et ADR-0063 D6, encore proposés, en font la première brique `produit` à prouver.
 
-ADR-0054 §2 lui donne un dépôt dédié. Ce dépôt existe et reste privé : I-30 sépare l'attestation, la publication et l'enregistrement à l'inventaire, et aucun des trois n'est fait. Le code P02 plus ancien du dépôt du domaine Connaissance devient une référence, selon le même paragraphe. Cette fiche ne nomme donc aucun porteur dans ses données et ne cite aucune preuve.
+I-30 sépare le nom et l'enrôlement, le distant de staging privé, puis l'exposition publique après attestation. Au 2026-11-11, `information-watch` n'est pas à l'inventaire : la fiche ne nomme aucun porteur.
+
+Sans PLT-01, ses surfaces n'ont pas de cœur commun. Sans PLT-02, ni coquille ni PWA. Sans PLT-05, aucune cible de preuve inscrite. Sans PLT-07, pas de parcours d'accessibilité, qu'exige le standard de spécification. Sans EXE-04, pas de parseur isolé en processus fils.
 
 ## Ce que la brique ferme
 
-- La veille qui passe par un serveur tiers : les sources suivies et ce qui est lu restent sur le poste ou chez l'organisation (I-10).
-- La logique dupliquée par surface : l'application macOS et l'extension ne parsent rien, elles délèguent à l'API (ADR-0054 §3).
-- Le produit annoncé avant d'être vérifiable : la brique ne compte comme prototypée qu'avec une release signée liée à son évidence (I-15, I-20).
+- La logique dupliquée par surface : l'application macOS et l'extension délèguent à l'API (ADR-0054 §3).
+- Le produit montré avant d'être vérifiable : I-15 n'ouvre sa vitrine publique que dès quelque chose de vérifiable.
+- Le travail sans trace : I-08 fait tracer phases, critères et preuves datées dans la fiche `project.v1.yaml` de son dépôt.
+- La parité jugée trop tôt : I-27 n'évalue son gate de parité qu'après son jalon de dogfooding.
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne parse pas de flux dans l'application macOS ni dans l'extension.
-- Elle ne stocke aucune donnée de paiement, y compris pour l'offre hébergée (D81).
-- Elle n'ouvre ni mobile, ni Windows, ni Linux au premier palier ; Linux s'ouvre au second palier, quand la brique est prototypée sur macOS et que sa matrice de parité est verte (ADR-0064 D7).
-- Elle ne dépend d'aucun service managé pour son cœur.
+- Elle ne stocke aucune donnée de paiement (D87).
+- Elle n'ouvre ni mobile, ni Windows, ni Linux au premier palier (ADR-0054 §3).
+- Propositions de l'agent, non arbitrées : la clause « sans qu'aucun serveur tiers ne sache ce qu'on lit » de la charte, son refus d'un service managé, et son fait d'abandon.
 
 ## Mesure
 
-- Preuve citée : aucune. Rien n'est citable tant que le dépôt porteur est privé (I-15).
-- Fait de dégel : les trois surfaces construites sur le même cœur, avec les preuves par surface d'ADR-0054 §3 (parcours sur trois navigateurs et trois largeurs ; sur macOS, aucun port en écoute, signature et notarisation, mémoire résidente sous le plafond fixé ; extension sur deux navigateurs réels), sur une release signée dont l'évidence est publiée.
-- Fait d'abandon : celui de la charte. C'est une proposition de l'agent (revue des chartes du 2026-11-09), sans source dans la doctrine ; le propriétaire ne l'a pas arbitrée.
-- À l'enregistrement du dépôt à l'inventaire : ajouter le porteur, puis une preuve épinglée par commit.
+- Preuve citée : aucune.
+- Fait de dégel : celui de la charte.
+- Prochain fait observable : l'entrée du dépôt à l'inventaire, puis une preuve épinglée.

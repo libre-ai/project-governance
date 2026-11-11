@@ -2,14 +2,14 @@
 
 ## Contexte
 
-ADR-0042 §6 demande une matrice de parité par produit : chaque fonction requise donne un test d'acceptation dont le seuil est figé avant la mesure. I-27 interdit d'évaluer un gate de parité avant le jalon de dogfooding du produit. Le schéma des fiches de projet exige d'un produit ses critères de promotion, ses prédicats d'arrêt et son étalon. Aucun artefact n'exécute une comparaison de parité : les audits existants ont mesuré des spécifications, et ADR-0027 les déclare non opposables.
+ADR-0042 §6 demande une matrice de parité par produit : chaque fonction requise donne un test d'acceptation dont le seuil est figé avant la mesure (D55). I-27, posé par ADR-0027 (D34), interdit d'évaluer un gate de parité avant le jalon de dogfooding du produit. I-08 fait tracer à chaque dépôt produit ses phases et ses critères dans sa fiche `project.v1.yaml`. Le schéma de cette fiche exige d'un produit ses critères de promotion, ses prédicats d'arrêt et son étalon. D34 requalifie comme non opposables les audits existants, qui ont mesuré des spécifications. Dans ce dépôt, au 2026-11-11, aucun gate ne lit ces champs pour évaluer une parité.
 
 ## Ce que la brique ferme
 
-- Le seuil ajusté après la mesure : il est figé avant (ADR-0042 §6, D55).
+- Le seuil ajusté après la mesure : il est figé avant (ADR-0042 §6).
 - Le verdict tiré d'une spécification : un audit n'est opposable que s'il mesure du code livré (I-27).
-- Le gate qui tire trop tôt : aucune comparaison ne s'évalue avant un usage réel du produit (I-19, I-27).
-- L'étalon complet exigé dès la première version : la cible opposable est le périmètre que l'audit recommande (I-27).
+- Le gate qui tire trop tôt : il ne s'évalue pas avant le jalon de dogfooding du produit, sur un usage réel (I-27).
+- L'étalon complet exigé dès la première version : la cible opposable est le périmètre que l'audit du produit recommande (I-27).
 
 ## Ce qu'elle ne fait pas
 
@@ -19,5 +19,5 @@ ADR-0042 §6 demande une matrice de parité par produit : chaque fonction requis
 
 ## Mesure
 
-- Preuve citée : aucune. Le schéma des fiches déclare les champs de parité ; aucun gate ne lit un seuil ni ne rejoue un test.
+- Preuve citée : aucune. Le schéma des fiches déclare les champs de parité. Aucun gate de ce dépôt ne lit un seuil ni ne rejoue un test, au 2026-11-11.
 - Prochaine preuve : un test d'acceptation de parité exécuté sur le code livré d'un produit qui a atteint son jalon de dogfooding, avec son seuil écrit avant l'exécution.

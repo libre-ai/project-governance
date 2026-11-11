@@ -1,21 +1,24 @@
 schema_version: libre-ai.brique.v1
 couche: preuve
-# Journal, provenance, signature, menace, audit (ADR-0064 D1). La couche ne
-# dépend que de `identite` et d'elle-même. Une preuve citée ici est un module,
-# un contrat, un jeu de vecteurs ou un gate qui réalise la brique ; les briques
-# qu'aucun dépôt de la flotte ne porte gardent `depots: []` et `preuve: []`.
+# Journal, provenance, signature, menace, audit (ADR-0064 D1, encore proposé).
+# La couche ne dépend que de `identite` et d'elle-même. Une preuve citée ici est
+# un module, un contrat, un jeu de vecteurs ou un gate qui réalise la brique ;
+# une brique sans dépôt porteur garde `depots: []` et `preuve: []`.
 briques:
   - id: PRV-01
     nom: Journal scellé
     role: Enregistre chaque événement d'une organisation dans un journal en ajout seul, chaîné par empreintes, qu'un vérificateur indépendant relit hors de la base qui l'a produit.
-    depend_de: [IDN-03, IDN-04]
-    invariants: [I-09, I-20]
-    decisions: [ADR-0042, ADR-0064, D55]
+    depend_de: []
+    # I-09 n'apparaît que par la dérogation de la v0, et I-20 vise le journal
+    # public des verdicts de gates : voisins, non cités.
+    invariants: []
+    decisions: [ADR-0042, D55]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
+    # Les deux cibles montrent un journal mono-utilisateur, sans organisation.
     preuve:
       - date: "2026-10-24"
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-journal/src/journal.rs
@@ -24,9 +27,9 @@ briques:
   - id: PRV-02
     nom: Manifeste de provenance
     role: Décrit un artefact par la liste de ses fichiers, leurs tailles et leurs empreintes, et le lie au rapport d'évidence qui l'a autorisé, avec refus fermé de tout écart.
-    depend_de: [IDN-04, PRV-03]
-    invariants: [I-10, I-20]
-    decisions: [ADR-0009, ADR-0049, ADR-0064, D71]
+    depend_de: []
+    invariants: [I-20]
+    decisions: [ADR-0009]
     depots: [libre-ai/artifact-verification, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -41,13 +44,14 @@ briques:
     nom: Signature des artefacts
     role: Signe ce que la flotte remet à un tiers (binaire de release, rapport d'évidence, enregistrement de provenance) et en fait vérifier la signature avant usage, avec refus fermé.
     depend_de: [PRV-04]
-    invariants: [I-10, I-20]
-    decisions: [ADR-0009, ADR-0042, ADR-0057, ADR-0064, D57, D98]
+    invariants: [I-20]
+    decisions: [ADR-0009, ADR-0042, ADR-0057, D57, D98]
     depots: [libre-ai/artifact-verification, libre-ai/pi-evidence]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
+    # Les deux cibles signent des enregistrements de preuve, aucun binaire.
     preuve:
       - date: "2026-10-24"
         cible: libre-ai/artifact-verification@d3403d2792ef88f9c0e3a78284efddc45d3884cd:packages/provenance/src/index.ts
@@ -57,8 +61,10 @@ briques:
     nom: Gestion des clés
     role: Génère, scelle, enregistre, fait tourner et retire les clés de signature de la flotte selon une cérémonie écrite, la clé privée ne quittant jamais la machine de son détenteur.
     depend_de: []
-    invariants: [I-09, I-18, I-33]
-    decisions: [ADR-0028, ADR-0046, ADR-0064, D35]
+    # Aucun invariant ne porte la gestion des clés : la rotation est écrite dans
+    # la spécification d'identité et dans le mode opératoire de la cérémonie.
+    invariants: []
+    decisions: [ADR-0028, ADR-0046, D35]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -72,13 +78,15 @@ briques:
     nom: Détection sur les agents
     role: Rejoue les observations signées des appels d'outil d'un agent et rend un verdict fermé et déterministe, sans lire de contenu et sans acquérir d'autorité.
     depend_de: [IDN-04]
-    invariants: [I-18, I-32, I-33]
-    decisions: [ADR-0045, ADR-0046, ADR-0064, D66, D67]
+    invariants: [I-18, I-33]
+    decisions: [ADR-0045, ADR-0046, D66, D67]
     depots: [libre-ai/execution-continuity-evaluator, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
+    # Les signatures des vecteurs sont des octets nuls : aucune signature de
+    # harness n'y est vérifiée.
     preuve:
       - date: "2026-10-26"
         cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/tool_observation.rs
@@ -87,9 +95,9 @@ briques:
   - id: PRV-06
     nom: Adversaire continu
     role: Rejoue contre les seuls systèmes de Libre AI des sondes et des contrepreuves qui doivent rougir dès qu'une défense est neutralisée.
-    depend_de: [PRV-07]
-    invariants: [I-30, I-34]
-    decisions: [ADR-0038, ADR-0048, ADR-0064, D44, D70]
+    depend_de: []
+    invariants: [I-30]
+    decisions: [ADR-0038, D44]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -102,8 +110,10 @@ briques:
     nom: Modèle de menace par produit
     role: Tient pour chaque surface et chaque produit la liste des menaces, le contrôle ou l'invariant qui porte chacune, et le registre des risques résiduels.
     depend_de: []
-    invariants: [I-10, I-18, I-36, I-37]
-    decisions: [ADR-0049, ADR-0064, D71]
+    # Le modèle cite des invariants menace par menace ; aucun ne demande qu'un
+    # modèle de menace existe.
+    invariants: []
+    decisions: [ADR-0049, D71]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -117,9 +127,9 @@ briques:
   - id: PRV-08
     nom: Coupe-circuit
     role: Arrête une mission dès que son budget d'erreur est dépassé et consigne l'arrêt, au lieu d'émettre une alerte.
-    depend_de: [IDN-05, PRV-01]
-    invariants: [I-18, I-33]
-    decisions: [ADR-0034, ADR-0046, ADR-0064, D40, D67]
+    depend_de: [PRV-01]
+    invariants: []
+    decisions: [ADR-0034, ADR-0046, D40, D67]
     depots: []
     origine:
       type: inspection
@@ -130,10 +140,10 @@ briques:
     nom: Nomenclature des modèles et données
     role: Liste les modèles, les poids et les jeux de données qu'un produit embarque ou appelle, chacun avec son empreinte, sa source et sa licence.
     depend_de: []
-    invariants: [I-11, I-21]
-    decisions: [ADR-0021, ADR-0064, D30]
-    # Les gates de dépendances de la flotte couvrent le code, pas les modèles
-    # ni les données : aucun dépôt ne porte cette nomenclature.
+    invariants: []
+    decisions: [ADR-0021, D30]
+    # ADR-0021 donne à la flotte l'état du monde des avis sur les dépendances
+    # de code ; la brique n'a ni dépôt porteur ni preuve.
     depots: []
     origine:
       type: inspection
@@ -143,9 +153,9 @@ briques:
   - id: PRV-10
     nom: Signature des modèles
     role: Vérifie la signature des poids d'un modèle contre une clé connue avant tout chargement, et refuse fermé un modèle non signé.
-    depend_de: [PRV-03, PRV-09]
+    depend_de: [PRV-03]
     invariants: []
-    decisions: [ADR-0063, ADR-0064]
+    decisions: [ADR-0063]
     depots: []
     origine:
       type: inspection
@@ -155,24 +165,25 @@ briques:
   - id: PRV-11
     nom: Coffre et injection par mandat
     role: Garde les secrets hors des dépôts et du contexte des modèles, et n'en remet un à une mission qu'au point d'usage, pour la portée et la durée de son mandat.
-    depend_de: [IDN-02, IDN-04, PRV-01]
-    invariants: [I-09, I-18]
-    decisions: [ADR-0042, ADR-0064, D53]
+    depend_de: [IDN-02, IDN-04]
+    invariants: []
+    decisions: [ADR-0042, D53]
     # Brique de méthode. Le produit P37 du catalogue d'ADR-0042 §1 n'est pas
-    # cette brique et ne se cite pas en dépendance (ADR-0064 D1).
+    # cette brique.
     depots: []
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
-    # Tout secret est un acte du propriétaire.
+    # Proposition de l'agent, non arbitrée : la remise d'un secret reste un acte
+    # du propriétaire tant qu'aucune décision ne la délègue.
     autonomie: discover
     preuve: []
   - id: PRV-12
     nom: Collaboration chiffrée de bout en bout
     role: Fait circuler tout contenu échangé entre les membres d'un groupe comme message MLS natif, dont le destinataire vérifie la signature de l'expéditeur avant toute application.
-    depend_de: [IDN-01]
+    depend_de: []
     invariants: [I-34]
-    decisions: [ADR-0048, ADR-0064, D70]
+    decisions: [ADR-0048, D70]
     depots: [libre-ai/collaborative-data-sync, libre-ai/schemas-and-contracts]
     origine:
       type: propre

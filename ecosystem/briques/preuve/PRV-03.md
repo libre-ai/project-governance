@@ -2,17 +2,17 @@
 
 ## Contexte
 
-I-20 parle de rapports d'évidence signés (ADR-0009 §7). I-10 refuse qu'une exportation remise à un tiers soit authentifiée par une empreinte nue. ADR-0042 §8 exige la signature et la notarisation de tout binaire distribué à un tiers (D57), et ADR-0057 §4 fixe les contrôles par release candidate (D98). Deux modules signent aujourd'hui des enregistrements de preuve : le paquet de provenance de `artifact-verification`, en Ed25519, et le signataire de `pi-evidence`. Aucun binaire de la flotte n'est signé ni notarisé.
+I-20 veut des « rapports signés » ; sa source est ADR-0009 §7. ADR-0042 §8 exige la signature et la notarisation de tout binaire distribué à un tiers (D57). ADR-0057 §4 fixe les contrôles par release candidate : vérification de signature, évaluation par le système et ticket de notarisation (D98). Les deux modules cités signent des enregistrements de preuve. Le paquet de provenance de `artifact-verification` signe en Ed25519 un enregistrement de lignage. Le signataire de `pi-evidence` signe par `ssh-keygen`. La brique dépend de PRV-04 : sans clé gérée, elle n'a rien avec quoi signer. Le paquet de provenance reçoit sa clé en paramètre.
 
 ## Ce que la brique ferme
 
-- L'artefact remis à un tiers sans origine vérifiable : une empreinte prouve l'intégrité, pas l'auteur (I-10).
 - L'enregistrement de preuve falsifié après coup : la vérification échoue fermée sur toute altération ou mauvaise clé.
-- Le binaire distribué sans signature ni notarisation, qu'un tiers pourrait substituer (D57).
+- L'enregistrement sans origine vérifiable : une signature asymétrique prouve l'auteur, là où une empreinte ne prouve que l'intégrité.
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne génère ni ne garde les clés : c'est PRV-04. Les deux modules reçoivent la clé de l'appelant.
+- Elle ne signe ni ne notarise aucun binaire : cette part du rôle, exigée par D57, n'a pas de preuve.
+- Elle ne génère ni ne garde les clés : c'est PRV-04.
 - Elle ne décrit pas le contenu signé : le manifeste est PRV-02.
 - Elle ne signe pas les poids d'un modèle : c'est PRV-10.
 

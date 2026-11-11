@@ -1,16 +1,17 @@
 schema_version: libre-ai.brique.v1
 couche: plateforme
-# Règle de couche (ADR-0064 D1) : une coquille n'a pas de logique métier. La
-# couche ne dépend que de `preuve`, d'`execution` et d'elle-même.
-# Plateformes : macOS d'abord, Linux au second palier avec son déclencheur écrit
-# (ADR-0064 D7). Ce point n'est plus une décision ouverte.
+# Règle de couche (ADR-0064 D1, proposé) : une coquille n'a pas de logique
+# métier. La couche ne dépend que de `preuve`, d'`execution` et d'elle-même.
+# Plateformes : macOS d'abord (ADR-0057 §4, en vigueur) ; Linux au second palier
+# avec son déclencheur écrit est ADR-0064 D7, proposé, dont la ligne d'arbitrage
+# reprend le choix du propriétaire du 2026-11-09.
 briques:
   - id: PLT-01
     nom: Cœur Rust par produit
-    role: Porte dans un cœur Rust propre à chaque produit ses fonctions de lecture, d'écriture, d'analyse et d'index, que la coquille appelle par un pont déclaré sans en réécrire aucune.
+    role: Porte dans le cœur Rust d'un produit les fonctions que la coquille appelle par son pont, sans en réimplémenter aucune.
     depend_de: []
     invariants: [I-06]
-    decisions: [ADR-0042, ADR-0044, ADR-0057, ADR-0063, ADR-0064, ADR-0065, D96, D97]
+    decisions: [ADR-0042, ADR-0044, ADR-0057, ADR-0063, ADR-0065, D96, D97]
     depots: [libre-ai/personal-knowledge-workspace, libre-ai/square-control]
     origine:
       type: inspection
@@ -28,8 +29,9 @@ briques:
     invariants: [I-06, I-08, I-37]
     decisions: [ADR-0042, ADR-0054, ADR-0057, ADR-0063, ADR-0064, D92, D96, D98]
     # `project-governance` porte les règles de la coquille (gabarit de référence,
-    # champ `desktop_shell` du schéma de fiche et son gate). Ce gate n'est pas
-    # cité en preuve : aucune fiche qu'il lit ne déclare de coquille.
+    # champ `desktop_shell` du schéma de fiche et son contrôle). Ce contrôle
+    # n'est pas cité en preuve : au 2026-11-11, aucune fiche lue à la racine des
+    # dépôts publics actifs de l'inventaire ne déclare ce champ.
     depots: [libre-ai/personal-knowledge-workspace, libre-ai/project-governance]
     origine:
       type: inspection
@@ -42,10 +44,11 @@ briques:
     nom: Canaux de distribution
     role: Achemine vers ses utilisateurs un artefact construit et signé, par des canaux nommés dont aucun ne devient la source qui fait autorité.
     depend_de: [PLT-04, PRV-03]
-    invariants: [I-12, I-15, I-20]
+    invariants: [I-12, I-20]
     decisions: [ADR-0042, ADR-0054, ADR-0057, ADR-0064, D81, D98]
-    # Aucun dépôt de l'inventaire ne porte de chaîne de distribution
-    # d'application : ni job de release, ni bundle signé, ni release publiée.
+    # Aucun porteur déclaré. Au 2026-11-11, l'API de la forge ne rend aucune
+    # release pour `personal-knowledge-workspace`, `square-control` ni
+    # `ai-work-supervision`.
     depots: []
     origine:
       type: inspection
@@ -56,8 +59,8 @@ briques:
     nom: Construction reproductible
     role: Épingle les toolchains, les actions et les dépendances de chaque dépôt et refuse une version plus jeune que l'âge minimal déclaré, pour qu'un même commit se construise à partir des mêmes entrées.
     depend_de: []
-    invariants: [I-26, I-28]
-    decisions: [ADR-0001, ADR-0031, ADR-0049, ADR-0064, D37, D71]
+    invariants: [I-28]
+    decisions: [ADR-0001, ADR-0031, ADR-0049, D37, D71]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -72,7 +75,9 @@ briques:
     nom: Matrice de compatibilité
     role: Tient par produit et par palier la liste des cibles sur lesquelles une promesse est faite, chacune inscrite après qualification par un parcours réel.
     depend_de: [PLT-02]
-    invariants: [I-08, I-27]
+    # Liste vide : la promesse de plateforme vient d'ADR-0042 §6, et aucun
+    # invariant relu pour cette brique ne la porte.
+    invariants: []
     decisions: [ADR-0006, ADR-0042, ADR-0054, ADR-0057, ADR-0064, D90, D98]
     depots: [libre-ai/personal-knowledge-workspace]
     origine:
@@ -87,7 +92,7 @@ briques:
     role: Nomme le retour arrière de chaque release et sort du service un produit, un dépôt ou un contenu par gel, archivage ou éviction, sans rien détruire.
     depend_de: [PLT-03, EXE-02]
     invariants: [I-07, I-23]
-    decisions: [ADR-0019, ADR-0035, ADR-0042, ADR-0064, D41]
+    decisions: [ADR-0019, ADR-0035, ADR-0042, D41]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -102,11 +107,10 @@ briques:
     nom: Accessibilité RGAA
     role: Fixe pour chaque cible ce qu'une interface expose aux technologies d'assistance, et en fait un critère mesuré de la qualification d'un produit.
     depend_de: [PLT-02]
-    # Aucun invariant ne nomme l'accessibilité. I-08 est celui qui lie la
-    # brique : le seuil est un critère de sortie écrit dans la fiche du produit,
-    # et son protocole est figé avant la mesure.
+    # Liste vide : aucun invariant du registre ne porte sur l'accessibilité
+    # d'une interface (lecture du 2026-11-11).
     invariants: []
-    decisions: [ADR-0001, ADR-0044, ADR-0057, ADR-0064, D97]
+    decisions: [ADR-0001, ADR-0044, ADR-0057, D97]
     depots: [libre-ai/personal-knowledge-workspace, libre-ai/project-governance]
     origine:
       type: inspection
@@ -119,10 +123,13 @@ briques:
     nom: Poste de pilotage signé
     role: Livre les outils du poste d'où le propriétaire pilote les agents comme des binaires signés, dont les imports, les droits et les chaînes sont comparés à des listes fermées.
     depend_de: [PRV-03]
-    invariants: [I-38]
-    decisions: [ADR-0042, ADR-0052, ADR-0057, ADR-0064, D76]
-    # `ai-work-supervision` porte le cockpit de la fabrique, sans signature ni
-    # release : il n'est pas porteur de la livraison signée.
+    # Liste vide : aucun invariant relu pour cette brique ne porte sur la
+    # signature ou le contrôle d'un binaire.
+    invariants: []
+    decisions: [ADR-0042, ADR-0052, D76]
+    # `ai-work-supervision` porte le cockpit de la fabrique. Au 2026-11-11,
+    # aucun chemin de son arbre ne nomme une signature et l'API de la forge ne
+    # lui rend aucune release : il n'est pas porteur de la livraison signée.
     depots: [libre-ai/square-control]
     origine:
       type: inspection
@@ -136,10 +143,10 @@ briques:
     role: Fournit aux fronts des produits des jetons et des composants d'interface écrits sous EUPL, comme ADR-0054 §3 le demande pour P02.
     depend_de: [PLT-07]
     invariants: [I-11, I-29]
-    decisions: [ADR-0033, ADR-0054, ADR-0064, D86]
-    # Aucun dépôt de l'inventaire ne porte de design system sous EUPL. Le paquet
-    # d'interface existant vit dans `application-development-toolkit` sous
-    # Apache-2.0 : le citer ici trancherait un conflit de licence non arbitré.
+    decisions: [ADR-0033, ADR-0054, D86]
+    # Aucun porteur déclaré. Le paquet d'interface existant vit dans
+    # `application-development-toolkit` sous Apache-2.0 (relevé du 2026-11-11) :
+    # le citer ici trancherait une question de licence non arbitrée.
     depots: []
     origine:
       type: propre

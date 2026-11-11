@@ -2,22 +2,22 @@
 
 ## Contexte
 
-La doctrine exige déjà des contrepreuves par endroits. I-30 demande des contrepreuves rouges par surface avant la première publication d'un dépôt (ADR-0038, D44). I-34 demande des vecteurs rouges dont chacun rougit contre une implémentation privée de la propriété visée (ADR-0048, D70). Ce dépôt porte un outil qui neutralise un à un les contrôles des outils d'attestation et exige qu'un test rougisse à chaque fois. Rien ne rejoue de sondes contre un agent ou un produit.
+I-30 exige, avant la première publication d'un dépôt, des « contrepreuves rouges par surface » (ADR-0038, D44). Ce dépôt porte les outils de cette attestation, et un outil qui neutralise un à un leurs sites de refus et exige qu'un test rougisse à chaque fois. Cet outil tourne dans `bun run check`. I-34 demande des vecteurs rouges du même genre pour une autre surface ; il lie PRV-12 et n'est pas cité ici. Le rôle vise des sondes rejouées contre tout système de Libre AI : la preuve ne couvre que les outils d'attestation.
 
 ## Ce que la brique ferme
 
-- Le contrôle qui reste vert quand on retire ce qu'il vérifie : un contrôle neutralisé sans test rouge est compté comme un défaut.
-- La défense prouvée une fois puis jamais rejouée : les sondes tournent à chaque vérification.
-- La menace inscrite au modèle sans essai correspondant : chaque sonde part d'une ligne de PRV-07.
+- Le contrôle qui reste vert quand on retire ce qu'il vérifie : un site de refus neutralisé sans test rouge est compté comme un défaut.
+- Le test qui casse au lieu d'affirmer : un mutant qui ne provoque qu'un plantage est rapporté à part et compté comme un problème.
+- Le site de refus hors de vue : l'outil compte les sites par son propre motif et échoue sur un site non couvert.
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne vise aucun système tiers : les sondes tournent contre les seuls systèmes de Libre AI.
-- Elle ne remplace pas la revue humaine, seule revue qui vaut sous I-17.
+- Elle ne vise aucun système tiers : le rôle borne les sondes aux seuls systèmes de Libre AI.
+- Elle ne sonde ni un agent ni un produit.
 - Elle ne décide pas des menaces : le modèle est PRV-07.
 - Elle n'observe pas les agents en service : c'est PRV-05.
 
 ## Mesure
 
 - Preuve citée : l'outil de neutralisation des contrôles d'attestation, dans ce dépôt. Il montre que chaque site de refus de ces outils est rejoué contre un mutant. Il ne couvre que cette surface.
-- Prochain fait observable : un jeu de sondes tiré des menaces du modèle, rejoué dans le workflow de release d'un produit, dont une sonde rougit quand la défense visée est neutralisée.
+- Prochain fait observable : un jeu de sondes rejoué dans le workflow de release d'un produit, dont une sonde rougit quand la défense visée est neutralisée.

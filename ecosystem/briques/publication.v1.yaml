@@ -11,10 +11,12 @@ briques:
     # la couche fabrique. La table d'ADR-0064 D1 n'admet pas cette dépendance
     # pour la couche publication : la décision D6 est citée, la dépendance non.
     depend_de: []
-    invariants: [I-05, I-14, I-15]
-    decisions: [ADR-0038, ADR-0064]
+    invariants: [I-05, I-14]
+    # ADR-0064 est cité pour sa décision D6, et la fiche le dit proposé.
+    decisions: [ADR-0064]
     # ADR-0064 D6 place la page sous `distribution/vision/` de ce dépôt, qui
-    # porte déjà ses données (la carte). Le générateur n'est pas écrit.
+    # porte ses données (la carte). Au 2026-11-11, ce répertoire est absent de
+    # l'arbre suivi.
     depots: [libre-ai/project-governance]
     origine:
       type: propre
@@ -23,12 +25,13 @@ briques:
   - id: PUB-02
     nom: Catalogue à statut dérivé
     role: Publie la liste des produits et des dépôts avec, pour chacun, un état calculé depuis sa fiche et ses preuves, jamais déclaré à la main.
-    depend_de: [GOV-03, PUB-04]
+    depend_de: [GOV-03]
     invariants: [I-05, I-14, I-15]
-    decisions: [ADR-0020, ADR-0042, ADR-0064, D52]
+    # ADR-0064 est cité pour sa ligne « Amende » (le catalogue reste la source,
+    # la carte en est la projection) et pour D4 ; la fiche le dit proposé.
+    decisions: [ADR-0042, ADR-0064, D52]
     # Le profil d'organisation, qui publie la table, vit dans le dépôt `.github`
-    # de l'organisation. Il est à l'inventaire, mais le schéma `brique.v1`
-    # refuse un nom de dépôt qui commence par un point : il n'est pas listé.
+    # de l'organisation.
     depots: [libre-ai/project-governance, libre-ai/.github]
     origine:
       type: propre
@@ -43,7 +46,7 @@ briques:
     role: Sert aux lecteurs extérieurs, par public et en deux langues, des pages statiques construites depuis des projections épinglées et soumises à un contrôle d'accessibilité.
     depend_de: [PUB-02, PUB-07]
     invariants: [I-05, I-15, I-29, I-37]
-    decisions: [ADR-0020, ADR-0033, ADR-0035, ADR-0042, ADR-0064]
+    decisions: [ADR-0033, ADR-0035]
     depots: [libre-ai/project-website]
     origine:
       type: propre
@@ -56,11 +59,12 @@ briques:
   - id: PUB-04
     nom: Évidence publique
     role: Projette les sources d'évidence de la forge en un journal et deux flux générés, et fait échouer toute projection qui ne correspond plus à ses sources.
-    # Une dépendance par clause d'I-20 : journal des verdicts, releases liées à
-    # leur évidence, rapports signés.
-    depend_de: [PRV-01, PRV-02, PRV-03]
+    # Deux clauses d'I-20 demandent une autre brique : les releases liées à leur
+    # évidence (PRV-02) et les rapports signés (PRV-03). Le journal des verdicts
+    # que le générateur lit est un fichier de ce dépôt.
+    depend_de: [PRV-02, PRV-03]
     invariants: [I-05, I-20]
-    decisions: [ADR-0009, ADR-0064]
+    decisions: [ADR-0009]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -75,8 +79,8 @@ briques:
     nom: Contributions
     role: Fait entrer toute contribution par une pull request dont chaque commit est signé DCO et dont chaque fichier porte une licence, sous les mêmes contrôles requis quel que soit son auteur.
     depend_de: [GOV-01]
-    invariants: [I-11, I-19, I-30]
-    decisions: [ADR-0038, ADR-0064, D23]
+    invariants: [I-11]
+    decisions: [D23]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -89,8 +93,8 @@ briques:
     nom: Voie balisée pour reconstruire
     role: Donne à un tiers sans accès privé un chemin exécutable pour cloner, installer et vérifier la méthode depuis les dépôts publics, et publie l'attestation de chaque passage.
     depend_de: [GOV-07, PUB-04]
-    invariants: [I-12, I-20]
-    decisions: [ADR-0009, ADR-0020, ADR-0064]
+    invariants: [I-20]
+    decisions: [ADR-0009, ADR-0020]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -106,7 +110,7 @@ briques:
     role: Tient la promesse, la voix et les qualifications publiques de Libre AI dans une source unique, dont les surfaces publiques ne reçoivent que des projections générées.
     depend_de: []
     invariants: [I-01, I-05, I-29]
-    decisions: [ADR-0033, ADR-0064, D39, D75]
+    decisions: [ADR-0033, D39, D75]
     depots: [libre-ai/project-governance]
     origine:
       type: propre

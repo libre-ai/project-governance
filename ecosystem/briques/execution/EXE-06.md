@@ -2,19 +2,18 @@
 
 ## Contexte
 
-ADR-0009 pose que tout rappel de mémoire porte une enveloppe de contenu non fiable, à l'intégrité signée et vérifiable. I-32 ajoute qu'un résumé ou une compaction reste une chaîne non fiable. Le paquet d'enveloppe de `schemas-and-contracts` compte la mémoire parmi ses sources. La spécification du service de mémoire est un brouillon, tenu dans `execution-continuity-evaluator`, sans verrou prononcé. Aucun des deux dépôts ne porte le service lui-même.
+ADR-0009 §6 pose que tout rappel de mémoire porte une enveloppe de contenu non fiable, dont l'intégrité est signée et vérifiable. I-18 le reprend : « enveloppe d'intégrité signée sur tout rappel ». I-32 interdit qu'une chaîne dérivée d'un contenu non fiable, « résumée, compactée » comprise, entre dans le contexte d'un modèle qui détient un outil à effet. Le paquet d'enveloppe de `schemas-and-contracts` compte la mémoire parmi ses sources. La spécification du service de mémoire est un brouillon, tenu dans `execution-continuity-evaluator`, en attente de verrou. Aux commits cités, les seuls noms de fichiers de ces deux dépôts qui contiennent `memory` sont cette spécification et son gate de synchronisation. La brique dépend d'IDN-04 : la spécification brouillon borne le rappel à l'identité de l'agent, et sans elle un souvenir n'a pas de titulaire.
 
 ## Ce que la brique ferme
 
 - Le souvenir altéré, ou dépouillé de sa marque, entre deux exécutions : l'enveloppe rend l'altération détectable (I-18).
-- Le souvenir pris pour une autorité : une donnée d'exploitation n'autorise seule aucune écriture sur une source de vérité (I-18).
-- L'instruction glissée dans un résumé, puis relue par un modèle qui détient un outil à effet (I-32).
+- Le souvenir pris pour une autorité : I-18 veut des « données `operational` jamais autorité ».
 
 ## Ce qu'elle ne fait pas
 
-- Elle n'isole pas le modèle du contenu rappelé : ADR-0045 classe l'enveloppe en défense en profondeur.
-- Elle ne produit pas le contenu qu'elle retient : il vient d'une tâche confinée par EXE-01.
+- Elle n'isole pas le modèle du contenu rappelé : ADR-0045 (D66) classe l'enveloppe en défense en profondeur, et I-32 ne la compte pas comme isolation.
 - Elle n'authentifie pas l'origine : l'empreinte est symétrique, et l'identité de l'agent vient d'IDN-04.
+- Elle ne persiste rien : le service de mémoire n'existe qu'en spécification.
 
 ## Mesure
 

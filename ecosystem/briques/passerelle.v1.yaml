@@ -1,17 +1,19 @@
 schema_version: libre-ai.brique.v1
 couche: passerelle
-# Plan de contrôle : classe, budget, routage, politique (ADR-0064 D1). La
-# couche ne voit que des métadonnées typées et ne dépend que d'`identite`, de
-# `gouvernance` et d'elle-même. Aucune passerelle ni aucun routeur n'existe
-# dans la flotte ; ce qui existe est en contrats (classes, régions et budgets
-# du corps de plan d'exécution) et dans un évaluateur de budget.
+# Plan de contrôle : classe, budget, routage, politique (ADR-0064 D1, encore
+# proposé). La couche ne voit que des métadonnées typées et ne dépend que
+# d'`identite`, de `gouvernance` et d'elle-même. PAS-01 et PAS-04 n'ont ni dépôt
+# porteur ni preuve. Ce qui est cité vit en contrats (classes, régions et
+# budgets du corps de plan d'exécution) et dans un évaluateur de budget.
 briques:
   - id: PAS-01
     nom: Passerelle unique de contenu
     role: Fait franchir à tout appel de modèle ou d'outil un point de contrôle unique, qui décide sur des métadonnées typées et ne lit jamais le contenu.
     depend_de: [IDN-02, PAS-02]
-    invariants: [I-32, I-33]
-    decisions: [ADR-0045, ADR-0046, ADR-0063, ADR-0064, D66, D67]
+    # I-32 et I-33 bornent le harness, pas une passerelle : voisins, non cités.
+    invariants: []
+    # ADR-0064 D1 est gardé : la règle « métadonnées typées » du rôle vient de lui.
+    decisions: [ADR-0045, ADR-0063, ADR-0064, D66]
     depots: []
     origine:
       type: inspection
@@ -24,8 +26,8 @@ briques:
     nom: Classes de données
     role: Attribue à chaque donnée une classe et les zones où elle peut être traitée, locale ou dans l'Union, et fait de toute autre zone une valeur refusée.
     depend_de: [GOV-07]
-    invariants: [I-07, I-10, I-21, I-22]
-    decisions: [ADR-0012, ADR-0036, ADR-0063, ADR-0064, D42]
+    invariants: [I-10, I-21]
+    decisions: [ADR-0012, ADR-0036, ADR-0063, D42]
     depots: [libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -33,6 +35,8 @@ briques:
     # La table des classes relève d'un ADR à écrire et de contrats verrouillés :
     # toute écriture est un acte du propriétaire (I-17).
     autonomie: discover
+    # Le schéma admet la classe `personal` en sortie vers un modèle quand le
+    # réseau est ouvert : il ne réalise pas la clause d'I-21 sur l'appareil.
     preuve:
       - date: "2026-10-26"
         cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/execution-plan-body.v2.schema.json
@@ -42,13 +46,15 @@ briques:
     nom: Budgets de jetons et d'énergie par mission
     role: Borne chaque mission par des quotas de jetons, de durée, d'appels d'outil et d'énergie fixés dans son plan autorisé, et refuse tout événement qui les dépasse.
     depend_de: [GOV-07]
-    invariants: [I-33]
-    decisions: [ADR-0034, ADR-0036, ADR-0046, ADR-0064, D40, D42]
+    # I-33 protège le compteur d'appels contre l'observation : voisin, non cité.
+    invariants: []
+    decisions: [ADR-0034, ADR-0036, ADR-0046, D40, D42]
     depots: [libre-ai/schemas-and-contracts, libre-ai/execution-continuity-evaluator]
     origine:
       type: inspection
       source: vision externe en briques inspectée le 2026-11-09 (analyse hors dépôt) ; forme reprise, contenu réécrit depuis la doctrine Libre AI
     autonomie: modify
+    # Aucune des deux cibles ne porte de champ d'énergie.
     preuve:
       - date: "2026-10-26"
         cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/execution-plan-body.v2.schema.json
@@ -58,11 +64,10 @@ briques:
     nom: Routeur de modèles
     role: Choisit pour chaque appel de modèle une cible parmi les seuls modèles admis, selon la classe de la donnée et sa zone, et bascule vers une cible admise de la même zone quand la première manque.
     depend_de: [PAS-01, PAS-02, GOV-04]
-    invariants: [I-07, I-21]
-    decisions: [ADR-0042, ADR-0058, ADR-0063, ADR-0064, D52, D99]
+    invariants: [I-21]
+    decisions: [ADR-0042, ADR-0058, ADR-0063, D52, D99]
     # Brique de méthode. Le produit P33 du catalogue d'ADR-0042 §1 en serait la
-    # réalisation ; il n'a pas de charte, n'est pas une brique de la carte, et
-    # un produit n'est jamais cité en dépendance (ADR-0064 D1).
+    # réalisation ; il n'a pas de charte et n'est pas une brique de la carte.
     depots: []
     origine:
       type: inspection

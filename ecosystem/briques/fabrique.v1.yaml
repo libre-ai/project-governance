@@ -1,16 +1,16 @@
 schema_version: libre-ai.brique.v1
 couche: fabrique
-# De l'idée à la remise du code (ADR-0064 D1). Règle propre de la couche,
-# vérifiée par `check-briques` : chaque brique déclare la preuve qu'elle
-# produit (`preuve_produite`). Une preuve épinglée cite un dépôt porteur
+# De l'idée à la remise du code (ADR-0064 D1, proposé). Règle propre de la
+# couche, vérifiée par `check-briques` : chaque brique déclare la preuve
+# qu'elle produit (`preuve_produite`). Une preuve épinglée cite un dépôt porteur
 # public au commit lu ; elle est résolue par le gate des citations épinglées.
 briques:
   - id: FAB-01
     nom: Entrées et triage
-    role: "Reçoit chaque demande comme une entrée typée et la qualifie par une règle : déjà faite, déjà refusée, à promouvoir en mission ou à écarter avec son motif."
+    role: "Reçoit chaque demande comme une entrée typée et la fait qualifier par un acteur, dans des états fermés : à promouvoir en mission, ou à écarter avec son motif, déjà faite, déjà refusée ou autre."
     depend_de: [GOV-01]
     invariants: [I-13, I-19]
-    decisions: [ADR-0042, ADR-0064, D52]
+    decisions: [ADR-0042, D52]
     depots: [libre-ai/project-governance, libre-ai/ai-work-supervision, libre-ai/.github]
     origine:
       type: inspection
@@ -21,12 +21,12 @@ briques:
         cible: tools/quality/check-issue-forms.ts
       - date: "2026-10-24"
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-domain/src/coordination.rs
-    preuve_produite: "L'entrée typée et sa décision de tri journalisée : promotion en mission, ou écartement avec son motif nommé."
+    preuve_produite: "L'entrée typée et sa décision de tri rendue comme événement à journaliser : promotion en mission, ou écartement avec son motif nommé."
   - id: FAB-02
     nom: Charte de brique
     role: "Fixe pour chaque brique produit cinq lignes lisibles hors du projet : la valeur, le public, le fait de dégel, le fait d'abandon et les refus."
     depend_de: [GOV-03, FAB-13]
-    invariants: [I-08, I-14, I-15]
+    invariants: []
     decisions: [ADR-0042, ADR-0064]
     depots: [libre-ai/project-governance]
     origine:
@@ -41,8 +41,8 @@ briques:
     nom: Affinage par dépendances
     role: Découpe une entrée admise en tranches rattachées à des critères vérifiables et les ordonne par leurs dépendances déclarées et par les preuves qui manquent.
     depend_de: [FAB-01]
-    invariants: [I-08, I-19]
-    decisions: [ADR-0042, ADR-0064, D53]
+    invariants: [I-08]
+    decisions: [ADR-0042, D53]
     depots: [libre-ai/project-governance, libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -58,8 +58,8 @@ briques:
     nom: Mission Work Supervision
     role: Conduit un travail confié à un agent comme une mission à états fermés, du brief au résultat que le propriétaire accepte ou rejette sur preuve.
     depend_de: [HAR-02, PRV-01]
-    invariants: [I-13, I-18, I-21]
-    decisions: [ADR-0042, ADR-0064, D52, D53, D55]
+    invariants: [I-13, I-21]
+    decisions: [ADR-0042, D52, D53, D55]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -73,11 +73,12 @@ briques:
     nom: Oracle de parité
     role: Compare un produit livré aux fonctions requises de sa matrice de parité, par des tests d'acceptation dont le seuil est figé avant la mesure.
     depend_de: []
-    invariants: [I-08, I-19, I-27]
-    decisions: [ADR-0027, ADR-0042, ADR-0064, D34, D55]
+    invariants: [I-08, I-27]
+    decisions: [ADR-0027, ADR-0042, D34, D55]
     # Le schéma des fiches de projet de ce dépôt exige d'un produit ses
     # critères de promotion, ses prédicats d'arrêt et son étalon : les règles
-    # de la brique y vivent. Aucun artefact n'évalue encore une parité.
+    # de la brique y vivent. Aucun gate de ce dépôt ne lit ces champs pour
+    # évaluer une parité (relevé du 2026-11-11).
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -89,8 +90,8 @@ briques:
     nom: Gates de porte et négatives
     role: Refuse une pull request dont la description ne déclare pas sa réversibilité et l'origine de son problème, ou dont le diff touche une surface qu'elle déclare ne pas toucher.
     depend_de: [GOV-01]
-    invariants: [I-13, I-17]
-    decisions: [ADR-0056, ADR-0059, ADR-0060, ADR-0062, ADR-0064, D95, D102]
+    invariants: [I-17]
+    decisions: [ADR-0056, ADR-0059, ADR-0060, ADR-0062, D95, D102]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -106,10 +107,10 @@ briques:
     nom: Livraison par anneaux
     role: Fait passer une release d'un cercle de destinataires au suivant, du propriétaire au public, sans qu'elle saute un cercle ni perde sa révision de retour.
     depend_de: [GOV-01, PRV-02, PRV-03]
-    invariants: [I-07, I-15, I-20]
-    decisions: [ADR-0035, ADR-0064, D41]
-    # Aucun dépôt de la flotte ne porte de mécanisme d'anneaux. ADR-0035 pose
-    # les conditions d'une release ; rien ne les applique par du code ici.
+    invariants: [I-07, I-20]
+    decisions: [ADR-0035, D41]
+    # Aucun dépôt porteur déclaré. ADR-0035 pose les conditions d'une release ;
+    # la doctrine de ce dépôt ne nomme pas d'anneaux (relevé du 2026-11-11).
     depots: []
     origine:
       type: inspection
@@ -119,10 +120,10 @@ briques:
     preuve_produite: "La trace du passage d'une release par chaque cercle : candidat immuable, smoke test après déploiement et révision précédente récupérable."
   - id: FAB-08
     nom: Tranche de bout en bout
-    role: Fait traverser à un seul travail la chaîne complète, de l'entrée au résultat accepté avec sa preuve, avant tout élargissement du périmètre.
+    role: Fait traverser à un seul travail toute la chaîne, de l'entrée au résultat accepté avec sa preuve, avant tout élargissement du périmètre.
     depend_de: [FAB-01, FAB-04, FAB-09]
-    invariants: [I-08, I-13, I-19]
-    decisions: [ADR-0042, ADR-0064, D53]
+    invariants: [I-19]
+    decisions: [ADR-0042, D53]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -136,8 +137,8 @@ briques:
     nom: Pull request de flotte
     role: "Remet un changement à la flotte sous une forme unique : description au gabarit, commits signés DCO et fusion par squash sur checks requis verts."
     depend_de: [FAB-06]
-    invariants: [I-11, I-12, I-17, I-25]
-    decisions: [ADR-0056, ADR-0059, ADR-0064, D23, D68, D102]
+    invariants: [I-11, I-17]
+    decisions: [ADR-0056, ADR-0059, D23, D68, D102]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -153,12 +154,12 @@ briques:
     nom: Graphe de tâches natif
     role: Exécute un plan autorisé comme un graphe fini et acyclique d'étapes à issues fermées, une seule étape prête à la fois, dans un cœur Rust sans effet.
     depend_de: [GOV-07, HAR-09]
-    invariants: [I-03, I-06, I-18, I-32]
+    invariants: [I-03, I-06, I-32]
     # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
     # worker TypeScript ; ADR-0063 (proposé) le renverserait. La brique est
     # écrite sur le graphe autorisé d'ADR-0034 et son cœur d'ADR-0037, natifs
     # et sans dépendance à un framework sous l'un comme sous l'autre.
-    decisions: [ADR-0034, ADR-0037, ADR-0058, ADR-0063, ADR-0064, D40, D43, D66]
+    decisions: [ADR-0034, ADR-0037, ADR-0058, ADR-0063, D40, D43, D66]
     depots: [libre-ai/execution-continuity-evaluator]
     origine:
       type: inspection
@@ -173,9 +174,9 @@ briques:
   - id: FAB-11
     nom: Fil de mission
     role: Rassemble pour une mission ce qui a été demandé, ce qui a été fait, les décisions prises et les preuves, dans un rapport lisible sans avoir suivi l'historique.
-    depend_de: [FAB-04, HAR-08, PRV-01]
-    invariants: [I-08, I-13, I-24]
-    decisions: [ADR-0022, ADR-0042, ADR-0064, D31]
+    depend_de: [FAB-04, PRV-01]
+    invariants: [I-24]
+    decisions: [ADR-0022, ADR-0042, D31]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -190,7 +191,7 @@ briques:
     role: "Tient chaque décision demandée au propriétaire comme une donnée : la question, ses options et leurs conséquences, qui l'a ouverte, quand, et la réponse datée."
     depend_de: [GOV-01]
     invariants: [I-17, I-24]
-    decisions: [ADR-0022, ADR-0060, ADR-0062, ADR-0064, D31, D74]
+    decisions: [ADR-0022, ADR-0060, ADR-0062, D31, D74]
     depots: [libre-ai/project-governance, libre-ai/ai-work-supervision, libre-ai/.github]
     origine:
       type: propre
@@ -205,7 +206,7 @@ briques:
     nom: Vérificateur de la carte
     role: Lit les fichiers de couche et les fiches, refuse toute dépendance que la table des couches n'admet pas, dérive le statut des preuves et imprime ses compteurs.
     depend_de: [GOV-02]
-    invariants: [I-05, I-08, I-14, I-15]
+    invariants: [I-14]
     decisions: [ADR-0042, ADR-0064]
     depots: [libre-ai/project-governance]
     origine:

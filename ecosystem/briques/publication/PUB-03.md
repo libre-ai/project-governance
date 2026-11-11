@@ -2,23 +2,21 @@
 
 ## Contexte
 
-I-05 fait du site une application qui sert des projections. ADR-0033 le range parmi les consommateurs de projections épinglées par sha, et l'exige statique, sans JavaScript client ni requête externe. Le dépôt `project-website` porte un générateur statique, une page d'accueil par langue et une suite de bout en bout. Son contenu est dérivé d'instantanés épinglés des fiches de projet et de la projection de marque. Son README dit que ce n'est pas un service déployé. Aucun invariant ne porte l'accessibilité.
+I-05 fait du site une application qui sert des projections. ADR-0033 le veut statique, sans JavaScript client ni requête externe, consommateur de projections épinglées par sha. Dans `project-website`, le générateur dérive les pages de trois sources : des instantanés des fiches de projet, refusés s'ils s'écartent de leurs empreintes, la projection de marque, et le portefeuille de l'autorité. Les présentations de produit y sont rédigées à la main. I-15 n'ouvre la vitrine d'un produit que sur une chose vérifiable, et I-37 demande une assertion de bout en bout de la politique de sécurité servie. Au 2026-11-11, aucun invariant ne nomme l'accessibilité.
 
 ## Ce que la brique ferme
 
-- Une promesse reformulée par le site : I-29 n'y admet qu'une projection de la marque.
-- Une vitrine sans rien de vérifiable derrière elle (I-15).
-- Une page servie sans les en-têtes de sécurité de la flotte, ou avec un sink HTML brut (I-37).
+- Une promesse reformulée par le site : I-29 ne fait des surfaces publiques que des projections, et la construction échoue sans la projection de marque.
+- Une page qui appelle un tiers ou ne se lit pas sans JavaScript : la suite le refuse.
 
 ## Ce qu'elle ne fait pas
 
-- Elle ne saisit aucun état de produit : elle lit le catalogue, PUB-02.
-- Elle ne possède ni la promesse ni la voix, qui restent à PUB-07.
-- Elle ne se déploie pas seule : ADR-0035 exige un candidat immuable, un environnement choisi par le propriétaire et un test de fumée.
-- Elle ne porte pas l'accessibilité des produits, rangée sous PLT-07.
+- Elle ne dresse pas la liste des produits : sans PUB-02, le générateur n'a pas d'univers à couvrir.
+- Elle ne possède pas la promesse : sans PUB-07, la page d'accueil n'a pas de texte de marque.
+- Elle ne se déploie pas seule : ADR-0035 exige un commit immuable, un environnement choisi par le propriétaire et un test de fumée.
 
 ## Mesure
 
-Preuves citées : le générateur du site et sa suite de bout en bout, épinglés au commit du dépôt porteur. La suite refuse toute violation `serious` ou `critical` relevée par axe au niveau WCAG 2.2 AA, toute requête hors origine et toute page illisible sans JavaScript. Elle ne montre ni une conformité RGAA, ni un déploiement, ni un parcours par public.
+Preuves citées : le générateur du site et sa suite de bout en bout, épinglés à un commit de `project-website`. La suite refuse toute violation `serious` ou `critical` relevée par axe aux étiquettes WCAG 2.2 AA. À ce commit, le générateur ne reçoit que la copie de marque française, et la suite ne porte pas l'assertion qu'I-37 demande. Une page produit n'y affiche ni exposition ni maturité : la décision locale 0003 du dépôt porteur écrit que le site diverge de son autorité. L'application d'I-15 n'est donc pas montrée, ni une conformité RGAA, ni un déploiement, ni un parcours par public.
 
 Prochaine preuve : une déclaration d'accessibilité RGAA publiée avec son audit, sur une release fumée selon ADR-0035.

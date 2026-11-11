@@ -10,7 +10,7 @@ briques:
     role: "Répartit les actes entre le propriétaire, qui signe la surface à touche humaine, les agents, qui écrivent sous les gates, et les gates, qui refusent ce qui n'est pas prouvé."
     depend_de: []
     invariants: [I-13, I-17, I-24]
-    decisions: [ADR-0009, ADR-0022, ADR-0043, ADR-0064, D31, D68]
+    decisions: [ADR-0009, ADR-0022, ADR-0043, D31, D68]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -24,7 +24,7 @@ briques:
     role: "Tient le registre des invariants comme seule liste de la doctrine et rattache chaque invariant à la couche et à la classe de dépôt qu'il lie."
     depend_de: [GOV-01]
     invariants: [I-03, I-17]
-    decisions: [ADR-0008, ADR-0064, D103]
+    decisions: [ADR-0008, D103]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -37,8 +37,10 @@ briques:
     nom: Dégel et retrait de produit
     role: "Fait sortir un produit du gel, ou le retire du portefeuille, sur un fait observable écrit dans sa charte et sur une décision du propriétaire consignée au registre."
     depend_de: [GOV-01]
-    invariants: [I-14, I-15, I-17, I-27]
-    decisions: [ADR-0042, ADR-0052, ADR-0055, ADR-0064, D53, D76, D80, D94]
+    invariants: [I-14, I-17, I-27]
+    # ADR-0064 est cité pour sa décision D2 (charte : fait de dégel, fait
+    # d'abandon), et la fiche le dit proposé.
+    decisions: [ADR-0042, ADR-0052, ADR-0054, ADR-0055, ADR-0064, D53, D76, D80, D89, D94]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -51,10 +53,11 @@ briques:
     nom: Registre d'admission des modèles
     role: "Tient la liste des modèles qu'un produit peut appeler et rend un verdict de refus par défaut pour tout modèle dont un fait requis manque."
     depend_de: [GOV-01]
-    # Aucun invariant ne régit aujourd'hui l'admission d'un modèle : ADR-0063 et
-    # ADR-0064 la nomment comme un ADR candidat distinct, non écrit.
+    # Le registre des invariants, lu le 2026-11-11, ne porte aucune règle
+    # d'admission d'un modèle. ADR-0063, proposé, la renvoie à un ADR candidat
+    # distinct.
     invariants: []
-    decisions: [ADR-0042, ADR-0063, ADR-0064]
+    decisions: [ADR-0042, ADR-0063]
     depots: [libre-ai/ai-model-policy]
     origine:
       type: inspection
@@ -67,8 +70,8 @@ briques:
     nom: Registre des dépendances et tiers
     role: "Recense les dépendances et les tiers dont la flotte dépend, leur origine de distribution, les avis publiés qui les touchent et les projets évalués puis écartés."
     depend_de: []
-    invariants: [I-26, I-28]
-    decisions: [ADR-0021, ADR-0031, ADR-0042, ADR-0056, ADR-0064, D30, D37, D54]
+    invariants: [I-26]
+    decisions: [ADR-0021, ADR-0042, ADR-0056, D30, D54]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -84,7 +87,7 @@ briques:
     role: "Fait déclarer à chaque dépôt son état et ses écarts dans une fiche que les gates de flotte lisent, en nommant chaque échec par dépôt."
     depend_de: [GOV-02]
     invariants: [I-08, I-14, I-15]
-    decisions: [ADR-0009, ADR-0020, ADR-0064, D29]
+    decisions: [ADR-0020, D29]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -100,7 +103,7 @@ briques:
     role: "Tient les contrats canoniques et leurs vecteurs dans une seule autorité, d'où les frontières Rust et TypeScript sont générées et validées."
     depend_de: [GOV-01]
     invariants: [I-03, I-05, I-08, I-17]
-    decisions: [ADR-0036, ADR-0047, ADR-0064, D08, D42, D69]
+    decisions: [ADR-0036, ADR-0047, D08, D42, D69]
     depots: [libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -115,8 +118,8 @@ briques:
     nom: Spécifications ouvertes
     role: "Impose à chaque spécification d'application une structure commune, publiée dans le dépôt du produit et vérifiée avant le verrouillage de ses contrats."
     depend_de: [GOV-07]
-    invariants: [I-05, I-08]
-    decisions: [ADR-0002, ADR-0020, ADR-0064]
+    invariants: []
+    decisions: [ADR-0002, ADR-0020]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -129,8 +132,8 @@ briques:
     nom: Boucle de management (plan, mesure, revue, amélioration)
     role: "Relie le plan, la mesure, la revue et l'amélioration par des contrôles périodiques dont l'échec répété ouvre une issue et par un rapport daté à chaque clôture de jalon."
     depend_de: [GOV-06]
-    invariants: [I-08, I-13, I-20]
-    decisions: [ADR-0009, ADR-0029, ADR-0042, ADR-0064, D53]
+    invariants: []
+    decisions: [ADR-0029, ADR-0042, D53]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -143,8 +146,8 @@ briques:
     nom: Littératie publique
     role: "Vérifie qu'un lecteur extérieur sans contexte comprend, depuis les seules surfaces publiques, ce que fait le projet et ce qu'il ne prouve pas."
     depend_de: []
-    invariants: [I-05, I-15, I-29]
-    decisions: [ADR-0033, ADR-0064]
+    invariants: []
+    decisions: []
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -157,8 +160,8 @@ briques:
     nom: Marquage des contenus générés
     role: "Exige que tout contenu produit par un agent porte la déclaration de son origine, que son destinataire peut vérifier."
     depend_de: []
-    invariants: [I-05, I-32]
-    decisions: [ADR-0045, ADR-0064]
+    invariants: []
+    decisions: []
     depots: [libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -171,8 +174,9 @@ briques:
     nom: Analyse d'impact par produit
     role: "Fait établir, pour tout produit qui traite des données de personnes, une analyse d'impact que le propriétaire signe lui-même."
     depend_de: [GOV-01]
-    invariants: [I-10, I-21, I-22]
-    decisions: [ADR-0012, ADR-0064]
+    invariants: []
+    # ADR-0025 admet la skill `rgpd-dpia`, qui renvoie au gabarit cité en preuve.
+    decisions: [ADR-0025]
     depots: [libre-ai/organization-data-lifecycle]
     origine:
       type: inspection
@@ -185,8 +189,8 @@ briques:
     nom: Rétention et effacement exécutables
     role: "Applique à chaque catégorie de données une durée de rétention exécutée par balayage et rend un reçu pour chaque suppression."
     depend_de: [GOV-07]
-    invariants: [I-10, I-21]
-    decisions: [ADR-0002, ADR-0049, ADR-0064, D17]
+    invariants: [I-10]
+    decisions: [ADR-0002, D17]
     depots: [libre-ai/organization-data-lifecycle, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -201,10 +205,9 @@ briques:
     nom: Passation et transmission
     role: "Transforme ce qu'une session a lu, mesuré ou décidé en un écrit que la session suivante cite comme une donnée."
     depend_de: []
-    invariants: [I-24]
-    decisions: [ADR-0022, ADR-0028, ADR-0042, ADR-0064, D53]
-    # Aucun dépôt de la flotte ne porte la passation : elle vit dans le harnais
-    # du propriétaire, hors inventaire.
+    invariants: []
+    decisions: [ADR-0028, ADR-0042, D53]
+    # Aucun dépôt porteur n'est déclaré : aucune preuve n'est citée.
     depots: []
     origine:
       type: inspection
@@ -216,7 +219,7 @@ briques:
     role: "Garde la forge remplaçable en exerçant la restauration du dépôt hors de la forge et en tenant en données ce que la forge applique."
     depend_de: []
     invariants: [I-12]
-    decisions: [ADR-0029, ADR-0064, D03]
+    decisions: [ADR-0029, D03]
     depots: [libre-ai/project-governance]
     origine:
       type: propre
@@ -229,8 +232,9 @@ briques:
     role: "Fixe qu'aucun modèle n'entre dans le plan de données d'un produit sans admission, et qu'un fournisseur distant se déclare par produit avec son substitut."
     depend_de: [GOV-04, GOV-05]
     invariants: []
-    decisions: [ADR-0063, ADR-0064]
-    # Aucun dépôt ne porte la règle : l'ADR qui la déciderait n'est pas écrit.
+    decisions: [ADR-0063]
+    # Aucun dépôt porteur n'est déclaré : au 2026-11-11, `docs/adr` ne porte
+    # pas l'ADR qui déciderait la règle.
     depots: []
     origine:
       type: propre

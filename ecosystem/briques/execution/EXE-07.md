@@ -2,7 +2,7 @@
 
 ## Contexte
 
-ADR-0042 fait avancer plusieurs lignes produit en même temps, chaque dépôt n'ayant qu'un propriétaire à la fois. Son §10 (D62) admet que Work Supervision crée ses worktrees par le `git` du système, appelé en processus séparé. `ai-work-supervision` porte la crate correspondante : un worktree par mission, créé à l'ouverture, retiré à la clôture. Chaque étape s'y écrit en trois temps : intention au journal, effet dans git, confirmation au journal. La brique ne couvre aujourd'hui que l'arbre de travail d'un dépôt.
+ADR-0042 §3 fait avancer plusieurs lignes produit en même temps, chaque dépôt n'ayant qu'un propriétaire à la fois. Son §10 (D62) admet que Work Supervision crée ses worktrees par le `git` du système, appelé en processus séparé. `ai-work-supervision` porte la crate correspondante : un worktree par mission, créé à l'ouverture, retiré à la clôture. Chaque étape s'y écrit en trois temps : intention au journal, effet dans git, confirmation au journal. La brique ne couvre que l'arbre de travail d'un dépôt. Aucun invariant du registre ne la lie.
 
 ## Ce que la brique ferme
 
@@ -18,5 +18,5 @@ ADR-0042 fait avancer plusieurs lignes produit en même temps, chaque dépôt n'
 
 ## Mesure
 
-- Preuves citées : la crate de worktrees de `ai-work-supervision` et son test de cycle de vie. Ils montrent la création, le retrait et la réconciliation après une panne injectée à chaque étape.
+- Preuves citées : la crate de worktrees de `ai-work-supervision` et son test de cycle de vie. Ils montrent la création, le retrait et la réconciliation après une panne injectée à chaque étape. Ils ne montrent aucune mission réelle.
 - Prochaine preuve : une mission réelle dont le journal porte la confirmation de retrait de son environnement, vérifiée par un outil distinct de celui qui l'a écrite.

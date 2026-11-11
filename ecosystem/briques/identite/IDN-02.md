@@ -2,22 +2,22 @@
 
 ## Contexte
 
-I-09 retient le Biscuit Ed25519 atténué, court et révocable pour l'autorisation entre services. Le dépôt `capability-authorization` porte l'émission, l'atténuation, la vérification et la rotation à deux clés. Ses politiques datalog sont une projection à l'octet des contrats de `schemas-and-contracts`. Il vendorise `biscuit-auth` avec un correctif amont, dont il est le foyer unique au sens d'I-28. Au relevé daté qu'I-09 porte, la brique est construite et aucun consommateur ne l'invoque.
+I-09 retient un « Biscuit Ed25519 atténué, court, révocable », avec « tenant obligatoire ». ADR-0002 §1 fait refuser par les politiques Biscuit un tenant manquant ou divergent, et D15 rend le tenant opaque obligatoire dans chaque jeton interne. Le dépôt `capability-authorization` porte l'émission, l'atténuation, la vérification et la rotation à deux clés. Ses sept politiques datalog ont la même empreinte git que les contrats de `schemas-and-contracts`, aux deux commits cités (comparaison des arbres git des deux dépôts). Il vendorise `biscuit-auth` avec un correctif amont. I-28 donne à un tel correctif un « foyer unique » (ADR-0031, D37) et nomme ce foyer `authz-biscuit` ; ADR-0041 §4 le nomme `capability-authorization`. ADR-0028 a inscrit dans I-09 l'état du Biscuit au 2026-08-18 : construit, sans consommateur. La brique dépend de GOV-07 : sans les contrats canoniques, ses politiques n'ont pas d'original dont être la copie.
 
 ## Ce que la brique ferme
 
-- Le jeton à tout faire : chaque jeton est borné à un tenant, une ressource, des opérations et une échéance (I-09, D15).
-- L'élargissement par délégation : une atténuation ne peut que restreindre, jamais ajouter un rôle ni repousser l'échéance.
-- La fuite du jeton par les traces : ses octets ne sortent ni par une erreur ni par un affichage de débogage.
-- La copie divergente d'un correctif de sécurité : celui de `biscuit-auth` n'existe que dans ce dépôt (I-28, D37).
+- Le jeton à tout faire : le module d'émission borne chaque jeton à un tenant, une ressource, un ensemble d'opérations et une échéance. I-09 et D15 n'en portent que le tenant et la durée courte ; le reste vient de la spécification d'identité de ce dépôt (`docs/specifications/IDENTITY-AUTHORIZATION.md`).
+- L'élargissement par délégation : une atténuation ne peut que restreindre. Elle n'ajoute ni rôle ni opération et ne repousse pas l'échéance.
+- La fuite du jeton par les traces : l'affichage de débogage de chaque type qui le porte est caviardé, et une erreur ne rend qu'un code fermé.
+- La copie divergente d'un correctif de sécurité : I-28 interdit une seconde copie dans un autre dépôt (D37).
 
 ## Ce qu'elle ne fait pas
 
 - Elle n'authentifie personne : elle autorise un principal déjà vérifié par IDN-01 ou IDN-04.
-- Elle ne tient ni le magasin de révocation ni l'anneau de clés : elle les consomme, et la propagation relève d'IDN-05.
+- Elle ne propage pas la révocation : c'est IDN-05.
 - Elle ne franchit jamais la frontière du navigateur (D09).
 
 ## Mesure
 
-- Preuves citées : le module d'émission et d'atténuation, et la suite de tests d'autorisation, épinglés au commit du dépôt porteur. La suite contient le cas qui vérifie qu'une atténuation hors ligne ne fait que réduire l'autorité.
+- Preuves citées : le module d'émission et d'atténuation, et la suite de tests d'autorisation, épinglés au commit du dépôt porteur. La suite contient le cas qui vérifie qu'une atténuation hors ligne ne fait que réduire l'autorité. Elles ne montrent aucun service qui consomme ces jetons.
 - Prochaine preuve : un service de la flotte refuse une requête réelle sur un jeton atténué, et ce refus figure dans une évidence publiée.

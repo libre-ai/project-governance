@@ -1,19 +1,19 @@
 schema_version: libre-ai.brique.v1
 couche: harness
-# Conduire les agents (ADR-0064 D1). Deux sens du mot « harness » coexistent
-# dans la doctrine et le LEXICON ne les tranche pas : le cadre d'exécution des
-# agents de la méthode, porté par des dépôts de la flotte, et l'outil agentique
-# d'ingénierie du propriétaire, qui n'est pas un dépôt de la flotte. Cette
-# couche décrit le premier ; le second n'est cité ni en `depots` ni en `preuve`.
+# Conduire les agents (ADR-0064 D1, proposé). Deux sens du mot « harness »
+# coexistent dans la doctrine, et le LEXICON relève l'ambiguïté sans la
+# trancher : le cadre d'exécution des agents de la méthode, et l'outil
+# agentique d'ingénierie. Cette couche décrit le premier ; seuls des dépôts de
+# la flotte y sont cités en `depots` et en `preuve`.
 briques:
   - id: HAR-01
     nom: Contrat de brique
     role: "Déclare pour toute brique exécutable ses entrées, ses sorties, ses effets et la preuve attendue, sous une forme qu'un gate peut lire."
     depend_de: [GOV-07]
-    invariants: [I-03, I-08]
-    decisions: [ADR-0034, ADR-0064]
-    # Aucun dépôt ne porte un contrat de cette forme : le schéma de la carte
-    # déclare le rôle, les dépendances et les preuves, pas les effets.
+    invariants: [I-03]
+    decisions: [ADR-0034]
+    # Aucun dépôt porteur déclaré : le schéma de la carte déclare le rôle, les
+    # dépendances et les preuves, pas les effets.
     depots: []
     origine:
       type: inspection
@@ -25,7 +25,7 @@ briques:
     role: "Fait de chaque session d'agent un objet qui porte son identité, sa zone de confinement et son journal, et qui refuse de démarrer sans eux."
     depend_de: [EXE-01, IDN-02, IDN-04]
     invariants: [I-18, I-38]
-    decisions: [ADR-0018, ADR-0042, ADR-0064]
+    decisions: [ADR-0018, ADR-0042]
     depots: [libre-ai/ai-work-supervision, libre-ai/execution-sandbox]
     origine:
       type: inspection
@@ -40,11 +40,11 @@ briques:
     nom: Registre d'outils signé
     role: "Tient la liste fermée des outils qu'un agent peut appeler, chacun avec son empreinte SHA-256 et sa classe de données maximale, et refuse tout outil qui n'y figure pas."
     depend_de: [GOV-05]
-    invariants: [I-32, I-33, I-38]
-    decisions: [ADR-0045, ADR-0046, ADR-0056, ADR-0064, D67]
-    # Le registre lui-même n'existe pas. Ces deux dépôts portent ce qui en tient
-    # lieu aujourd'hui : l'observation attestée des appels et le verdict rendu
-    # sur un outil que le plan autorisé ne nomme pas.
+    invariants: [I-32, I-38]
+    decisions: [ADR-0045, ADR-0046, ADR-0056, D67]
+    # Le registre lui-même n'est pas écrit. Le premier dépôt porte le verdict
+    # rendu sur un outil que le plan autorisé ne nomme pas ; le second porte le
+    # contrat de plan, où vit la liste des outils d'une exécution.
     depots: [libre-ai/execution-continuity-evaluator, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -53,14 +53,12 @@ briques:
     preuve:
       - date: "2026-10-26"
         cible: libre-ai/execution-continuity-evaluator@02ff85617166d48b92d68fe8ed707896a03f4a81:src/tool_observation.rs
-      - date: "2026-10-26"
-        cible: libre-ai/schemas-and-contracts@ce464c211e72b902041a43bcfa009e3d33ea892d:contracts/schemas/tool-invocation-observation.v1.schema.json
   - id: HAR-04
     nom: Garde-fous exécutables, juge en second
     role: "Fait juger chaque appel d'outil par un garde déterministe avant son exécution, et n'admet un juge par modèle qu'en second, pour ce que le garde ne lit pas, avec son taux de faux positifs mesuré."
     depend_de: [HAR-03]
     invariants: [I-17, I-32]
-    decisions: [ADR-0045, ADR-0064, D66]
+    decisions: [ADR-0045, D66]
     depots: [libre-ai/pi-harness-challenger]
     origine:
       type: inspection
@@ -76,7 +74,7 @@ briques:
     role: "Donne au propriétaire les surfaces où il voit les missions et les sessions d'agents et où il décide, sans pont du navigateur vers un terminal."
     depend_de: [HAR-02, HAR-07]
     invariants: [I-24, I-37]
-    decisions: [ADR-0042, ADR-0064]
+    decisions: [ADR-0042]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -92,7 +90,7 @@ briques:
     role: "Fait circuler tout message d'agent à agent comme une métadonnée typée, jamais comme un texte libre placé dans le contexte d'un modèle qui détient un outil à effet."
     depend_de: [HAR-02, IDN-04]
     invariants: [I-18, I-32]
-    decisions: [ADR-0045, ADR-0064, D66]
+    decisions: [ADR-0045, D66]
     depots: [libre-ai/ai-work-supervision]
     origine:
       type: inspection
@@ -103,10 +101,10 @@ briques:
         cible: libre-ai/ai-work-supervision@7a0afef5d702c3ad37647bf7949a3ea8385277e7:crates/work-supervision-cli/src/hook.rs
   - id: HAR-07
     nom: File d'arrêts
-    role: "Range chaque arrêt déclaré d'un agent dans une file que le propriétaire lit et tranche, avec la situation qui l'a provoqué et le délai de réponse mesuré."
+    role: "Range chaque arrêt déclaré d'un agent dans une file que le propriétaire lit et tranche, avec la situation qui l'a provoqué et l'intervalle mesuré entre son ouverture et sa réponse."
     depend_de: [GOV-01, HAR-02]
     invariants: [I-17, I-24]
-    decisions: [ADR-0022, ADR-0034, ADR-0051, ADR-0064, D74]
+    decisions: [ADR-0022, ADR-0034, ADR-0051, D74]
     depots: [libre-ai/ai-work-supervision, libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -121,8 +119,8 @@ briques:
     nom: Contexte versionné
     role: "Versionne le contexte donné aux agents, fichiers d'instructions de dépôt et skills gouvernées, et le rend citable par son empreinte dans une preuve de mission."
     depend_de: []
-    invariants: [I-25, I-38]
-    decisions: [ADR-0025, ADR-0050, ADR-0064, D73]
+    invariants: [I-38]
+    decisions: [ADR-0050, D73]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection
@@ -137,8 +135,11 @@ briques:
     nom: Moteur natif commun
     role: "Exécute en Rust, sans effet ni dépendance à un framework d'agent, le graphe d'exécution autorisé qui doit servir à la fois la fabrique et le harnais."
     depend_de: [HAR-10]
-    invariants: [I-06, I-08, I-18]
-    decisions: [ADR-0034, ADR-0037, ADR-0063, ADR-0064, D40, D43]
+    invariants: [I-06, I-08]
+    # ADR-0058 (en vigueur) admet LangGraph JS comme runtime interne d'un
+    # worker TypeScript ; ADR-0063 (proposé) le renverserait et étendrait le
+    # cœur natif à la fabrique et au harnais.
+    decisions: [ADR-0034, ADR-0037, ADR-0058, ADR-0063, D40, D43]
     depots: [libre-ai/execution-continuity-evaluator]
     origine:
       type: inspection
@@ -154,7 +155,7 @@ briques:
     role: "Fixe en contrats versionnés le seul protocole par lequel le moteur, le harnais et les workers échangent plans, invocations, événements et attestations."
     depend_de: [GOV-07]
     invariants: [I-03, I-08, I-17]
-    decisions: [ADR-0034, ADR-0036, ADR-0064, D42]
+    decisions: [ADR-0034, ADR-0036, D42]
     depots: [libre-ai/schemas-and-contracts]
     origine:
       type: inspection
@@ -170,7 +171,7 @@ briques:
     role: "Fait de chaque skill et de chaque règle un module admis par gate, distribué par un manifeste généré et chargé par son empreinte."
     depend_de: [HAR-08]
     invariants: [I-25, I-38]
-    decisions: [ADR-0025, ADR-0050, ADR-0053, ADR-0056, ADR-0064, D77]
+    decisions: [ADR-0025, ADR-0050, ADR-0053, ADR-0056, D77]
     depots: [libre-ai/project-governance]
     origine:
       type: inspection

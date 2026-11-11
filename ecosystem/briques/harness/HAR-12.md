@@ -2,7 +2,7 @@
 
 ## Contexte
 
-I-13 réduit la touche humaine aux invariants, et I-17 ferme la surface où elle reste requise. ADR-0011 gradue déjà l'autonomie d'un run : un premier merge critique d'une couche est un arrêt dur, ses répétitions passent sur revue verte (D4), et des plafonds chiffrés arrêtent un run qui boucle ou dérive (D6). ADR-0064 D2 donne à chaque brique un champ d'autonomie à trois valeurs. Aucun texte ne fixe une échelle par produit et par classe de données, de la proposition seule au déploiement sous budget d'erreur.
+I-13 réduit la touche humaine aux invariants, et I-17 ferme la surface où elle reste requise. ADR-0011 gradue déjà l'autonomie d'un run : un premier merge critique d'une couche est un arrêt dur, ses répétitions passent sur revue verte (D4), et des plafonds chiffrés arrêtent un run qui boucle ou dérive (D6). D32 confirme que D4 et D6 restent en vigueur. ADR-0064, proposé, donne par D2 à chaque brique un champ d'autonomie à trois valeurs. Dans les documents de ce dépôt, au 2026-11-11, aucun texte ne nomme un niveau d'autonomie par produit ni un budget d'erreur.
 
 ## Ce que la brique ferme
 
@@ -12,7 +12,8 @@ I-13 réduit la touche humaine aux invariants, et I-17 ferme la surface où elle
 
 ## Ce qu'elle ne fait pas
 
-- Elle n'accorde rien : elle restitue le plafond que la doctrine donne déjà.
+- Elle n'accorde rien : ADR-0064 fait du champ d'autonomie la restitution du plafond que la doctrine donne déjà.
+- Elle ne dit pas quels actes restent au propriétaire. Sans GOV-01, un niveau n'a pas de répartition des actes sur laquelle s'appuyer.
 - Elle ne définit pas les classes de données, qui relèvent de PAS-02.
 - Elle ne mesure pas le budget d'erreur d'un produit ; cette mesure relève de la couche exploitation.
 
