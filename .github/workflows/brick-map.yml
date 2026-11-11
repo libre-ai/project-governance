@@ -85,10 +85,15 @@ jobs:
             echo "::error::distribution/vision is stale — run 'bun run build:vision' and commit the result"
             exit 1
           fi
-          # The page and its stylesheet, and nothing else: a script dropped next
-          # to the page is source to the data inventory, which does not see it.
-          tracked="$(git ls-files distribution/vision | sort | tr '\n' ' ')"
-          if [ "$tracked" != "distribution/vision/index.html distribution/vision/vision.css " ]; then
-            echo "::error::distribution/vision holds something else than the page and its stylesheet: $tracked"
+          # The page and its stylesheet, as two regular files, and nothing else.
+          # The data inventory does not see a file whose extension is source to
+          # it, and neither it nor the diff above sees a symbolic link put in
+          # the place of the page. Index entries are compared, mode included:
+          # git quotes a name that holds a line break, so a name cannot forge a line.
+          tracked="$(git ls-files --format='%(objectmode) %(path)' -- distribution/vision)"
+          expected="$(printf '100644 distribution/vision/index.html\n100644 distribution/vision/vision.css')"
+          if [ "$tracked" != "$expected" ]; then
+            echo "::error::distribution/vision must hold the page and its stylesheet as two regular files, and nothing else; the index holds:"
+            echo "$tracked"
             exit 1
           fi

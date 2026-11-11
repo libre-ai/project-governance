@@ -468,5 +468,70 @@
     "name": "untracked decision record listed",
     "find": "git([\"ls-files\", \"-z\", \"docs/adr\"])",
     "replace": "git([\"ls-files\", \"-z\", \"--cached\", \"--others\", \"docs/adr\"])"
+  },
+  {
+    "name": "decision record filter without its dash",
+    "find": "path.startsWith(`docs/adr/${DECISION.slice(4)}-`)",
+    "replace": "path.startsWith(`docs/adr/${DECISION.slice(4)}`)"
+  },
+  {
+    "name": "decision record found in a sub-directory",
+    "find": "path.startsWith(`docs/adr/${DECISION.slice(4)}-`)",
+    "replace": "path.includes(`/${DECISION.slice(4)}-`)"
+  },
+  {
+    "name": "tracked names read line by line, quoted by git",
+    "find": "return git([\"ls-files\", \"-z\", \"docs/adr\"])\n    .split(\"\\0\")",
+    "replace": "return git([\"ls-files\", \"docs/adr\"])\n    .split(\"\\n\")"
+  },
+  {
+    "name": "git redirections of the caller passed on",
+    "find": "execFileSync(\"git\", args, { encoding: \"utf8\", cwd: root, env });",
+    "replace": "execFileSync(\"git\", args, { encoding: \"utf8\", cwd: root });"
+  },
+  {
+    "name": "title of the page changed",
+    "find": "\"<h1>Carte des briques</h1>\",",
+    "replace": "\"<h1>Carte</h1>\","
+  },
+  {
+    "name": "section said to be typed instead of derived",
+    "find": "<h2>Statuts dérivés des preuves</h2>",
+    "replace": "<h2>Statuts saisis</h2>"
+  },
+  {
+    "name": "two column headers swapped",
+    "find": "<th scope=\"col\">Rôle</th><th scope=\"col\">Peut dépendre de</th>",
+    "replace": "<th scope=\"col\">Peut dépendre de</th><th scope=\"col\">Rôle</th>"
+  },
+  {
+    "name": "page said to be written by hand",
+    "find": "Cette page est générée depuis <code>ecosystem/briques/</code>",
+    "replace": "Cette page est écrite à la main depuis <code>ecosystem/briques/</code>"
+  },
+  {
+    "name": "decisions printed under the carrier repositories",
+    "find": "<dt>Dépôts porteurs</dt><dd>${list(brick.depots, \"aucun\")}</dd>",
+    "replace": "<dt>Dépôts porteurs</dt><dd>${list(brick.decisions, \"aucun\")}</dd>"
+  },
+  {
+    "name": "charter thaw and abandon swapped",
+    "find": "<dt>Fait de dégel</dt><dd>${inline(brick.charte.degel)}</dd>",
+    "replace": "<dt>Fait de dégel</dt><dd>${inline(brick.charte.abandon)}</dd>"
+  },
+  {
+    "name": "proof date replaced by its target",
+    "find": "\">${escapeHtml(proof.date)}</time>",
+    "replace": "\">${escapeHtml(proof.cible)}</time>"
+  },
+  {
+    "name": "layers joined on one line",
+    "find": "    )\n    .join(\"\\n\");\n  const unbound =",
+    "replace": "    )\n    .join(\"\");\n  const unbound ="
+  },
+  {
+    "name": "region label of the matrix changed",
+    "find": "\"Matrice des dépendances entre couches\",",
+    "replace": "\"Tableau\","
   }
 ]

@@ -42,6 +42,15 @@ import { checkBriques } from "../ecosystem/check-briques";
 
 /** The decision record the map applies; its standing is read from its file. */
 const DECISION = "ADR-0064";
+/** The variables by which git reads another repository, index or tree than the one it is run in. */
+const GIT_REDIRECTIONS: readonly string[] = [
+  "GIT_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+];
 
 /** What the page says of the decision record it applies, read from that record. */
 export type AdrStanding = "accepted" | "proposed";
@@ -409,8 +418,13 @@ export function projectVision(
  * change the page.
  */
 export function readDecisionRecords(root: string): string[] {
+  // A hook, or a command run from a linked worktree, exports variables that
+  // point git at another repository than `root`: they are not passed on.
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !GIT_REDIRECTIONS.includes(name)),
+  );
   const git = (args: readonly string[]): string =>
-    execFileSync("git", args, { encoding: "utf8", cwd: root });
+    execFileSync("git", args, { encoding: "utf8", cwd: root, env });
   return git(["ls-files", "-z", "docs/adr"])
     .split("\0")
     .filter((path) => path.startsWith(`docs/adr/${DECISION.slice(4)}-`))

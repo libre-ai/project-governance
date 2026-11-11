@@ -183,6 +183,27 @@ describe("escaping", () => {
     for (const field of fields) {
       expect({ field, printed: html.includes(escaped(field)) }).toEqual({ field, printed: true });
     }
+    // Each value under the label of its own field: two fields swapped are two wrong statements.
+    const e = escaped;
+    for (const labelled of [
+      `<details class="brique" id="${e("id")}"><summary><span class="id">${e("id")}</span> <span class="nom">${e("nom")}</span>`,
+      `</summary><p class="role">${e("role")}</p>`,
+      `<dt>Dépend de</dt><dd><a href="#${e("depend")}"><code>${e("depend")}</code></a></dd>`,
+      `<dt>Invariants qui la lient</dt><dd><code>${e("invariant")}</code></dd>`,
+      `<dt>Décisions</dt><dd><code>${e("decision")}</code></dd>`,
+      `<dt>Dépôts porteurs</dt><dd><code>${e("depot")}</code></dd>`,
+      `<dt>Origine</dt><dd>${e("origine-type")} — ${e("origine-source")} — ${e("origine-date")}</dd>`,
+      `<dt>Autonomie d'un agent</dt><dd>${e("autonomie")}</dd>`,
+      `<dt>Preuve produite</dt><dd>${e("preuve-produite")}</dd>`,
+      `<dt>Transitoire</dt><dd>${e("jetable")}</dd>`,
+      `<dt>Retrait</dt><dd><code>${e("retrait-decision")}</code>, <time datetime="${e("retrait-date")}">${e("retrait-date")}</time></dd>`,
+      `<h4>Preuves datées</h4><ul><li><time datetime="${e("preuve-date")}">${e("preuve-date")}</time> — <code>${e("preuve-cible")}</code></li></ul>`,
+      `<h4>Charte</h4><dl><dt>Valeur</dt><dd>${e("valeur")}</dd><dt>Pour qui</dt><dd>${e("pour-qui")}</dd><dt>Fait de dégel</dt><dd>${e("degel")}</dd><dt>Fait d'abandon</dt><dd>${e("abandon")}</dd><dt>Refus</dt><dd><ul><li>${e("refus")}</li></ul></dd></dl>`,
+      `<h4>${e("fiche-titre")}</h4><p>${e("fiche-paragraphe")}</p><ul><li>${e("fiche-item")}</li></ul>`,
+      `<a href="#${e("sans-invariant")}"><code>${e("sans-invariant")}</code></a>`,
+    ]) {
+      expect({ labelled, printed: html.includes(labelled) }).toEqual({ labelled, printed: true });
+    }
   });
 
   test("a layer slug or a status that is not one of the known values does not become markup", () => {
@@ -420,6 +441,10 @@ describe("the page", () => {
     expect(lines.every((line) => line.startsWith("<details") && line.endsWith("</details>"))).toBe(
       true,
     );
+    // And each layer opens on a line of its own: a brick added to a layer changes no other layer's lines.
+    expect(
+      html.split("\n").filter((line) => line.startsWith('<section class="couche"')).length,
+    ).toBe(LAYERS.length);
   });
 
   test("carries its fixed text: what a status means, what the matrix shows, who decides", () => {
@@ -438,6 +463,19 @@ describe("the page", () => {
         "Un tiret : la dépendance n'est pas admise, et aucune brique ne la déclare. " +
         "Sur la diagonale, là où la ligne et la colonne portent le même nom, en italique : les dépendances entre briques d'une même couche, que la table ne borne pas.</caption>",
       "C'est la liste de ce que la doctrine ne porte pas encore.",
+      "<title>Carte des briques — Libre AI</title>",
+      "<h1>Carte des briques</h1>",
+      "Cette page est générée depuis <code>ecosystem/briques/</code> par <code>distribution/build-vision.ts</code>.",
+      '<section id="statuts"><h2>Statuts dérivés des preuves</h2>',
+      '<section id="couches"><h2>Les couches et leurs dépendances</h2>',
+      '<section id="produits"><h2>Produits</h2>',
+      '<section id="sans-invariant"><h2>Ce que la doctrine ne porte pas encore</h2>',
+      '<section id="briques"><h2>Les briques, couche par couche</h2>',
+      '<thead><tr><th scope="col">Statut</th><th scope="col">Briques</th><th scope="col">Ce qu\'il veut dire</th></tr></thead>',
+      '<thead><tr><th scope="col">Couche</th><th scope="col">Rôle</th><th scope="col">Peut dépendre de</th><th scope="col">Règle propre</th><th scope="col">Briques</th></tr></thead>',
+      'aria-label="Statuts dérivés des preuves"',
+      'aria-label="Matrice des dépendances entre couches"',
+      'aria-label="Rôle et règle propre de chaque couche"',
     ]) {
       expect({ sentence, printed: html.includes(sentence) }).toEqual({ sentence, printed: true });
     }
@@ -558,43 +596,99 @@ describe("the standing of the decision record", () => {
 });
 
 describe("the decision record is read from the index", () => {
-  let root: string;
-  const git = (...args: string[]) => {
-    const done = Bun.spawnSync(["git", ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+  /**
+   * WHY A SCRUBBED ENVIRONMENT. A `git` that inherits `GIT_DIR` or
+   * `GIT_INDEX_FILE` — a hook run from a linked worktree exports both — acts
+   * on that repository, not on the fixture: `git add --all` would then replace
+   * the index of the repository the suite is run from. Each fixture command
+   * gets only what it declares.
+   */
+  const ENVIRONMENT = {
+    PATH: process.env.PATH ?? "",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+  };
+  let workspace: string;
+  const git = (root: string, ...args: string[]) => {
+    const done = Bun.spawnSync(["git", ...args], {
+      cwd: root,
+      env: ENVIRONMENT,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     if (done.exitCode !== 0) throw new Error(new TextDecoder().decode(done.stderr));
   };
-  const record = (name: string) => join(root, "docs/adr", name);
+  const write = (root: string, path: string, text: string) => {
+    mkdirSync(join(root, path, ".."), { recursive: true });
+    writeFileSync(join(root, path), text);
+  };
+  /** A repository of its own per case, with these files tracked. */
+  const repository = (name: string, files: Readonly<Record<string, string>>): string => {
+    const root = join(workspace, name);
+    mkdirSync(root);
+    git(root, "init", "--quiet");
+    for (const [path, text] of Object.entries(files)) write(root, path, text);
+    git(root, "add", "--all");
+    return root;
+  };
+  const PROPOSED = "- **Statut :** proposé\n";
+  const ACCEPTED = "- **Statut :** accepted\n";
 
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "build-vision-"));
-    mkdirSync(join(root, "docs/adr"), { recursive: true });
-    git("init", "--quiet");
-    writeFileSync(record("0064-brick-map.md"), "- **Statut :** proposé\n");
-    writeFileSync(record("0063-other.md"), "- **Statut :** accepted\n");
-    writeFileSync(record("10064-not-this-one.md"), "- **Statut :** accepted\n");
-    git("add", "--all");
+    workspace = mkdtempSync(join(tmpdir(), "build-vision-"));
   });
 
   afterAll(() => {
-    rmSync(root, { recursive: true, force: true });
+    rmSync(workspace, { recursive: true, force: true });
   });
 
-  test("only the record that carries the number, and as git tracks it", () => {
-    expect(readDecisionRecords(root)).toEqual(["- **Statut :** proposé\n"]);
+  test("only the record that carries the number, directly under docs/adr", () => {
+    const root = repository("number", {
+      "docs/adr/0064-brick-map.md": PROPOSED,
+      "docs/adr/0063-other.md": ACCEPTED,
+      "docs/adr/00640-a-longer-number.md": ACCEPTED,
+      "docs/adr/10064-another-number.md": ACCEPTED,
+      "docs/adr/archive/0064-an-older-text.md": ACCEPTED,
+    });
+    expect(readDecisionRecords(root)).toEqual([PROPOSED]);
+  });
+
+  test("a record whose name is not ASCII is read like another", () => {
+    const root = repository("name", { "docs/adr/0064-carte-des-briques-dérivée.md": PROPOSED });
+    expect(readDecisionRecords(root)).toEqual([PROPOSED]);
   });
 
   test("an edit that is not staged does not change what is read; staged, it does", () => {
-    writeFileSync(record("0064-brick-map.md"), "- **Statut :** accepted\n");
-    expect(readDecisionRecords(root)).toEqual(["- **Statut :** proposé\n"]);
-    git("add", "--all");
-    expect(readDecisionRecords(root)).toEqual(["- **Statut :** accepted\n"]);
+    const root = repository("staged", { "docs/adr/0064-brick-map.md": PROPOSED });
+    write(root, "docs/adr/0064-brick-map.md", ACCEPTED);
+    expect(readDecisionRecords(root)).toEqual([PROPOSED]);
+    git(root, "add", "--all");
+    expect(readDecisionRecords(root)).toEqual([ACCEPTED]);
   });
 
   test("an untracked file with the number is not read; tracked, both are returned", () => {
-    writeFileSync(record("0064-a-second-one.md"), "- **Statut :** proposé\n");
-    expect(readDecisionRecords(root).length).toBe(1);
-    git("add", "--all");
-    expect(readDecisionRecords(root).length).toBe(2);
+    const root = repository("second", { "docs/adr/0064-brick-map.md": PROPOSED });
+    write(root, "docs/adr/0064-a-second-one.md", ACCEPTED);
+    expect(readDecisionRecords(root)).toEqual([PROPOSED]);
+    git(root, "add", "--all");
+    expect(readDecisionRecords(root).sort()).toEqual([ACCEPTED, PROPOSED].sort());
+  });
+
+  test("the repository asked for is the one read, whatever GIT_DIR and GIT_INDEX_FILE say", () => {
+    const root = repository("asked", { "docs/adr/0064-brick-map.md": PROPOSED });
+    const other = repository("ambient", { "docs/adr/0064-brick-map.md": ACCEPTED });
+    const before = { dir: process.env.GIT_DIR, index: process.env.GIT_INDEX_FILE };
+    process.env.GIT_DIR = join(other, ".git");
+    process.env.GIT_INDEX_FILE = join(other, ".git", "index");
+    try {
+      expect(readDecisionRecords(root)).toEqual([PROPOSED]);
+    } finally {
+      // An assignment of `undefined` would set the string "undefined": delete, or put back.
+      if (before.dir === undefined) delete process.env.GIT_DIR;
+      else process.env.GIT_DIR = before.dir;
+      if (before.index === undefined) delete process.env.GIT_INDEX_FILE;
+      else process.env.GIT_INDEX_FILE = before.index;
+    }
   });
 });
 
