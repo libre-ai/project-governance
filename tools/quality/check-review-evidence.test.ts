@@ -208,6 +208,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "ecosystem/schemas/produit.v1.schema.json",
+      [
+        "ecosystem/schemas/produit.v2.schema.json",
+        "ecosystem/schemas/produit.v1.schema.json.bak",
+        "docs/ecosystem/schemas/produit.v1.schema.json",
+        "ecosystem/produits.ts",
+      ],
+    ],
+    [
       "ecosystem/schemas/knowledge-object.schema.json",
       [
         "ecosystem/schemas/knowledge-object.v2.schema.json",

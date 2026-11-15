@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:libre-ai:schema:produit:v1",
+  "title": "libre-ai.produit.v1 — one product of the catalogue",
+  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names fields of this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "nom_public",
+    "nom_provisoire",
+    "intitule",
+    "fonction",
+    "categorie",
+    "promesse",
+    "pour_qui",
+    "a_la_place_de",
+    "capacites",
+    "ne_fait_pas",
+    "depend_de",
+    "realisation",
+    "depot",
+    "etiquettes",
+    "a_relire"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "libre-ai.produit.v1"
+    },
+    "id": {
+      "$ref": "#/$defs/identifiant"
+    },
+    "nom_public": {
+      "description": "The name decided for the public, or null while none is decided.",
+      "oneOf": [{ "$ref": "#/$defs/nom" }, { "type": "null" }]
+    },
+    "nom_provisoire": {
+      "description": "A working name, or null once a public name is decided.",
+      "oneOf": [{ "$ref": "#/$defs/nom" }, { "type": "null" }]
+    },
+    "intitule": {
+      "description": "The product as the catalogue of ADR-0042 §1 words it.",
+      "$ref": "#/$defs/ligne"
+    },
+    "fonction": {
+      "description": "What kind of tool it is, in a few words.",
+      "$ref": "#/$defs/ligne"
+    },
+    "categorie": {
+      "description": "The domain of the catalogue, as an identifier. The checker holds it to the domain ADR-0042 §1 gives the product.",
+      "enum": [
+        "connaissance",
+        "bureautique-donnees",
+        "collaboration",
+        "creation-publication",
+        "medias-jeu",
+        "outils-acces",
+        "pedagogie",
+        "poste-de-travail"
+      ]
+    },
+    "promesse": {
+      "description": "What the product is meant to bring, in one sentence. An intention, not a statement that it exists.",
+      "$ref": "#/$defs/phrase"
+    },
+    "pour_qui": {
+      "$ref": "#/$defs/ligne"
+    },
+    "a_la_place_de": {
+      "description": "The kind of tool the product is meant to replace, described without naming a brand or a service.",
+      "$ref": "#/$defs/phrase"
+    },
+    "capacites": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/phrase" }
+    },
+    "ne_fait_pas": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/phrase" }
+    },
+    "depend_de": {
+      "description": "Other products this one relies on. Links between products: a cycle is admitted.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/identifiant" }
+    },
+    "realisation": {
+      "description": "The form the realisation takes.",
+      "enum": [
+        "projet autonome",
+        "intégration",
+        "contribution à un projet existant",
+        "bibliothèque",
+        "service"
+      ]
+    },
+    "depot": {
+      "description": "The carrier repository, or null when the inventory holds none for this product.",
+      "oneOf": [
+        { "type": "string", "pattern": "^libre-ai/[A-Za-z0-9._-]+$", "maxLength": 100 },
+        { "type": "null" }
+      ]
+    },
+    "etiquettes": {
+      "description": "Short labels. The checker counts them: exactly three.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 40,
+        "pattern": "^[^\\u0000-\\u001f\\u007f]*\\S[^\\u0000-\\u001f\\u007f]*$"
+      }
+    },
+    "a_relire": {
+      "description": "Names of the fields of this fiche that are proposals of an agent, not yet reread by the owner. The checker holds each name to the properties of this schema.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z_]{2,40}$" }
+    }
+  },
+  "$defs": {
+    "identifiant": {
+      "type": "string",
+      "pattern": "^P[0-9]{2}$"
+    },
+    "nom": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 40,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*\\S[^\\u0000-\\u001f\\u007f]*$"
+    },
+    "ligne": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*\\S[^\\u0000-\\u001f\\u007f]*$",
+      "description": "A short line: no control character, so that a value printed by the gate cannot forge a line of its output."
+    },
+    "phrase": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 400,
+      "pattern": "^[^\\u0000-\\u001f\\u007f]*\\S[^\\u0000-\\u001f\\u007f]*$",
+      "description": "One line of prose, without a control character."
+    }
+  }
+}

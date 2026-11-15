@@ -1,0 +1,165 @@
+{
+  "description": "Schema vectors of libre-ai.produit.v1. Each invalid vector is the first valid one with one change: `set` writes a value at a path, `unset` removes the key at a path. `expect` is a fragment of the schema error. The rules that need another source (catalogue, inventory, other fiches, the count of etiquettes, the names of a_relire) are not schema rules: they are exercised in ecosystem/produits.test.ts.",
+  "valid": [
+    {
+      "name": "a product with a working name and no carrier",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P01",
+        "nom_public": null,
+        "nom_provisoire": "Carnet",
+        "intitule": "notes et mémoire personnelle",
+        "fonction": "Prise de notes",
+        "categorie": "connaissance",
+        "promesse": "Garder ses notes sur son poste, lisibles sans l'outil.",
+        "pour_qui": "une personne qui prend des notes",
+        "a_la_place_de": "votre application de notes en ligne par abonnement",
+        "capacites": ["Écrire, relier et retrouver des notes."],
+        "ne_fait_pas": ["Publier une note sans action explicite."],
+        "depend_de": [],
+        "realisation": "projet autonome",
+        "depot": null,
+        "etiquettes": ["Fichiers lisibles", "Liens entre notes", "Hors ligne"],
+        "a_relire": ["a_la_place_de"]
+      }
+    },
+    {
+      "name": "a product with a public name, a carrier and dependencies",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P02",
+        "nom_public": "Veille",
+        "nom_provisoire": null,
+        "intitule": "veille documentaire",
+        "fonction": "Lecteur de flux",
+        "categorie": "connaissance",
+        "promesse": "Suivre des sources et lire hors ligne ce qu'on a conservé.",
+        "pour_qui": "une personne ou une organisation qui suit des sources",
+        "a_la_place_de": "votre lecteur de flux en ligne par abonnement",
+        "capacites": ["Importer des abonnements.", "Classer les sources par sujet."],
+        "ne_fait_pas": ["Stocker une donnée de paiement."],
+        "depend_de": ["P01", "P03"],
+        "realisation": "intégration",
+        "depot": "libre-ai/project-governance",
+        "etiquettes": ["Flux et sites", "Tri par question", "Pourquoi le lire"],
+        "a_relire": []
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a field the schema does not declare",
+      "because": "the schema is closed: a state, a charter or a source list does not enter a fiche",
+      "set": { "path": ["statut"], "value": "disponible" },
+      "expect": "« statut » (additionalProperties)"
+    },
+    {
+      "name": "a draft field carried over",
+      "because": "sources, inferences and contradictions stay in the drafts",
+      "set": { "path": ["inferences"], "value": ["a_la_place_de"] },
+      "expect": "« inferences » (additionalProperties)"
+    },
+    {
+      "name": "the draft schema version",
+      "because": "a draft is not a published fiche",
+      "set": { "path": ["schema_version"], "value": "libre-ai.produit.v1-brouillon" },
+      "expect": "/schema_version: must be equal to constant"
+    },
+    {
+      "name": "an identifier of another form",
+      "because": "a product is Pnn, as the catalogue writes it",
+      "set": { "path": ["id"], "value": "PRD-01" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "a missing field",
+      "because": "every field is required: an absence is written null or as an empty list, never left out",
+      "unset": { "path": ["a_relire"] },
+      "expect": "must have required property 'a_relire'"
+    },
+    {
+      "name": "a missing carrier field",
+      "because": "« no carrier » is written null, so that it is a statement and not an omission",
+      "unset": { "path": ["depot"] },
+      "expect": "must have required property 'depot'"
+    },
+    {
+      "name": "a category outside the eight domains",
+      "because": "the categories are the domains of ADR-0042 §1",
+      "set": { "path": ["categorie"], "value": "divers" },
+      "expect": "/categorie: must be equal to one of the allowed values"
+    },
+    {
+      "name": "a realisation outside the enumeration",
+      "because": "the forms of realisation are a closed list",
+      "set": { "path": ["realisation"], "value": "prototype" },
+      "expect": "/realisation: must be equal to one of the allowed values"
+    },
+    {
+      "name": "a carrier outside the organisation",
+      "because": "a carrier is a repository of the organisation, written owner/name",
+      "set": { "path": ["depot"], "value": "autre/depot" },
+      "expect": "/depot: must match pattern"
+    },
+    {
+      "name": "an empty carrier",
+      "because": "no carrier is null, not an empty string",
+      "set": { "path": ["depot"], "value": "" },
+      "expect": "/depot: must match pattern"
+    },
+    {
+      "name": "a dependency that is not a product identifier",
+      "because": "depend_de links products, not bricks or repositories",
+      "set": { "path": ["depend_de"], "value": ["PRD-02"] },
+      "expect": "/depend_de/0: must match pattern"
+    },
+    {
+      "name": "a dependency written twice",
+      "because": "a link is stated once",
+      "set": { "path": ["depend_de"], "value": ["P02", "P02"] },
+      "expect": "/depend_de: must NOT have duplicate items"
+    },
+    {
+      "name": "no capacity",
+      "because": "a fiche says what the product does",
+      "set": { "path": ["capacites"], "value": [] },
+      "expect": "/capacites: must NOT have fewer than 1 items"
+    },
+    {
+      "name": "no limit",
+      "because": "a fiche says what the product does not do",
+      "set": { "path": ["ne_fait_pas"], "value": [] },
+      "expect": "/ne_fait_pas: must NOT have fewer than 1 items"
+    },
+    {
+      "name": "a promise with a line break",
+      "because": "a value printed by the gate must not forge a line of its output",
+      "set": { "path": ["promesse"], "value": "Garder ses notes.\nProduct catalogue verified" },
+      "expect": "/promesse: must match pattern"
+    },
+    {
+      "name": "a list where a text is expected",
+      "because": "pour_qui is one line",
+      "set": { "path": ["pour_qui"], "value": ["une personne"] },
+      "expect": "/pour_qui: must be string"
+    },
+    {
+      "name": "a name that is neither a text nor null",
+      "because": "a name is a text, or null",
+      "set": { "path": ["nom_public"], "value": 12 },
+      "expect": "/nom_public: must match exactly one schema in oneOf"
+    },
+    {
+      "name": "an etiquette that is not a text",
+      "because": "an etiquette is a short label",
+      "set": { "path": ["etiquettes"], "value": ["Une", "Deux", 3] },
+      "expect": "/etiquettes/2: must be string"
+    },
+    {
+      "name": "a_relire that is not a field name",
+      "because": "a_relire lists field names, not sentences",
+      "set": { "path": ["a_relire"], "value": ["la promesse est à relire"] },
+      "expect": "/a_relire/0: must match pattern"
+    }
+  ]
+}
