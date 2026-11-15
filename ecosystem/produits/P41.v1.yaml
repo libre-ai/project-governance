@@ -1,0 +1,39 @@
+schema_version: libre-ai.produit.v1
+id: P41
+nom_public: null
+nom_provisoire: "Tickets"
+intitule: "projets, tickets et support"
+fonction: "Tickets et support"
+categorie: collaboration
+promesse: "Transformer un problème ou une demande en travail traçable jusqu'à sa résolution vérifiée."
+pour_qui: "Équipes support"
+a_la_place_de: "votre outil de suivi de tickets et de support en ligne, où l'historique de vos demandes reste chez l'éditeur"
+capacites:
+  - "Projets, tickets typés, priorités motivées, responsables, étiquettes, dépendances et sous-tâches."
+  - "Critères d'acceptation, pièces, commentaires, tableaux et vues sauvegardées."
+  - "Portail de demandes et échanges de support, avec séparation des commentaires internes et externes."
+  - "Transitions définies, vérifiables et historisées ; un ticket résolu peut être rouvert."
+  - "Recherche des doublons, reformulation d'une demande et proposition d'affectation par IA."
+ne_fait_pas:
+  - "Un agent ne clôt pas une anomalie sur la seule réussite d'un lancement de commande ou sur son propre résumé."
+  - "N'expose pas un commentaire interne dans une vue, un export ou une notification."
+  - "Ne clôt pas un ticket de réalisation sans les preuves associées à ses critères d'acceptation."
+depend_de: []
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Doublons détectés"
+  - "Responsable désigné"
+  - "Résolution vérifiée"
+a_relire:
+  - nom_provisoire
+  - fonction
+  - categorie
+  - promesse
+  - pour_qui
+  - a_la_place_de
+  - capacites
+  - ne_fait_pas
+  - depend_de
+  - realisation
+  - etiquettes

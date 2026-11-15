@@ -1,8 +1,8 @@
-# PRD-15 — Projets, tickets et support
+# PRD-15 — Capture et relais de signalements
 
 ## Contexte
 
-ADR-0042 §1 inscrit P15, « projets, tickets et support », au catalogue. ADR-0055 lève le gel de `signalement` et en fait son seul dépôt porteur (D94). La première version signale un problème depuis une interface web et l'envoie au bon système de tickets, sous une politique d'organisation. ADR-0064 D8, encore proposé, en fait la seconde brique `produit` à prouver.
+ADR-0042 §1 inscrit P15 au catalogue, sous l'intitulé « capture et relais de signalements » depuis ADR-0067 (D113), qui confie « projets, tickets et support » à P41. ADR-0055 lève le gel de `signalement` et en fait son seul dépôt porteur (D94). La première version signale un problème depuis une interface web et l'envoie au bon système de tickets, sous une politique d'organisation. ADR-0064 D8, encore proposé, en fait la seconde brique `produit` à prouver.
 
 La carte pose trois dépendances, sans source dans ADR-0055. Sans PAS-02, rien ne dit dans quelle zone un signalement, qui porte les données d'un tiers, peut être relayé. Sans PLT-06, sa release n'a pas de retour arrière. Sans PLT-07, elle n'a pas le parcours d'accessibilité qu'exige le standard de spécification.
 

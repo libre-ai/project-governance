@@ -303,8 +303,8 @@ describe("the doctrine parsers", () => {
     const catalogue = parseCatalogue(await Bun.file(join(directory, file as string)).text());
     // Not a count typed here: the first and the last product the record names.
     expect(catalogue.has("P01")).toBe(true);
-    expect(catalogue.has("P40")).toBe(true);
-    expect(catalogue.has("P41")).toBe(false);
+    expect(catalogue.has("P41")).toBe(true);
+    expect(catalogue.has("P42")).toBe(false);
   });
 
   test("repositories: name and visibility, an entry without a name is skipped", () => {

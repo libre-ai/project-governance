@@ -204,7 +204,7 @@ export const LAYERS: readonly LayerRule[] = [
     slug: "produit",
     label: "produit",
     prefix: "PRD",
-    role: "P01 à P40",
+    role: "P01 à P41",
     mayDependOn: ["plateforme", "passerelle", "execution", "identite"],
     ownRule: "jamais dépendance d'une brique de méthode",
     ownRuleVerified: true,
