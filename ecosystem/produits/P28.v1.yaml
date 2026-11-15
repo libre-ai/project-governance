@@ -9,20 +9,19 @@ promesse: "Retrouver ses réglages de lecture sur les sites compatibles."
 pour_qui: "Toute personne qui regarde ou écoute des médias dans son navigateur"
 a_la_place_de: "vos extensions de navigateur de réglage de la vitesse et du son des lecteurs en ligne"
 capacites:
-  - "Vitesse, volume, raccourcis, image dans l’image et reprise"
-  - "Choix de sous-titres lorsqu’exposé par le lecteur"
-  - "Profils par site ou type d’usage, avec règles de priorité entre réglage global, site et choix ponctuel"
-  - "Détection des remplacements de lecteur dans les applications Web"
-  - "Suspension rapide par site"
+  - "Vitesse, volume, raccourcis, image dans l'image et reprise."
+  - "Choix de sous-titres lorsqu'exposé par le lecteur."
+  - "Profils par site ou type d'usage, avec règles de priorité entre réglage global, site et choix ponctuel."
+  - "Détection des remplacements de lecteur dans les applications Web."
+  - "Suspension rapide par site."
+  - "Affichage des fonctions indisponibles."
 ne_fait_pas:
-  - "« Tous médias » signifie une ambition d’extension de la matrice, jamais une garantie absolue."
+  - "Ne garantit pas le fonctionnement sur tous les lecteurs ; la liste des sites pris en charge est publiée."
   - "Ne pas appliquer un profil à une publicité ou un aperçu non choisi."
-  - "Ne pas centraliser par défaut tout l’historique de navigation."
-  - "L’IA est facultative. Le cœur du produit doit fonctionner sans modèle."
-  - "Afficher les fonctions indisponibles."
-  - "Absence d’accès aux autres onglets non autorisés."
-depend_de:
-  - P29
+  - "Ne pas centraliser par défaut tout l'historique de navigation."
+  - "Ne dépend pas d'un modèle : l'IA est facultative et le cœur du produit fonctionne sans elle."
+  - "N'accède pas aux autres onglets non autorisés."
+depend_de: []
 realisation: "contribution à un projet existant"
 depot: null
 etiquettes:
@@ -33,4 +32,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
-  - categorie
+  - ne_fait_pas

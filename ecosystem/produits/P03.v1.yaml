@@ -5,7 +5,7 @@ nom_provisoire: null
 intitule: "entretien du corpus bibliographique"
 fonction: "Assistant de bibliothèque Zotero"
 categorie: connaissance
-promesse: "Aider à comprendre et entretenir une bibliothèque scientifique au service de questions explicites, en renforçant le gestionnaire bibliographique existant par l'exploration, la qualification et la veille, sans recréer la gestion bibliographique."
+promesse: "Aider à comprendre et entretenir une bibliothèque scientifique au service de questions explicites, en renforçant le gestionnaire bibliographique existant par l'exploration, la qualification et la veille, sans recréer sans raison la gestion bibliographique existante."
 pour_qui: "Chercheurs utilisant Zotero"
 a_la_place_de: "le tri et le nettoyage à la main de votre bibliothèque de références (le produit complète votre gestionnaire bibliographique, il ne le remplace pas)"
 capacites:
@@ -23,7 +23,6 @@ ne_fait_pas:
   - "Ne jamais écraser une version plus récente sans résolution."
   - "Synchronisation bidirectionnelle seulement pour les champs et opérations déclarés."
   - "Les cas ambigus restent proposés et ne sont pas fusionnés automatiquement."
-  - "La diminution du nombre de papiers n'est pas une mesure de réussite."
 depend_de:
   - P01
 realisation: "intégration"

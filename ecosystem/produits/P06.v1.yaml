@@ -18,7 +18,7 @@ capacites:
 ne_fait_pas:
   - "Le classement ne doit pas transformer la proximité sémantique en preuve factuelle."
   - "L'index ne devient pas l'autorité de l'objet."
-  - "Absence de fuite entre deux organizations dans résultats, suggestions, compteurs et réponses générées."
+  - "Ne laisse rien fuir d'une organisation à l'autre dans les résultats, suggestions, compteurs et réponses générées."
 depend_de: []
 realisation: "intégration"
 depot: libre-ai/personal-knowledge-workspace
@@ -29,3 +29,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas

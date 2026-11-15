@@ -16,9 +16,9 @@ capacites:
   - "Aide à la préparation, propositions de scènes, personnages et résumés."
 ne_fait_pas:
   - "Un moteur configurable ne garantit pas la compatibilité avec toutes les règles."
-  - "Le modèle ne change pas silencieusement un jet, une fiche ou le canon d’une campagne."
-  - "Les contenus sous licence doivent être utilisés selon les droits disponibles."
-  - "Les simulations pédagogiques de P39 restent un usage distinct du JdR de loisir."
+  - "Le modèle ne change pas silencieusement un jet, une fiche ou le canon d'une campagne."
+  - "N'utilise pas les contenus sous licence au-delà des droits disponibles."
+  - "Ne couvre pas les simulations pédagogiques de P39, usage distinct du JdR de loisir."
 depend_de:
   - P04
   - P05
@@ -33,3 +33,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - ne_fait_pas

@@ -16,14 +16,14 @@ capacites:
   - "Expliquer la pertinence avec des critères visibles ; les signaux « utile », « déjà connu », « hors sujet » et « ne plus suivre » modifient des préférences inspectables et réversibles."
   - "Préserver une vue chronologique non classée par modèle et prévoir une exploration de sources nouvelles."
 ne_fait_pas:
-  - "Une modification cosmétique ne doit pas provoquer une avalanche (d'alertes)."
-  - "L'entrée dans Zotero est une action distincte."
+  - "Une modification cosmétique ne doit pas provoquer une avalanche d'alertes."
+  - "L'ajout d'un élément à une bibliothèque bibliographique est une action distincte."
   - "Les liens de partage ne diffusent pas les pièces privées du corpus."
   - "Une lecture ne vaut pas un consentement à utiliser le texte chez un fournisseur IA."
-  - "Parser des flux dans l'application macOS ou dans l'extension, qui délèguent à l'API."
-  - "Stocker une donnée de paiement."
-  - "Ouvrir mobile, Windows ou Linux au premier palier."
-  - "Dépendre d'un service managé pour le cœur."
+  - "Ne parse pas de flux dans l'application macOS ou dans l'extension, qui délèguent à l'API."
+  - "Ne stocke aucune donnée de paiement."
+  - "N'ouvre ni mobile, ni Windows, ni Linux au premier palier."
+  - "Ne dépend pas d'un service managé pour le cœur."
 depend_de:
   - P01
   - P03
@@ -36,3 +36,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - ne_fait_pas

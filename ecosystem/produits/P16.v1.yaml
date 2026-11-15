@@ -14,12 +14,12 @@ capacites:
   - "Sous-tâches et vues quotidiennes."
   - "Occurrences d'une tâche récurrente produites selon une règle explicite."
   - "Extraction d'actions depuis une note, un mail ou une réunion par IA, avec origine, responsable proposé et échéance éventuelle."
+  - "L'export et la suppression restent disponibles sans IA."
 ne_fait_pas:
   - "Une tâche terminée ne doit pas générer de notifications retardées."
   - "Une date non explicitement présente reste une suggestion."
   - "Les actions acceptées ne sont pas recréées lors d'un nouveau traitement de la même source."
-  - "Synchronisation avec agenda P19 et références aux tickets P15, sans multiplier les autorités concurrentes sur un même état."
-  - "L'export et la suppression restent disponibles sans IA."
+  - "Ne multiplie pas les autorités concurrentes sur un même état quand il se synchronise avec l'agenda P19 et référence les tickets P15."
 depend_de:
   - P19
   - P15
@@ -33,3 +33,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - ne_fait_pas

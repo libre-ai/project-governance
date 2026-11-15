@@ -16,14 +16,11 @@ capacites:
   - "Permettre de contester ou corriger l'évaluation."
   - "Exporter parcours et progression sans exporter les données d'autres apprenants."
 ne_fait_pas:
-  - "Ce produit suit la progression individuelle ; P39 organise les séances collectives."
+  - "N'organise pas les séances collectives, qui relèvent de P39 : ce produit suit la progression individuelle."
   - "Une réponse libre incertaine ne doit pas être notée arbitrairement."
   - "Aucune certification de compétence n'est déduite d'un score de quiz seul."
 depend_de:
   - P39
-  - P03
-  - P04
-  - P19
 realisation: "intégration"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
@@ -33,3 +30,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - ne_fait_pas

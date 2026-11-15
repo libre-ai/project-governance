@@ -17,7 +17,7 @@ capacites:
 ne_fait_pas:
   - "Ne pas qualifier automatiquement une page d'obsolète sur son seul âge."
   - "Un brouillon généré ne devient pas une procédure approuvée."
-  - "Toute réponse IA doit conserver le périmètre de lecture du demandeur, y compris lorsque l'index a été alimenté par un administrateur."
+  - "Une réponse IA ne dépasse pas le périmètre de lecture du demandeur, y compris lorsque l'index a été alimenté par un administrateur."
 depend_de: []
 realisation: "intégration"
 depot: libre-ai/personal-knowledge-workspace
@@ -27,3 +27,4 @@ etiquettes:
   - "Qui a écrit quoi"
 a_relire:
   - a_la_place_de
+  - ne_fait_pas

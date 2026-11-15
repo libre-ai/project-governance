@@ -9,24 +9,25 @@ promesse: "Relier des appareils ou accéder à des services privés avec des rè
 pour_qui: "Personnes et organisations"
 a_la_place_de: "votre service de réseau privé virtuel par abonnement"
 capacites:
-  - "Enrôler un appareil, choisir un profil, établir le tunnel, vérifier le routage et révoquer l’accès."
-  - "Gestion d’appareils, clés, profils, routes, DNS, reconnexion et état."
+  - "Enrôler un appareil, choisir un profil, établir le tunnel, vérifier le routage et révoquer l'accès."
+  - "Gestion d'appareils, clés, profils, routes, DNS, reconnexion et état."
   - "Séparer les besoins de réseau privé entre appareils et de sortie Internet via un serveur."
-  - "Les changements de routes et de pare-feu sont explicités, testables et réversibles avec préservation du canal d’administration."
+  - "Les changements de routes et de pare-feu sont explicités, testables et réversibles avec préservation du canal d'administration."
   - "Aide au diagnostic à partir de données expurgées."
 ne_fait_pas:
   - "Ne pas inventer un protocole cryptographique."
-  - "Aucune nécessité d’un modèle pour établir le tunnel."
-  - "Ne pas assimiler un VPN à l’anonymat ou à la protection de tout trafic dans toute situation."
-  - "Une installation réussie n’est pas une preuve d’absence de fuite."
-  - "Sans écrire de VPN (catalogue, CADRAGE §1.6)."
+  - "N'a pas besoin d'un modèle pour établir le tunnel."
+  - "Ne pas assimiler un VPN à l'anonymat ou à la protection de tout trafic dans toute situation."
+  - "Ne réécrit pas de VPN : réutilise des protocoles et des implémentations reconnus."
 depend_de: []
 realisation: "intégration"
 depot: null
 etiquettes:
   - "Appareils enrôlés"
   - "Règles explicites"
-  - "Révocation immédiate"
+  - "Révocation d'un appareil"
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas
+  - etiquettes

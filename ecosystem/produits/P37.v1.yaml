@@ -12,21 +12,22 @@ capacites:
   - "Créer ou relier un coffre, ajouter des entrées, utiliser un secret, partager un périmètre et révoquer."
   - "Entrées, dossiers, recherche locale autorisée, générateur, verrouillage, sessions, export chiffré et récupération documentée."
   - "Séparer secrets humains et identités de service lorsque leurs cycles de vie diffèrent."
-  - "Les outils obtiennent un secret via une référence et une permission d’exécution ; les sorties doivent empêcher sa remontée dans les traces."
+  - "Les outils obtiennent un secret via une référence et une permission d'exécution ; les sorties doivent empêcher sa remontée dans les traces."
 ne_fait_pas:
   - "Le modèle ne reçoit pas les valeurs de secrets pour les résumer, classer ou remplir."
   - "Ne pas mettre les secrets dans la recherche globale."
-  - "Tout remplissage navigateur, partage ou gestion de passkeys éventuel possède un périmètre et une qualification spécifiques."
-  - "Examiner l’intégration d’un coffre éprouvé avant de développer une implémentation."
+  - "Pas de remplissage navigateur, de partage ni de gestion de passkeys sans périmètre et qualification spécifiques."
   - "Ne jamais publier un coffre artisanal comme sûr sur la seule base de tests fonctionnels."
-  - "Sans écrire de coffre (catalogue, CADRAGE §1.6)."
 depend_de: []
 realisation: "intégration"
 depot: null
 etiquettes:
-  - "Chiffré chez vous"
+  - "Export chiffré"
   - "Partage limité"
   - "Récupération prévue"
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas
+  - depend_de
+  - etiquettes

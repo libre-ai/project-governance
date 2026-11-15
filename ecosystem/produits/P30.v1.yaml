@@ -9,18 +9,18 @@ promesse: "Lire et organiser ses collections dans des formats transportables."
 pour_qui: "Lecteurs de mangas, de BD et de livres numériques"
 a_la_place_de: "votre application de lecture de bandes dessinées et de livres numériques liée à une boutique en ligne"
 capacites:
-  - "Séries, volumes, chapitres, couvertures, tags, progression, favoris et lecture hors ligne"
-  - "Modes droite-gauche et gauche-droite, pages doubles, lecture verticale pour webtoons, zoom et marges"
-  - "EPUB, CBZ et PDF, qualifiés séparément"
-  - "Prise en charge des fichiers de l’utilisateur et des catalogues autorisés"
-  - "Aide au classement et à la description"
-  - "Reprise sur un autre appareil"
+  - "Séries, volumes, chapitres, couvertures, tags, progression, favoris et lecture hors ligne."
+  - "Modes droite-gauche et gauche-droite, pages doubles, lecture verticale pour webtoons, zoom et marges."
+  - "EPUB, CBZ et PDF, qualifiés séparément."
+  - "Prise en charge des fichiers de l'utilisateur et des catalogues autorisés."
+  - "Aide au classement et à la description."
+  - "Reprise sur un autre appareil."
 ne_fait_pas:
-  - "Ne pas assimiler l’intégration d’un catalogue à l’acquisition de droits."
+  - "Ne pas assimiler l'intégration d'un catalogue à l'acquisition de droits."
   - "Fonctionnalités de traduction ou OCR seulement selon droits et traitement explicites."
-  - "Éviter de divulguer l’intrigue dans les résumés ou notifications lorsque l’utilisateur choisit un mode sans spoilers."
-  - "Distinguer deux éditions d’une même œuvre plutôt que fusionner sur leur titre."
-  - "Aucun envoi du contenu à un modèle n’est nécessaire pour la lecture."
+  - "Éviter de divulguer l'intrigue dans les résumés ou notifications lorsque l'utilisateur choisit un mode sans spoilers."
+  - "Ne fusionne pas deux éditions d'une même œuvre sur leur titre : les distingue."
+  - "Aucun envoi du contenu à un modèle n'est nécessaire pour la lecture."
 depend_de:
   - P11
   - P38
@@ -29,9 +29,10 @@ depot: null
 etiquettes:
   - "CBZ, EPUB, PDF"
   - "Sens de lecture"
-  - "Reprise sur tous les écrans"
+  - "Reprise sur un autre appareil"
 a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
-  - categorie
+  - ne_fait_pas
+  - etiquettes

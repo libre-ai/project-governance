@@ -9,22 +9,18 @@ promesse: "Transformer une réunion autorisée en décisions et actions vérifia
 pour_qui: "Participants de réunions"
 a_la_place_de: "votre service en ligne de transcription et de compte rendu de réunion par abonnement"
 capacites:
-  - "Ordre du jour relié aux sources"
-  - "Transcription horodatée, repérage des sujets et attribution corrigible des intervenants"
-  - "Décisions, questions ouvertes, actions et citations temporelles"
-  - "Séparation des notes privées du facilitateur et du compte rendu partagé"
-  - "Conservation de l’audio, des transcriptions et des dérivés selon des règles explicites"
-  - "Relecture et correction avant création de tickets ou envoi"
+  - "Ordre du jour relié aux sources."
+  - "Transcription horodatée, repérage des sujets et attribution corrigible des intervenants."
+  - "Décisions, questions ouvertes, actions et citations temporelles."
+  - "Séparation des notes privées du facilitateur et du compte rendu partagé."
+  - "Conservation de l'audio, des transcriptions et des dérivés selon des règles explicites."
+  - "Relecture et correction avant création de tickets ou envoi."
 ne_fait_pas:
   - "Les noms et échéances incertains sont signalés ; une voix mal attribuée ne devient pas une responsabilité."
   - "Rejouer une extraction ne crée pas deux tickets pour la même action."
-  - "L’arrêt de capture doit être effectif au niveau du traitement."
+  - "Ne continue pas à traiter après l'arrêt de la capture : l'arrêt est effectif au niveau du traitement."
 depend_de:
   - P18
-  - P19
-  - P15
-  - P16
-  - P05
 realisation: "intégration"
 depot: null
 etiquettes:
@@ -34,4 +30,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
-  - categorie
+  - ne_fait_pas

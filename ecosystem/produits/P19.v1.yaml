@@ -18,12 +18,8 @@ capacites:
 ne_fait_pas:
   - "Ne pas inviter, annuler ou déplacer une réunion existante sur une inférence non autorisée."
   - "Une disponibilité calculée ne révèle pas le titre d'un événement privé."
-  - "Ne pas confondre export d'un événement et synchronisation bidirectionnelle d'un calendrier."
+  - "L'export d'un événement n'est pas une synchronisation bidirectionnelle d'un calendrier."
 depend_de:
-  - P17
-  - P18
-  - P21
-  - P39
   - P20
 realisation: "intégration"
 depot: null
@@ -35,3 +31,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - ne_fait_pas

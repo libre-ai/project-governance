@@ -15,12 +15,11 @@ capacites:
   - "Contrôle des accès et périmètre explicite pour les invités."
   - "Sous-titres lorsque disponibles."
   - "Résumés de fils et extraction d'actions sur contenu autorisé, par IA."
+  - "Les participants peuvent distinguer message envoyé, remis et lu selon les garanties réellement disponibles."
 ne_fait_pas:
   - "Ne pas enregistrer ou transcrire implicitement tout appel."
-  - "L'assistant de réunion P21 gère la transcription et le compte rendu comme un usage distinct."
-  - "Les participants peuvent distinguer message envoyé, remis et lu selon les garanties réellement disponibles."
-  - "Arbitrer le modèle de chiffrement, la recherche et les capacités serveur sans promesse contradictoire."
-  - "Une salle créée ne prouve pas qu'un appel fonctionne."
+  - "Ne gère pas la transcription ni le compte rendu : c'est un usage distinct, porté par l'assistant de réunion P21."
+  - "Pas de promesse contradictoire entre modèle de chiffrement, recherche et capacités serveur."
 depend_de: []
 realisation: "intégration"
 depot: null
@@ -31,3 +30,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas

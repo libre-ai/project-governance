@@ -5,27 +5,26 @@ nom_provisoire: null
 intitule: "activités pédagogiques"
 fonction: "Activités pédagogiques en direct"
 categorie: pedagogie
-promesse: "Permettre à un formateur, un enseignant ou un animateur de construire une expérience collective à partir de connaissances vérifiables, puis de prolonger l’apprentissage individuellement."
+promesse: "Permettre à un formateur, un enseignant ou un animateur de construire une expérience collective à partir de connaissances vérifiables, puis de prolonger l'apprentissage individuellement."
 pour_qui: "Un formateur, un enseignant ou un animateur"
 a_la_place_de: "votre outil de quiz et de sondages en direct par abonnement"
 capacites:
   - "Créer un projet pédagogique, préciser public, prérequis et objectifs observables, joindre les sources autorisées et produire un déroulé."
   - "Catalogue extensible d'activités : QCM, réponse courte, question ouverte, classement, association, sondage, nuage de mots, contributions sur tableau et simulation de situation."
   - "Créer une session avec état explicite, mode présentateur et vue participant ; entrée par code ou QR selon la politique choisie."
-  - "L’animateur ouvre, suspend et clôt une activité, modère les contributions et choisit ce qui est projeté."
+  - "L'animateur ouvre, suspend et clôt une activité, modère les contributions et choisit ce qui est projeté."
   - "Après une session, offrir un dossier de ressources et des exercices rejouables selon les droits accordés."
-  - "Générer des propositions d’activités, expliquer une correction et synthétiser les thèmes d’un échange."
+  - "Générer des propositions d'activités, expliquer une correction et synthétiser les thèmes d'un échange."
 ne_fait_pas:
-  - "La participation et la qualité des apprentissages priment sur la seule accumulation de points."
+  - "Ne réduit pas une séance à l'accumulation de points : la participation et la qualité des apprentissages priment."
   - "Les codes expirent et ne valent pas accès à toutes les sources du projet."
   - "Ne pas déduire une aptitude, une personnalité ou un diagnostic à partir de la participation."
   - "Un score pédagogique ne constitue pas une certification."
-  - "Les sondages d’opinion n’ont pas de bonne réponse artificielle."
-  - "Le JdR de loisir P32 ne doit pas devenir une dépendance nécessaire aux simulations pédagogiques."
+  - "Les sondages d'opinion n'ont pas de bonne réponse artificielle."
+  - "Ne dépend pas du JdR de loisir P32 pour ses simulations pédagogiques."
 depend_de:
   - P01
   - P03
-  - P07
   - P08
   - P10
   - P12
@@ -41,3 +40,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - ne_fait_pas

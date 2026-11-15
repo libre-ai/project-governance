@@ -17,8 +17,7 @@ capacites:
   - "Exports PPTX et PDF."
 ne_fait_pas:
   - "Une image de diapositive ne remplace pas un document de présentation modifiable."
-  - "Relier les activités interactives de P39 sans transmettre les notes privées de l'animateur."
-  - "Un rendu visuel correct ne dispense pas de vérifier les valeurs des graphiques et la présence des notes attendues."
+  - "Ne transmet pas les notes privées de l'animateur quand il relie les activités interactives de P39."
 depend_de:
   - P08
   - P09
@@ -33,3 +32,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas

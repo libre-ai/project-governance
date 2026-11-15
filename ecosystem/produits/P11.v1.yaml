@@ -17,8 +17,8 @@ capacites:
   - "Suggestions de classement et extraction facultative de métadonnées par IA."
 ne_fait_pas:
   - "Ne pas déplacer ou transmettre des fichiers privés au seul motif qu'un modèle le propose."
-  - "Une recherche sémantique doit respecter la politique de traitement choisie."
-  - "Séparer disponibilité synchronisée et sauvegarde indépendante P38."
+  - "Une recherche sémantique ne sort pas de la politique de traitement choisie."
+  - "Ne confond pas disponibilité synchronisée et sauvegarde indépendante P38."
   - "Une révocation ne peut pas effacer rétroactivement une copie déjà téléchargée : l'interface doit le rendre clair."
 depend_de: []
 realisation: "intégration"
@@ -30,3 +30,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - pour_qui
+  - ne_fait_pas

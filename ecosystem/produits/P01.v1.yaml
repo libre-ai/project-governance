@@ -12,17 +12,15 @@ capacites:
   - "Saisir une question, sélectionner les catégories de sources, rechercher, ouvrir les résultats, extraire des passages, les comparer et constituer un dossier."
   - "Recherche Web, pages, flux, dépôts et discussions de développement, plateformes sociales et transcriptions de médias, sur une matrice de connecteurs validés."
   - "Distinguer découverte d'une URL, accès au contenu, extraction réussie et compréhension du média."
-  - "Exposer pour chaque résultat origine, URL canonique, dates de publication et de collecte, auteur, langue, type, extrait, disponibilité et provenance, avec le lien vers l'original."
+  - "Exposer pour chaque résultat origine, URL canonique quand elle est connue, dates distinctes de publication et de collecte, auteur si disponible, langue, type, extrait, disponibilité et provenance, avec le lien vers l'original."
   - "Signaler les contenus tronqués, sources supprimées, quotas, demandes d'authentification et échecs de parsing ; comparer les versions d'une source surveillée."
   - "L'IA reformule les recherches, propose des sources et synthétise les passages effectivement consultés, en distinguant constat, inférence, désaccord et information absente."
 ne_fait_pas:
-  - "Lire les sources publiques et les ressources explicitement autorisées ; ne pas promettre le contournement des contrôles d'accès."
+  - "Ne contourne pas les contrôles d'accès : lit seulement les sources publiques et les ressources explicitement autorisées."
   - "Une transcription disponible n'équivaut pas à une analyse des images d'une vidéo."
   - "Les contenus trouvés ne peuvent ni déclencher des outils privilégiés ni modifier les règles de collecte."
-  - "Aucune synthèse ne doit citer un passage inventé ou accessible seulement à une autre organization."
-depend_de:
-  - P02
-  - P06
+  - "Aucune synthèse ne doit citer un passage inventé ou accessible seulement à une autre organisation."
+depend_de: []
 realisation: "bibliothèque"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
@@ -32,3 +30,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - ne_fait_pas

@@ -14,20 +14,22 @@ capacites:
   - "Liste fermée de symboles, aucun schéma d'URL et aucun chemin machine dans le binaire de release."
   - "macOS 26 et 27, arm64."
 ne_fait_pas:
-  - "Un service réseau, un compte, de la télémétrie ou un modèle."
-  - "Le pavage automatique (automatic tiling)."
-  - "La distribution par le Mac App Store."
-  - "Des coquilles Windows et Linux avant que le produit macOS soit utilisable."
-  - "P40 n'a pas de tenant (dérogation nommée à I-09) et n'a pas d'extension navigateur (ADR-0042 §9)."
+  - "Pas de service réseau, de compte, de télémétrie ni de modèle."
+  - "Pas de pavage automatique."
+  - "Pas de distribution par le Mac App Store."
+  - "Pas de coquilles Windows et Linux avant que le produit macOS soit utilisable."
+  - "Pas de compte d'organisation ni d'extension navigateur (ADR-0042 §9)."
 depend_de: []
 realisation: "projet autonome"
 depot: libre-ai/square-control
 etiquettes:
   - "Raccourcis clavier"
   - "Plusieurs écrans"
-  - "Dispositions mémorisées"
+  - "Placement annulable"
 a_relire:
   - promesse
   - a_la_place_de
   - capacites
   - ne_fait_pas
+  - pour_qui
+  - etiquettes

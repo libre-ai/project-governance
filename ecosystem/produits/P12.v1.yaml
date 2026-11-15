@@ -18,12 +18,10 @@ capacites:
 ne_fait_pas:
   - "Un rectangle graphique ne suffit pas pour un masquage définitif."
   - "Une extraction de facture ne déclenche pas de paiement ni de décision financière."
-  - "Toute fonction de signature doit distinguer annotation visuelle et signature cryptographique ; une qualification juridique spécifique demande son propre dossier."
+  - "Ne confond pas annotation visuelle et signature cryptographique ; une qualification juridique spécifique demande son propre dossier."
   - "Une mauvaise extraction ne doit jamais remplacer silencieusement une donnée source."
 depend_de:
   - P11
-  - P09
-  - P03
 realisation: "projet autonome"
 depot: null
 etiquettes:
@@ -34,3 +32,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - ne_fait_pas

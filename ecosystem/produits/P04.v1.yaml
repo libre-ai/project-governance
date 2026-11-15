@@ -6,7 +6,7 @@ intitule: "notes et mémoire personnelle"
 fonction: "Prise de notes"
 categorie: connaissance
 promesse: "Capturer et retrouver ses idées avec leur contexte, sur une base éditable et exportable."
-pour_qui: "De la prise de notes personnelle à la préparation d'une recherche"
+pour_qui: "Toute personne qui prend des notes, de l'usage personnel à la préparation d'une recherche"
 a_la_place_de: "votre application de notes en ligne par abonnement"
 capacites:
   - "Capture rapide depuis texte, lien, sélection de document ou dictée ; édition structurée."
@@ -31,3 +31,4 @@ etiquettes:
 a_relire:
   - a_la_place_de
   - depend_de
+  - pour_qui

@@ -9,7 +9,7 @@ promesse: "Aider à comprendre et agir dans les applications choisies tout en ga
 pour_qui: "Toute personne qui veut un assistant IA dans ses applications"
 a_la_place_de: "votre assistant conversationnel en ligne par abonnement"
 capacites:
-  - "Poser une question, choisir les sources, examiner la réponse ou le plan d’action et suivre l’exécution autorisée."
+  - "Poser une question, choisir les sources, examiner la réponse ou le plan d'action et suivre l'exécution autorisée."
   - "Conversations, pièces, sélection de contexte, historique, mémoire contrôlée, citations, modèles autorisés et outils par périmètre."
   - "Afficher les sources réellement consultées, les opérations prévues et les résultats."
   - "Sessions récupérables ; les travaux longs ont un état et une annulation explicites."
@@ -17,9 +17,8 @@ capacites:
   - "La mémoire est inspectable, modifiable, exportable et supprimable."
 ne_fait_pas:
   - "Les approbations portent sur des objets et une portée déterminés ; elles ne deviennent pas une autorisation permanente implicite."
-  - "L’assistant reconnaît l’insuffisance d’une source plutôt que compléter par invention."
-  - "L’assistant n’accède pas directement à toutes leurs bases."
-  - "La phrase « j’ai terminé » ne constitue pas la preuve."
+  - "Ne complète pas par invention : reconnaît l'insuffisance d'une source."
+  - "N'accède pas directement aux bases des autres produits."
 depend_de:
   - P33
   - P37
@@ -34,3 +33,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - ne_fait_pas

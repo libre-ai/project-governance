@@ -15,10 +15,10 @@ capacites:
   - "Les transformations d'import peuvent être rejouées sur un nouveau fichier sans effacer les valeurs sources."
   - "L'IA propose une formule, explique une erreur, produit une transformation ou suggère une visualisation, en présentant cellules concernées, changements et hypothèses avant une transformation de masse."
   - "Qualifier CSV, TSV, XLSX et ODS ; préciser encodages, séparateurs, précision et limites des fonctions."
+  - "Protéger contre l'injection de formules lors des exports destinés à des outils tiers."
 ne_fait_pas:
   - "Le moteur de calcul évalue les formules ; le modèle ne fournit pas les résultats comptables ou numériques faisant autorité."
   - "Ne pas exécuter de macros importées par défaut."
-  - "Protéger contre l'injection de formules lors des exports destinés à des outils tiers."
   - "Ne pas figer un graphique à partir d'une réponse IA non reliée aux cellules."
 depend_de:
   - P13
