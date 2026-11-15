@@ -139,8 +139,17 @@ describe("the licensing exemption class", () => {
     ["a licence text that is not .txt", "LICENSES/MIT.md"],
     ["a file that merely starts like a surface", "LICENSE.bak"],
     ["a REUSE sidecar file", "art/logo.svg.license"],
-  ])("refuses %s", async (_label: string, path: string) => {
-    expect(await outcomeFor([path])).toBe("violations");
+    ["a licence text nested under LICENSES/", "LICENSES/sub/MIT.txt"],
+  ])("refuses %s, as a path outside the class globs", async (_label: string, path: string) => {
+    // The reason is asserted, not only the outcome: an unlisted class or a
+    // guarded path also refuses, and would keep a bare outcome check green
+    // with the class removed or its globs widened.
+    const result: GateReport = await report({ ok: true, value: [path] });
+    expect(result.outcome).toBe("violations");
+    const why: string = result.violations.join("\n");
+    expect(why).toContain("changed file(s) outside");
+    expect(why).toContain(path);
+    expect(why).not.toContain("is not listed in the policy");
   });
 
   test("refuses an empty diff: nothing changed is not a licence switch", async () => {

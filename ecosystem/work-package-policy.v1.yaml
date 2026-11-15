@@ -52,11 +52,12 @@ exempt:
   # nothing else: the human-readable summary, the licence texts and the REUSE
   # annotations. Every entry is a root or one-level path. SPDX headers inside
   # other files are left out: with a REUSE.toml annotation of precedence
-  # "override" they do not decide the licence of a file, and they follow in a
-  # docs-only or fleet-bump pull request (measured on libre-ai/pelote,
-  # 2026-11-15: a switch of these three surfaces alone keeps `reuse lint`
-  # compliant, 45 of 45 files). Like every paths class, it proves where a
-  # change landed, not what it wrote, and it is tied to no author.
+  # "override" they do not decide the licence of a file (measured on
+  # libre-ai/pelote, 2026-11-15: a switch of these three surfaces alone keeps
+  # `reuse lint` compliant, 45 of 45 files); stale headers follow in their own
+  # pull request (see docs/specifications/WORK-PACKAGES.md). Like every paths
+  # class, it proves where a change landed, not what it wrote, and it is tied
+  # to no author; no gate checks which licence is chosen.
   licensing:
     paths:
       - "LICENSE"
