@@ -62,7 +62,9 @@ Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y ins
 
 Le champ s'écrit sous cette forme : « votre *genre d'outil*, où *ce qui est payé en plus ou enfermé* ». Il n'affirme que ce qui est vrai du genre d'outil en général, pas d'un service en particulier.
 
-Chaque formule nomme un verrou, de l'un de ces quatre types :
+Quand le verrou n'est pas vrai du genre d'outil en général, le champ nomme le genre d'outil seul, sans « où… ».
+
+Une formule qui nomme un verrou relève de l'un de ces types :
 
 | Type de verrou | Ce que le genre d'outil fait payer ou enferme |
 | --- | --- |
@@ -71,7 +73,7 @@ Chaque formule nomme un verrou, de l'un de ces quatre types :
 | Données, formats ou droits retenus chez l'éditeur | Ce que la personne produit ou confie est conservé chez l'éditeur, lié à son format ou soumis à sa licence. |
 | Volume plafonné ou payé à l'usage | La place, le nombre d'envois, de participants ou d'exécutions est plafonné selon le palier, ou payé à l'unité. |
 
-Les fiches qui portaient « par abonnement » ont été réécrites sous cette forme. Chaque réécriture est une proposition d'agent, sans source : le champ est inscrit dans `a_relire` de la fiche. Le gate ne lit ni cette forme ni le type de verrou : ce sont des règles de rédaction.
+Les fiches qui portaient « par abonnement » ont été réécrites par un agent, sans source. Le propriétaire les a arbitrées le 2026-11-15 : les formules dont une revue indépendante jugeait le verrou douteux pour leur genre d'outil nomment le genre d'outil seul, les autres gardent leur verrou. Le gate ne lit ni cette forme ni le type de verrou : ce sont des règles de rédaction.
 
 ## `offre`
 

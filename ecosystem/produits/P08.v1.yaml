@@ -7,7 +7,7 @@ fonction: "Traitement de texte"
 categorie: bureautique-donnees
 promesse: "Rédiger un document structuré, le relire à plusieurs, maîtriser les révisions et livrer un fichier utilisable hors de la suite."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre traitement de texte en ligne, où vos documents sont conservés chez l'éditeur, dans son format"
+a_la_place_de: "votre traitement de texte en ligne"
 capacites:
   - "Partir d'un document vide, d'un modèle ou d'un import ; éditer ; commenter ; arbitrer les modifications ; vérifier le rendu ; exporter."
   - "Styles de titres et paragraphes, listes, tableaux, images, légendes, notes, bibliographie, sommaire, en-têtes, pieds de page et pagination."
@@ -31,4 +31,3 @@ etiquettes:
   - "Suivi des modifications"
 a_relire:
   - pour_qui
-  - a_la_place_de

@@ -7,7 +7,7 @@ fonction: "Studio audio et podcast"
 categorie: creation-publication
 promesse: "Produire un enregistrement, un montage ou un podcast avec une piste de travail révisable."
 pour_qui: "Créateurs de contenus audio et de podcasts"
-a_la_place_de: "votre logiciel de montage audio et votre service de production de podcasts, où la durée traitée ou hébergée est plafonnée selon le palier"
+a_la_place_de: "votre logiciel de montage audio et votre service de production de podcasts"
 capacites:
   - "Pistes, segments, fondus, niveaux, préécoute, marqueurs, annulation et export."
   - "Traitements non destructifs quand possibles ; conservation de l'original."
@@ -26,5 +26,4 @@ etiquettes:
   - "Enregistrer, couper"
   - "Nettoyage du son"
   - "Transcription"
-a_relire:
-  - a_la_place_de
+a_relire: []
