@@ -5,7 +5,7 @@
 **Date :** 2026-11-15
 **Objet :** les deux ADR proposés `docs/adr/0066-economic-model-hosted-service-only.md` et `docs/adr/0067-amend-adr-0042-p15-split-p41-tickets.md`, les lignes D109 à D113 du registre, les fiches `ecosystem/produits/P15.v1.yaml` et `ecosystem/produits/P41.v1.yaml`, et les documents que ces ADR amendent.
 **Nature :** dossier de revue d'une pull request écrite par des agents. Il ne vaut pas arbitrage du propriétaire : il rend compte de ce qui a été relu, sur quel commit, de ce qui a été corrigé ensuite, et de ce qui reste à relire.
-**État :** les passes 1, 2 et 3 ont rendu `reject`. Le verdict du dossier est celui de la passe 4, dans le tableau ci-dessous. Deux réserves mineures restent ouvertes (M1 et M4) : elles se tranchent à la signature.
+**État :** les passes 1, 2 et 3 ont rendu `reject`. Le verdict du dossier est celui de la passe 4 : `approve-with-minor-reservations`. Trois réserves mineures restent ouvertes (M1, M4 et la moitié de R2) : elles se tranchent à la signature.
 
 ## Les passes
 
@@ -14,7 +14,7 @@
 | 1 | `economic-model-p41-pass-1` | revue seule, relecteur indépendant à contexte neuf | `e0c2832e74e09139c2a560a95fca90642b8e7418` | `reject` : 6 constats à corriger, 8 mineurs |
 | 2 | `economic-model-p41-pass-2` | revue seule, relecteur indépendant à contexte neuf, distinct de l'auteur des corrections | `5615d556a27ba590b76327141338f33db7414005` | `reject` : 1 constat à corriger, 5 mineurs |
 | 3 | `economic-model-p41-pass-3` | revue seule du seul diff postérieur à la passe 2, relecteur indépendant à contexte neuf | `a60cac27e92cb87fc2ecb3d43018d9c59db40e9b` | `reject` : 2 constats à corriger, 3 mineurs |
-| 4 | `economic-model-p41-pass-4` | revue seule du seul diff postérieur à la passe 3, relecteur indépendant à contexte neuf | PASS4_COMMIT | PASS4_VERDICT |
+| 4 | `economic-model-p41-pass-4` | revue seule du seul diff postérieur à la passe 3, relecteur indépendant à contexte neuf | `7592bfc7330423e7d620b9559c7943e1896a17e8` | `approve-with-minor-reservations` : 3 mineurs |
 
 Le commit relu par la passe 1 est un commit de la branche de travail ; la fusion par squash ne le garde pas.
 
@@ -31,7 +31,7 @@ Les gravités sont celles du relecteur. « Corrigé » veut dire : modifié par 
 | 3 | à corriger | Deux invariants cités pour ce qu'ils ne disent pas : I-10 (« toute exportation reste possible ») et I-29 (« la possession ne signifie pas la gratuité de l'infrastructure »). | Corrigé : I-10 et I-29 sont cités pour leur texte ; la phrase sur la gratuité de l'infrastructure est rendue à ADR-0033 D1. |
 | 4 | à corriger | ADR-0067 range ADR-0055 D2 (« P15 n'est pas scindé. ») sous « Ne modifie pas », par une lecture de l'auteur. | Corrigé : D2 est inscrit sous « Amende », avec sa relecture explicite, marquée lecture de l'auteur ; D113 le dit aussi. |
 | 5 | à corriger | L'intitulé de P41, « projets, tickets et support », est une déduction de l'auteur, présentée comme décidée. | Corrigé : le numéro P41, son intitulé et l'intitulé de P15 sont déclarés propositions de l'auteur dans ADR-0067, D113 et le corps de la pull request ; `intitule` entre dans `a_relire` sur les deux fiches, ce que le gate accepte. |
-| 6 | à corriger | Le protocole de revue n'est pas satisfait : aucun dossier sous `docs/reviews/`. | Partiel : ce dossier consigne la passe 1 et les textes retenus. La passe 2 reste à faire ; tant qu'elle ne l'est pas, le protocole n'est pas satisfait. |
+| 6 | à corriger | Le protocole de revue n'est pas satisfait : aucun dossier sous `docs/reviews/`. | Corrigé en deux temps : ce dossier a d'abord consigné la passe 1 et les textes retenus, puis les passes 2 à 4. Ce qui lui manque encore au regard du protocole est dit plus haut et dans « Ce que ce dossier ne couvre pas ». |
 | 7 | mineur | La formule « Sans frais chez vous » face à ADR-0033 et à I-29. | Corrigé : la formule est gardée ; ADR-0066 D3 écrit que la condition l'accompagne toujours et que « Sans frais » ne s'emploie jamais seul, comme lecture de l'auteur à confirmer. |
 | 8 | mineur | ADR-0067 affirme que le nombre de produits « n'est écrit dans aucun document » ; ADR-0064 l'écrit. | Corrigé : la phrase est retirée ; ADR-0067 dit qu'il n'écrit pas ce nombre, et nomme les endroits où ADR-0064 l'écrit. |
 | 9 | mineur | ADR-0064 dit « P01 à P41 » à un endroit et « quarante » ou « 40 produits » à quatre autres. | Corrigé par clause de lecture : ADR-0067, « Lecture d'ADR-0064 », traite les cinq endroits un par un (un modifié en place, trois lus autrement, un laissé comme état daté). |
@@ -66,13 +66,21 @@ Relecteur indépendant à contexte neuf, sans continuité avec la passe 2. Il a 
 | --- | --- | --- | --- |
 | C1 | à corriger | D109 écrivait encore sans marqueur que les mêmes fonctions valent « sur l'instance qu'on héberge soi-même et sur l'offre hébergée », qu'ADR-0066 range sous lecture de l'auteur. | Corrigé : D109 cite « Mêmes fonctions partout » et marque ce que « partout » couvre comme lecture de l'auteur. |
 | C2 | à corriger | Trois phrases de ce dossier étaient fausses : il disait ne pas couvrir la passe 2, disait les corrections non relues, et attribuait la passe 3 au relecteur de la passe 2. | Corrigé : les trois phrases sont réécrites. |
-| N1 | mineur | Les deux options écartées de la première question sont citées sans dire par quel canal elles sont arrivées. | Corrigé : le canal est dit sous le tableau des textes retenus. |
+| N1 | mineur | Les deux options écartées de la première question sont citées sans dire par quel canal elles sont arrivées. | Corrigé : le canal est dit au-dessus du tableau des textes retenus. |
 | N2 | mineur | D109 disait « l'option écartée » au singulier. | Corrigé. |
 | N3 | mineur | Une virgule fautive dans la ligne « Invariants » d'ADR-0066. | Corrigé. |
 
 ## Passe 4
 
-Relecteur indépendant à contexte neuf, sur le seul diff postérieur à la passe 3. Son verdict est dans le tableau des passes ; c'est le verdict de ce dossier.
+Relecteur indépendant à contexte neuf, sur le seul diff entre `a60cac27e92cb87fc2ecb3d43018d9c59db40e9b` et `7592bfc7330423e7d620b9559c7943e1896a17e8`. Verdict : `approve-with-minor-reservations` ; c'est le verdict de ce dossier. C1, C2, N1, N2 et N3 sont relus corrigés. Commandes rejouées, en code 0 sous Bun 1.4.4 : `bun install --frozen-lockfile`, `bun run check:doctrine`, `bun run check:produits`.
+
+| N° | Gravité | Constat | Suite donnée après la passe |
+| --- | --- | --- | --- |
+| R1 | mineur | Une phrase de la ligne 6 du tableau de la passe 1 disait encore « la passe 2 reste à faire ». | Corrigé. |
+| R2 | mineur | D109 écrivait sans marqueur « liste non fermée » et « pour un lecteur de flux », et paraphrasait « On paie l'hébergement géré ». ADR-0066 D1 écrit la même glose hors de son bloc de lecture de l'auteur. | Corrigé dans D109, qui cite le texte retenu et marque la glose. Non corrigé dans ADR-0066 D1 : réserve ouverte. |
+| R3 | mineur | Ce dossier disait le canal des options écartées « sous le tableau » ; il est au-dessus. | Corrigé. |
+
+Le commit qui porte ces trois corrections et le verdict de la passe 4 n'a été relu par aucune passe.
 
 ## Textes retenus par le propriétaire le 2026-11-15
 
