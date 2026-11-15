@@ -1,0 +1,36 @@
+schema_version: libre-ai.produit.v1
+id: P40
+nom_public: null
+nom_provisoire: "Fenêtres"
+intitule: "agencement des fenêtres (Square Control)"
+fonction: "Agencement des fenêtres"
+categorie: poste-de-travail
+promesse: "Placer la fenêtre active sur une région de l'écran par un raccourci clavier, avec un outil dont on peut vérifier ce qu'il a le droit de faire."
+pour_qui: "Les personnes qui disposent des fenêtres d'applications sur un Mac toute la journée"
+a_la_place_de: "votre utilitaire de rangement de fenêtres à code fermé ou aux permissions étendues"
+capacites:
+  - "Placement au clavier de la fenêtre active sur des régions de l'écran, avec annulation."
+  - "Décisions d'agencement dans un cœur Rust sans dépendance, appliquées par une coquille Swift via l'Accessibilité."
+  - "Liste fermée de symboles, aucun schéma d'URL et aucun chemin machine dans le binaire de release."
+  - "macOS 26 et 27, arm64."
+ne_fait_pas:
+  - "Pas de service réseau, de compte, de télémétrie ni de modèle."
+  - "Pas de pavage automatique."
+  - "Pas de distribution par le Mac App Store."
+  - "Pas de coquilles Windows et Linux avant que le produit macOS soit utilisable."
+  - "Pas de compte d'organisation ni d'extension navigateur (ADR-0042 §9)."
+  - "Pas de permission étendue de surveillance des saisies quand l'Accessibilité suffit."
+depend_de: []
+realisation: "projet autonome"
+depot: libre-ai/square-control
+etiquettes:
+  - "Raccourcis clavier"
+  - "Plusieurs écrans"
+  - "Placement annulable"
+a_relire:
+  - promesse
+  - a_la_place_de
+  - capacites
+  - ne_fait_pas
+  - pour_qui
+  - etiquettes

@@ -1,0 +1,30 @@
+schema_version: libre-ai.produit.v1
+id: P05
+nom_public: null
+nom_provisoire: "Wiki"
+intitule: "wiki"
+fonction: "Wiki d'équipe"
+categorie: connaissance
+promesse: "Rendre une connaissance durable, attribuable et maintenable : procédures, glossaires, décisions et documentation."
+pour_qui: "Équipes et organisations"
+a_la_place_de: "votre wiki d'équipe hébergé par abonnement"
+capacites:
+  - "Créer un espace, organiser pages et navigation, rédiger avec modèles, commenter, proposer une modification, comparer versions et publier dans un périmètre choisi."
+  - "Définir responsable, statut documentaire, sources et conditions de réexamen."
+  - "Détecter liens cassés, pages orphelines et incohérences."
+  - "L'IA recherche dans les pages autorisées, suggère une mise à jour à partir d'une source et montre exactement les passages modifiés."
+  - "Export complet avec hiérarchie, pièces et relations ; séparation entre documentation interne et publication publique."
+ne_fait_pas:
+  - "Ne qualifie pas automatiquement une page d'obsolète sur son seul âge."
+  - "Un brouillon généré ne devient pas une procédure approuvée."
+  - "Une réponse IA ne dépasse pas le périmètre de lecture du demandeur, y compris lorsque l'index a été alimenté par un administrateur."
+depend_de: []
+realisation: "intégration"
+depot: libre-ai/personal-knowledge-workspace
+etiquettes:
+  - "Pages liées"
+  - "Historique des versions"
+  - "Qui a écrit quoi"
+a_relire:
+  - a_la_place_de
+  - ne_fait_pas

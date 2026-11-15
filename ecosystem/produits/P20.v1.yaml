@@ -1,0 +1,40 @@
+schema_version: libre-ai.produit.v1
+id: P20
+nom_public: null
+nom_provisoire: "Relations"
+intitule: "contacts et suivi"
+fonction: "Contacts et suivi relationnel"
+categorie: collaboration
+promesse: "Retrouver une personne, comprendre le contexte des échanges que l'utilisateur a choisi de conserver et préparer un suivi."
+pour_qui: "Toute personne qui tient un carnet de contacts et suit ses échanges"
+a_la_place_de: "votre carnet d'adresses et votre outil de suivi de contacts"
+capacites:
+  - "Fiches, moyens de contact et groupes."
+  - "Liens explicités entre personnes et organisations."
+  - "Historique choisi, notes privées, rappels et recherche."
+  - "Fusion assistée des doublons avec provenance des champs et retour arrière."
+  - "Synchronisation vCard ou autres interfaces qualifiées."
+  - "Résumé d'un historique et proposition de relance sous forme de brouillon, par IA."
+ne_fait_pas:
+  - "N'est ni un réseau social, ni une application de rencontres, ni un système de notation des personnes."
+  - "Le sens du besoin (contacts et suivi des échanges) reste à confirmer."
+  - "Ne lie que les comptes et échanges autorisés."
+  - "N'infère pas de caractéristiques sensibles, ne fabrique pas de proximité et n'attribue pas de réputation."
+  - "Une suggestion de suivi ne doit déclencher aucun message."
+  - "La suppression d'un contact n'efface pas silencieusement une archive possédée ailleurs ; son effet sur les liens, index et notes est documenté."
+depend_de:
+  - P19
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Carnet de contacts"
+  - "Historique choisi"
+  - "Prochaine relance"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - promesse
+  - capacites
+  - ne_fait_pas
+  - depend_de
+  - etiquettes

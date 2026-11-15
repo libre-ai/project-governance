@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P35
+nom_public: null
+nom_provisoire: "Automates"
+intitule: "automatisations"
+fonction: "Automatisations entre applications"
+categorie: outils-acces
+promesse: "Répéter un enchaînement explicite de manière fiable et compréhensible."
+pour_qui: "Équipes qui administrent des enchaînements entre applications"
+a_la_place_de: "votre service d'automatisation entre applications par abonnement"
+capacites:
+  - "Choisir un déclencheur, construire les étapes, tester sur données synthétiques, activer et surveiller les exécutions."
+  - "Déclencheurs manuels, événementiels et récurrents ; conditions ; transformations ; appels métier ; validations ; exécutions différées ; désactivation."
+  - "Versionner les scénarios, définir identités de service et scopes, distinguer essai et réel."
+  - "Idempotence, dédoublonnage, temporisation, reprise et compensation lorsque l'action se prête à un retour arrière."
+  - "Proposer un scénario depuis une intention puis exposer sa structure."
+ne_fait_pas:
+  - "Un texte libre ne peut pas masquer une exfiltration ou une publication."
+  - "Les étapes génératives ne sont pas des décisions déterministes déguisées."
+  - "N'intègre jamais les secrets au scénario : ils sont référencés depuis un coffre adapté."
+  - "Ne promet pas une exécution exactement une fois au travers de services qui ne l'offrent pas."
+  - "Une automatisation ne notifie pas quand l'état surveillé est inchangé, sauf demande contraire."
+depend_de:
+  - P37
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Déclencheur et étapes"
+  - "Testé avant activation"
+  - "Journal d'exécution"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - ne_fait_pas
+  - depend_de

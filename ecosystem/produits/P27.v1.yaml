@@ -1,0 +1,32 @@
+schema_version: libre-ai.produit.v1
+id: P27
+nom_public: null
+nom_provisoire: "Ressources"
+intitule: "ressources créatives"
+fonction: "Médiathèque créative"
+categorie: creation-publication
+promesse: "Retrouver le bon média et savoir comment il peut être réutilisé."
+pour_qui: "Créateurs"
+a_la_place_de: "votre banque de médias et de ressources graphiques en ligne par abonnement"
+capacites:
+  - "Images, sons, vidéos, modèles, polices si autorisées, vignettes et métadonnées."
+  - "Recherche, tags, collections et détection de doublons."
+  - "Conservation des originaux, des dérivés et des relations de version."
+  - "Enregistrement de l'auteur, de la source, de la licence, des conditions d'usage connues et des preuves associées."
+  - "Suggestion de descriptions, mots-clés et regroupements, distinguée des métadonnées attestées."
+  - "Suivi des usages dans les projets ; la suppression affiche les usages affectés."
+ne_fait_pas:
+  - "Une licence inconnue reste inconnue ; un modèle ne la déduit pas de l'apparence."
+  - "N'expose pas les médias privés quand il suggère des descriptions."
+  - "L'export n'élargit pas les droits ; il inclut les métadonnées et conditions utiles."
+depend_de: []
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Images, sons, vidéos"
+  - "Licence connue ou inconnue"
+  - "Usages suivis"
+a_relire:
+  - a_la_place_de
+  - ne_fait_pas
+  - etiquettes

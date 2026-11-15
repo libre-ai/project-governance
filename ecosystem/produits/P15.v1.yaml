@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P15
+nom_public: null
+nom_provisoire: "Signalement"
+intitule: "projets, tickets et support"
+fonction: "Capture et relais de signalements"
+categorie: collaboration
+promesse: "Un signalement part d'où l'on est (formulaire, courriel, extension) et arrive là où l'équipe travaille, avec un reçu que l'émetteur peut vérifier."
+pour_qui: "Équipes support ; une organisation qui reçoit des signalements de tiers"
+a_la_place_de: "vos signalements recopiés à la main d'un outil à l'autre"
+capacites:
+  - "Capture d'un signalement depuis un formulaire, un courriel ou une extension de navigateur."
+  - "Relais du signalement relu vers le système de tickets de l'équipe, sous une politique d'organisation."
+  - "Reçu que l'émetteur peut vérifier."
+  - "Conversion d'un courriel en signalement par action explicite, pièces et règles de confidentialité préservées."
+ne_fait_pas:
+  - "Ne devient pas un back-office de tickets à la place de l'outil cible."
+  - "N'impose pas une file de messages hébergée."
+  - "Ne lit pas le navigateur de l'utilisateur au-delà de la page signalée."
+depend_de: []
+realisation: "projet autonome"
+depot: libre-ai/signalement
+etiquettes:
+  - "Signalement capturé"
+  - "Relais vers vos outils"
+  - "Reçu vérifiable"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - promesse
+  - capacites
+  - etiquettes
+  - fonction
+  - nom_provisoire
+  - pour_qui

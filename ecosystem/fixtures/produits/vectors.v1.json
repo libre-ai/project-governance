@@ -1,0 +1,556 @@
+{
+  "description": "Schema vectors of libre-ai.produit.v1. Each invalid vector is the first valid one with one change: `set` writes a value at a path, `unset` removes the key at a path. A path names one field of the fiche; an empty path is the fiche itself. `expect` is a fragment of the schema error. Every constraint of the schema has a vector here that becomes valid when the constraint is removed: ecosystem/produits.test.ts removes them one by one and fails on a constraint no vector holds. The rules that need another source (catalogue, inventory, other fiches, the count of etiquettes, the names of a_relire) are not schema rules: they are exercised in the same test file.",
+  "valid": [
+    {
+      "name": "a product with a working name and no carrier",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P01",
+        "nom_public": null,
+        "nom_provisoire": "Carnet",
+        "intitule": "notes et mémoire personnelle",
+        "fonction": "Prise de notes",
+        "categorie": "connaissance",
+        "promesse": "Garder ses notes sur son poste, lisibles sans l'outil.",
+        "pour_qui": "une personne qui prend des notes",
+        "a_la_place_de": "votre application de notes en ligne par abonnement",
+        "capacites": ["Écrire, relier et retrouver des notes."],
+        "ne_fait_pas": ["Publier une note sans action explicite."],
+        "depend_de": [],
+        "realisation": "projet autonome",
+        "depot": null,
+        "etiquettes": ["Fichiers lisibles", "Liens entre notes", "Hors ligne"],
+        "a_relire": ["a_la_place_de"]
+      }
+    },
+    {
+      "name": "a product with a public name, a carrier and dependencies",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P02",
+        "nom_public": "Veille",
+        "nom_provisoire": null,
+        "intitule": "veille documentaire",
+        "fonction": "Lecteur de flux",
+        "categorie": "connaissance",
+        "promesse": "Suivre des sources et lire hors ligne ce qu'on a conservé.",
+        "pour_qui": "une personne ou une organisation qui suit des sources",
+        "a_la_place_de": "votre lecteur de flux en ligne par abonnement",
+        "capacites": ["Importer des abonnements.", "Classer les sources par sujet."],
+        "ne_fait_pas": ["Stocker une donnée de paiement."],
+        "depend_de": ["P01", "P03"],
+        "realisation": "intégration",
+        "depot": "libre-ai/project-governance",
+        "etiquettes": ["Flux et sites", "Tri par question", "Pourquoi le lire"],
+        "a_relire": []
+      }
+    },
+    {
+      "name": "a_relire with names at the two bounds of the form, two letters and forty",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P03",
+        "nom_public": null,
+        "nom_provisoire": "Corpus",
+        "intitule": "entretien du corpus bibliographique",
+        "fonction": "Gestion de références",
+        "categorie": "connaissance",
+        "promesse": "Tenir une bibliographie propre, sur son poste.",
+        "pour_qui": "une personne qui cite ses sources",
+        "a_la_place_de": "votre gestionnaire de références en ligne",
+        "capacites": ["Importer et dédoublonner des références."],
+        "ne_fait_pas": ["Ne publie pas la bibliographie sans action explicite."],
+        "depend_de": [],
+        "realisation": "projet autonome",
+        "depot": null,
+        "etiquettes": ["Références", "Dédoublonnage", "Hors ligne"],
+        "a_relire": ["ab", "abcdefghijabcdefghijabcdefghijabcdefghij"]
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "name": "a fiche that is a list",
+      "because": "a fiche is a mapping of fields: a list or a text has none, and no other rule would look at it",
+      "set": { "path": [], "value": [] },
+      "expect": "/: must be object"
+    },
+    {
+      "name": "a field the schema does not declare",
+      "because": "the schema is closed: a state, a charter or a source list does not enter a fiche",
+      "set": { "path": ["statut"], "value": "disponible" },
+      "expect": "« statut » (additionalProperties)"
+    },
+    {
+      "name": "a draft field carried over",
+      "because": "sources, inferences and contradictions stay in the drafts",
+      "set": { "path": ["inferences"], "value": ["a_la_place_de"] },
+      "expect": "« inferences » (additionalProperties)"
+    },
+    {
+      "name": "the draft schema version",
+      "because": "a draft is not a published fiche",
+      "set": { "path": ["schema_version"], "value": "libre-ai.produit.v1-brouillon" },
+      "expect": "/schema_version: must be equal to constant"
+    },
+    {
+      "name": "an identifier of another form",
+      "because": "a product is Pnn, as the catalogue writes it",
+      "set": { "path": ["id"], "value": "PRD-01" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "an identifier with a third digit",
+      "because": "the form ends after two digits: without the anchor at the end, P011 was read as P01",
+      "set": { "path": ["id"], "value": "P011" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "an identifier with a letter before it",
+      "because": "the form starts at the P: without the anchor at the start, XP01 was read as P01",
+      "set": { "path": ["id"], "value": "XP01" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "a dependency with a third digit",
+      "because": "a dependency is held to the same form as an identifier, at both ends",
+      "set": { "path": ["depend_de"], "value": ["P021"] },
+      "expect": "/depend_de/0: must match pattern"
+    },
+    {
+      "name": "an identifier that is not a text",
+      "because": "a number is not held to the form Pnn, so it must be refused for what it is",
+      "set": { "path": ["id"], "value": 1 },
+      "expect": "/id: must be string"
+    },
+    {
+      "name": "a missing schema_version",
+      "because": "every field is required: an absence is written null or as an empty list, never left out",
+      "unset": { "path": ["schema_version"] },
+      "expect": "must have required property 'schema_version'"
+    },
+    {
+      "name": "a missing id",
+      "because": "every field is required",
+      "unset": { "path": ["id"] },
+      "expect": "must have required property 'id'"
+    },
+    {
+      "name": "a missing nom_public",
+      "because": "« no public name yet » is written null",
+      "unset": { "path": ["nom_public"] },
+      "expect": "must have required property 'nom_public'"
+    },
+    {
+      "name": "a missing nom_provisoire",
+      "because": "« no working name any more » is written null",
+      "unset": { "path": ["nom_provisoire"] },
+      "expect": "must have required property 'nom_provisoire'"
+    },
+    {
+      "name": "a missing intitule",
+      "because": "every field is required",
+      "unset": { "path": ["intitule"] },
+      "expect": "must have required property 'intitule'"
+    },
+    {
+      "name": "a missing fonction",
+      "because": "every field is required",
+      "unset": { "path": ["fonction"] },
+      "expect": "must have required property 'fonction'"
+    },
+    {
+      "name": "a missing categorie",
+      "because": "every field is required",
+      "unset": { "path": ["categorie"] },
+      "expect": "must have required property 'categorie'"
+    },
+    {
+      "name": "a missing promesse",
+      "because": "every field is required",
+      "unset": { "path": ["promesse"] },
+      "expect": "must have required property 'promesse'"
+    },
+    {
+      "name": "a missing pour_qui",
+      "because": "every field is required",
+      "unset": { "path": ["pour_qui"] },
+      "expect": "must have required property 'pour_qui'"
+    },
+    {
+      "name": "a missing a_la_place_de",
+      "because": "every field is required",
+      "unset": { "path": ["a_la_place_de"] },
+      "expect": "must have required property 'a_la_place_de'"
+    },
+    {
+      "name": "a missing capacites",
+      "because": "every field is required",
+      "unset": { "path": ["capacites"] },
+      "expect": "must have required property 'capacites'"
+    },
+    {
+      "name": "a missing ne_fait_pas",
+      "because": "every field is required",
+      "unset": { "path": ["ne_fait_pas"] },
+      "expect": "must have required property 'ne_fait_pas'"
+    },
+    {
+      "name": "a missing depend_de",
+      "because": "« depends on nothing » is written as an empty list",
+      "unset": { "path": ["depend_de"] },
+      "expect": "must have required property 'depend_de'"
+    },
+    {
+      "name": "a missing realisation",
+      "because": "every field is required",
+      "unset": { "path": ["realisation"] },
+      "expect": "must have required property 'realisation'"
+    },
+    {
+      "name": "a missing carrier field",
+      "because": "« no carrier » is written null, so that it is a statement and not an omission",
+      "unset": { "path": ["depot"] },
+      "expect": "must have required property 'depot'"
+    },
+    {
+      "name": "a missing etiquettes",
+      "because": "every field is required",
+      "unset": { "path": ["etiquettes"] },
+      "expect": "must have required property 'etiquettes'"
+    },
+    {
+      "name": "a missing field",
+      "because": "« nothing left to reread » is written as an empty list",
+      "unset": { "path": ["a_relire"] },
+      "expect": "must have required property 'a_relire'"
+    },
+    {
+      "name": "a category outside the eight domains",
+      "because": "the categories are the domains of ADR-0042 §1",
+      "set": { "path": ["categorie"], "value": "divers" },
+      "expect": "/categorie: must be equal to one of the allowed values"
+    },
+    {
+      "name": "a realisation outside the enumeration",
+      "because": "the forms of realisation are a closed list",
+      "set": { "path": ["realisation"], "value": "prototype" },
+      "expect": "/realisation: must be equal to one of the allowed values"
+    },
+    {
+      "name": "a carrier outside the organisation",
+      "because": "a carrier is a repository of the organisation, written owner/name",
+      "set": { "path": ["depot"], "value": "autre/depot" },
+      "expect": "/depot: must match pattern"
+    },
+    {
+      "name": "an empty carrier",
+      "because": "no carrier is null, not an empty string",
+      "set": { "path": ["depot"], "value": "" },
+      "expect": "/depot: must match pattern"
+    },
+    {
+      "name": "a carrier that is not a text",
+      "because": "a number is not held to the form owner/name, so it must be refused for what it is",
+      "set": { "path": ["depot"], "value": 12 },
+      "expect": "/depot: must be string"
+    },
+    {
+      "name": "a carrier longer than a repository name can be",
+      "because": "a value printed by the gate stays within one line of a terminal",
+      "set": {
+        "path": ["depot"],
+        "value": "libre-ai/01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901"
+      },
+      "expect": "/depot: must NOT have more than 100 characters"
+    },
+    {
+      "name": "a dependency that is not a product identifier",
+      "because": "depend_de links products, not bricks or repositories",
+      "set": { "path": ["depend_de"], "value": ["PRD-02"] },
+      "expect": "/depend_de/0: must match pattern"
+    },
+    {
+      "name": "a dependency written twice",
+      "because": "a link is stated once",
+      "set": { "path": ["depend_de"], "value": ["P02", "P02"] },
+      "expect": "/depend_de: must NOT have duplicate items"
+    },
+    {
+      "name": "depend_de that is a text",
+      "because": "a single dependency is still written as a list",
+      "set": { "path": ["depend_de"], "value": "P02" },
+      "expect": "/depend_de: must be array"
+    },
+    {
+      "name": "no capacity",
+      "because": "a fiche says what the product does",
+      "set": { "path": ["capacites"], "value": [] },
+      "expect": "/capacites: must NOT have fewer than 1 items"
+    },
+    {
+      "name": "capacites that is a text",
+      "because": "a single capacity is still written as a list",
+      "set": { "path": ["capacites"], "value": "Écrire, relier et retrouver des notes." },
+      "expect": "/capacites: must be array"
+    },
+    {
+      "name": "a capacity written twice",
+      "because": "a capacity is stated once",
+      "set": {
+        "path": ["capacites"],
+        "value": [
+          "Écrire, relier et retrouver des notes.",
+          "Écrire, relier et retrouver des notes."
+        ]
+      },
+      "expect": "/capacites: must NOT have duplicate items"
+    },
+    {
+      "name": "a capacity that is a word",
+      "because": "a capacity is a sentence, not a keyword",
+      "set": { "path": ["capacites"], "value": ["Écrire."] },
+      "expect": "/capacites/0: must NOT have fewer than 12 characters"
+    },
+    {
+      "name": "no limit",
+      "because": "a fiche says what the product does not do",
+      "set": { "path": ["ne_fait_pas"], "value": [] },
+      "expect": "/ne_fait_pas: must NOT have fewer than 1 items"
+    },
+    {
+      "name": "ne_fait_pas that is a text",
+      "because": "a single limit is still written as a list",
+      "set": { "path": ["ne_fait_pas"], "value": "Publier une note sans action explicite." },
+      "expect": "/ne_fait_pas: must be array"
+    },
+    {
+      "name": "a limit written twice",
+      "because": "a limit is stated once",
+      "set": {
+        "path": ["ne_fait_pas"],
+        "value": [
+          "Publier une note sans action explicite.",
+          "Publier une note sans action explicite."
+        ]
+      },
+      "expect": "/ne_fait_pas: must NOT have duplicate items"
+    },
+    {
+      "name": "a limit that is a word",
+      "because": "a limit is a sentence, not a keyword",
+      "set": { "path": ["ne_fait_pas"], "value": ["Publier."] },
+      "expect": "/ne_fait_pas/0: must NOT have fewer than 12 characters"
+    },
+    {
+      "name": "a promise with a line break",
+      "because": "a value printed by the gate must not forge a line of its output",
+      "set": { "path": ["promesse"], "value": "Garder ses notes.\nProduct catalogue verified" },
+      "expect": "/promesse: must match pattern \"^[^"
+    },
+    {
+      "name": "a promise with one escape character in the middle",
+      "because": "one control character is one too many: the former pattern let exactly one through",
+      "set": { "path": ["promesse"], "value": "Garder ses \u001bnotes sur son poste." },
+      "expect": "/promesse: must match pattern \"^[^"
+    },
+    {
+      "name": "a promise that is a number",
+      "because": "a number has no length and no character, so it must be refused for what it is",
+      "set": { "path": ["promesse"], "value": 12 },
+      "expect": "/promesse: must be string"
+    },
+    {
+      "name": "a promise of a few words",
+      "because": "a promise is a sentence",
+      "set": { "path": ["promesse"], "value": "Trop court." },
+      "expect": "/promesse: must NOT have fewer than 12 characters"
+    },
+    {
+      "name": "a promise made of blanks",
+      "because": "blanks alone are not a value",
+      "set": { "path": ["promesse"], "value": "            " },
+      "expect": "/promesse: must match pattern \"[\\p{L}"
+    },
+    {
+      "name": "a_la_place_de longer than a sentence",
+      "because": "one sentence, not a paragraph",
+      "set": {
+        "path": ["a_la_place_de"],
+        "value": "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+      },
+      "expect": "/a_la_place_de: must NOT have more than 400 characters"
+    },
+    {
+      "name": "an intitule that is a number",
+      "because": "the wording of the catalogue is a text",
+      "set": { "path": ["intitule"], "value": 12 },
+      "expect": "/intitule: must be string"
+    },
+    {
+      "name": "an intitule longer than a line",
+      "because": "a short line, not a sentence",
+      "set": {
+        "path": ["intitule"],
+        "value": "012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"
+      },
+      "expect": "/intitule: must NOT have more than 200 characters"
+    },
+    {
+      "name": "an intitule with a next-line character",
+      "because": "U+0085 breaks a line on a terminal, and is outside the C0 range the former pattern excluded",
+      "set": { "path": ["intitule"], "value": "notes et\u0085mémoire personnelle" },
+      "expect": "/intitule: must match pattern \"^[^"
+    },
+    {
+      "name": "an intitule with a line separator",
+      "because": "U+2028 breaks a line for a runner, and is outside the C0 range the former pattern excluded",
+      "set": { "path": ["intitule"], "value": "notes et\u2028mémoire personnelle" },
+      "expect": "/intitule: must match pattern \"^[^"
+    },
+    {
+      "name": "a fonction of two letters",
+      "because": "the kind of tool is said in words",
+      "set": { "path": ["fonction"], "value": "ab" },
+      "expect": "/fonction: must NOT have fewer than 3 characters"
+    },
+    {
+      "name": "a fonction made of blanks and one escape character",
+      "because": "the former pattern took the escape character for the visible one it asked for",
+      "set": { "path": ["fonction"], "value": "   \u001b" },
+      "expect": "/fonction: must match pattern \"^[^"
+    },
+    {
+      "name": "a list where a text is expected",
+      "because": "pour_qui is one line",
+      "set": { "path": ["pour_qui"], "value": ["une personne"] },
+      "expect": "/pour_qui: must be string"
+    },
+    {
+      "name": "pour_qui made of blanks",
+      "because": "blanks alone are not a value",
+      "set": { "path": ["pour_qui"], "value": "     " },
+      "expect": "/pour_qui: must match pattern \"[\\p{L}"
+    },
+    {
+      "name": "a name that is neither a text nor null",
+      "because": "a name is a text, or null",
+      "set": { "path": ["nom_public"], "value": 12 },
+      "expect": "/nom_public: must match exactly one schema in oneOf"
+    },
+    {
+      "name": "a working name that is neither a text nor null",
+      "because": "a working name is a text, or null",
+      "set": { "path": ["nom_provisoire"], "value": 12 },
+      "expect": "/nom_provisoire: must match exactly one schema in oneOf"
+    },
+    {
+      "name": "a name of one letter",
+      "because": "a name is a word",
+      "set": { "path": ["nom_provisoire"], "value": "C" },
+      "expect": "/nom_provisoire: must NOT have fewer than 2 characters"
+    },
+    {
+      "name": "a name longer than a label",
+      "because": "a name fits in a title",
+      "set": { "path": ["nom_provisoire"], "value": "01234567890123456789012345678901234567890" },
+      "expect": "/nom_provisoire: must NOT have more than 40 characters"
+    },
+    {
+      "name": "a name with an escape character",
+      "because": "a name is printed in every line that names the product",
+      "set": { "path": ["nom_provisoire"], "value": "Car\u001bnet" },
+      "expect": "/nom_provisoire: must match pattern \"^[^"
+    },
+    {
+      "name": "a name made of blanks",
+      "because": "blanks alone are not a name",
+      "set": { "path": ["nom_provisoire"], "value": "   " },
+      "expect": "/nom_provisoire: must match pattern \"[\\p{L}"
+    },
+    {
+      "name": "etiquettes that is a text",
+      "because": "the labels are a list",
+      "set": { "path": ["etiquettes"], "value": "Fichiers lisibles" },
+      "expect": "/etiquettes: must be array"
+    },
+    {
+      "name": "an etiquette written twice",
+      "because": "three labels are three different labels",
+      "set": { "path": ["etiquettes"], "value": ["Hors ligne", "Hors ligne", "Fichiers lisibles"] },
+      "expect": "/etiquettes: must NOT have duplicate items"
+    },
+    {
+      "name": "an etiquette that is not a text",
+      "because": "an etiquette is a short label",
+      "set": { "path": ["etiquettes"], "value": ["Une", "Deux", 3] },
+      "expect": "/etiquettes/2: must be string"
+    },
+    {
+      "name": "an etiquette of two letters",
+      "because": "a label is a word",
+      "set": { "path": ["etiquettes"], "value": ["ab", "Liens entre notes", "Hors ligne"] },
+      "expect": "/etiquettes/0: must NOT have fewer than 3 characters"
+    },
+    {
+      "name": "an etiquette longer than a label",
+      "because": "a label fits on a card",
+      "set": {
+        "path": ["etiquettes"],
+        "value": ["01234567890123456789012345678901234567890", "Liens entre notes", "Hors ligne"]
+      },
+      "expect": "/etiquettes/0: must NOT have more than 40 characters"
+    },
+    {
+      "name": "an etiquette with a bell character",
+      "because": "a label is printed like any other value",
+      "set": {
+        "path": ["etiquettes"],
+        "value": ["Hors\u0007ligne", "Liens entre notes", "Fichiers"]
+      },
+      "expect": "/etiquettes/0: must match pattern \"^[^"
+    },
+    {
+      "name": "an etiquette made of blanks",
+      "because": "blanks alone are not a label",
+      "set": { "path": ["etiquettes"], "value": ["    ", "Liens entre notes", "Hors ligne"] },
+      "expect": "/etiquettes/0: must match pattern \"[\\p{L}"
+    },
+    {
+      "name": "a_relire that is a text",
+      "because": "a single field to reread is still written as a list",
+      "set": { "path": ["a_relire"], "value": "promesse" },
+      "expect": "/a_relire: must be array"
+    },
+    {
+      "name": "a field to reread written twice",
+      "because": "the count of fields to reread is printed: a name written twice would count twice",
+      "set": { "path": ["a_relire"], "value": ["promesse", "promesse"] },
+      "expect": "/a_relire: must NOT have duplicate items"
+    },
+    {
+      "name": "a_relire that names a number",
+      "because": "a field name is a text",
+      "set": { "path": ["a_relire"], "value": [12] },
+      "expect": "/a_relire/0: must be string"
+    },
+    {
+      "name": "a_relire that is not a field name",
+      "because": "a_relire lists field names, not sentences",
+      "set": { "path": ["a_relire"], "value": ["la promesse est à relire"] },
+      "expect": "/a_relire/0: must match pattern"
+    },
+    {
+      "name": "a_relire that names a field of one letter",
+      "because": "a field name counts two letters at least: the lower bound of the form",
+      "set": { "path": ["a_relire"], "value": ["a"] },
+      "expect": "/a_relire/0: must match pattern"
+    },
+    {
+      "name": "a_relire that names a field of forty-one letters",
+      "because": "a field name counts forty letters at most: the upper bound of the form",
+      "set": { "path": ["a_relire"], "value": ["abcdefghijabcdefghijabcdefghijabcdefghija"] },
+      "expect": "/a_relire/0: must match pattern"
+    }
+  ]
+}

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:libre-ai:schema:produit:v1",
+  "title": "libre-ai.produit.v1 — one product of the catalogue",
+  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names content fields of this schema. Every constraint written here has a vector in ecosystem/fixtures/produits/vectors.v1.json that becomes valid when the constraint is removed: a test holds the two together.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "id",
+    "nom_public",
+    "nom_provisoire",
+    "intitule",
+    "fonction",
+    "categorie",
+    "promesse",
+    "pour_qui",
+    "a_la_place_de",
+    "capacites",
+    "ne_fait_pas",
+    "depend_de",
+    "realisation",
+    "depot",
+    "etiquettes",
+    "a_relire"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "libre-ai.produit.v1"
+    },
+    "id": {
+      "$ref": "#/$defs/identifiant"
+    },
+    "nom_public": {
+      "description": "The public name the owner decided for the product, or null while none is decided.",
+      "oneOf": [{ "$ref": "#/$defs/nom" }, { "type": "null" }]
+    },
+    "nom_provisoire": {
+      "description": "A working name, or null once a public name is decided.",
+      "oneOf": [{ "$ref": "#/$defs/nom" }, { "type": "null" }]
+    },
+    "intitule": {
+      "description": "The product as the catalogue of ADR-0042 §1 words it.",
+      "$ref": "#/$defs/ligne"
+    },
+    "fonction": {
+      "description": "What kind of tool it is, in a few words.",
+      "$ref": "#/$defs/ligne"
+    },
+    "categorie": {
+      "description": "The domain of the catalogue, as an identifier. The checker holds it to the domain ADR-0042 §1 gives the product.",
+      "enum": [
+        "connaissance",
+        "bureautique-donnees",
+        "collaboration",
+        "creation-publication",
+        "medias-jeu",
+        "outils-acces",
+        "pedagogie",
+        "poste-de-travail"
+      ]
+    },
+    "promesse": {
+      "description": "What the product is meant to bring, in one sentence. An intention, not a statement that it exists.",
+      "$ref": "#/$defs/phrase"
+    },
+    "pour_qui": {
+      "$ref": "#/$defs/ligne"
+    },
+    "a_la_place_de": {
+      "description": "The kind of tool the product is meant to replace, described without naming a brand or a service.",
+      "$ref": "#/$defs/phrase"
+    },
+    "capacites": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/phrase" }
+    },
+    "ne_fait_pas": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/phrase" }
+    },
+    "depend_de": {
+      "description": "Other products this one relies on. Links between products: a cycle is admitted.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/identifiant" }
+    },
+    "realisation": {
+      "description": "The form the realisation takes.",
+      "enum": [
+        "projet autonome",
+        "intégration",
+        "contribution à un projet existant",
+        "bibliothèque",
+        "service"
+      ]
+    },
+    "depot": {
+      "description": "The carrier repository a decision designates, or null when no decision designates one for this product, even if the inventory holds a repository of the same domain.",
+      "oneOf": [
+        { "type": "string", "pattern": "^libre-ai/[A-Za-z0-9._-]+$", "maxLength": 100 },
+        { "type": "null" }
+      ]
+    },
+    "etiquettes": {
+      "description": "Short labels, each one without a control character and with one visible character (see ligne). The checker counts them: exactly three.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 40,
+        "allOf": [
+          { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+        ],
+        "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$"
+      }
+    },
+    "a_relire": {
+      "description": "Names of the fields of this fiche that are proposals of an agent, not yet reread by the owner. The checker holds each name to the properties of this schema, and refuses schema_version, id and a_relire, which carry no content to reread.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z_]{2,40}$" }
+    }
+  },
+  "$defs": {
+    "identifiant": {
+      "type": "string",
+      "pattern": "^P[0-9]{2}$"
+    },
+    "nom": {
+      "type": "string",
+      "minLength": 2,
+      "maxLength": 40,
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$"
+    },
+    "ligne": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 200,
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
+      "description": "A short line. `pattern` admits no control character anywhere in the value (C0, DEL, C1, U+2028 and U+2029: the class the gates escape when they print), so that a value cannot forge a line of an output. `allOf` asks for one letter, digit, punctuation mark or symbol: blanks alone are not a value. Five characters that Unicode classes as a letter or a symbol and that print nothing do not count as that one character: the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0 (letters) and the blank Braille pattern U+2800 (symbol); the list is short and closed, and any other invisible character of those classes is not caught. The same two constraints are written on nom, phrase and the items of etiquettes."
+    },
+    "phrase": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 400,
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
+      "description": "One line of prose: no control character, and one visible character (see ligne)."
+    }
+  }
+}

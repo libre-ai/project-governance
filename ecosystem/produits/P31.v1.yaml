@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P31
+nom_public: null
+nom_provisoire: "Médiathèque"
+intitule: "médiathèque"
+fonction: "Médiathèque personnelle"
+categorie: medias-jeu
+promesse: "Accéder à ses propres contenus audio et vidéo depuis les appareils choisis."
+pour_qui: "Toute personne qui possède ses propres fichiers audio et vidéo"
+a_la_place_de: "votre logiciel de médiathèque domestique"
+capacites:
+  - "Films, séries, musique, podcasts ou enregistrements personnels selon le périmètre validé ; collections, pistes, sous-titres, playlists et profils."
+  - "Déclarer des dossiers, indexer, corriger les métadonnées, lire et synchroniser la progression."
+  - "Détecter formats et capacités du client, lire directement quand possible et transcoder quand nécessaire."
+  - "Gestion des ressources de transcodage, téléchargement local, sous-titres externes et suivi des fichiers déplacés."
+  - "Recherche dans les métadonnées et transcriptions autorisées ; suggestions de classement."
+ne_fait_pas:
+  - "Un nom de fichier ambigu ne devient pas une identification certaine."
+  - "Le fonctionnement de base ne dépend pas des services de reconnaissance et reste localisable."
+  - "Ne couvre pas les abonnements externes, qui relèvent de P29 : administre les fichiers personnels."
+depend_de:
+  - P11
+  - P36
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Musique et vidéos"
+  - "Vos appareils"
+  - "Métadonnées corrigées"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - depend_de
+  - ne_fait_pas

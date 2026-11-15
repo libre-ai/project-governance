@@ -1,0 +1,33 @@
+schema_version: libre-ai.produit.v1
+id: P04
+nom_public: null
+nom_provisoire: "Notes"
+intitule: "notes et mémoire personnelle"
+fonction: "Prise de notes"
+categorie: connaissance
+promesse: "Capturer et retrouver ses idées avec leur contexte, sur une base éditable et exportable."
+pour_qui: "Toute personne qui prend des notes, de l'usage personnel à la préparation d'une recherche"
+a_la_place_de: "votre application de notes en ligne par abonnement"
+capacites:
+  - "Capture rapide depuis texte, lien, sélection de document ou dictée ; édition structurée."
+  - "Tags, liens entre notes, pièces jointes, journal et recherche ; distinction entre notes privées et notes partagées."
+  - "Sauvegarde continue, historique, export en format ouvert, sauvegarde locale et synchronisation avec résolution explicite des conflits."
+  - "La dictée produit un texte modifiable et conserve l'enregistrement uniquement selon le choix de l'utilisateur."
+  - "L'IA propose titres, regroupements, résumés et tâches dérivées, avec comparaison avant application."
+  - "Transformer volontairement une note en page P05, document P08 ou tâche P16."
+ne_fait_pas:
+  - "Le texte original et son historique ne sont pas remplacés par une synthèse."
+  - "Une inférence sur la personne n'est pas un fait ; les souvenirs persistants d'un assistant sont visibles, corrigeables et supprimables."
+  - "Les liens vers notes privées ne révèlent ni titre ni extrait à un lecteur non autorisé."
+depend_de: []
+realisation: "projet autonome"
+depot: libre-ai/personal-knowledge-workspace
+etiquettes:
+  - "Markdown"
+  - "Liens entre notes"
+  - "Export en format ouvert"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - pour_qui
+  - etiquettes

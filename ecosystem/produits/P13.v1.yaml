@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P13
+nom_public: null
+nom_provisoire: "Formulaires"
+intitule: "formulaires et bases"
+fonction: "Formulaires et bases de données"
+categorie: bureautique-donnees
+promesse: "Collecter des informations et les exploiter dans des tables cohérentes."
+pour_qui: "Personnes et organisations"
+a_la_place_de: "votre outil de formulaires en ligne et votre base de données en tableau par abonnement"
+capacites:
+  - "Champs typés, contraintes, choix, pièces jointes et conditions d'affichage."
+  - "Relations entre tables et vues filtrées."
+  - "Import/export et historique des changements."
+  - "Brouillons, versions de formulaire et gestion des réponses incomplètes."
+  - "Validations côté serveur et protection contre les abus."
+  - "Propositions de schéma, de classifications et de contrôles d'anomalies par IA."
+ne_fait_pas:
+  - "Une modification du schéma ne doit pas détruire les réponses anciennes."
+  - "N'invente pas une réponse manquante : valeur fournie, valeur calculée et suggestion restent distinctes."
+  - "Pas d'écriture automatique sans règles ni périmètre précis."
+  - "Un formulaire public ne doit pas révéler les autres enregistrements ou choix confidentiels de sa base."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Formulaire public"
+  - "Règles de validation"
+  - "Tableau des réponses"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - depend_de
+  - ne_fait_pas

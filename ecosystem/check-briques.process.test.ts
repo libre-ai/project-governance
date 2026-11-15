@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { FICHE_SECTIONS, LAYERS, SCHEMA_VERSION } from "./briques";
+import { gitEnvironment } from "./check-briques";
 
 /**
  * The brick-map gate run as a process, against a real repository.
@@ -49,13 +50,18 @@ interface Run {
   readonly output: string;
 }
 
-function run(argv: readonly string[], cwd: string): Run {
+function run(
+  argv: readonly string[],
+  cwd: string,
+  /** Variables added to the declared environment, for the probe that redirects git. */
+  env: Readonly<Record<string, string>> = {},
+): Run {
   const result = Bun.spawnSync([...argv], {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    env: ENVIRONMENT,
+    env: { ...ENVIRONMENT, ...env },
   });
   const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
   return {
@@ -429,5 +435,63 @@ describe("check-briques as a process", () => {
     const outcome = judge(root);
     expect(outcome.output).toContain(expected);
     expect(outcome.exitCode).toBe(1);
+  });
+
+  // A hook, or a command run from a linked worktree, exports these variables.
+  // The gate passed them on to git: it listed the index of that other
+  // repository, and judged a tree nobody asked about.
+  test("the repository judged is the one the gate is run in, whatever GIT_DIR and GIT_INDEX_FILE say", () => {
+    const root = freshTree("redirected");
+    const other = join(workspace, "redirected-elsewhere");
+    mkdirSync(other);
+    git(other, "init", "--quiet");
+    const outcome = run([process.execPath, GATE], root, {
+      GIT_DIR: join(other, ".git"),
+      GIT_INDEX_FILE: join(other, ".git", "index"),
+    });
+    expect(outcome.output).toContain("Brick map verified:");
+    expect(outcome.exitCode).toBe(0);
+  });
+});
+
+/**
+ * The environment every git child of a gate runs in.
+ *
+ * WHY ONE TEST PER VARIABLE, AND WHY THE NAMES ARE WRITTEN HERE. Only
+ * `GIT_DIR` and `GIT_INDEX_FILE` were held, by the process probes: any of the
+ * four others could be taken out of the list with every suite green. The
+ * names are the ones git documents as moving the repository, the index, the
+ * work tree, the common directory, the object store or the prefix; a test that
+ * walked the list of the module would lose the case with the variable.
+ */
+describe("gitEnvironment", () => {
+  function withVariable(name: string, value: string, body: () => void): void {
+    const before = process.env[name];
+    process.env[name] = value;
+    try {
+      body();
+    } finally {
+      if (before === undefined) delete process.env[name];
+      else process.env[name] = before;
+    }
+  }
+
+  test.each([
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+  ])("%s is not passed on to a git child", (name) => {
+    withVariable(name, "/elsewhere", () => {
+      expect(Object.keys(gitEnvironment())).not.toContain(name);
+    });
+  });
+
+  test("control: a variable that does not redirect git is passed on, with its value", () => {
+    withVariable("GATE_PROBE_VARIABLE", "kept", () => {
+      expect(gitEnvironment().GATE_PROBE_VARIABLE).toBe("kept");
+    });
   });
 });

@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P37
+nom_public: null
+nom_provisoire: "Coffre"
+intitule: "coffre de secrets"
+fonction: "Coffre de mots de passe"
+categorie: outils-acces
+promesse: "Conserver et utiliser des secrets avec un accès, une récupération et un partage maîtrisés."
+pour_qui: "Personnes et organisations"
+a_la_place_de: "votre gestionnaire de mots de passe en ligne par abonnement"
+capacites:
+  - "Créer ou relier un coffre, ajouter des entrées, utiliser un secret, partager un périmètre et révoquer."
+  - "Entrées, dossiers, recherche locale autorisée, générateur, verrouillage, sessions, export chiffré et récupération documentée."
+  - "Séparer secrets humains et identités de service lorsque leurs cycles de vie diffèrent."
+  - "Les outils obtiennent un secret via une référence et une permission d'exécution ; les sorties doivent empêcher sa remontée dans les traces."
+ne_fait_pas:
+  - "Le modèle ne reçoit pas les valeurs de secrets pour les résumer, classer ou remplir."
+  - "Les secrets n'entrent pas dans la recherche globale."
+  - "Pas de remplissage navigateur, de partage ni de gestion de passkeys sans périmètre et qualification spécifiques."
+  - "N'est pas présenté comme sûr sur la seule base de tests fonctionnels."
+  - "Ne réécrit pas de coffre : s'appuie sur un coffre éprouvé."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Export chiffré"
+  - "Partage limité"
+  - "Récupération prévue"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - ne_fait_pas
+  - depend_de
+  - etiquettes

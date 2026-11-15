@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P33
+nom_public: null
+nom_provisoire: "Routeur"
+intitule: "routeur de modèles"
+fonction: "Choix du modèle d'IA"
+categorie: outils-acces
+promesse: "Pour une opération précise, déterminer quels modèles et modes de traitement sont autorisés, puis choisir parmi ceux qui satisfont les exigences vérifiées."
+pour_qui: "L'équipe qui pose les règles"
+a_la_place_de: "le choix d'un modèle d'IA fait à la main, ou imposé par un fournisseur unique"
+capacites:
+  - "Registre versionné des fournisseurs, modèles, endpoints, modes locaux ou distants, régions de traitement attestées, politiques de rétention, usages d'entraînement, sous-traitants pertinents, licences et restrictions documentées."
+  - "Séparer déclarations commerciales, engagements contractuels et vérifications techniques ; enregistrer les sources de preuve, leur portée, leur date et les conditions de réexamen."
+  - "Appliquer des règles explicites produisant autorisé, interdit ou indéterminé ; le moteur bloque lorsque la politique n'a aucun chemin admissible."
+  - "Comparer les candidats restants sur la qualité mesurée et les performances de la tâche ; présenter le choix, sa justification et les informations manquantes."
+  - "Exécuter par le chemin choisi et conserver une trace expurgée de la décision."
+  - "Solutions de repli explicites, qui ne transmettent jamais les données à un candidat non autorisé."
+ne_fait_pas:
+  - "Une liste de modèles ou un drapeau de pays ne suffit pas à qualifier un usage."
+  - "Ne confond pas le pays du siège, le lieu de stockage et le lieu d'inférence, qui sont des faits différents."
+  - "Une donnée obligatoire inconnue ne devient pas compatible par défaut."
+  - "Ne rend pas de conclusion juridique générale : établit la conformité à une politique configurée."
+  - "Un mode local peut être candidat si sa qualification le permet ; il n'est pas intrinsèquement déclaré sûr."
+  - "Ne substitue pas silencieusement un autre modèle quand le modèle retenu est indisponible."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Règles par usage"
+  - "Conformité à vos règles"
+  - "Lieux de traitement déclarés"
+a_relire:
+  - a_la_place_de
+  - ne_fait_pas
+  - etiquettes

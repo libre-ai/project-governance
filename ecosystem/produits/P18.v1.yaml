@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P18
+nom_public: null
+nom_provisoire: "Visio"
+intitule: "conversations et visio"
+fonction: "Messagerie d'équipe et visio"
+categorie: collaboration
+promesse: "Discuter, se réunir et partager le contexte d'un travail dans des espaces aux droits clairs."
+pour_qui: "Personnes et organisations"
+a_la_place_de: "votre messagerie d'équipe et votre service de visioconférence par abonnement"
+capacites:
+  - "Canaux, messages directs, fils, réactions et pièces."
+  - "Recherche, présence, notifications et modération."
+  - "Appels audio/vidéo, choix des périphériques, partage d'écran et reconnexion."
+  - "Contrôle des accès et périmètre explicite pour les invités."
+  - "Sous-titres lorsque disponibles."
+  - "Résumés de fils et extraction d'actions sur contenu autorisé, par IA."
+  - "Les participants peuvent distinguer message envoyé, remis et lu selon les garanties réellement disponibles."
+ne_fait_pas:
+  - "N'enregistre pas et ne transcrit pas implicitement tout appel."
+  - "Ne gère pas la transcription ni le compte rendu : c'est un usage distinct, porté par l'assistant de réunion P21."
+  - "Ne promet pas ensemble un chiffrement, une recherche et des capacités serveur incompatibles entre eux."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Canaux et fils"
+  - "Appels vidéo"
+  - "Décisions retrouvables"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - ne_fait_pas
+  - depend_de
+  - etiquettes

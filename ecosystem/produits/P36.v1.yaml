@@ -1,0 +1,33 @@
+schema_version: libre-ai.produit.v1
+id: P36
+nom_public: null
+nom_provisoire: "VPN"
+intitule: "VPN"
+fonction: "VPN et accès privé"
+categorie: outils-acces
+promesse: "Relier des appareils ou accéder à des services privés avec des règles explicites."
+pour_qui: "Personnes et organisations"
+a_la_place_de: "votre service de réseau privé virtuel par abonnement"
+capacites:
+  - "Enrôler un appareil, choisir un profil, établir le tunnel, vérifier le routage et révoquer l'accès."
+  - "Gestion d'appareils, clés, profils, routes, DNS, reconnexion et état."
+  - "Séparer les besoins de réseau privé entre appareils et de sortie Internet via un serveur."
+  - "Les changements de routes et de pare-feu sont explicités, testables et réversibles avec préservation du canal d'administration."
+  - "Aide au diagnostic à partir de données expurgées."
+ne_fait_pas:
+  - "N'invente pas de protocole cryptographique."
+  - "N'a pas besoin d'un modèle pour établir le tunnel."
+  - "N'apporte ni anonymat ni protection de tout trafic dans toute situation."
+  - "Ne réécrit pas de VPN : réutilise des protocoles et des implémentations reconnus, après qualification."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Appareils enrôlés"
+  - "Règles explicites"
+  - "Révocation d'un appareil"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - ne_fait_pas
+  - etiquettes

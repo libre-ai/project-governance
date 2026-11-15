@@ -1,0 +1,32 @@
+schema_version: libre-ai.produit.v1
+id: P06
+nom_public: null
+nom_provisoire: "Recherche"
+intitule: "recherche transversale"
+fonction: "Recherche dans toutes vos applications"
+categorie: connaissance
+promesse: "Retrouver un objet ou une réponse dans ses applications sans connaître son emplacement, tout en respectant la séparation des données."
+pour_qui: "Toute personne qui utilise plusieurs applications de la suite"
+a_la_place_de: "la recherche menée séparément dans chacune de vos applications"
+capacites:
+  - "Recherche textuelle et filtres par type, date, source et espace ; recherche sémantique complémentaire."
+  - "Extraits localisés et ouverture directe dans le produit d'origine."
+  - "Afficher ce qui est indexé, en retard ou exclu ; détecter copies et versions sans cacher arbitrairement un résultat."
+  - "Les filtres structurés et la recherche exacte restent utilisables même si un modèle est indisponible."
+  - "L'IA produit une réponse fondée sur les passages autorisés, avec citations et possibilité d'indiquer qu'aucun élément ne permet de conclure."
+  - "Révocation, suppression et changement de sensibilité invalident les résultats et caches pertinents."
+ne_fait_pas:
+  - "Le classement ne doit pas transformer la proximité sémantique en preuve factuelle."
+  - "L'index ne devient pas l'autorité de l'objet."
+  - "Ne laisse rien fuir d'une organisation à l'autre dans les résultats, suggestions, compteurs et réponses générées."
+depend_de: []
+realisation: "intégration"
+depot: libre-ai/personal-knowledge-workspace
+etiquettes:
+  - "Notes, e-mails, fichiers"
+  - "Sans mélanger les données"
+  - "Source affichée"
+a_relire:
+  - a_la_place_de
+  - pour_qui
+  - ne_fait_pas

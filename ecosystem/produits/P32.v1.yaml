@@ -1,0 +1,36 @@
+schema_version: libre-ai.produit.v1
+id: P32
+nom_public: null
+nom_provisoire: "JdR"
+intitule: "table virtuelle de JdR"
+fonction: "Compagnon de jeu de rôle"
+categorie: medias-jeu
+promesse: "Préparer et jouer une campagne tout en laissant les règles et les décisions narratives sous contrôle du groupe."
+pour_qui: "Joueurs"
+a_la_place_de: "votre table de jeu virtuelle en ligne par abonnement et vos fiches de personnage éparpillées"
+capacites:
+  - "Créer une campagne, choisir le système, créer les personnages, préparer une séance, jouer et conserver le journal."
+  - "Fiches et ressources, dés, jets expliqués, cartes, pions, brouillard de guerre, notes, personnages non joueurs, initiative et journal."
+  - "Distinguer informations visibles des joueurs et secrets du meneur."
+  - "Permettre jeu en présentiel et à distance selon les surfaces choisies."
+  - "Aide à la préparation, propositions de scènes, personnages et résumés."
+ne_fait_pas:
+  - "Un moteur configurable ne garantit pas la compatibilité avec toutes les règles."
+  - "Le modèle ne change pas silencieusement un jet, une fiche ou le canon d'une campagne."
+  - "N'utilise pas les contenus sous licence au-delà des droits disponibles."
+  - "Ne couvre pas les simulations pédagogiques de P39, usage distinct du JdR de loisir."
+depend_de:
+  - P04
+  - P05
+  - P18
+  - P27
+realisation: "contribution à un projet existant"
+depot: null
+etiquettes:
+  - "Campagnes et personnages"
+  - "Dés et règles"
+  - "Journal de séance"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - ne_fait_pas
