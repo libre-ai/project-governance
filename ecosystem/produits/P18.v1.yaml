@@ -19,6 +19,7 @@ capacites:
 ne_fait_pas:
   - "N'enregistre pas et ne transcrit pas implicitement tout appel."
   - "Ne gère pas la transcription ni le compte rendu : c'est un usage distinct, porté par l'assistant de réunion P21."
+  - "Ne promet pas ensemble un chiffrement, une recherche et des capacités serveur incompatibles entre eux."
 depend_de: []
 realisation: "intégration"
 depot: null

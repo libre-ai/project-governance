@@ -18,7 +18,7 @@ capacites:
   - "Provenance visible des éléments générés, avec leur modèle et les contraintes de réutilisation connues."
 ne_fait_pas:
   - "Une nouvelle génération ne remplace pas un plan validé sans action explicite."
-  - "Ne garantit pas une identité visuelle ou un personnage stable d'une génération à l'autre."
+  - "Ne promet pas une identité visuelle ou un personnage stable sans qualification correspondante."
   - "Ne publie via P25 ou P26 que dans le périmètre autorisé."
 depend_de:
   - P24

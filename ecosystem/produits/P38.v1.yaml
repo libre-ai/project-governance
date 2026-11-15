@@ -17,7 +17,7 @@ capacites:
 ne_fait_pas:
   - "Ne confond pas une sauvegarde avec une synchronisation, qui répliquerait une suppression."
   - "L'IA n'a ni accès aux secrets ni autorité sur les politiques de suppression ; elle aide au diagnostic et à l'explication de l'état."
-  - "Une sauvegarde n'est pas tenue pour sûre tant qu'elle n'a pas été restaurée."
+  - "Une sauvegarde sans exercice de restauration n'est pas qualifiée."
 depend_de: []
 realisation: "intégration"
 depot: null

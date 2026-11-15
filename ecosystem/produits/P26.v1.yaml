@@ -16,7 +16,7 @@ capacites:
   - "Gestion des comptes, permissions, statuts de publication et reprises."
 ne_fait_pas:
   - "Ne garantit ni classement dans les moteurs ni croissance automatique."
-  - "Ne produit ni contenu répétitif, ni faux engagement, ni envois indifférenciés."
+  - "Évite le contenu répétitif, le faux engagement et les envois indifférenciés."
   - "Une source nouvelle déclenche au plus un brouillon si aucune règle de publication explicite n'a été autorisée."
   - "N'attribue pas causalement un résultat à une campagne sans méthode."
   - "Ne republie pas sans réconcilier, pour éviter les doublons."
