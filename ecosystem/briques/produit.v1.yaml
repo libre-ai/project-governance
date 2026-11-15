@@ -34,11 +34,11 @@ briques:
         - Ouvrir mobile, Windows ou Linux au premier palier.
         - Dépendre d'un service managé pour le cœur.
   - id: PRD-15
-    nom: Projets, tickets et support
+    nom: Capture et relais de signalements
     role: Capture un signalement depuis une interface web et l'envoie au bon système de tickets, sous une politique d'organisation.
     depend_de: [PAS-02, PLT-06, PLT-07]
     invariants: [I-08, I-15]
-    decisions: [ADR-0042, ADR-0055, ADR-0064, D94]
+    decisions: [ADR-0042, ADR-0055, ADR-0064, ADR-0067, D94, D113]
     depots: [libre-ai/signalement]
     origine:
       type: propre

@@ -2,7 +2,7 @@ schema_version: libre-ai.produit.v1
 id: P15
 nom_public: null
 nom_provisoire: "Signalement"
-intitule: "projets, tickets et support"
+intitule: "capture et relais de signalements"
 fonction: "Capture et relais de signalements"
 categorie: collaboration
 promesse: "Un signalement part d'où l'on est (formulaire, courriel, extension) et arrive là où l'équipe travaille, avec un reçu que l'émetteur peut vérifier."
@@ -30,6 +30,5 @@ a_relire:
   - promesse
   - capacites
   - etiquettes
-  - fonction
   - nom_provisoire
   - pour_qui

@@ -22,7 +22,8 @@
 >   pour P02 (ADR-0054 §2).
 > - **Non-objectifs** : l'offre hébergée payante existe pour P02 (ADR-0054 §4),
 >   sans donnée de paiement dans l'application ; l'auto-hébergement et l'export
->   sans verrou sont conservés.
+>   sans verrou sont conservés. ADR-0066 l'admet aussi pour P04 et fixe ce
+>   qu'elle vend : le service d'hébergement, jamais une fonction.
 >
 > Le corps du document n'est pas réécrit : il reste la source de l'intention de
 > 2026-07 et de son vocabulaire. Toute phrase en contradiction avec un ADR cité

@@ -25,7 +25,7 @@ Aucune valeur ne contient de caractère de contrôle (saut de ligne, échappemen
 | `categorie` | Le domaine du catalogue, sous forme d'identifiant. |
 | `promesse` | Ce que le produit doit apporter, en une phrase. |
 | `pour_qui` | Les personnes à qui le produit est destiné. |
-| `a_la_place_de` | Le genre d'outil que le produit doit remplacer. Aucune marque ni aucun service n'y est nommé. |
+| `a_la_place_de` | Le genre d'outil que le produit doit remplacer. Aucune marque ni aucun service n'y est nommé. Le champ nomme ce que ce genre d'outil verrouille (voir plus bas). |
 | `capacites` | Ce que le produit doit savoir faire. |
 | `ne_fait_pas` | Ce que le produit ne fait pas, et les limites qu'il garde. Chaque entrée est écrite comme une limite du produit (voir plus bas). |
 | `depend_de` | Les produits dont celui-ci a besoin pour fonctionner, par identifiant (voir plus bas). |
@@ -54,6 +54,12 @@ Cette correspondance est écrite une fois, dans `ecosystem/produits.ts`. Un test
 `nom_public` est le nom « Libre X » que le propriétaire a tranché pour le produit (décision du 2026-11-09, consignée dans le dépôt du site).
 
 Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y inscrire reste un acte du propriétaire : une fiche ne remplace pas cette entrée.
+
+## `a_la_place_de`
+
+`a_la_place_de` dit ce que le genre d'outil remplacé fait payer ou enferme. Exemples : la fonction vendue en supplément, la donnée gardée chez l'éditeur, le format qui ne s'exporte pas. Il ne dit pas « par abonnement » (ADR-0066, D112) : un produit du catalogue peut lui aussi avoir une offre hébergée par abonnement, et le mot ne dit donc pas ce qui change.
+
+Les fiches écrites avant cette règle portent encore « par abonnement ». Les réécrire est une proposition d'agent par fiche, à inscrire dans `a_relire`. Le gate ne lit pas cette forme : c'est une règle de rédaction.
 
 ## `ne_fait_pas`
 
