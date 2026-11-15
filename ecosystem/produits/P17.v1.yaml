@@ -21,7 +21,7 @@ ne_fait_pas:
   - "Une suggestion n'est jamais envoyée automatiquement sans une règle d'envoi explicitement autorisée."
   - "Aucun doublon d'envoi sur simple nouvelle tentative aveugle."
   - "Une instruction malveillante reçue par mail ne peut ni exporter une boîte ni lancer un outil privilégié."
-  - "Ne partage que les passages nécessaires d'un mail vers une tâche, un rendez-vous ou un ticket."
+  - "Ne partage que les passages nécessaires d'un mail."
 depend_de: []
 realisation: "intégration"
 depot: null
@@ -31,4 +31,3 @@ etiquettes:
   - "Vérifié avant envoi"
 a_relire:
   - pour_qui
-  - ne_fait_pas

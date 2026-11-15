@@ -5,10 +5,13 @@ nom_provisoire: null
 intitule: "accès aux sources"
 fonction: "Exploration du web sourcée"
 categorie: connaissance
-promesse: "Permettre à une personne ou à un agent autorisé d'explorer des informations dispersées et d'obtenir des éléments exploitables, attribués et vérifiables, en rendant visible ce qui a été trouvé, ce qui a pu être lu et ce qui reste inaccessible."
-pour_qui: "Une personne ou un agent autorisé"
-a_la_place_de: "vos recherches menées à la main dans un moteur de recherche, d'onglet en onglet"
+promesse: "Posez une question, suivez un sujet ou branchez un agent : chaque réponse montre ce qui a été trouvé, ce qui a été lu et ce qui est resté fermé."
+pour_qui: "Les personnes qui doivent justifier ce qu'elles avancent : veille, enquête, étude, décision ; les équipes qui confient des recherches à un agent"
+a_la_place_de: "les moteurs de réponse par IA qui citent sans montrer ce qu'ils ont lu, et vos recherches menées à la main, d'onglet en onglet"
 capacites:
+  - "Question : une réponse courte, où chaque phrase renvoie au passage lu."
+  - "Dossier : un sujet suivi dans le temps, où les passages s'accumulent, les changements sont signalés et l'ensemble s'exporte."
+  - "Agent : la même recherche par programme, pour un agent autorisé, chaque résultat portant son état de lecture."
   - "Saisir une question, sélectionner les catégories de sources, rechercher, ouvrir les résultats, extraire des passages, les comparer et constituer un dossier."
   - "Recherche Web, pages, flux, dépôts et discussions de développement, plateformes sociales et transcriptions de médias, sur une matrice de connecteurs validés."
   - "Distinguer découverte d'une URL, accès au contenu, extraction réussie et compréhension du média."
@@ -16,7 +19,10 @@ capacites:
   - "Signaler les contenus tronqués, sources supprimées, quotas, demandes d'authentification et échecs de parsing ; comparer les versions d'une source surveillée."
   - "L'IA reformule les recherches, propose des sources et synthétise les passages effectivement consultés, en distinguant constat, inférence, désaccord et information absente."
 ne_fait_pas:
-  - "Ne contourne pas les contrôles d'accès : lit seulement les sources publiques et les ressources explicitement autorisées."
+  - "Par défaut, lit les sources publiques ; peut lire derrière un compte si vous branchez vos propres accès : c'est votre choix, source par source, et vous pouvez le retirer."
+  - "Ne contourne pas un contrôle d'accès sans vos identifiants ; le respect des conditions de chaque service reste de votre responsabilité."
+  - "Ne présente pas comme lue une page qu'il n'a pas pu ouvrir."
+  - "Ne fonctionne pas sans un index de recherche et un modèle, que vous choisissez et dont le coût reste à votre charge."
   - "Une transcription disponible n'équivaut pas à une analyse des images d'une vidéo."
   - "Les contenus trouvés ne peuvent ni déclencher des outils privilégiés ni modifier les règles de collecte."
   - "Aucune synthèse ne doit citer un passage inventé ou accessible seulement à une autre organisation."
@@ -24,11 +30,8 @@ depend_de: []
 realisation: "bibliothèque"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
-  - "Sources attribuées"
-  - "Pages lues ou non lues"
-  - "Dossier de passages"
+  - "Preuve de lecture"
+  - "Dossier suivi"
+  - "Vos accès, votre choix"
 a_relire:
   - a_la_place_de
-  - depend_de
-  - ne_fait_pas
-  - etiquettes

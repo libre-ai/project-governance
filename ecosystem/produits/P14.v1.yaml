@@ -18,7 +18,7 @@ capacites:
 ne_fait_pas:
   - "Toute réorganisation reste réversible ; un rapprochement proposé ne devient pas automatiquement une causalité établie."
   - "Un lien vers un ticket, une note ou un prototype garde ses permissions."
-  - "Ses éléments visuels réutilisés dans P23 et P39 ne reprennent pas le modèle métier de ces produits."
+  - "Ne confond pas son modèle métier avec ceux de P23 et de P39 quand ses éléments visuels y sont réutilisés."
 depend_de: []
 realisation: "projet autonome"
 depot: null
@@ -28,5 +28,3 @@ etiquettes:
   - "Décisions en tâches"
 a_relire:
   - pour_qui
-  - depend_de
-  - ne_fait_pas
