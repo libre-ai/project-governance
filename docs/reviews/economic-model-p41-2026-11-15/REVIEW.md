@@ -3,9 +3,9 @@
 # Modèle économique commun (ADR-0066) et scission de P15 (ADR-0067) : quatre passes de revue
 
 **Date :** 2026-11-15
-**Objet :** les deux ADR proposés `docs/adr/0066-economic-model-hosted-service-only.md` et `docs/adr/0067-amend-adr-0042-p15-split-p41-tickets.md`, les lignes D109 à D113 du registre, les fiches `ecosystem/produits/P15.v1.yaml` et `ecosystem/produits/P41.v1.yaml`, et les documents que ces ADR amendent.
+**Objet :** les deux ADR proposés `docs/adr/0066-economic-model-hosted-service-only.md` et `docs/adr/0067-amend-adr-0042-p15-split-p41-tickets.md`, les lignes D109 à D113 du registre (et D114, inscrite après la passe 4 et relue par aucune), les fiches `ecosystem/produits/P15.v1.yaml` et `ecosystem/produits/P41.v1.yaml`, et les documents que ces ADR amendent.
 **Nature :** dossier de revue d'une pull request écrite par des agents. Il ne vaut pas arbitrage du propriétaire : il rend compte de ce qui a été relu, sur quel commit, de ce qui a été corrigé ensuite, et de ce qui reste à relire.
-**État :** les passes 1, 2 et 3 ont rendu `reject`. Le verdict du dossier est celui de la passe 4 : `approve-with-minor-reservations`. Trois réserves mineures restent ouvertes (M1, M4 et la moitié de R2) : elles se tranchent à la signature.
+**État :** les passes 1, 2 et 3 ont rendu `reject`. Le verdict du dossier est celui de la passe 4 : `approve-with-minor-reservations`. Ce verdict porte sur le commit `7592bfc7330423e7d620b9559c7943e1896a17e8`. Deux commits l'ont suivi, qu'aucune passe n'a relus : celui qui inscrit la passe 4, puis celui qui inscrit les confirmations du propriétaire du 2026-11-15 et la décision D114 (voir « Après la passe 4 : confirmations du propriétaire »). Des trois réserves mineures que la passe 4 laissait ouvertes, ces confirmations lèvent M1 et M4 ; la moitié de R2 restée ouverte n'est pas confirmée, et se tranche à la signature.
 
 ## Les passes
 
@@ -82,6 +82,40 @@ Relecteur indépendant à contexte neuf, sur le seul diff entre `a60cac27e92cb87
 
 Le commit qui porte ces trois corrections et le verdict de la passe 4 n'a été relu par aucune passe.
 
+## Après la passe 4 : confirmations du propriétaire
+
+Le 2026-11-15, après la passe 4, le propriétaire a répondu à six questions à options posées dans la session de l'agent qui tient la pull request. Cinq confirment ou corrigent des lectures de l'auteur ; la sixième est une décision nouvelle. Les libellés retenus et leurs conséquences sont reproduits plus bas, sous « Confirmations du 2026-11-15 ». Ces questions ne sont pas versionnées : ce dossier ne peut pas plus les confronter à leur source que les textes de la page de décision.
+
+**Ce commit n'a été relu par aucune passe.** Il est le fils de `ed6a71c7b14ecbb0b2b7e585d814ec6862c570b9`, lui-même non relu. Les verdicts des quatre passes, et les tableaux qui les rapportent, ne sont pas modifiés : ils décrivent l'état relu, où ces phrases étaient marquées « à confirmer ».
+
+Ce qui a changé :
+
+| Objet | Avant | Après |
+| --- | --- | --- |
+| ADR-0066 D1, D109 | « partout » et « aucune fonction n'est réservée à l'offre payante » : lecture de l'auteur | arbitré, « Oui, aucune fonction réservée » |
+| ADR-0066 D2, D110 | où un produit déclare son offre, et ce qui vaut avant : lecture de l'auteur (« l'ADR qui fixe sa première version ») | arbitré, « Dans son ADR » ; la précision « qui fixe sa première version » est retirée, la confirmation ne la porte pas |
+| ADR-0066 D3, D111 | « Sans frais » jamais seul : lecture de l'auteur | arbitré, « Jamais sans sa condition » |
+| ADR-0066 D5, D114 | « non décidé » : la distribution signée de P02 se paie-t-elle | décision nouvelle, « Sans frais » ; amende D81 sur ce point ; ADR-0054 le dit dans sa mention « Amendé par » |
+| ADR-0066, ligne « Invariants » | deux gloses marquées, sur I-10 et sur I-17 | celle sur I-17 est couverte par « Dans son ADR » ; celle sur I-10 reste marquée |
+| ADR-0067 D1, D113 | numéro P41, intitulés de P41 et de P15 : propositions de l'auteur ; catégorie : hypothèse de l'auteur | arbitré, « Tout confirmer », nom provisoire « Tickets » compris |
+| ADR-0067, relecture d'ADR-0055 D2, D113 | lecture de l'auteur | arbitré, « Oui, amender avec cette relecture » |
+| Fiche de P41 | 12 champs dans `a_relire` | 9 : `intitule`, `nom_provisoire` et `categorie` en sortent |
+| Fiche de P15 | 8 champs dans `a_relire` | 7 : `intitule` en sort |
+
+Ce que ces confirmations font des trois réserves ouvertes :
+
+| Réserve | Suite |
+| --- | --- |
+| M1 | Levée. La lecture écrite sans marqueur dans les non-objectifs, la brique EXP-08, `vision.md`, la mention « Amendé par » d'ADR-0054 et le titre d'ADR-0066 est celle que « Oui, aucune fonction réservée » confirme. Ces textes ne sont pas modifiés pour cela. |
+| M4 | Levée. L'intitulé de P15 et l'attribution de « projets, tickets et support » à P41, écrits comme acquis dans la brique PRD-15 et dans la mention « Amendé par » d'ADR-0042, sont ceux que « Tout confirmer » acte. |
+| R2, moitié ouverte | Non levée. Aucune des six réponses ne dit que « synchronisation, relève en continu, sauvegardes » sont des exemples. Ce commit déplace la glose d'ADR-0066 D1 sous un bloc « lecture de l'auteur, à confirmer à la signature », comme D109 la marquait déjà : la forme est corrigée, le fond reste à confirmer. |
+
+Ce que ces confirmations ne couvrent pas, et qui reste marqué lecture de l'auteur : dans ADR-0066, les exemples d'hébergement géré (D1), la portée de « Sans frais chez vous » et de « produits concernés » (D3), les deux lectures ajoutées à D5 (les plans et quotas de D87 portent sur le service hébergé ; une mention publique de ce « sans frais » porte sa condition), et la glose sur I-10.
+
+Trois conséquences affichées nomment un gate, et la deuxième un champ « offre » des fiches. Aucun n'existe dans ce dépôt le 2026-11-15, et ce commit n'en écrit aucun : ADR-0066 les range sous « Ce qui n'est pas décidé ici ».
+
+Commandes rejouées par l'auteur de ce commit, et non par un relecteur, sous la même version de Bun que les passes : celles de la passe 2. Leur sortie est dans le corps de la pull request.
+
 ## Textes retenus par le propriétaire le 2026-11-15
 
 La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur des corrections a reçus par son mandat ; il n'a pas lu la page. Ils sont reproduits ici pour qu'un lecteur du dépôt puisse confronter les deux ADR à ce qui a été retenu. Après la passe 2, l'agent qui tient la page de décision a transmis les options écartées de la première question ; elles ne sont pas plus vérifiables depuis ce dépôt que les textes retenus. Les deux options écartées étaient « Le service et des fonctions avancées » (« Certaines fonctions sont réservées à l'offre hébergée payante. ») et « Produit par produit ». Les options écartées des autres questions n'ont pas été transmises.
@@ -96,6 +130,21 @@ La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur de
 
 Le « six » de la quatrième conséquence était une erreur de la page : 25 fiches portaient « par abonnement » sur le commit relu par la passe 1 (`git grep -l "par abonnement" e0c2832 -- 'ecosystem/produits/*.yaml' | wc -l`).
 
+### Confirmations du 2026-11-15, après la passe 4
+
+Canal : des questions à options posées au propriétaire dans la session de l'agent qui tient la pull request, et non la page de décision. Ces questions ne sont pas versionnées. L'auteur du commit qui les inscrit a reçu par son mandat chaque question sous forme résumée, et le libellé retenu et sa conséquence mot pour mot : la colonne « Question » donne un résumé, pas le texte posé. Les options écartées n'ont pas été transmises.
+
+| Décision | Question (résumée) | Libellé retenu | Conséquence affichée sous ce libellé |
+| --- | --- | --- | --- |
+| ADR-0066 D1 (D109) | Lecture de « Mêmes fonctions partout » | « Oui, aucune fonction réservée » | « Jamais de fonction payante. Seuls l'hébergement géré et ses quotas (volume, fréquence, durée d'archive) se paient. Le gate des fiches pourra s'y appuyer. » |
+| ADR-0066 D2 (D110) | Où un produit déclare son offre hébergée | « Dans son ADR » | « Une trace signée par produit. Sans elle, pas d'offre hébergée et le gate refuse le champ "offre". P02 et P04 sont déjà couverts. » |
+| ADR-0066 D3 (D111) | « Sans frais » | « Jamais sans sa condition » | « Toute mention porte "chez vous" ou l'équivalent. Vérifiable par un gate sur le site et dans les fiches. » |
+| ADR-0067 D1 (D113) | Noms de la scission : numéro P41, intitulé « projets, tickets et support », nom provisoire « Tickets », catégorie Collaboration ; pour P15, intitulé « capture et relais de signalements » | « Tout confirmer » | « Numéro, intitulés, nom provisoire et catégorie sont actés. Le contenu de la fiche P41 (12 champs) reste marqué à relire. » |
+| ADR-0067, relecture d'ADR-0055 D2 (D113) | Relecture de « P15 n'est pas scindé. » | « Oui, amender avec cette relecture » | « L'ancienne phrase reste dans l'histoire ; l'ADR-0067 dit comment la lire. Rien d'autre ne change. » |
+| ADR-0066 D5 (D114), décision nouvelle | L'application signée et notarisée de P02 (ADR-0054 §4, D81) se paie-t-elle ? | « Sans frais » | « L'application signée se télécharge sans frais ; seul le service hébergé se paie. Cohérent avec "aucune fonction réservée". À écrire dans l'ADR-0066 avant fusion. » |
+
+Le « 12 champs » de la quatrième conséquence compte la liste `a_relire` de la fiche de P41 avant que trois des champs confirmés en sortent : il en reste 9.
+
 Deux commentaires du propriétaire, écrits le même jour sur une autre page non versionnée, la page de relecture du catalogue, sont cités dans le « Contexte » d'ADR-0066 : l'un sur la fiche de P02, l'autre sur celle de P04. La décision les remplace.
 
 ## Ce que ce dossier ne couvre pas
@@ -107,7 +156,8 @@ Deux commentaires du propriétaire, écrits le même jour sur une autre page non
 
 ## Ce qui reste au propriétaire
 
-- **Chaque « lecture de l'auteur »** d'ADR-0066 (ce que « partout » couvre, où un produit déclare son offre hébergée et ce qui vaut avant, la condition qui accompagne « Sans frais ») et d'ADR-0067 (la relecture d'ADR-0055 D2).
-- **Le numéro et l'intitulé de P41, l'intitulé de P15**, propositions de l'auteur, et les champs `a_relire` des deux fiches.
+- **Les « lectures de l'auteur » qui restent marquées** dans ADR-0066 : les exemples d'hébergement géré (D1), la portée de « Sans frais chez vous » et de « produits concernés » (D3), les deux lectures de D5, la glose sur I-10. ADR-0067 n'en porte plus.
+- **Les champs `a_relire` des deux fiches** : 9 sur celle de P41, 7 sur celle de P15.
+- **Une relecture du commit des confirmations**, qu'aucune passe n'a relu.
 - **Les formules de `a_la_place_de`**, que le texte retenu renvoie à une page suivante.
 - **L'acceptation de la fusion**, qui vaut signature des deux ADR.

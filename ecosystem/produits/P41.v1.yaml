@@ -26,10 +26,7 @@ etiquettes:
   - "Responsable désigné"
   - "Résolution vérifiée"
 a_relire:
-  - intitule
-  - nom_provisoire
   - fonction
-  - categorie
   - promesse
   - pour_qui
   - a_la_place_de
