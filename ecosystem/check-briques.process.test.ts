@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { FICHE_SECTIONS, LAYERS, SCHEMA_VERSION } from "./briques";
+import { gitEnvironment } from "./check-briques";
 
 /**
  * The brick-map gate run as a process, against a real repository.
@@ -450,5 +451,47 @@ describe("check-briques as a process", () => {
     });
     expect(outcome.output).toContain("Brick map verified:");
     expect(outcome.exitCode).toBe(0);
+  });
+});
+
+/**
+ * The environment every git child of a gate runs in.
+ *
+ * WHY ONE TEST PER VARIABLE, AND WHY THE NAMES ARE WRITTEN HERE. Only
+ * `GIT_DIR` and `GIT_INDEX_FILE` were held, by the process probes: any of the
+ * four others could be taken out of the list with every suite green. The
+ * names are the ones git documents as moving the repository, the index, the
+ * work tree, the common directory, the object store or the prefix; a test that
+ * walked the list of the module would lose the case with the variable.
+ */
+describe("gitEnvironment", () => {
+  function withVariable(name: string, value: string, body: () => void): void {
+    const before = process.env[name];
+    process.env[name] = value;
+    try {
+      body();
+    } finally {
+      if (before === undefined) delete process.env[name];
+      else process.env[name] = before;
+    }
+  }
+
+  test.each([
+    "GIT_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+  ])("%s is not passed on to a git child", (name) => {
+    withVariable(name, "/elsewhere", () => {
+      expect(Object.keys(gitEnvironment())).not.toContain(name);
+    });
+  });
+
+  test("control: a variable that does not redirect git is passed on, with its value", () => {
+    withVariable("GATE_PROBE_VARIABLE", "kept", () => {
+      expect(gitEnvironment().GATE_PROBE_VARIABLE).toBe("kept");
+    });
   });
 });
