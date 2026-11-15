@@ -5,10 +5,13 @@ nom_provisoire: "Recherche"
 intitule: "recherche transversale"
 fonction: "Recherche dans toutes vos applications"
 categorie: connaissance
-promesse: "Retrouver un objet ou une réponse dans ses applications sans connaître son emplacement, tout en respectant la séparation des données."
-pour_qui: "Toute personne qui utilise plusieurs applications de la suite"
-a_la_place_de: "la recherche menée séparément dans chacune de vos applications"
+promesse: "Une seule question retrouve vos notes, courriels et fichiers, dit d'où vient chaque réponse et dit aussi ce qui n'a pas été cherché."
+pour_qui: "Les personnes et équipes dont l'information est dispersée entre plusieurs applications et dossiers ; les agents qui travaillent pour elles, avec les mêmes droits et pas davantage"
+a_la_place_de: "votre moteur de recherche d'entreprise hébergé par son éditeur et facturé par poste"
 capacites:
+  - "Des connecteurs vers la suite et vers des standards ouverts : dossiers, coffres de notes Markdown, messagerie, agenda et fichiers distants."
+  - "Chaque réponse affiche sa couverture : sources interrogées, sources en échec, sources exclues."
+  - "La même recherche pour les agents, avec un jeton à portée limitée et un journal des requêtes."
   - "Recherche textuelle et filtres par type, date, source et espace ; recherche sémantique complémentaire."
   - "Extraits localisés et ouverture directe dans le produit d'origine."
   - "Afficher ce qui est indexé, en retard ou exclu ; détecter copies et versions sans cacher arbitrairement un résultat."
@@ -16,6 +19,9 @@ capacites:
   - "L'IA produit une réponse fondée sur les passages autorisés, avec citations et possibilité d'indiquer qu'aucun élément ne permet de conclure."
   - "Révocation, suppression et changement de sensibilité invalident les résultats et caches pertinents."
 ne_fait_pas:
+  - "Ne cherche pas dans une application sans connecteur ; la liste des sources couvertes est affichée."
+  - "Ne remplace pas la recherche avancée propre à chaque application."
+  - "N'envoie pas vos contenus à un modèle externe sans votre accord explicite."
   - "Le classement ne doit pas transformer la proximité sémantique en preuve factuelle."
   - "L'index ne devient pas l'autorité de l'objet."
   - "Ne laisse rien fuir d'une organisation à l'autre dans les résultats, suggestions, compteurs et réponses générées."
@@ -23,10 +29,7 @@ depend_de: []
 realisation: "intégration"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
-  - "Notes, e-mails, fichiers"
-  - "Sans mélanger les données"
-  - "Source affichée"
-a_relire:
-  - a_la_place_de
-  - pour_qui
-  - ne_fait_pas
+  - "Notes, courriels, fichiers"
+  - "Droits d'origine respectés"
+  - "Couverture affichée"
+a_relire: []
