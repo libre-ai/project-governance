@@ -19,6 +19,12 @@ const SHIPPED_FLEET_BUMP: ExemptRule = {
   ],
 };
 
+// What the shipped file declares for a licence switch. The behaviour of the
+// class is tested in licensing-class.test.ts.
+const SHIPPED_LICENSING: ExemptRule = {
+  paths: ["LICENSE", "LICENSES/*.txt", "REUSE.toml"],
+};
+
 // `décision` has an accent, so it is written quoted: a bare token is ASCII only.
 const HEAD = 'approvedFrom: "décision"\n';
 
@@ -59,6 +65,7 @@ describe("loadWorkPackagePolicy", () => {
           dependabot: { author: "dependabot[bot]" },
           "docs-only": { paths: ["**/*.md", "docs/**"] },
           "fleet-bump": SHIPPED_FLEET_BUMP,
+          licensing: SHIPPED_LICENSING,
           revert: { titlePrefix: "Revert " },
         },
         owners: ["constantin-jais"],
@@ -464,6 +471,7 @@ describe("rule names and keys that YAML resolves to the same key are ok:false", 
       "dependabot",
       "docs-only",
       "fleet-bump",
+      "licensing",
       "revert",
     ]);
   });
