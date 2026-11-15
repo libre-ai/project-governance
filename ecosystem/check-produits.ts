@@ -3,14 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { concludeGate } from "../tools/quality/gate-report";
-import type { EntryKind, TreeEntry } from "./briques";
-import { readBriquesInput } from "./check-briques";
+import type { EntryKind } from "./briques";
+import { gitEnvironment, readBriquesInput } from "./check-briques";
 import {
+  type CatalogueEntry,
   evaluateProduits,
   PRODUITS_ROOT,
   type ProduitsInput,
-  type ProduitsOutcome,
-  parseCatalogueDomains,
+  parseCatalogueTable,
   type ReadResult,
 } from "./produits";
 
@@ -22,17 +22,28 @@ import {
  * `evaluateProduits`, prints the counters and exits non-zero on any violation.
  * It never goes to the network.
  *
- * ONE READER PER SOURCE. The set of products, the inventory and the list of
- * files whose working copy is not the indexed content come from the reader of
- * the brick-map gate (`readBriquesInput`): two gates that read the same
- * decision record with two parsers would end up counting two catalogues. Only
- * what that reader does not give is read here: the entries under
- * `ecosystem/produits/` and the domain of each product.
+ * ONE READER PER SOURCE. The set of products, the inventory, what the index
+ * says a path is and the list of files whose working copy is not the indexed
+ * content come from the reader of the brick-map gate (`readBriquesInput`): two
+ * gates that read the same decision record with two parsers would end up
+ * counting two catalogues. Only what that reader does not give is read here:
+ * the paths under `ecosystem/produits/` and the domain of each product.
  *
  * THE INDEX, NOT THE DISK. A fiche is a tracked regular file; a link is
  * refused and an untracked file is not part of the catalogue. Its content is
  * read on disk, so a fiche whose working copy differs from the index is
  * refused: locally, stage what you changed before running the gate.
+ *
+ * THE SOURCES ARE HELD TO THE SAME RULE. The decision record, the inventory
+ * and the schema are read on disk too. Each one is declared with what the
+ * index says it is, and the evaluation refuses a source that is not a tracked
+ * regular file: a tracked symbolic link was followed, and a file removed from
+ * the index was read, both attested « as indexed » (review of 2026-11-15, C2
+ * and C4).
+ *
+ * THE REPOSITORY IS THE ONE THE GATE IS RUN IN. Every git child runs without
+ * the variables that redirect git (`gitEnvironment`): with `GIT_DIR` set by a
+ * hook, the gate listed another index and was green on it (same review, C8).
  */
 
 const SCHEMA = "ecosystem/schemas/produit.v1.schema.json";
@@ -48,32 +59,39 @@ function kindOfMode(mode: string): EntryKind {
   return mode === "100644" || mode === "100755" ? "file" : "other";
 }
 
-/** The tracked entries of the catalogue, relative to its root; the root itself is `.`. */
-function trackedEntries(root: string): { entries: TreeEntry[]; error: string | null } {
+/**
+ * The tracked paths of the catalogue, relative to its root; the root itself is `.`.
+ *
+ * One entry per path. An unmerged path has up to three records in the index
+ * (stages 1 to 3) and no single content: it is returned once, as `unmerged`,
+ * so that the paths the gate counts are the paths git tracks.
+ */
+function trackedEntries(root: string): { entries: CatalogueEntry[]; error: string | null } {
   let listing: string;
   try {
     listing = execFileSync("git", ["ls-files", "--stage", "-z", "--", PRODUITS_ROOT], {
       encoding: "utf8",
       cwd: root,
+      env: gitEnvironment(),
       stdio: ["ignore", "pipe", "ignore"],
     });
   } catch (error) {
     return { entries: [], error: reasonOf(error) };
   }
-  const entries: TreeEntry[] = [];
+  const kinds = new Map<string, CatalogueEntry["kind"]>();
   for (const record of listing.split("\0")) {
     // `<mode> <object> <stage>\t<path>`
     const tab = record.indexOf("\t");
     if (tab === -1) continue;
-    const mode = record.slice(0, record.indexOf(" "));
-    const path = record.slice(tab + 1);
-    entries.push({
-      path: path === PRODUITS_ROOT ? "." : path.slice(PRODUITS_ROOT.length + 1),
-      kind: kindOfMode(mode),
-    });
+    const [mode = "", , stage = ""] = record.slice(0, tab).split(" ");
+    const tracked = record.slice(tab + 1);
+    const path = tracked === PRODUITS_ROOT ? "." : tracked.slice(PRODUITS_ROOT.length + 1);
+    kinds.set(path, stage === "0" && !kinds.has(path) ? kindOfMode(mode) : "unmerged");
   }
   return {
-    entries: entries.sort((left, right) => left.path.localeCompare(right.path, "en")),
+    entries: [...kinds]
+      .map(([path, kind]): CatalogueEntry => ({ path, kind }))
+      .sort((left, right) => left.path.localeCompare(right.path, "en")),
     error: null,
   };
 }
@@ -92,7 +110,7 @@ function readFile(path: string): ReadResult {
  * A source that cannot be read becomes an empty collection, which the
  * evaluation fails by name: unreadable is never zero.
  */
-export function readProduitsInput(root: string): ProduitsInput {
+function readProduitsInput(root: string): ProduitsInput {
   const shared = readBriquesInput(root);
   const tracked = trackedEntries(root);
   // The decision record the shared reader took the catalogue from; absent from
@@ -101,25 +119,24 @@ export function readProduitsInput(root: string): ProduitsInput {
     path.startsWith(CATALOGUE_ADR_PREFIX),
   );
   const adr = cataloguePath === undefined ? null : readFile(join(root, cataloguePath));
+  const table = parseCatalogueTable(adr?.ok === true ? adr.text : "");
   return {
     entries: tracked.entries,
     listingError: tracked.error,
     read: (path) => readFile(join(root, PRODUITS_ROOT, path)),
     catalogue: shared.catalogue,
-    domaines: parseCatalogueDomains(adr?.ok === true ? adr.text : ""),
+    domaines: table.domains,
+    catalogueUnread: table.unread,
     repositories: shared.repositories,
     unstaged: shared.unstaged,
-    sources: [REPOSITORIES, SCHEMA, ...(cataloguePath === undefined ? [] : [cataloguePath])],
+    sources: [REPOSITORIES, SCHEMA, ...(cataloguePath === undefined ? [] : [cataloguePath])].map(
+      (path) => ({ path, standing: shared.localTarget(path) }),
+    ),
   };
 }
 
-/** Read the tree at `root` and judge it. */
-export function checkProduits(root: string): ProduitsOutcome {
-  return evaluateProduits(readProduitsInput(root));
-}
-
 if (import.meta.main) {
-  const outcome = checkProduits(process.cwd());
+  const outcome = evaluateProduits(readProduitsInput(process.cwd()));
   // A red run prints only its violations: say the volume they were found in.
   if (outcome.report.violations.length > 0) {
     console.error(`Product catalogue volume: ${outcome.volume}`);

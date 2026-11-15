@@ -2,16 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { parseCatalogue, type TreeEntry } from "./briques";
+import Ajv2020 from "ajv/dist/2020";
+
+import { CONTROL_CHARACTERS, type LocalTarget, parseCatalogue } from "./briques";
 import {
+  type CatalogueEntry,
   DOMAIN_CATEGORIES,
   evaluateProduits,
   PRODUITS_ROOT,
   type ProduitsInput,
   type ProduitsOutcome,
-  parseCatalogueDomains,
+  parseCatalogueTable,
   SCHEMA_FIELDS,
   SCHEMA_VERSION,
+  type SourceFile,
   validateFiche,
 } from "./produits";
 
@@ -52,13 +56,22 @@ function fiche(id: string, changes: Fiche = {}): Fiche {
 interface Reference {
   /** File name under the root to its content, as text. */
   files: Map<string, string>;
-  entries: TreeEntry[] | null;
+  entries: CatalogueEntry[] | null;
   catalogue: Set<string>;
   domaines: Map<string, string[]>;
+  catalogueUnread: string[];
   repositories: Map<string, { visibility: string }>;
   unstaged: Set<string>;
+  sources: SourceFile[];
   listingError: string | null;
 }
+
+/** The three files the gate declares as its sources. */
+const SOURCE_PATHS = [
+  "docs/adr/0042-x.md",
+  "ecosystem/repositories.v1.yaml",
+  "ecosystem/schemas/produit.v1.schema.json",
+] as const;
 
 /** Three products over two domains, every fiche valid, one carrier in the inventory. */
 function reference(): Reference {
@@ -71,16 +84,20 @@ function reference(): Reference {
       ["P02", ["Connaissance"]],
       ["P03", ["Collaboration"]],
     ]),
+    catalogueUnread: [],
     repositories: new Map([[SELF, { visibility: "public" }]]),
     unstaged: new Set(),
+    sources: SOURCE_PATHS.map((path): SourceFile => ({ path, standing: "regular" })),
     listingError: null,
   };
 }
 
+const asFiles = (state: Reference): CatalogueEntry[] =>
+  [...state.files.keys()].map((path): CatalogueEntry => ({ path, kind: "file" }));
+
 function judge(state: Reference): ProduitsOutcome {
   const input: ProduitsInput = {
-    entries:
-      state.entries ?? [...state.files.keys()].map((path): TreeEntry => ({ path, kind: "file" })),
+    entries: state.entries ?? asFiles(state),
     listingError: state.listingError,
     read: (path) => {
       const text = state.files.get(path);
@@ -88,9 +105,10 @@ function judge(state: Reference): ProduitsOutcome {
     },
     catalogue: state.catalogue,
     domaines: state.domaines,
+    catalogueUnread: state.catalogueUnread,
     repositories: state.repositories,
     unstaged: state.unstaged,
-    sources: ["docs/adr/0042-x.md", "ecosystem/repositories.v1.yaml"],
+    sources: state.sources,
   };
   return evaluateProduits(input);
 }
@@ -115,6 +133,7 @@ function expectSums(outcome: ProduitsOutcome): void {
   expect(c.valides + c.en_violation).toBe(c.fiches_lues);
   expect(c.avec_depot + c.sans_depot + c.depot_indecidable).toBe(c.fiches_lues);
   expect(c.couverts + c.hors_catalogue).toBe(c.fiches_lues);
+  expect(c.fiches_lues + c.readmes + c.refuses + c.non_fusionnes).toBe(c.chemins_suivis);
 }
 
 describe("the reference catalogue", () => {
@@ -122,6 +141,10 @@ describe("the reference catalogue", () => {
     const outcome = judge(reference());
     expect(outcome.report.violations).toEqual([]);
     expect(outcome.compteurs).toEqual({
+      chemins_suivis: 3,
+      readmes: 0,
+      refuses: 0,
+      non_fusionnes: 0,
       catalogue: 3,
       couverts: 3,
       manquants: 0,
@@ -144,9 +167,21 @@ describe("the reference catalogue", () => {
     expect(outcome.volume).toContain("3 a_relire field(s) on 3 fiche(s)");
   });
 
-  test("one assertion per source and per fiche: the count is the volume examined", () => {
-    // 4 sources + the directory + 3 fiches.
-    expect(judge(reference()).report.asserted).toBe(8);
+  // What is held is the behaviour — the count of assertions follows the volume
+  // examined — not the number of checks the gate makes on its sources, which a
+  // refactor may regroup without changing a verdict.
+  test("one assertion per fiche and per missing product: the count follows the volume examined", () => {
+    const three = judge(reference()).report.asserted;
+    const added = reference();
+    added.catalogue.add("P04");
+    added.domaines.set("P04", ["Connaissance"]);
+    // A product of the catalogue without a fiche is one more assertion (a failed one)…
+    expect(judge(added).report.asserted).toBe(three + 1);
+    // …and its fiche replaces it: one assertion per product either way.
+    added.files.set("P04.v1.yaml", JSON.stringify(fiche("P04")));
+    const four = judge(added);
+    expect(four.report.violations).toEqual([]);
+    expect(four.report.asserted).toBe(three + 1);
   });
 });
 
@@ -279,6 +314,25 @@ describe("rules of the gate", () => {
     expect(violationOf(outcome, item("P01"))).not.toContain("promesse,");
   });
 
+  test.each([
+    "schema_version",
+    "id",
+    "a_relire",
+  ])("rule a_relire content: %s is not a field to reread", (field) => {
+    const outcome = judge(withFiche("P01", { a_relire: ["promesse", field] }));
+    expect(violationOf(outcome, item("P01"))).toContain(
+      `a_relire names ${field}, which carries no content to reread`,
+    );
+  });
+
+  test("rule a_relire content: every other field of the schema may be named", () => {
+    const content = [...SCHEMA_FIELDS].filter(
+      (field) => !["schema_version", "id", "a_relire"].includes(field),
+    );
+    expect(content.length).toBeGreaterThan(0);
+    expect(judge(withFiche("P01", { a_relire: content })).report.violations).toEqual([]);
+  });
+
   test("rule counters: a_relire is summed over the fiches the schema holds", () => {
     const state = withFiche("P01", { a_relire: [] });
     const outcome = judge(withFiche("P02", { a_relire: ["promesse", "capacites"] }, state));
@@ -297,6 +351,14 @@ describe("a source that cannot be read is a failure, never a zero", () => {
     expect(violationOf(outcome, "catalogue of ADR-0042 §1")).toContain("no product read");
     expect(violationOf(outcome, "domains of ADR-0042 §1")).toContain("no domain read");
     expectSums(outcome);
+  });
+
+  test("source catalogue lines: a line of the section the reader did not read is a failure", () => {
+    const state = reference();
+    state.catalogueUnread = ["line 12 « | Collaboration | P04 quatre | »"];
+    expect(violationOf(judge(state), "catalogue of ADR-0042 §1")).toContain(
+      "catalogue line(s) not read: line 12 « | Collaboration | P04 quatre | »",
+    );
   });
 
   test("source domains: a domain the category table does not map", () => {
@@ -337,19 +399,47 @@ describe("a source that cannot be read is a failure, never a zero", () => {
 
   test("source fiche: a tracked fiche that cannot be read", () => {
     const state = reference();
-    state.entries = [...state.files.keys()].map((path): TreeEntry => ({ path, kind: "file" }));
+    state.entries = asFiles(state);
     state.files.delete("P02.v1.yaml");
     const outcome = judge(state);
     expect(violationOf(outcome, item("P02"))).toContain("unreadable (ENOENT)");
     expectSums(outcome);
   });
 
-  test("source drift: a source changed on disk and not staged", () => {
+  test.each([...SOURCE_PATHS])("source drift: %s changed on disk and not staged", (source) => {
     const state = reference();
-    state.unstaged.add("ecosystem/repositories.v1.yaml");
+    state.unstaged.add(source);
     expect(violationOf(judge(state), "sources")).toContain(
-      "ecosystem/repositories.v1.yaml: its working copy differs from the index",
+      `${source}: its working copy differs from the index`,
     );
+  });
+
+  // A source is read on disk under the attestation « as indexed »: that holds
+  // only for a file the index holds as a regular file.
+  test.each<[LocalTarget, string]>([
+    ["link", "is tracked as a symbolic link"],
+    ["absent", "is not in the index"],
+    ["empty", "is an empty file"],
+    ["other", "is tracked as neither a regular file nor a link"],
+  ])("source standing: a source that is %s in the index is refused", (standing, expected) => {
+    for (const source of SOURCE_PATHS) {
+      const state = reference();
+      state.sources = state.sources.map((declared) =>
+        declared.path === source ? { path: source, standing } : declared,
+      );
+      const violation = violationOf(judge(state), "sources");
+      expect(violation).toContain(`${source} ${expected}`);
+      // The two other sources are regular files: they are not named.
+      for (const other of SOURCE_PATHS.filter((path) => path !== source)) {
+        expect(violation).not.toContain(other);
+      }
+    }
+  });
+
+  test("source standing: no source declared is a failure, not zero file read as indexed", () => {
+    const state = reference();
+    state.sources = [];
+    expect(violationOf(judge(state), "sources")).toContain("no source file declared");
   });
 
   test("fiche drift: a fiche changed on disk and not staged is not read", () => {
@@ -363,7 +453,7 @@ describe("a source that cannot be read is a failure, never a zero", () => {
   test("stray: a link or a foreign file under the root is refused, not read", () => {
     const state = reference();
     state.entries = [
-      ...[...state.files.keys()].map((path): TreeEntry => ({ path, kind: "file" })),
+      ...asFiles(state),
       { path: "P04.v1.yaml", kind: "link" },
       { path: "notes.txt", kind: "file" },
       { path: "README.md", kind: "file" },
@@ -373,16 +463,39 @@ describe("a source that cannot be read is a failure, never a zero", () => {
       "P04.v1.yaml (link), notes.txt (file)",
     );
     expect(outcome.volume).toContain(
-      "6 tracked entry(ies) under ecosystem/produits/ = 3 fiche(s) + 1 README + 2 refused",
+      "6 tracked path(s) under ecosystem/produits/ = 3 fiche(s) + 1 README + 2 refused + 0 unmerged",
     );
+    expectSums(outcome);
+  });
+
+  test("unmerged: a path with no single indexed content is not read, and the paths still sum", () => {
+    const state = reference();
+    state.entries = [
+      ...asFiles(state).filter((entry) => entry.path !== "P02.v1.yaml"),
+      { path: "P02.v1.yaml", kind: "unmerged" },
+      { path: "README.md", kind: "file" },
+    ];
+    const outcome = judge(state);
+    expect(violationOf(outcome, `${PRODUITS_ROOT}/`)).toContain("unmerged path(s)");
+    expect(violationOf(outcome, `${PRODUITS_ROOT}/`)).toContain("P02.v1.yaml");
+    // Not read as a fiche: the product is missing, and says so.
+    expect(violationOf(outcome, "P02")).toContain("no fiche ecosystem/produits/P02.v1.yaml");
+    expect(outcome.compteurs).toMatchObject({
+      chemins_suivis: 4,
+      fiches_lues: 2,
+      readmes: 1,
+      refuses: 0,
+      non_fusionnes: 1,
+    });
+    expect(outcome.volume).toContain(
+      "4 tracked path(s) under ecosystem/produits/ = 2 fiche(s) + 1 README + 0 refused + 1 unmerged",
+    );
+    expectSums(outcome);
   });
 
   test("a control character in a file name is printed escaped", () => {
     const state = reference();
-    state.entries = [
-      ...[...state.files.keys()].map((path): TreeEntry => ({ path, kind: "file" })),
-      { path: "x\nProduct catalogue verified", kind: "file" },
-    ];
+    state.entries = [...asFiles(state), { path: "x\nProduct catalogue verified", kind: "file" }];
     const lines = judge(state).report.violations.join("|");
     expect(lines).toContain("x\\u000aProduct catalogue verified");
     expect(lines).not.toContain("\n");
@@ -407,23 +520,61 @@ describe("the domains of ADR-0042 §1", () => {
       "",
       "| Collaboration | P15 |",
     ].join("\n");
-    expect([...parseCatalogueDomains(adr)]).toEqual([
+    const table = parseCatalogueTable(adr);
+    expect([...table.domains]).toEqual([
       ["P01", ["Connaissance"]],
       ["P02", ["Connaissance"]],
       ["P40", ["Poste de travail"]],
     ]);
+    // A sentence of the section that cites products of the table is prose.
+    expect(table.unread).toEqual([]);
   });
 
   test("a product written in two rows gets both domains", () => {
     const adr = "### Le catalogue d'applications\n| A | P01 |\n| B | P01 · P02 |\n| B | P02 |\n";
-    expect([...parseCatalogueDomains(adr)]).toEqual([
+    expect([...parseCatalogueTable(adr).domains]).toEqual([
       ["P01", ["A", "B"]],
       ["P02", ["B"]],
     ]);
   });
 
   test("no catalogue heading, no domain", () => {
-    expect(parseCatalogueDomains("| Connaissance | P01 |\n").size).toBe(0);
+    const table = parseCatalogueTable("| Connaissance | P01 |\n  | Connaissance | P02 |\n");
+    expect(table.domains.size).toBe(0);
+    // Outside the section nothing is a catalogue line, read or not.
+    expect(table.unread).toEqual([]);
+  });
+
+  describe("unread: a line of the section that carries a product and is not a row", () => {
+    const SECTION = "### 1. Le catalogue d'applications\n\n| Connaissance | P01 un · P02 deux |\n";
+    const unreadOf = (line: string): string[] =>
+      parseCatalogueTable(`${SECTION}${line}\n\n### 2. Autre\n\n  | Hors section | P77 |\n`).unread;
+
+    test.each([
+      ["an indented row", "  | Collaboration | P03 trois |"],
+      ["a row indented by a tabulation", "\t| Collaboration | P03 trois |"],
+      ["a row without its leading bar", "Collaboration | P03 trois |"],
+      // The product is in the table: the row would give it a second domain.
+      ["an indented row of a product the table lists", "  | Collaboration | P01 un |"],
+      ["a list item naming a product no row lists", "- P03 trois"],
+      ["a sentence naming a product no row lists", "P03 rejoint le catalogue."],
+    ])("%s is returned, with its line number", (_name, line) => {
+      expect(unreadOf(line)).toEqual([`line 4 « ${line.trim()} »`]);
+      // The domains are those of the rows read: the line gave none.
+      expect([...parseCatalogueTable(`${SECTION}${line}\n`).domains]).toEqual([
+        ["P01", ["Connaissance"]],
+        ["P02", ["Connaissance"]],
+      ]);
+    });
+
+    test.each([
+      ["a sentence citing products of the table", "P01 et P02 sortent du gel."],
+      ["a list item citing a product of the table", "- Une capacité de **P02**."],
+      ["a line without a product", "Collaboration | rien |"],
+      ["an identifier of another form", "  | Collaboration | XP03 · P3 · P033 |"],
+    ])("%s is not a catalogue line", (_name, line) => {
+      expect(unreadOf(line)).toEqual([]);
+    });
   });
 
   // The table of this module, the enumeration of the schema and the decision
@@ -434,7 +585,9 @@ describe("the domains of ADR-0042 §1", () => {
     const names = readdirSync(directory).filter((name) => name.startsWith("0042-"));
     expect(names.length).toBe(1);
     const adr = readFileSync(join(directory, String(names[0])), "utf8");
-    const domains = parseCatalogueDomains(adr);
+    const { domains, unread } = parseCatalogueTable(adr);
+    // The decision record as it is written: no line of its section is left unread.
+    expect(unread).toEqual([]);
 
     const labels = new Set([...domains.values()].flat());
     expect([...labels].sort()).toEqual([...DOMAIN_CATEGORIES.keys()].sort());
@@ -453,23 +606,160 @@ describe("the domains of ADR-0042 §1", () => {
 });
 
 describe("the schema", () => {
+  // The order of the properties is a convention of writing, which the gate
+  // does not check: only the set is held.
   test("its fields are the ones a fiche is written with", () => {
-    expect([...SCHEMA_FIELDS]).toEqual(Object.keys(fiche("P01")));
+    expect([...SCHEMA_FIELDS].sort()).toEqual(Object.keys(fiche("P01")).sort());
   });
 });
+
+/**
+ * No string of a fiche carries a control character, and a text is not made of
+ * blanks. The class is not copied from the schema: it is the one the gates
+ * escape when they print (`CONTROL_CHARACTERS`), walked code point by code
+ * point, so a pattern narrower than that class turns this red. The former
+ * pattern excluded C0 and DEL only, and let exactly one control character
+ * through: the one its `\S` consumed.
+ */
+describe("the text of a fiche", () => {
+  const controls = Array.from({ length: 0x10000 }, (_, code) => String.fromCharCode(code)).filter(
+    (character) => character.replace(CONTROL_CHARACTERS, "") === "",
+  );
+  // Built from code points: a source file does not carry these characters.
+  const LINE_SEPARATOR = String.fromCharCode(0x2028);
+  const NO_BREAK_SPACE = String.fromCharCode(0xa0);
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+  /** Every field written, so that every string of a fiche has a place to carry the character. */
+  const full = fiche("P01", { nom_public: "Nom public", depot: SELF, depend_de: ["P02"] });
+
+  const inMiddle = (text: string, character: string): string => {
+    const half = Math.floor(text.length / 2);
+    return `${text.slice(0, half)}${character}${text.slice(half)}`;
+  };
+
+  /** `full` with the character written in the middle of one field (of its first item, for a list). */
+  function carrying(field: string, character: string): Fiche {
+    const value = full[field];
+    if (typeof value === "string") return { ...full, [field]: inMiddle(value, character) };
+    if (Array.isArray(value) && typeof value[0] === "string") {
+      return { ...full, [field]: [inMiddle(value[0], character), ...value.slice(1)] };
+    }
+    throw new Error(`${field} carries no string in the reference fiche`);
+  }
+
+  test("control: the class walked is the one the gates escape, and the reference fiche holds", () => {
+    expect(controls).toContain("\u001b");
+    expect(controls).toContain("\u0085");
+    expect(controls).toContain(LINE_SEPARATOR);
+    expect(controls).not.toContain(NO_BREAK_SPACE);
+    const verdict: unknown = validateFiche(full);
+    expect(verdict).toEqual({ data: full });
+  });
+
+  test.each(Object.keys(full))("no control character is admitted in %s", (field) => {
+    const admitted = controls.filter(
+      (character) => "data" in validateFiche(carrying(field, character)),
+    );
+    expect(admitted.map((character) => character.charCodeAt(0).toString(16))).toEqual([]);
+  });
+
+  const TEXT_FIELDS = [
+    "nom_public",
+    "nom_provisoire",
+    "intitule",
+    "fonction",
+    "promesse",
+    "pour_qui",
+    "a_la_place_de",
+    "capacites",
+    "ne_fait_pas",
+    "etiquettes",
+  ];
+
+  test.each(TEXT_FIELDS)("a no-break space and an accent are admitted in %s", (field) => {
+    // The rule refuses control characters, not everything outside ASCII.
+    const value = carrying(field, `${NO_BREAK_SPACE}é`);
+    const verdict: unknown = validateFiche(value);
+    expect(verdict).toEqual({ data: value });
+  });
+
+  test.each(TEXT_FIELDS)("blanks alone are not a value of %s", (field) => {
+    for (const blank of [" ", NO_BREAK_SPACE, ZERO_WIDTH_SPACE]) {
+      const text = blank.repeat(12);
+      const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+      expect(["errors" in validateFiche(value), JSON.stringify(blank)]).toEqual([
+        true,
+        JSON.stringify(blank),
+      ]);
+    }
+  });
+
+  test("every field of the schema is a free text or a closed form", () => {
+    // A field added to the schema is classified here, or this turns red: a
+    // free text the two tests above do not walk would be held by nothing.
+    const closed = [
+      "schema_version",
+      "id",
+      "categorie",
+      "depend_de",
+      "realisation",
+      "depot",
+      "a_relire",
+    ];
+    expect([...TEXT_FIELDS, ...closed].sort()).toEqual([...SCHEMA_FIELDS].sort());
+  });
+});
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+interface Change {
+  /** One field of the fiche; empty for the fiche itself. */
+  readonly path: readonly string[];
+  readonly value?: unknown;
+}
+
+interface InvalidVector {
+  readonly name: string;
+  readonly set?: Change;
+  readonly unset?: Change;
+  readonly expect: string;
+}
+
+/** The first valid vector with the one change of an invalid vector. */
+function changed(base: Fiche, vector: InvalidVector): unknown {
+  // Exactly one change per vector: a vector with none would pass on nothing.
+  const changes = [vector.set, vector.unset].filter((change) => change !== undefined);
+  if (changes.length !== 1) throw new Error(`« ${vector.name} » carries ${changes.length} changes`);
+  const [field, ...deeper] = (vector.set ?? vector.unset)?.path ?? [];
+  // A deeper path was read as its first segment: refused, so that a vector
+  // never changes another place than the one it names.
+  if (deeper.length > 0) throw new Error(`« ${vector.name} »: a path names one field`);
+  if (field === undefined) {
+    if (vector.set === undefined) throw new Error(`« ${vector.name} » removes the fiche itself`);
+    return vector.set.value;
+  }
+  const value: Fiche = structuredClone(base);
+  if (vector.set !== undefined) value[field] = vector.set.value;
+  else delete value[field];
+  return value;
+}
 
 describe("the schema vectors", async () => {
   const vectors = (await Bun.file(
     join(import.meta.dir, "fixtures", "produits", "vectors.v1.json"),
-  ).json()) as {
-    valid: { name: string; value: Fiche }[];
-    invalid: {
-      name: string;
-      set?: { path: string[]; value: unknown };
-      unset?: { path: string[] };
-      expect: string;
-    }[];
-  };
+  ).json()) as { valid: { name: string; value: Fiche }[]; invalid: InvalidVector[] };
+  const base: Fiche = vectors.valid[0]?.value ?? {};
+
+  // The tests below are generated from the file: an emptied list would
+  // generate none, and nothing would turn red.
+  test("the file holds valid vectors and invalid ones, each under its own name", () => {
+    expect(vectors.valid.length).toBeGreaterThan(0);
+    expect(vectors.invalid.length).toBeGreaterThan(0);
+    const names = [...vectors.valid, ...vectors.invalid].map((vector) => vector.name);
+    expect(names.filter((name, at) => names.indexOf(name) !== at)).toEqual([]);
+  });
 
   for (const vector of vectors.valid) {
     test(`valid: ${vector.name}`, () => {
@@ -480,13 +770,125 @@ describe("the schema vectors", async () => {
 
   for (const vector of vectors.invalid) {
     test(`invalid: ${vector.name}`, () => {
-      const value: Fiche = structuredClone(vectors.valid[0]?.value ?? {});
-      // Exactly one change per vector: a vector with none would pass on nothing.
-      expect([vector.set, vector.unset].filter((change) => change !== undefined).length).toBe(1);
-      if (vector.set !== undefined) value[String(vector.set.path[0])] = vector.set.value;
-      if (vector.unset !== undefined) delete value[String(vector.unset.path[0])];
-      const verdict = validateFiche(value);
+      const verdict = validateFiche(changed(base, vector));
       expect("errors" in verdict ? verdict.errors.join("\n") : "").toContain(vector.expect);
     });
   }
+
+  /**
+   * Every constraint of the schema is held by a vector.
+   *
+   * WHY. Eleven constraints out of twelve could be removed from the schema
+   * with every suite green (review of 2026-11-15, C3): a constraint no vector
+   * exercises is a sentence, not a rule. Here each constraint is removed in
+   * turn — a keyword, or one entry of `required` — and the vectors are judged
+   * again: one verdict at least must change. A constraint added to the schema
+   * without a vector fails this test the day it is added, and a keyword this
+   * walk does not know fails it too, rather than being skipped.
+   *
+   * WHAT IT DOES NOT SAY. That a vector is refused for the right reason: the
+   * `expect` of each invalid vector, checked above, says that.
+   */
+  describe("every constraint is held by a vector", async () => {
+    const ANNOTATIONS = new Set(["$schema", "$id", "title", "description"]);
+    const CONSTRAINTS = new Set([
+      "type",
+      "additionalProperties",
+      "const",
+      "enum",
+      "pattern",
+      "minLength",
+      "maxLength",
+      "minItems",
+      "uniqueItems",
+      "items",
+      "oneOf",
+      "allOf",
+      "$ref",
+    ]);
+    /** Keywords whose value maps a name to a schema: walked, never removed as a whole. */
+    const SCHEMA_MAPS = new Set(["properties", "$defs"]);
+
+    const schema: unknown = await Bun.file(
+      join(import.meta.dir, "schemas", "produit.v1.schema.json"),
+    ).json();
+
+    const child = (node: unknown, key: string): unknown => {
+      if (Array.isArray(node)) return node[Number(key)];
+      if (isRecord(node)) return node[key];
+      throw new Error(`no ${key} under a scalar`);
+    };
+
+    /** The schema without what the pointer names. */
+    function without(pointer: readonly string[]): unknown {
+      const copy: unknown = structuredClone(schema);
+      const parent = pointer.slice(0, -1).reduce(child, copy);
+      const last = String(pointer.at(-1));
+      if (Array.isArray(parent)) parent.splice(Number(last), 1);
+      else if (isRecord(parent)) delete parent[last];
+      else throw new Error(`nothing to remove at ${pointer.join("/")}`);
+      return copy;
+    }
+
+    /** One pointer per constraint: a keyword, or one entry of `required`. */
+    function constraintsOf(node: unknown, pointer: readonly string[]): string[][] {
+      if (!isRecord(node)) throw new Error(`${pointer.join("/")} is not a schema`);
+      return Object.entries(node).flatMap(([key, value]): string[][] => {
+        const here = [...pointer, key];
+        if (ANNOTATIONS.has(key)) return [];
+        if (key === "required" && Array.isArray(value)) {
+          return value.map((_entry, at) => [...here, String(at)]);
+        }
+        if (SCHEMA_MAPS.has(key) && isRecord(value)) {
+          return Object.keys(value).flatMap((name) => constraintsOf(value[name], [...here, name]));
+        }
+        if (!CONSTRAINTS.has(key)) {
+          throw new Error(`${here.join("/")}: a keyword this walk does not classify`);
+        }
+        const nested = Array.isArray(value)
+          ? value.flatMap((entry, at) =>
+              isRecord(entry) ? constraintsOf(entry, [...here, String(at)]) : [],
+            )
+          : isRecord(value)
+            ? constraintsOf(value, here)
+            : [];
+        return [here, ...nested];
+      });
+    }
+
+    const cases = [
+      ...vectors.valid.map((vector) => ({ name: vector.name, value: vector.value as unknown })),
+      ...vectors.invalid.map((vector) => ({ name: vector.name, value: changed(base, vector) })),
+    ];
+    /**
+     * The verdict of each case under a schema. Not in strict mode: a mutant
+     * that lost a `type` is refused by the strict compilation before it judges
+     * anything; the schema as written is compiled strictly by the library.
+     */
+    function verdicts(candidate: unknown): boolean[] {
+      if (!isRecord(candidate)) throw new Error("a schema is an object");
+      const validate = new Ajv2020({ allErrors: true, strict: false }).compile(candidate);
+      return cases.map((entry) => validate(entry.value) === true);
+    }
+
+    const pointers = constraintsOf(schema, []);
+    const written = verdicts(schema);
+
+    test("control: the schema as written accepts the valid vectors and refuses the invalid ones", () => {
+      expect(written).toEqual([
+        ...vectors.valid.map(() => true),
+        ...vectors.invalid.map(() => false),
+      ]);
+      // The walk found the constraints: a walk that found none would hold nothing.
+      expect(pointers.length).toBeGreaterThan(Object.keys(base).length);
+    });
+
+    test("removing any one constraint changes the verdict of a vector", () => {
+      const unheld = pointers.filter((pointer) => {
+        const mutated = verdicts(without(pointer));
+        return mutated.every((verdict, at) => verdict === written[at]);
+      });
+      expect(unheld.map((pointer) => pointer.join("/"))).toEqual([]);
+    });
+  });
 });

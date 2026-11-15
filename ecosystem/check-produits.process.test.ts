@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import {
+  appendFileSync,
   copyFileSync,
   mkdirSync,
   mkdtempSync,
@@ -20,14 +21,16 @@ import { SCHEMA_VERSION } from "./produits";
  * proves the rules, and nothing about the half that reads git and the disk.
  * Whether a missing decision record, an unparsable catalogue table or an
  * absent inventory becomes a failure and not a zero, whether an untracked
- * fiche is left out, whether a link is seen as a link, and whether a violation
- * reaches the exit code are all decided in `check-produits.ts`. These probes
- * run that file.
+ * fiche is left out, whether a link is seen as a link — for a fiche and for a
+ * source —, whether a source git does not track is refused, whether an
+ * unmerged path is counted once, and whether a violation reaches the exit
+ * code are all decided in `check-produits.ts`. These probes run that file.
  *
  * WHY A DECLARED ENVIRONMENT. A child inheriting `GIT_DIR`, `GIT_INDEX_FILE`
  * or a global git configuration would read another index than the fixture's,
  * and `GATE_VERBOSE` would change the output: each child gets only what is
- * declared here.
+ * declared here. The two probes that set `GIT_DIR` and `GIT_INDEX_FILE` on
+ * purpose say so: the gate must not follow them.
  */
 
 const GATE = join(import.meta.dir, "check-produits.ts");
@@ -41,19 +44,29 @@ const ENVIRONMENT = {
 
 const CATALOGUE_ADR = "docs/adr/0042-catalogue.md";
 const INVENTORY = "ecosystem/repositories.v1.yaml";
+const SCHEMA = "ecosystem/schemas/produit.v1.schema.json";
+/** The three files the gate declares as its sources. */
+const SOURCES: string[] = [CATALOGUE_ADR, INVENTORY, SCHEMA];
 
 interface Run {
   readonly exitCode: number;
   readonly output: string;
 }
 
-function run(argv: readonly string[], cwd: string): Run {
+interface RunOptions {
+  /** Variables added to the declared environment, for the probes that redirect git. */
+  readonly env?: Readonly<Record<string, string>>;
+  /** What the child reads on its standard input. */
+  readonly input?: string;
+}
+
+function run(argv: readonly string[], cwd: string, options: RunOptions = {}): Run {
   const result = Bun.spawnSync([...argv], {
     cwd,
-    stdin: "ignore",
+    stdin: options.input === undefined ? "ignore" : new TextEncoder().encode(options.input),
     stdout: "pipe",
     stderr: "pipe",
-    env: ENVIRONMENT,
+    env: { ...ENVIRONMENT, ...options.env },
   });
   const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
   return {
@@ -110,6 +123,10 @@ function plantTree(root: string): void {
     "## Décision\n\n### 1. Le catalogue d'applications\n\n| Domaine | Produits |\n| --- | --- |\n| Connaissance | P01 un · P02 deux |\n| Collaboration | P03 trois |\n",
   );
   write(root, INVENTORY, `repositories:\n  - repository: ${SELF}\n    visibility: public\n`);
+  // The schema is a source the gate attests: the fixture tracks it like the
+  // repository does, or the attestation would bear on a file git does not hold.
+  mkdirSync(dirname(join(root, SCHEMA)), { recursive: true });
+  copyFileSync(join(import.meta.dir, "schemas", "produit.v1.schema.json"), join(root, SCHEMA));
   write(root, "ecosystem/produits/P01.v1.yaml", fiche("P01", "connaissance", SELF));
   write(root, "ecosystem/produits/P02.v1.yaml", fiche("P02", "connaissance", null));
   write(root, "ecosystem/produits/P03.v1.yaml", fiche("P03", "collaboration", null));
@@ -128,7 +145,17 @@ function freshTree(name: string): string {
   return root;
 }
 
-const judge = (root: string): Run => run([process.execPath, GATE], root);
+const judge = (root: string, env?: Readonly<Record<string, string>>): Run =>
+  run([process.execPath, GATE], root, { env });
+
+/** A tracked file replaced by a tracked link to a copy of itself: same bytes, another mode. */
+function replaceByTrackedLink(root: string, path: string): void {
+  const target = join(root, `${path.replaceAll("/", "-")}.cible`);
+  copyFileSync(join(root, path), target);
+  unlinkSync(join(root, path));
+  symlinkSync(target, join(root, path));
+  git(root, "add", "--all");
+}
 
 beforeAll(() => {
   workspace = mkdtempSync(join(tmpdir(), "check-produits-"));
@@ -141,7 +168,9 @@ afterAll(() => {
 describe("check-produits as a process", () => {
   test("control: the planted tree is green, and the volume names what was read", () => {
     const outcome = judge(freshTree("control"));
-    expect(outcome.output).toContain("Product catalogue verified: 8 assertion(s) hold");
+    // The number of assertions is not held here: it follows the number of
+    // checks the gate makes on its sources, which a refactor may regroup.
+    expect(outcome.output).toMatch(/Product catalogue verified: [0-9]+ assertion\(s\) hold/);
     expect(outcome.output).toContain(
       "3 product(s) in the catalogue of ADR-0042 §1 = 3 with a fiche + 0 missing",
     );
@@ -151,7 +180,7 @@ describe("check-produits as a process", () => {
     );
     expect(outcome.output).toContain("6 a_relire field(s) on 3 fiche(s)");
     expect(outcome.output).toContain(
-      "4 tracked entry(ies) under ecosystem/produits/ = 3 fiche(s) + 1 README + 0 refused",
+      "4 tracked path(s) under ecosystem/produits/ = 3 fiche(s) + 1 README + 0 refused + 0 unmerged",
     );
     expect(outcome.exitCode).toBe(0);
   });
@@ -255,14 +284,103 @@ describe("check-produits as a process", () => {
     expect(outcome.exitCode).toBe(1);
   });
 
-  test("a source changed on disk and not staged is refused", () => {
-    const root = freshTree("source-drift");
-    write(root, INVENTORY, `repositories:\n  - repository: ${SELF}\n    visibility: private\n`);
+  // One probe per declared source: a list of sources that forgot one of them
+  // would leave that one read on disk and attested as indexed.
+  test.each(SOURCES)("the source %s changed on disk and not staged is refused", (source) => {
+    const root = freshTree(`source-drift-${SOURCES.indexOf(source)}`);
+    // A line break at the end: the content differs, and nothing else fails.
+    appendFileSync(join(root, source), "\n");
+    const outcome = judge(root);
+    expect(outcome.output).toContain(`${source}: its working copy differs from the index`);
+    expect(outcome.output).toMatch(/Product catalogue failed: 1 of [0-9]+ assertion/);
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test.each(
+    SOURCES,
+  )("the source %s tracked as a symbolic link is refused, not read through the link", (source) => {
+    const root = freshTree(`source-link-${SOURCES.indexOf(source)}`);
+    replaceByTrackedLink(root, source);
+    const outcome = judge(root);
+    expect(outcome.output).toContain(`sources: ${source} is tracked as a symbolic link`);
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test.each([
+    INVENTORY,
+    SCHEMA,
+  ])("the source %s on disk and absent from the index is refused", (source) => {
+    const root = freshTree(`source-untracked-${SOURCES.indexOf(source)}`);
+    git(root, "rm", "--quiet", "--cached", source);
+    const outcome = judge(root);
+    expect(outcome.output).toContain(`sources: ${source} is not in the index`);
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test.each([
+    ["indented", "  | Collaboration | P04 quatre |"],
+    ["written without its leading bar", "Collaboration | P04 quatre |"],
+    ["a list item naming a product no row lists", "- P04 quatre"],
+  ])("a catalogue line that is %s is a failure, not a product left out", (_name, line) => {
+    const root = freshTree(`unread-${_name.replaceAll(/[^a-z]+/g, "-")}`);
+    write(
+      root,
+      CATALOGUE_ADR,
+      `### 1. Le catalogue d'applications\n\n| Domaine | Produits |\n| --- | --- |\n| Connaissance | P01 un · P02 deux |\n| Collaboration | P03 trois |\n${line}\n`,
+    );
+    git(root, "add", "--all");
     const outcome = judge(root);
     expect(outcome.output).toContain(
-      "sources: ecosystem/repositories.v1.yaml: its working copy differs from the index",
+      `catalogue of ADR-0042 §1: catalogue line(s) not read: line 7 « ${line.trim()} »`,
     );
     expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an unmerged fiche is counted apart, and the tracked paths still sum", () => {
+    const root = freshTree("unmerged");
+    const path = "ecosystem/produits/P02.v1.yaml";
+    const blob = run(["git", "hash-object", "-w", path], root).output.trim();
+    expect(blob).toMatch(/^[0-9a-f]{40,64}$/);
+    // The merged entry is removed, then the three stages of a conflict are written.
+    const stages = [1, 2, 3].map((stage) => `100644 ${blob} ${stage}\t${path}\n`).join("");
+    const written = run(["git", "update-index", "--index-info"], root, {
+      input: `0 ${"0".repeat(blob.length)}\t${path}\n${stages}`,
+    });
+    expect(written).toEqual({ exitCode: 0, output: "" });
+    const outcome = judge(root);
+    expect(outcome.output).toContain("ecosystem/produits/: unmerged path(s)");
+    expect(outcome.output).toContain("P02.v1.yaml");
+    expect(outcome.output).toContain(
+      "4 tracked path(s) under ecosystem/produits/ = 2 fiche(s) + 1 README + 0 refused + 1 unmerged",
+    );
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  describe("the repository judged is the one the gate is run in", () => {
+    const redirectedTo = (other: string): Record<string, string> => ({
+      GIT_DIR: join(other, ".git"),
+      GIT_INDEX_FILE: join(other, ".git", "index"),
+    });
+
+    test("GIT_DIR and GIT_INDEX_FILE set to an empty repository do not turn a green tree red", () => {
+      const root = freshTree("redirect-from-green");
+      const other = join(workspace, "redirect-empty");
+      mkdirSync(other);
+      git(other, "init", "--quiet");
+      const outcome = judge(root, redirectedTo(other));
+      expect(outcome.output).toContain("Product catalogue verified:");
+      expect(outcome.exitCode).toBe(0);
+    });
+
+    test("GIT_DIR and GIT_INDEX_FILE set to a complete repository do not turn a red tree green", () => {
+      // Same bytes on disk in both trees; only the index of the judged one lacks a fiche.
+      const root = freshTree("redirect-from-red");
+      git(root, "rm", "--quiet", "--cached", "ecosystem/produits/P02.v1.yaml");
+      const complete = freshTree("redirect-complete");
+      const outcome = judge(root, redirectedTo(complete));
+      expect(outcome.output).toContain("Product catalogue: P02: in the catalogue of ADR-0042 §1");
+      expect(outcome.exitCode).toBe(1);
+    });
   });
 
   test("a fiche that is a symbolic link is refused as a link, not read as its target", () => {
@@ -276,7 +394,7 @@ describe("check-produits as a process", () => {
     const outcome = judge(root);
     expect(outcome.output).toContain("P03.v1.yaml (link)");
     expect(outcome.output).toContain("Product catalogue: P03: in the catalogue");
-    expect(outcome.output).toContain("1 README + 1 refused");
+    expect(outcome.output).toContain("1 README + 1 refused + 0 unmerged");
     expect(outcome.exitCode).toBe(1);
   });
 
@@ -289,7 +407,9 @@ describe("check-produits as a process", () => {
       "categorie is « connaissance », ADR-0042 §1 lists P03 under « Collaboration » (collaboration)",
     );
     expect(outcome.output).toContain("3 fiche(s) read = 2 valid + 1 in violation");
-    expect(outcome.output).toContain("Product catalogue failed: 1 of 8 assertion(s) did not hold.");
+    expect(outcome.output).toMatch(
+      /Product catalogue failed: 1 of [0-9]+ assertion\(s\) did not hold\./,
+    );
     expect(outcome.exitCode).toBe(1);
   });
 });
