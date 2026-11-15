@@ -1,13 +1,13 @@
 schema_version: libre-ai.produit.v1
 id: P03
-nom_public: "Corpus"
+nom_public: "Références"
 nom_provisoire: null
 intitule: "entretien du corpus bibliographique"
 fonction: "Assistant de bibliothèque Zotero"
 categorie: connaissance
 promesse: "Aider à comprendre et entretenir une bibliothèque scientifique au service de questions explicites : le produit renforce Zotero par l'exploration, la qualification et la veille documentaires, et ne recrée pas sans raison la gestion bibliographique existante."
 pour_qui: "Chercheurs utilisant Zotero"
-a_la_place_de: "le tri et le nettoyage à la main de votre bibliothèque de références (le produit complète votre gestionnaire bibliographique, il ne le remplace pas)"
+a_la_place_de: "le tri et le nettoyage à la main de votre bibliothèque de références"
 capacites:
   - "Sélectionner une collection, formuler son objectif de recherche et construire un état du corpus : références, pièces, annotations, versions et sujets."
   - "Explorer un papier, ses références, les travaux qui le citent, les auteurs et les méthodes ; comparer les contributions."
@@ -25,12 +25,11 @@ ne_fait_pas:
   - "Les cas ambigus restent proposés et ne sont pas fusionnés automatiquement."
 depend_de:
   - P01
+  - P02
 realisation: "intégration"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
   - "Connecté à Zotero"
   - "Références et citations"
   - "Nettoyage du corpus"
-a_relire:
-  - a_la_place_de
-  - depend_de
+a_relire: []

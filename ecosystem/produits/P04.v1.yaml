@@ -5,10 +5,16 @@ nom_provisoire: "Notes"
 intitule: "notes et mémoire personnelle"
 fonction: "Prise de notes"
 categorie: connaissance
-promesse: "Capturer et retrouver ses idées avec leur contexte, sur une base éditable et exportable."
-pour_qui: "Toute personne qui prend des notes, de l'usage personnel à la préparation d'une recherche"
-a_la_place_de: "votre application de notes en ligne par abonnement"
+promesse: "Vos notes sont des fichiers ouverts que vous et vos agents lisez et modifiez selon les mêmes règles, avec la trace de chaque changement."
+pour_qui: "Les personnes qui tiennent une base de notes durable ; les personnes et équipes qui font travailler des agents sur leurs notes"
+a_la_place_de: "votre application de notes fermée, où la synchronisation passe par un abonnement"
 capacites:
+  - "Les fichiers font foi : un coffre de notes Markdown existant s'ouvre tel quel, et l'index se reconstruit depuis les fichiers."
+  - "Un identifiant stable par note : renommer ou déplacer ne casse aucun lien."
+  - "Des types de notes déclarés dans le coffre, avec des champs vérifiés à l'écriture."
+  - "La même interface pour les personnes, les agents et les autres produits, sans application ouverte."
+  - "Des droits par agent : par défaut un agent propose, la personne compare et accepte."
+  - "Un journal de provenance exportable : auteur, outil, sources et date de chaque changement."
   - "Capture rapide depuis texte, lien, sélection de document ou dictée ; édition structurée."
   - "Tags, liens entre notes, pièces jointes, journal et recherche ; distinction entre notes privées et notes partagées."
   - "Sauvegarde continue, historique, export en format ouvert, sauvegarde locale et synchronisation avec résolution explicite des conflits."
@@ -16,6 +22,9 @@ capacites:
   - "L'IA propose titres, regroupements, résumés et tâches dérivées, avec comparaison avant application."
   - "Transformer volontairement une note en page P05, document P08 ou tâche P16."
 ne_fait_pas:
+  - "Ne remplace pas un traitement de texte ni un tableur."
+  - "N'exécute pas les extensions d'autres applications de notes ; leur syntaxe est conservée telle quelle."
+  - "Ne protège pas les fichiers contre un programme qui les modifie directement sur le disque, hors de l'interface."
   - "Le texte original et son historique ne sont pas remplacés par une synthèse."
   - "Une inférence sur la personne n'est pas un fait ; les souvenirs persistants d'un assistant sont visibles, corrigeables et supprimables."
   - "Les liens vers notes privées ne révèlent ni titre ni extrait à un lecteur non autorisé."
@@ -23,11 +32,7 @@ depend_de: []
 realisation: "projet autonome"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
-  - "Markdown"
-  - "Liens entre notes"
-  - "Export en format ouvert"
-a_relire:
-  - a_la_place_de
-  - depend_de
-  - pour_qui
-  - etiquettes
+  - "Fichiers Markdown ouverts"
+  - "Lisible par les agents"
+  - "Chaque changement tracé"
+a_relire: []

@@ -5,10 +5,12 @@ nom_provisoire: "Veille"
 intitule: "veille documentaire"
 fonction: "Lecteur de flux et veille"
 categorie: connaissance
-promesse: "Fournir un flux de veille relié aux questions de l'utilisateur et à son corpus, avec une raison lisible de consulter chaque élément, la réussite étant la détection des informations utiles et des changements significatifs et non le volume de notifications."
-pour_qui: "Lecteurs de flux RSS, Atom et OPML ; une personne ou une organisation qui veille des sources"
-a_la_place_de: "votre lecteur de flux en ligne par abonnement"
+promesse: "Vous ne recevez que ce que vous avez demandé : chaque élément arrive avec la raison de sa présence, et le reste ne vous dérange pas."
+pour_qui: "Les personnes qui suivent beaucoup de sources et lisent peu de ce qu'elles reçoivent ; les équipes qui tiennent une veille sur un sujet, un marché ou une réglementation"
+a_la_place_de: "votre lecteur de flux en ligne, où le tri fin se paie en supplément"
 capacites:
+  - "Tous les filtres sont dans le logiciel : mots, auteurs, doublons, expressions régulières ; aucun n'est réservé à une offre."
+  - "Signaler les changements et pas seulement les nouveautés : une page suivie qui change de façon significative est signalée, avec ce qui a changé."
   - "Importer ou créer des abonnements, classer les sources, définir des sujets, langues et exclusions, choisir la fréquence des synthèses et lire dans une interface homogène."
   - "Prendre en charge RSS/Atom et import/export OPML ; pour les newsletters et sites sans flux, définir les connecteurs et autorisations requis."
   - "Boîtes « nouveaux », « à lire », « suivis », « archivés », filtres sauvegardés, tags, annotations, recherche et lecture hors ligne des éléments conservés."
@@ -16,6 +18,9 @@ capacites:
   - "Expliquer la pertinence avec des critères visibles ; les signaux « utile », « déjà connu », « hors sujet » et « ne plus suivre » modifient des préférences inspectables et réversibles."
   - "Préserver une vue chronologique non classée par modèle et prévoir une exploration de sources nouvelles."
 ne_fait_pas:
+  - "Ne classe pas les contenus selon un intérêt publicitaire ou un temps passé."
+  - "Ne garde pas vos abonnements, vos règles ni votre historique derrière un verrou d'export."
+  - "Ne compte pas le volume de notifications comme une réussite : un jour sans rien d'utile est un jour sans alerte."
   - "Une modification cosmétique ne doit pas provoquer une avalanche d'alertes."
   - "L'ajout d'un élément à une bibliothèque bibliographique est une action distincte."
   - "Les liens de partage ne diffusent pas les pièces privées du corpus."
@@ -26,15 +31,11 @@ ne_fait_pas:
   - "Ne dépend pas d'un service managé pour le cœur."
 depend_de:
   - P01
-  - P03
 realisation: "projet autonome"
 depot: null
 etiquettes:
-  - "Flux RSS et sites"
-  - "Tri par vos questions"
-  - "Pourquoi le lire"
+  - "Seulement le contenu voulu"
+  - "La raison de chaque élément"
+  - "Vos règles, vos données"
 a_relire:
-  - a_la_place_de
   - depend_de
-  - ne_fait_pas
-  - pour_qui

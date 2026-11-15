@@ -16,7 +16,7 @@ capacites:
   - "Suspension rapide par site."
   - "Affichage des fonctions indisponibles."
 ne_fait_pas:
-  - "Ne garantit pas le fonctionnement sur tous les lecteurs : « tous médias » reste une ambition d'extension, jamais une garantie."
+  - "Ne garantit pas le fonctionnement sur tous les médias : étendre la liste des lecteurs pris en charge est une ambition, jamais une garantie absolue."
   - "N'applique pas un profil à une publicité ou un aperçu non choisi."
   - "Ne centralise pas par défaut tout l'historique de navigation."
   - "Ne dépend pas d'un modèle : l'IA est facultative et le cœur du produit fonctionne sans elle."
@@ -28,5 +28,4 @@ etiquettes:
   - "Vitesse, son, raccourcis"
   - "Profils par site"
   - "Navigateur"
-a_relire:
-  - ne_fait_pas
+a_relire: []
