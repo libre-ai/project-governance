@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P29
+nom_public: "Antenne"
+nom_provisoire: null
+intitule: "lecteur vidéo et abonnements"
+fonction: "Lecteur vidéo et abonnements"
+categorie: medias-jeu
+promesse: "Consulter ses abonnements et lire des vidéos avec maîtrise de l’historique et des réglages."
+pour_qui: "le propriétaire"
+a_la_place_de: "l’application officielle de votre plateforme de vidéos en ligne"
+capacites:
+  - "Abonnements, recherche, playlists, favoris et file d’attente"
+  - "Sous-titres, vitesse et modes audio/arrière-plan selon les plateformes"
+  - "Export/import des abonnements et réglages"
+  - "Recommandations et historique configurables"
+  - "Résumés et chapitres sur transcriptions accessibles avec liens temporels"
+ne_fait_pas:
+  - "Téléchargement seulement lorsqu’il est pris en charge et autorisé."
+  - "Les références NewPipe et Yattee indiquent le type d’usage ; elles ne constituent pas une matrice de compatibilité de libre-ia."
+  - "Signaler lorsque l’image n’a pas été analysée."
+  - "Proposer une file thématique sans remplacer les abonnements explicites."
+  - "Un test simulé ne prouve pas l’accès actuel au service."
+depend_de:
+  - P02
+  - P01
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Vos chaînes"
+  - "Sans pistage"
+  - "Reprise de lecture"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie

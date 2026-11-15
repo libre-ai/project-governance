@@ -1,0 +1,32 @@
+schema_version: libre-ai.produit.v1
+id: P24
+nom_public: null
+nom_provisoire: "Audio"
+intitule: "studio audio"
+fonction: "Studio audio et podcast"
+categorie: creation-publication
+promesse: "Produire un enregistrement, un montage ou un podcast avec une piste de travail révisable."
+pour_qui: "le propriétaire"
+a_la_place_de: "votre logiciel de montage audio et votre service de production de podcasts par abonnement"
+capacites:
+  - "Pistes, segments, fondus, niveaux, préécoute, marqueurs, annulation et export"
+  - "Traitements non destructifs quand possibles ; conservation de l’original"
+  - "Transcriptions horodatées corrigibles et association aux segments"
+  - "Presets de rendu explicites avec fréquence d’échantillonnage, canaux et niveau cible selon l’usage"
+  - "Aide pour retirer du bruit, repérer les silences, proposer un script et générer une narration clairement identifiée"
+ne_fait_pas:
+  - "Les voix personnalisées exigent un dossier d’usage et d’autorisation ; leur disponibilité technique ne suffit pas."
+  - "Préserver le sens lorsque des coupes sont proposées."
+  - "Une transcription doit exprimer l’incertitude plutôt que compléter une phrase inaudible."
+depend_de:
+  - P27
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Enregistrer, couper"
+  - "Nettoyage du son"
+  - "Transcription"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie

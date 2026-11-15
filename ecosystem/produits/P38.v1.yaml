@@ -1,0 +1,29 @@
+schema_version: libre-ai.produit.v1
+id: P38
+nom_public: null
+nom_provisoire: "Sauvegarde"
+intitule: "sauvegarde"
+fonction: "Sauvegarde et restauration"
+categorie: outils-acces
+promesse: "Retrouver ses données après erreur, panne ou perte d’un service."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre service de sauvegarde en ligne par abonnement"
+capacites:
+  - "Choisir le périmètre et la destination, sauvegarder, contrôler puis restaurer réellement dans un environnement distinct."
+  - "Sauvegardes cohérentes des bases, fichiers, métadonnées, configurations nécessaires et références ; historique, chiffrement, rétention et inventaire."
+  - "Définir restauration d’un objet, d’un produit et d’une installation."
+  - "Prévoir versions de schéma, compatibilité, conflits avec données actuelles et vérification des clés de récupération."
+  - "Les produits publient leur contrat de sauvegarde et la liste de ce qui dépend d’un service externe."
+ne_fait_pas:
+  - "Séparer une sauvegarde d’une synchronisation qui répliquerait une suppression."
+  - "Aide au diagnostic et à l’explication de l’état, sans accès aux secrets ni autorité sur les politiques de suppression."
+  - "Une sauvegarde marquée terminée sans exercice de restauration n’est pas qualifiée."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Restauration testée"
+  - "Plusieurs destinations"
+  - "Comparaison à l'original"
+a_relire:
+  - a_la_place_de

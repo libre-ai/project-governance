@@ -1,0 +1,31 @@
+schema_version: libre-ai.produit.v1
+id: P11
+nom_public: null
+nom_provisoire: "Fichiers"
+intitule: "fichiers et partage"
+fonction: "Stockage et partage de fichiers"
+categorie: bureautique-donnees
+promesse: "Retrouver, synchroniser et partager ses fichiers avec un contrôle compréhensible des droits et des versions."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre espace de stockage et de partage de fichiers en ligne par abonnement"
+capacites:
+  - "Dossiers, classement, recherche, aperçus et favoris."
+  - "Chargements reprenables, quotas techniques explicites et synchronisation sélective."
+  - "Corbeille et versions ; conflits de nom et d'édition visibles."
+  - "Rôles distincts : propriétaire, éditeur, lecteur, invité et lien de partage."
+  - "Expiration et révocation des liens de partage, selon les besoins validés."
+  - "Suggestions de classement et extraction facultative de métadonnées par IA."
+ne_fait_pas:
+  - "Ne pas déplacer ou transmettre des fichiers privés au seul motif qu'un modèle le propose."
+  - "Une recherche sémantique doit respecter la politique de traitement choisie."
+  - "Séparer disponibilité synchronisée et sauvegarde indépendante P38."
+  - "Une révocation ne peut pas effacer rétroactivement une copie déjà téléchargée : l'interface doit le rendre clair."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Synchronisation"
+  - "Partage révocable"
+  - "Versions conservées"
+a_relire:
+  - a_la_place_de

@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P01
+nom_public: "Sources"
+nom_provisoire: null
+intitule: "accès aux sources"
+fonction: "Exploration du web sourcée"
+categorie: connaissance
+promesse: "Permettre à une personne ou à un agent autorisé d'explorer des informations dispersées et d'obtenir des éléments exploitables, attribués et vérifiables, en rendant visible ce qui a été trouvé, ce qui a pu être lu et ce qui reste inaccessible."
+pour_qui: "Une personne ou un agent autorisé (fiche) ; le propriétaire ; produits du domaine Connaissance (P02 à P06) (catalogue)"
+a_la_place_de: "vos recherches menées à la main dans un moteur de recherche, d'onglet en onglet"
+capacites:
+  - "Saisir une question, sélectionner les catégories de sources, rechercher, ouvrir les résultats, extraire des passages, les comparer et constituer un dossier."
+  - "Recherche Web, pages, flux, dépôts et discussions de développement, plateformes sociales et transcriptions de médias, sur une matrice de connecteurs validés."
+  - "Distinguer découverte d'une URL, accès au contenu, extraction réussie et compréhension du média."
+  - "Exposer pour chaque résultat origine, URL canonique, dates de publication et de collecte, auteur, langue, type, extrait, disponibilité et provenance, avec le lien vers l'original."
+  - "Signaler les contenus tronqués, sources supprimées, quotas, demandes d'authentification et échecs de parsing ; comparer les versions d'une source surveillée."
+  - "L'IA reformule les recherches, propose des sources et synthétise les passages effectivement consultés, en distinguant constat, inférence, désaccord et information absente."
+ne_fait_pas:
+  - "Lire les sources publiques et les ressources explicitement autorisées ; ne pas promettre le contournement des contrôles d'accès."
+  - "Une transcription disponible n'équivaut pas à une analyse des images d'une vidéo."
+  - "Les contenus trouvés ne peuvent ni déclencher des outils privilégiés ni modifier les règles de collecte."
+  - "Aucune synthèse ne doit citer un passage inventé ou accessible seulement à une autre organization."
+depend_de:
+  - P02
+  - P06
+realisation: "bibliothèque"
+depot: libre-ai/personal-knowledge-workspace
+etiquettes:
+  - "Sources attribuées"
+  - "Pages lues ou non lues"
+  - "Citation exportable"
+a_relire:
+  - a_la_place_de
+  - depend_de

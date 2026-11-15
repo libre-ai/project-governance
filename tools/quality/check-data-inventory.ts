@@ -223,6 +223,12 @@ export const NOT_GATED: readonly NotGated[] = [
       "the brick map (ADR-0064), validated against ecosystem/schemas/brique.v1.schema.json, which is gated; the layer table that bounds its dependencies is in the code of ecosystem/briques.ts, not in these files",
   },
   {
+    path: "ecosystem/produits/",
+    extensions: [".yaml"],
+    because:
+      "the product catalogue (ADR-0042 §1), validated against ecosystem/schemas/produit.v1.schema.json, which is gated; the table that maps a domain of the ADR to a category is in the code of ecosystem/produits.ts, not in these files",
+  },
+  {
     path: "ecosystem/objects/",
     extensions: [".json"],
     because:

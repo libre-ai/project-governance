@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P08
+nom_public: null
+nom_provisoire: "Docs"
+intitule: "documents"
+fonction: "Traitement de texte"
+categorie: bureautique-donnees
+promesse: "Rédiger un document structuré, le relire à plusieurs, maîtriser les révisions et livrer un fichier utilisable hors de libre-ia."
+pour_qui: "le propriétaire ; organisations (catalogue)"
+a_la_place_de: "votre traitement de texte en ligne par abonnement"
+capacites:
+  - "Partir d'un document vide, d'un modèle ou d'un import ; éditer ; commenter ; arbitrer les modifications ; vérifier le rendu ; exporter."
+  - "Styles de titres et paragraphes, listes, tableaux, images, légendes, notes, bibliographie, sommaire, en-têtes, pieds de page et pagination."
+  - "Suivi des modifications, commentaires ancrés, modes lecture et édition, historique, recherche/remplacement et gestion des longs documents."
+  - "Les modèles séparent contenu et présentation."
+  - "L'IA aide au plan, à la reformulation, à la synthèse et à la vérification des références ; ses modifications apparaissent dans un diff acceptable ou rejetable."
+  - "Qualifier DOCX, ODT et PDF par cas concret : lire, modifier, préserver, exporter ; les fonctions non prises en charge sont signalées avant une conversion destructrice."
+ne_fait_pas:
+  - "Aucune bibliographie inventée ; les références scientifiques proviennent de P03 ou d'une source vérifiée."
+  - "La génération ne réécrit pas arbitrairement les passages verrouillés."
+  - "Les macros et liens externes ne sont pas exécutés lors de l'import."
+  - "Une ouverture de fichier réussie ne prouve ni la fidélité de mise en page ni la conservation des données."
+depend_de:
+  - P11
+  - P18
+  - P03
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - ".docx, .odt, .pdf"
+  - "Relecture à plusieurs"
+  - "Suivi des modifications"
+a_relire:
+  - a_la_place_de
+  - depend_de

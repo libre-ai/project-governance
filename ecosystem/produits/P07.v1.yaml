@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P07
+nom_public: null
+nom_provisoire: "Révision"
+intitule: "apprentissage et révision"
+fonction: "Cartes de révision"
+categorie: connaissance
+promesse: "Transformer des sources choisies en apprentissage personnel vérifiable et durable, en suivant la progression individuelle."
+pour_qui: "le propriétaire ; apprenants (catalogue)"
+a_la_place_de: "votre application de cartes de révision"
+capacites:
+  - "Choisir un objectif et un corpus, produire un parcours, vérifier les activités, étudier, répondre, consulter les explications et réviser."
+  - "Formats : fiches, cartes recto-verso, questions ouvertes, QCM, exercices appliqués et rappels espacés."
+  - "Les bonnes réponses et explications renvoient aux sources ; corriger un contenu invalide les exercices affectés et avertit sur les sessions déjà réalisées."
+  - "L'IA adapte les explications au niveau déclaré, propose des contre-exemples et analyse les erreurs selon une grille inspectable."
+  - "Permettre de contester ou corriger l'évaluation."
+  - "Exporter parcours et progression sans exporter les données d'autres apprenants."
+ne_fait_pas:
+  - "Ce produit suit la progression individuelle ; P39 organise les séances collectives."
+  - "Une réponse libre incertaine ne doit pas être notée arbitrairement."
+  - "Aucune certification de compétence n'est déduite d'un score de quiz seul."
+depend_de:
+  - P39
+  - P03
+  - P04
+  - P19
+realisation: "intégration"
+depot: libre-ai/personal-knowledge-workspace
+etiquettes:
+  - "Répétition espacée"
+  - "Cartes depuis vos sources"
+  - "Progression suivie"
+a_relire:
+  - a_la_place_de
+  - depend_de

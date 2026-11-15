@@ -1,0 +1,38 @@
+schema_version: libre-ai.produit.v1
+id: P02
+nom_public: null
+nom_provisoire: "Veille"
+intitule: "veille documentaire"
+fonction: "Lecteur de flux et veille"
+categorie: connaissance
+promesse: "Fournir un flux de veille relié aux questions de l'utilisateur et à son corpus, avec une raison lisible de consulter chaque élément, la réussite étant la détection des informations utiles et des changements significatifs et non le volume de notifications."
+pour_qui: "le propriétaire (usage propre) ; lecteurs de flux RSS/Atom/OPML (catalogue)"
+a_la_place_de: "votre lecteur de flux en ligne par abonnement"
+capacites:
+  - "Importer ou créer des abonnements, classer les sources, définir des sujets, langues et exclusions, choisir la fréquence des synthèses et lire dans une interface homogène."
+  - "Prendre en charge RSS/Atom et import/export OPML ; pour les newsletters et sites sans flux, définir les connecteurs et autorisations requis."
+  - "Boîtes « nouveaux », « à lire », « suivis », « archivés », filtres sauvegardés, tags, annotations, recherche et lecture hors ligne des éléments conservés."
+  - "Regrouper les doublons et reprises éditoriales sans écraser leurs provenances ; distinguer nouveau contenu, mise à jour, changement de métadonnées et nouvelle version d'un papier."
+  - "Expliquer la pertinence avec des critères visibles ; les signaux « utile », « déjà connu », « hors sujet » et « ne plus suivre » modifient des préférences inspectables et réversibles."
+  - "Préserver une vue chronologique non classée par modèle et prévoir une exploration de sources nouvelles."
+ne_fait_pas:
+  - "Une modification cosmétique ne doit pas provoquer une avalanche (d'alertes)."
+  - "L'entrée dans Zotero est une action distincte."
+  - "Les liens de partage ne diffusent pas les pièces privées du corpus."
+  - "Une lecture ne vaut pas un consentement à utiliser le texte chez un fournisseur IA."
+  - "Charte : Parser des flux dans l'application macOS ou dans l'extension, qui délèguent à l'API."
+  - "Charte : Stocker une donnée de paiement."
+  - "Charte : Ouvrir mobile, Windows ou Linux au premier palier."
+  - "Charte : Dépendre d'un service managé pour le cœur."
+depend_de:
+  - P01
+  - P03
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Flux RSS et sites"
+  - "Tri par vos questions"
+  - "Pourquoi le lire"
+a_relire:
+  - a_la_place_de
+  - depend_de

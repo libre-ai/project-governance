@@ -1,0 +1,36 @@
+schema_version: libre-ai.produit.v1
+id: P19
+nom_public: null
+nom_provisoire: "Agenda"
+intitule: "agenda"
+fonction: "Agenda partagé"
+categorie: collaboration
+promesse: "Organiser le temps et coordonner les disponibilités sans exposer les détails privés."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre agenda en ligne et votre outil de prise de rendez-vous par abonnement"
+capacites:
+  - "Calendriers multiples et disponibilités."
+  - "Récurrences et exceptions, rappels."
+  - "Invitations, lieux et visioconférence."
+  - "Réservation de créneaux sans double attribution sous concurrence."
+  - "Gestion des fuseaux, des journées entières et des changements d'heure, heure locale voulue distincte de son instant UTC."
+  - "Proposition de créneaux et préparation d'un événement depuis une source, par IA."
+ne_fait_pas:
+  - "Ne pas inviter, annuler ou déplacer une réunion existante sur une inférence non autorisée."
+  - "Une disponibilité calculée ne révèle pas le titre d'un événement privé."
+  - "Ne pas confondre export d'un événement et synchronisation bidirectionnelle d'un calendrier."
+depend_de:
+  - P17
+  - P18
+  - P21
+  - P39
+  - P20
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Format .ics"
+  - "Créneau commun trouvé"
+  - "Détails privés masqués"
+a_relire:
+  - a_la_place_de
+  - depend_de

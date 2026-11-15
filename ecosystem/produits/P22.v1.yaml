@@ -1,0 +1,36 @@
+schema_version: libre-ai.produit.v1
+id: P22
+nom_public: null
+nom_provisoire: "Vidéo"
+intitule: "studio vidéo"
+fonction: "Montage vidéo"
+categorie: creation-publication
+promesse: "Passer d’une intention à une vidéo construite, révisable et exportable."
+pour_qui: "le propriétaire"
+a_la_place_de: "votre logiciel de montage vidéo et votre service de génération vidéo par abonnement"
+capacites:
+  - "Scènes et plans, chronologie, pistes audio, transitions, titres, sous-titres, cadrages"
+  - "Formats de sortie et prévisualisation"
+  - "Génération d’une séquence indépendamment des autres pour permettre une correction ciblée"
+  - "Conservation des sources et du projet éditable"
+  - "Travaux longs avec estimation technique, annulation, reprise et gestion des échecs partiels"
+  - "Aide au scénario, proposition de plans, génération et montage assisté"
+ne_fait_pas:
+  - "Une nouvelle génération ne remplace pas un plan validé sans action explicite."
+  - "Ne pas promettre une identité visuelle ou un personnage stable sans qualification correspondante."
+  - "Publier via P25/P26 seulement dans le périmètre autorisé."
+depend_de:
+  - P24
+  - P27
+  - P25
+  - P26
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Montage sur la ligne de temps"
+  - "Sous-titres"
+  - "Export ouvert"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie

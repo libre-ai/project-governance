@@ -1,0 +1,33 @@
+schema_version: libre-ai.produit.v1
+id: P09
+nom_public: null
+nom_provisoire: "Tableur"
+intitule: "tableur"
+fonction: "Tableur"
+categorie: bureautique-donnees
+promesse: "Organiser des données et obtenir des calculs exacts, explicables et reproductibles."
+pour_qui: "le propriétaire ; organisations (catalogue)"
+a_la_place_de: "votre tableur en ligne par abonnement"
+capacites:
+  - "Importer, typer, nettoyer, calculer, visualiser, vérifier et exporter."
+  - "Classeur à plusieurs feuilles, références absolues et relatives, plages, fonctions documentées, tris et filtres, validation de données, tableaux, graphiques et analyses agrégées."
+  - "Traitement défini des erreurs, valeurs nulles, cellules vides, dates, nombres et locales."
+  - "Les transformations d'import peuvent être rejouées sur un nouveau fichier sans effacer les valeurs sources."
+  - "L'IA propose une formule, explique une erreur, produit une transformation ou suggère une visualisation, en présentant cellules concernées, changements et hypothèses avant une transformation de masse."
+  - "Qualifier CSV, TSV, XLSX et ODS ; préciser encodages, séparateurs, précision et limites des fonctions."
+ne_fait_pas:
+  - "Le moteur de calcul évalue les formules ; le modèle ne fournit pas les résultats comptables ou numériques faisant autorité."
+  - "Ne pas exécuter de macros importées par défaut."
+  - "Protéger contre l'injection de formules lors des exports destinés à des outils tiers."
+  - "Ne pas figer un graphique à partir d'une réponse IA non reliée aux cellules."
+depend_de:
+  - P13
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - ".xlsx et .ods"
+  - "Calculs expliqués"
+  - "Résultats reproductibles"
+a_relire:
+  - a_la_place_de
+  - depend_de

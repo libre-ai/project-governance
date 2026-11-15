@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P10
+nom_public: null
+nom_provisoire: "Diapos"
+intitule: "présentations"
+fonction: "Présentations"
+categorie: bureautique-donnees
+promesse: "Passer d'un objectif de communication à une présentation éditable, cohérente et exportable."
+pour_qui: "le propriétaire ; organisations (catalogue)"
+a_la_place_de: "votre logiciel de présentation par abonnement"
+capacites:
+  - "Définir public et message, construire le fil, choisir un thème, éditer les diapositives, répéter et diffuser."
+  - "Masques, thèmes, mises en page, blocs de texte, médias, tableaux, graphiques, notes orateur, transitions et mode présentation dans le périmètre qualifié."
+  - "Réordonner, dupliquer et décliner une diapositive sans casser son thème."
+  - "Navigation clavier, format écran et impression, accès aux sources des chiffres."
+  - "L'IA propose plan, répartition des arguments, formulations et illustrations, en distinguant faits sourcés, exemples inventés et visuels générés."
+  - "Exports PPTX et PDF."
+ne_fait_pas:
+  - "Une image de diapositive ne remplace pas un document de présentation modifiable."
+  - "Relier les activités interactives de P39 sans transmettre les notes privées de l'animateur."
+  - "Un rendu visuel correct ne dispense pas de vérifier les valeurs des graphiques et la présence des notes attendues."
+depend_de:
+  - P08
+  - P09
+  - P27
+  - P39
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - ".pptx et PDF"
+  - "Thème cohérent"
+  - "Mode présentateur"
+a_relire:
+  - a_la_place_de

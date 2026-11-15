@@ -1,0 +1,38 @@
+schema_version: libre-ai.produit.v1
+id: P25
+nom_public: null
+nom_provisoire: "Site"
+intitule: "sites"
+fonction: "Création de sites"
+categorie: creation-publication
+promesse: "Construire et maintenir un site dont le contenu, les données et la publication restent maîtrisés."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre constructeur de sites en ligne par abonnement"
+capacites:
+  - "Pages, blog, documentation, médias, formulaires, thèmes, métadonnées, plan de site, URLs stables et redirections"
+  - "Responsive, accessibilité, prévisualisation isolée, version publiée et retour à une version précédente"
+  - "Distinction entre contenu statique et fonction connectée à des données"
+  - "Gestion des domaines, certificats et environnements selon la plateforme retenue"
+  - "Proposition de structure, de texte et de composition visuelle ; édition possible sans relancer une génération complète"
+ne_fait_pas:
+  - "Le contenu généré ne doit pas créer de faux témoignages ou inventer des résultats."
+  - "Les affirmations factuelles et promesses du site sont vérifiées par leur propriétaire."
+  - "Une prévisualisation fonctionnelle n’est pas une preuve de déploiement."
+  - "Ne pas toucher aux DNS ou publier dans un compte non explicitement choisi."
+depend_de:
+  - P08
+  - P05
+  - P27
+  - P13
+  - P26
+  - P23
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Pages et navigation"
+  - "Aperçu avant publication"
+  - "Votre hébergement"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie

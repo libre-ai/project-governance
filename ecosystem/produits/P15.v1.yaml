@@ -1,0 +1,37 @@
+schema_version: libre-ai.produit.v1
+id: P15
+nom_public: null
+nom_provisoire: "Tickets"
+intitule: "projets, tickets et support"
+fonction: "Tickets et support"
+categorie: collaboration
+promesse: "Transformer un problème ou une demande en travail traçable jusqu'à sa résolution vérifiée."
+pour_qui: "le propriétaire ; équipes support"
+a_la_place_de: "votre outil de suivi de tickets et de support par abonnement"
+capacites:
+  - "Projets, tickets typés, priorités motivées, responsables, étiquettes, dépendances et sous-tâches."
+  - "Critères d'acceptation, pièces, commentaires, tableaux et vues sauvegardées."
+  - "Portail de demandes et échanges de support, avec séparation des commentaires internes et externes."
+  - "Transitions définies, vérifiables et historisées ; un ticket résolu peut être rouvert."
+  - "Recherche des doublons, reformulation d'une demande et proposition d'affectation par IA."
+  - "Conversion d'un mail en ticket par action explicite, pièces et règles de confidentialité préservées."
+ne_fait_pas:
+  - "Un agent ne clôt pas une anomalie sur la seule réussite d'un lancement de commande ou sur son propre résumé."
+  - "Convertir un mail en ticket par action explicite ; préserver les pièces et les règles de confidentialité."
+  - "Vérifier que les vues, exports et notifications n'exposent pas un commentaire interne."
+  - "La clôture des tickets de réalisation requiert les preuves associées aux critères d'acceptation."
+  - "Charte : Devenir un back-office de tickets à la place de l'outil cible."
+  - "Charte : Imposer une file de messages hébergée."
+  - "Charte : Lire le navigateur de l'utilisateur au-delà de la page signalée."
+depend_de:
+  - P23
+  - P04
+realisation: "projet autonome"
+depot: libre-ai/signalement
+etiquettes:
+  - "Doublons détectés"
+  - "Responsable désigné"
+  - "Résolution vérifiée"
+a_relire:
+  - a_la_place_de
+  - depend_de

@@ -1,0 +1,33 @@
+schema_version: libre-ai.produit.v1
+id: P14
+nom_public: "Canevas"
+nom_provisoire: null
+intitule: "tableau blanc"
+fonction: "Tableau blanc et diagrammes"
+categorie: bureautique-donnees
+promesse: "Structurer visuellement une réflexion et la relier à des objets exploitables."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre tableau blanc collaboratif en ligne par abonnement"
+capacites:
+  - "Zones, formes, connecteurs, texte, post-it et images."
+  - "Cartes mentales, navigation, alignement et modèles."
+  - "Collaboration et commentaires."
+  - "Export image/PDF et format éditable documenté."
+  - "Vue textuelle ou structurée comme alternative accessible aux relations dessinées."
+  - "Propositions de regroupements, de synthèses et de diagrammes depuis des sources sélectionnées, par IA."
+ne_fait_pas:
+  - "Toute réorganisation reste réversible ; un rapprochement proposé ne devient pas automatiquement une causalité établie."
+  - "Réutiliser les éléments visuels pertinents dans P23 et les activités de facilitation de P39 sans confondre leurs modèles métier."
+  - "Ne pas confondre l'affichage d'un canevas avec la disponibilité des interactions."
+depend_de:
+  - P23
+  - P39
+realisation: "projet autonome"
+depot: null
+etiquettes:
+  - "Toile infinie"
+  - "Notes et liens"
+  - "Décisions en tâches"
+a_relire:
+  - a_la_place_de
+  - depend_de

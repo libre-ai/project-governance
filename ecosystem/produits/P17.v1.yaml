@@ -1,0 +1,32 @@
+schema_version: libre-ai.produit.v1
+id: P17
+nom_public: null
+nom_provisoire: "Mail"
+intitule: "messagerie"
+fonction: "Messagerie électronique"
+categorie: collaboration
+promesse: "Gérer ses correspondances avec des comptes maîtrisés, une recherche fiable et des envois sans ambiguïté."
+pour_qui: "le propriétaire ; organisations"
+a_la_place_de: "votre client de messagerie électronique"
+capacites:
+  - "Comptes multiples, dossiers ou libellés selon les capacités du fournisseur, fils."
+  - "Brouillons, signatures, règles et pièces jointes."
+  - "Recherche et consultation hors ligne."
+  - "Boîte d'envoi observable, gestion des échecs et réconciliation des accusés incertains avant de réessayer."
+  - "Résumé d'un fil, suggestion de réponse et proposition de classement par IA."
+  - "Création de tâches, de rendez-vous ou de tickets avec lien au mail."
+ne_fait_pas:
+  - "Le développement d'un serveur de mail complet n'est pas implicitement requis par un client."
+  - "Une suggestion n'est jamais envoyée automatiquement sans une règle d'envoi explicitement autorisée."
+  - "Aucun doublon d'envoi sur simple retry aveugle."
+  - "Une instruction malveillante reçue par mail ne peut ni exporter une boîte ni lancer un outil privilégié."
+  - "Partager seulement les passages nécessaires."
+depend_de: []
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Vos comptes"
+  - "Recherche fiable"
+  - "Envoi vérifié"
+a_relire:
+  - a_la_place_de

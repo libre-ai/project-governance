@@ -1,0 +1,37 @@
+schema_version: libre-ai.produit.v1
+id: P26
+nom_public: null
+nom_provisoire: "Diffusion"
+intitule: "promotion éditoriale"
+fonction: "Diffusion éditoriale"
+categorie: creation-publication
+promesse: "Transformer les contenus d’un site en une communication pertinente, mesurable et contrôlée."
+pour_qui: "le propriétaire"
+a_la_place_de: "votre outil en ligne de programmation de publications et de campagnes par abonnement"
+capacites:
+  - "Audit éditorial et technique du site, inventaire des contenus, liens cassés, métadonnées"
+  - "Calendrier de publication et bibliothèque de campagnes"
+  - "Déclinaison d’un contenu en billet, extrait, newsletter ou publication adaptée aux contraintes d’un canal"
+  - "Prévisualisation du texte, du média, du lien, des destinataires et de l’horaire"
+  - "Gestion des comptes, permissions, statuts de publication et reprises"
+ne_fait_pas:
+  - "Ne pas promettre un classement dans les moteurs ou une croissance automatique."
+  - "Éviter contenu répétitif, faux engagement et envois indifférenciés."
+  - "Une source nouvelle déclenche au plus un brouillon si aucune règle de publication explicite n’a été autorisée."
+  - "Ne pas attribuer causalement un résultat à une campagne sans méthode."
+  - "Réconcilier avant de republier pour éviter les doublons."
+depend_de:
+  - P25
+  - P22
+  - P24
+  - P27
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Variantes par canal"
+  - "Programmation"
+  - "Vérifié avant envoi"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie

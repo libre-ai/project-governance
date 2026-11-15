@@ -1,0 +1,34 @@
+schema_version: libre-ai.produit.v1
+id: P16
+nom_public: null
+nom_provisoire: "Tâches"
+intitule: "tâches"
+fonction: "Liste de tâches"
+categorie: collaboration
+promesse: "Capturer une action et la retrouver au bon moment sans administrer un projet complet."
+pour_qui: "le propriétaire"
+a_la_place_de: "votre application de listes de tâches"
+capacites:
+  - "Boîte de réception, listes, tags et priorités."
+  - "Échéances, rappels et récurrences, avec séparation entre échéance impérative, date prévue et rappel."
+  - "Sous-tâches et vues quotidiennes."
+  - "Occurrences d'une tâche récurrente produites selon une règle explicite."
+  - "Extraction d'actions depuis une note, un mail ou une réunion par IA, avec origine, responsable proposé et échéance éventuelle."
+ne_fait_pas:
+  - "Une tâche terminée ne doit pas générer de notifications retardées."
+  - "Une date non explicitement présente reste une suggestion."
+  - "Les actions acceptées ne sont pas recréées lors d'un nouveau traitement de la même source."
+  - "Synchronisation avec agenda P19 et références aux tickets P15, sans multiplier les autorités concurrentes sur un même état."
+  - "L'export et la suppression restent disponibles sans IA."
+depend_de:
+  - P19
+  - P15
+realisation: "intégration"
+depot: null
+etiquettes:
+  - "Saisie en un geste"
+  - "Rappel au bon moment"
+  - "Sans projet à gérer"
+a_relire:
+  - a_la_place_de
+  - depend_de

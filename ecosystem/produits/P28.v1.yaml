@@ -1,0 +1,35 @@
+schema_version: libre-ai.produit.v1
+id: P28
+nom_public: "Tempo"
+nom_provisoire: null
+intitule: "extension de contrôle multimédia"
+fonction: "Extension de lecture multimédia"
+categorie: medias-jeu
+promesse: "Retrouver ses réglages de lecture sur les sites compatibles."
+pour_qui: "le propriétaire"
+a_la_place_de: "vos extensions de navigateur de réglage de la vitesse et du son des lecteurs en ligne"
+capacites:
+  - "Vitesse, volume, raccourcis, image dans l’image et reprise"
+  - "Choix de sous-titres lorsqu’exposé par le lecteur"
+  - "Profils par site ou type d’usage, avec règles de priorité entre réglage global, site et choix ponctuel"
+  - "Détection des remplacements de lecteur dans les applications Web"
+  - "Suspension rapide par site"
+ne_fait_pas:
+  - "« Tous médias » signifie une ambition d’extension de la matrice, jamais une garantie absolue."
+  - "Ne pas appliquer un profil à une publicité ou un aperçu non choisi."
+  - "Ne pas centraliser par défaut tout l’historique de navigation."
+  - "L’IA est facultative. Le cœur du produit doit fonctionner sans modèle."
+  - "Afficher les fonctions indisponibles."
+  - "Absence d’accès aux autres onglets non autorisés."
+depend_de:
+  - P29
+realisation: "contribution à un projet existant"
+depot: null
+etiquettes:
+  - "Vitesse, son, sous-titres"
+  - "Profils par site"
+  - "Navigateur"
+a_relire:
+  - a_la_place_de
+  - depend_de
+  - categorie
