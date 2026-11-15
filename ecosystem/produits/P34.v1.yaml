@@ -29,8 +29,4 @@ etiquettes:
   - "Sources visibles"
   - "Demande avant d'agir"
   - "Permissions claires"
-a_relire:
-  - a_la_place_de
-  - pour_qui
-  - depend_de
-  - ne_fait_pas
+a_relire: []

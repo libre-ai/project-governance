@@ -30,7 +30,4 @@ etiquettes:
   - "Campagnes et personnages"
   - "Dés et règles"
   - "Journal de séance"
-a_relire:
-  - a_la_place_de
-  - depend_de
-  - ne_fait_pas
+a_relire: []

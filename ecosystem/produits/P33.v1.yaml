@@ -29,7 +29,4 @@ etiquettes:
   - "Règles par usage"
   - "Conformité à vos règles"
   - "Lieux de traitement déclarés"
-a_relire:
-  - a_la_place_de
-  - ne_fait_pas
-  - etiquettes
+a_relire: []
