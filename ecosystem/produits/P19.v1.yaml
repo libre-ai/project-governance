@@ -16,7 +16,7 @@ capacites:
   - "Gestion des fuseaux, des journées entières et des changements d'heure, heure locale voulue distincte de son instant UTC."
   - "Proposition de créneaux et préparation d'un événement depuis une source, par IA."
 ne_fait_pas:
-  - "Ne pas inviter, annuler ou déplacer une réunion existante sur une inférence non autorisée."
+  - "N'invite pas, n'annule pas et ne déplace pas une réunion existante sur une inférence non autorisée."
   - "Une disponibilité calculée ne révèle pas le titre d'un événement privé."
   - "L'export d'un événement n'est pas une synchronisation bidirectionnelle d'un calendrier."
 depend_de:
@@ -25,10 +25,11 @@ realisation: "intégration"
 depot: null
 etiquettes:
   - "Format .ics"
-  - "Créneau commun trouvé"
+  - "Créneaux proposés"
   - "Détails privés masqués"
 a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
   - ne_fait_pas
+  - etiquettes

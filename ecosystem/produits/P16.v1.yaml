@@ -19,14 +19,13 @@ ne_fait_pas:
   - "Une tâche terminée ne doit pas générer de notifications retardées."
   - "Une date non explicitement présente reste une suggestion."
   - "Les actions acceptées ne sont pas recréées lors d'un nouveau traitement de la même source."
-  - "Ne multiplie pas les autorités concurrentes sur un même état quand il se synchronise avec l'agenda P19 et référence les tickets P15."
+  - "Ne multiplie pas les autorités concurrentes sur un même état quand il se synchronise avec l'agenda P19 et référence des tickets tenus ailleurs."
 depend_de:
   - P19
-  - P15
 realisation: "intégration"
 depot: null
 etiquettes:
-  - "Saisie en un geste"
+  - "Saisie rapide"
   - "Rappel au bon moment"
   - "Sans projet à gérer"
 a_relire:
@@ -34,3 +33,4 @@ a_relire:
   - pour_qui
   - depend_de
   - ne_fait_pas
+  - etiquettes

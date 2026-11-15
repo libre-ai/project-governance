@@ -18,10 +18,11 @@ capacites:
 ne_fait_pas:
   - "Ne réduit pas une séance à l'accumulation de points : la participation et la qualité des apprentissages priment."
   - "Les codes expirent et ne valent pas accès à toutes les sources du projet."
-  - "Ne pas déduire une aptitude, une personnalité ou un diagnostic à partir de la participation."
+  - "Ne déduit pas une aptitude, une personnalité ou un diagnostic à partir de la participation."
   - "Un score pédagogique ne constitue pas une certification."
   - "Les sondages d'opinion n'ont pas de bonne réponse artificielle."
   - "Ne dépend pas du JdR de loisir P32 pour ses simulations pédagogiques."
+  - "Ne couvre pas les apprenants mineurs ni un cadre réglementé sans règles propres à ce contexte."
 depend_de:
   - P01
   - P03
@@ -31,6 +32,7 @@ depend_de:
   - P14
   - P18
   - P19
+  - P07
 realisation: "service"
 depot: null
 etiquettes:

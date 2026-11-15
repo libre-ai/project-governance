@@ -17,17 +17,18 @@ capacites:
   - "Résumés de fils et extraction d'actions sur contenu autorisé, par IA."
   - "Les participants peuvent distinguer message envoyé, remis et lu selon les garanties réellement disponibles."
 ne_fait_pas:
-  - "Ne pas enregistrer ou transcrire implicitement tout appel."
+  - "N'enregistre pas et ne transcrit pas implicitement tout appel."
   - "Ne gère pas la transcription ni le compte rendu : c'est un usage distinct, porté par l'assistant de réunion P21."
-  - "Pas de promesse contradictoire entre modèle de chiffrement, recherche et capacités serveur."
 depend_de: []
 realisation: "intégration"
 depot: null
 etiquettes:
-  - "Salons par projet"
+  - "Canaux et fils"
   - "Appels vidéo"
   - "Décisions retrouvables"
 a_relire:
   - a_la_place_de
   - pour_qui
   - ne_fait_pas
+  - depend_de
+  - etiquettes

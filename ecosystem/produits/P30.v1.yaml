@@ -16,9 +16,9 @@ capacites:
   - "Aide au classement et à la description."
   - "Reprise sur un autre appareil."
 ne_fait_pas:
-  - "Ne pas assimiler l'intégration d'un catalogue à l'acquisition de droits."
+  - "N'assimile pas l'intégration d'un catalogue à l'acquisition de droits."
   - "Fonctionnalités de traduction ou OCR seulement selon droits et traitement explicites."
-  - "Éviter de divulguer l'intrigue dans les résumés ou notifications lorsque l'utilisateur choisit un mode sans spoilers."
+  - "Ne divulgue pas l'intrigue dans les résumés ou notifications lorsque l'utilisateur choisit un mode sans spoilers."
   - "Ne fusionne pas deux éditions d'une même œuvre sur leur titre : les distingue."
   - "Aucun envoi du contenu à un modèle n'est nécessaire pour la lecture."
 depend_de:

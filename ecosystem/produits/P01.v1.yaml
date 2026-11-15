@@ -26,8 +26,9 @@ depot: libre-ai/personal-knowledge-workspace
 etiquettes:
   - "Sources attribuées"
   - "Pages lues ou non lues"
-  - "Citation exportable"
+  - "Dossier de passages"
 a_relire:
   - a_la_place_de
   - depend_de
   - ne_fait_pas
+  - etiquettes

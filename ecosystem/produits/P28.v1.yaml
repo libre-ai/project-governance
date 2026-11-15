@@ -16,16 +16,16 @@ capacites:
   - "Suspension rapide par site."
   - "Affichage des fonctions indisponibles."
 ne_fait_pas:
-  - "Ne garantit pas le fonctionnement sur tous les lecteurs ; la liste des sites pris en charge est publiée."
-  - "Ne pas appliquer un profil à une publicité ou un aperçu non choisi."
-  - "Ne pas centraliser par défaut tout l'historique de navigation."
+  - "Ne garantit pas le fonctionnement sur tous les lecteurs : seuls les sites d'une liste publiée sont pris en charge."
+  - "N'applique pas un profil à une publicité ou un aperçu non choisi."
+  - "Ne centralise pas par défaut tout l'historique de navigation."
   - "Ne dépend pas d'un modèle : l'IA est facultative et le cœur du produit fonctionne sans elle."
   - "N'accède pas aux autres onglets non autorisés."
 depend_de: []
 realisation: "contribution à un projet existant"
 depot: null
 etiquettes:
-  - "Vitesse, son, sous-titres"
+  - "Vitesse, son, raccourcis"
   - "Profils par site"
   - "Navigateur"
 a_relire:
@@ -33,3 +33,4 @@ a_relire:
   - pour_qui
   - depend_de
   - ne_fait_pas
+  - etiquettes

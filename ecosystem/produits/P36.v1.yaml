@@ -15,10 +15,10 @@ capacites:
   - "Les changements de routes et de pare-feu sont explicités, testables et réversibles avec préservation du canal d'administration."
   - "Aide au diagnostic à partir de données expurgées."
 ne_fait_pas:
-  - "Ne pas inventer un protocole cryptographique."
+  - "N'invente pas de protocole cryptographique."
   - "N'a pas besoin d'un modèle pour établir le tunnel."
-  - "Ne pas assimiler un VPN à l'anonymat ou à la protection de tout trafic dans toute situation."
-  - "Ne réécrit pas de VPN : réutilise des protocoles et des implémentations reconnus."
+  - "N'apporte ni anonymat ni protection de tout trafic dans toute situation."
+  - "Ne réécrit pas de VPN : réutilise des protocoles et des implémentations reconnus, après qualification."
 depend_de: []
 realisation: "intégration"
 depot: null

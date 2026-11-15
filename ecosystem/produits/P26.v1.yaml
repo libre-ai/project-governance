@@ -15,10 +15,10 @@ capacites:
   - "Prévisualisation du texte, du média, du lien, des destinataires et de l'horaire."
   - "Gestion des comptes, permissions, statuts de publication et reprises."
 ne_fait_pas:
-  - "Ne pas promettre un classement dans les moteurs ou une croissance automatique."
-  - "Ne cherche pas à produire du contenu répétitif, du faux engagement ou des envois indifférenciés."
+  - "Ne garantit ni classement dans les moteurs ni croissance automatique."
+  - "Ne produit ni contenu répétitif, ni faux engagement, ni envois indifférenciés."
   - "Une source nouvelle déclenche au plus un brouillon si aucune règle de publication explicite n'a été autorisée."
-  - "Ne pas attribuer causalement un résultat à une campagne sans méthode."
+  - "N'attribue pas causalement un résultat à une campagne sans méthode."
   - "Ne republie pas sans réconcilier, pour éviter les doublons."
 depend_de:
   - P25

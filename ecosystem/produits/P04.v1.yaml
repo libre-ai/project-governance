@@ -19,16 +19,15 @@ ne_fait_pas:
   - "Le texte original et son historique ne sont pas remplacés par une synthèse."
   - "Une inférence sur la personne n'est pas un fait ; les souvenirs persistants d'un assistant sont visibles, corrigeables et supprimables."
   - "Les liens vers notes privées ne révèlent ni titre ni extrait à un lecteur non autorisé."
-depend_de:
-  - P03
-  - P11
+depend_de: []
 realisation: "projet autonome"
 depot: libre-ai/personal-knowledge-workspace
 etiquettes:
   - "Markdown"
   - "Liens entre notes"
-  - "Export à tout moment"
+  - "Export en format ouvert"
 a_relire:
   - a_la_place_de
   - depend_de
   - pour_qui
+  - etiquettes

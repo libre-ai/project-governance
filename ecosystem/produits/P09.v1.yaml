@@ -18,8 +18,8 @@ capacites:
   - "Protéger contre l'injection de formules lors des exports destinés à des outils tiers."
 ne_fait_pas:
   - "Le moteur de calcul évalue les formules ; le modèle ne fournit pas les résultats comptables ou numériques faisant autorité."
-  - "Ne pas exécuter de macros importées par défaut."
-  - "Ne pas figer un graphique à partir d'une réponse IA non reliée aux cellules."
+  - "N'exécute pas de macros importées par défaut."
+  - "Ne fige pas un graphique à partir d'une réponse IA non reliée aux cellules."
 depend_de:
   - P13
 realisation: "projet autonome"
@@ -32,3 +32,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - etiquettes

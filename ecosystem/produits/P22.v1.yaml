@@ -15,9 +15,10 @@ capacites:
   - "Conservation des sources et du projet éditable."
   - "Travaux longs avec estimation technique, annulation, reprise et gestion des échecs partiels."
   - "Aide au scénario, proposition de plans, génération et montage assisté."
+  - "Provenance visible des éléments générés, avec leur modèle et les contraintes de réutilisation connues."
 ne_fait_pas:
   - "Une nouvelle génération ne remplace pas un plan validé sans action explicite."
-  - "Ne pas promettre une identité visuelle ou un personnage stable sans qualification correspondante."
+  - "Ne garantit pas une identité visuelle ou un personnage stable d'une génération à l'autre."
   - "Ne publie via P25 ou P26 que dans le périmètre autorisé."
 depend_de:
   - P24
@@ -27,8 +28,11 @@ depot: null
 etiquettes:
   - "Montage sur la ligne de temps"
   - "Sous-titres"
-  - "Export ouvert"
+  - "Export"
 a_relire:
   - a_la_place_de
   - pour_qui
   - depend_de
+  - capacites
+  - ne_fait_pas
+  - etiquettes

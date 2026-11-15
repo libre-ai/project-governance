@@ -15,7 +15,7 @@ capacites:
   - "L'IA recherche dans les pages autorisées, suggère une mise à jour à partir d'une source et montre exactement les passages modifiés."
   - "Export complet avec hiérarchie, pièces et relations ; séparation entre documentation interne et publication publique."
 ne_fait_pas:
-  - "Ne pas qualifier automatiquement une page d'obsolète sur son seul âge."
+  - "Ne qualifie pas automatiquement une page d'obsolète sur son seul âge."
   - "Un brouillon généré ne devient pas une procédure approuvée."
   - "Une réponse IA ne dépasse pas le périmètre de lecture du demandeur, y compris lorsque l'index a été alimenté par un administrateur."
 depend_de: []

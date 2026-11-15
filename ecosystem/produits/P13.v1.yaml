@@ -17,7 +17,7 @@ capacites:
   - "Propositions de schéma, de classifications et de contrôles d'anomalies par IA."
 ne_fait_pas:
   - "Une modification du schéma ne doit pas détruire les réponses anciennes."
-  - "Ne pas inventer une réponse manquante : valeur fournie, valeur calculée et suggestion restent distinctes."
+  - "N'invente pas une réponse manquante : valeur fournie, valeur calculée et suggestion restent distinctes."
   - "Pas d'écriture automatique sans règles ni périmètre précis."
   - "Un formulaire public ne doit pas révéler les autres enregistrements ou choix confidentiels de sa base."
 depend_de: []

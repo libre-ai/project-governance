@@ -6,7 +6,7 @@ intitule: "recherche transversale"
 fonction: "Recherche dans toutes vos applications"
 categorie: connaissance
 promesse: "Retrouver un objet ou une réponse dans ses applications sans connaître son emplacement, tout en respectant la séparation des données."
-pour_qui: "Toute personne qui utilise plusieurs applications Libre"
+pour_qui: "Toute personne qui utilise plusieurs applications de la suite"
 a_la_place_de: "la recherche menée séparément dans chacune de vos applications"
 capacites:
   - "Recherche textuelle et filtres par type, date, source et espace ; recherche sémantique complémentaire."

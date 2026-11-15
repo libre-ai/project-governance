@@ -19,6 +19,7 @@ ne_fait_pas:
   - "Pas de distribution par le Mac App Store."
   - "Pas de coquilles Windows et Linux avant que le produit macOS soit utilisable."
   - "Pas de compte d'organisation ni d'extension navigateur (ADR-0042 §9)."
+  - "Pas de permission étendue de surveillance des saisies quand l'Accessibilité suffit."
 depend_de: []
 realisation: "projet autonome"
 depot: libre-ai/square-control

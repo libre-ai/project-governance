@@ -14,12 +14,13 @@ capacites:
   - "Prototypes manipulables utilisant les composants réellement présents lorsque compatibles ; les composants simulés sont signalés."
   - "Comparaison côte à côte des variantes et commentaires ancrés sur un écran, état ou comportement."
   - "Chaque choix important associe problème, options, conséquence, décision et version validée."
-  - "Dossier de réalisation : spécification comportementale, critères d'acceptation, code du prototype, dépendances et liens vers les tickets P15."
+  - "Dossier de réalisation : spécification comportementale, critères d'acceptation, code du prototype, dépendances et liens vers les tickets."
+  - "Exécution des prototypes dans un bac à sable dont les restrictions sont vérifiées : système de fichiers, réseau, ressources et secrets."
 ne_fait_pas:
-  - "L'utilisateur peut explorer plusieurs solutions sans que le modèle sélectionne silencieusement une architecture."
+  - "Le modèle ne sélectionne pas silencieusement une architecture."
   - "Une instruction trouvée dans le dépôt ou un composant importé ne peut autoriser une action sur des secrets ou des comptes."
   - "Ne modifie pas le dépôt de production : lit la révision source."
-  - "Pas d'accès implicite aux variables et credentials de la machine."
+  - "Pas d'accès implicite aux variables et identifiants de la machine."
   - "Ne réutilise pas le statut d'une validation après un changement ultérieur du prototype : les validations concernées sont invalidées."
   - "Ne fait pas passer un prototype dans le code produit sans intégration explicite, avec revue, tests et contrôles."
 depend_de:
@@ -34,3 +35,4 @@ a_relire:
   - a_la_place_de
   - depend_de
   - ne_fait_pas
+  - capacites

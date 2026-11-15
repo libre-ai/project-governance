@@ -15,9 +15,10 @@ capacites:
   - "Les outils obtiennent un secret via une référence et une permission d'exécution ; les sorties doivent empêcher sa remontée dans les traces."
 ne_fait_pas:
   - "Le modèle ne reçoit pas les valeurs de secrets pour les résumer, classer ou remplir."
-  - "Ne pas mettre les secrets dans la recherche globale."
+  - "Les secrets n'entrent pas dans la recherche globale."
   - "Pas de remplissage navigateur, de partage ni de gestion de passkeys sans périmètre et qualification spécifiques."
-  - "Ne jamais publier un coffre artisanal comme sûr sur la seule base de tests fonctionnels."
+  - "N'est pas présenté comme sûr sur la seule base de tests fonctionnels."
+  - "Ne réécrit pas de coffre : s'appuie sur un coffre éprouvé."
 depend_de: []
 realisation: "intégration"
 depot: null

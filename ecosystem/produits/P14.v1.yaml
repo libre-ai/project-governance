@@ -17,12 +17,12 @@ capacites:
   - "Propositions de regroupements, de synthèses et de diagrammes depuis des sources sélectionnées, par IA."
 ne_fait_pas:
   - "Toute réorganisation reste réversible ; un rapprochement proposé ne devient pas automatiquement une causalité établie."
-  - "Ne confond pas les modèles métier de P23 et de P39, où ses éléments visuels sont réutilisés."
+  - "Un lien vers un ticket, une note ou un prototype garde ses permissions."
 depend_de: []
 realisation: "projet autonome"
 depot: null
 etiquettes:
-  - "Toile infinie"
+  - "Formes et connecteurs"
   - "Notes et liens"
   - "Décisions en tâches"
 a_relire:
@@ -30,3 +30,4 @@ a_relire:
   - pour_qui
   - depend_de
   - ne_fait_pas
+  - etiquettes

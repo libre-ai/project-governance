@@ -18,9 +18,10 @@ ne_fait_pas:
   - "Un texte libre ne peut pas masquer une exfiltration ou une publication."
   - "Les étapes génératives ne sont pas des décisions déterministes déguisées."
   - "N'intègre jamais les secrets au scénario : ils sont référencés depuis un coffre adapté."
-  - "Ne pas promettre une exécution exactement une fois au travers de services qui ne l'offrent pas."
+  - "Ne promet pas une exécution exactement une fois au travers de services qui ne l'offrent pas."
   - "Une automatisation ne notifie pas quand l'état surveillé est inchangé, sauf demande contraire."
-depend_de: []
+depend_de:
+  - P37
 realisation: "intégration"
 depot: null
 etiquettes:
@@ -31,3 +32,4 @@ a_relire:
   - a_la_place_de
   - pour_qui
   - ne_fait_pas
+  - depend_de
