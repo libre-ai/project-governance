@@ -32,7 +32,7 @@
       "$ref": "#/$defs/identifiant"
     },
     "nom_public": {
-      "description": "The name decided for the public, or null while none is decided.",
+      "description": "The public name the owner decided for the product, or null while none is decided.",
       "oneOf": [{ "$ref": "#/$defs/nom" }, { "type": "null" }]
     },
     "nom_provisoire": {
@@ -100,7 +100,7 @@
       ]
     },
     "depot": {
-      "description": "The carrier repository, or null when the inventory holds none for this product.",
+      "description": "The carrier repository a decision designates, or null when no decision designates one for this product, even if the inventory holds a repository of the same domain.",
       "oneOf": [
         { "type": "string", "pattern": "^libre-ai/[A-Za-z0-9._-]+$", "maxLength": 100 },
         { "type": "null" }
@@ -114,7 +114,9 @@
         "type": "string",
         "minLength": 3,
         "maxLength": 40,
-        "allOf": [{ "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}]" }],
+        "allOf": [
+          { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+        ],
         "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$"
       }
     },
@@ -134,22 +136,28 @@
       "type": "string",
       "minLength": 2,
       "maxLength": 40,
-      "allOf": [{ "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}]" }],
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$"
     },
     "ligne": {
       "type": "string",
       "minLength": 3,
       "maxLength": 200,
-      "allOf": [{ "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}]" }],
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
-      "description": "A short line. `pattern` admits no control character anywhere in the value (C0, DEL, C1, U+2028 and U+2029: the class the gates escape when they print), so that a value cannot forge a line of an output. `allOf` asks for one letter, digit, punctuation mark or symbol: blanks alone are not a value. The same two constraints are written on nom, phrase and the items of etiquettes."
+      "description": "A short line. `pattern` admits no control character anywhere in the value (C0, DEL, C1, U+2028 and U+2029: the class the gates escape when they print), so that a value cannot forge a line of an output. `allOf` asks for one letter, digit, punctuation mark or symbol: blanks alone are not a value. Five characters that Unicode classes as a letter or a symbol and that print nothing do not count as that one character: the Hangul fillers U+115F, U+1160, U+3164 and U+FFA0 (letters) and the blank Braille pattern U+2800 (symbol); the list is short and closed, and any other invisible character of those classes is not caught. The same two constraints are written on nom, phrase and the items of etiquettes."
     },
     "phrase": {
       "type": "string",
       "minLength": 12,
       "maxLength": 400,
-      "allOf": [{ "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}]" }],
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
       "description": "One line of prose: no control character, and one visible character (see ligne)."
     }

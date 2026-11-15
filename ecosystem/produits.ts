@@ -29,8 +29,10 @@ import { CONTROL_CHARACTERS, type EntryKind, type LocalTarget } from "./briques"
 export const SCHEMA_VERSION = "libre-ai.produit.v1";
 /** Where the fiches live, relative to the repository root. */
 export const PRODUITS_ROOT = "ecosystem/produits";
+/** The schema a fiche is held to, relative to the repository root: a source of the gate. */
+export const SCHEMA_PATH = "ecosystem/schemas/produit.v1.schema.json";
 
-export type Categorie =
+type Categorie =
   | "connaissance"
   | "bureautique-donnees"
   | "collaboration"
@@ -57,7 +59,7 @@ export const DOMAIN_CATEGORIES: ReadonlyMap<string, Categorie> = new Map<string,
 ]);
 
 /** A fiche as the YAML writes it (schema `produit.v1`). */
-export interface ProduitData {
+interface ProduitData {
   readonly schema_version: typeof SCHEMA_VERSION;
   readonly id: string;
   readonly nom_public: string | null;
@@ -108,11 +110,13 @@ export interface ProduitsInput {
   readonly listingError: string | null;
   /** The text of a file under `PRODUITS_ROOT`. */
   readonly read: (path: string) => ReadResult;
+  /** The text of the schema (`SCHEMA_PATH`) of the tree judged, or why it could not be read. */
+  readonly schema: ReadResult;
   /** `P01`…: the products of the catalogue of ADR-0042 §1. */
   readonly catalogue: ReadonlySet<string>;
   /** The domain label(s) the catalogue table gives each product (one, unless the table is wrong). */
   readonly domaines: ReadonlyMap<string, readonly string[]>;
-  /** Lines of the catalogue section that carry a product and that the reader did not read. */
+  /** Lines of the catalogue section that were not read in full, each with its reason. */
   readonly catalogueUnread: readonly string[];
   /** `owner/name` of the fleet inventory. */
   readonly repositories: ReadonlyMap<string, { readonly visibility: string }>;
@@ -122,7 +126,7 @@ export interface ProduitsInput {
   readonly sources: readonly SourceFile[];
 }
 
-export interface ProduitsCounters {
+interface ProduitsCounters {
   /** Tracked paths under the root: fiches read + READMEs + refused + unmerged. */
   readonly chemins_suivis: number;
   readonly readmes: number;
@@ -154,72 +158,169 @@ export interface ProduitsOutcome {
 
 const PRODUCT_IDENTIFIER = /(?<![A-Za-z0-9])P[0-9]{2}(?![A-Za-z0-9])/g;
 
-export interface CatalogueTable {
+/** The heading of the catalogue section, numbered or not; its depth is what closes the section. */
+const CATALOGUE_HEADING = /^#{2,6}\s+(?:[0-9]+\.\s+)?Le catalogue d'applications\s*$/i;
+/** The header row of the catalogue table, as the decision record writes it. */
+const HEADER_CELLS: readonly [string, string] = ["Domaine", "Produits"];
+const SEPARATOR_CELL = /^:?-+:?$/;
+/** What separates two products in the cell of a row (U+00B7, as the decision record writes it). */
+const ITEM_SEPARATOR = "·";
+/**
+ * One product of a row: the identifier, exactly, then the end of the item or a
+ * blank. `P41bis`, `P100`, `P 41`, `P-41`, `P4` and `p41` are not identifiers.
+ */
+const ROW_ITEM = /^(P[0-9]{2})(?:\s.*)?$/;
+
+interface CatalogueTable {
   /** Product to the domain label(s) of the row(s) it is written in. */
   readonly domains: Map<string, string[]>;
-  /** `line N « text »` for each line of the section that carries a product and was not read. */
+  /** Product to the `line N « text »` of the row(s) it is written in. */
+  readonly rows: Map<string, string[]>;
+  /** `line N « text »: reason` for each line of the section that was not read in full. */
   readonly unread: string[];
+}
+
+type Row =
+  | { readonly kind: "layout" }
+  | { readonly kind: "products"; readonly domain: string; readonly products: readonly string[] }
+  | { readonly kind: "refused"; readonly reason: string };
+
+/**
+ * One line of the section that carries a `|`. It is the header, the separator
+ * or a row read IN FULL: a domain the category table knows, and a cell of
+ * products where every item starts with an identifier. Anything else is
+ * refused with its reason, never read in part: a row read in part is how
+ * « P 41 », « P100 » or a product without an identifier required no fiche.
+ */
+function readRow(line: string): Row {
+  const refused = (reason: string): Row => ({ kind: "refused", reason });
+  if (!line.startsWith("|")) {
+    return refused("a row of the catalogue table starts with « | » at the first column");
+  }
+  // `| a | b |` splits in four: nothing before the first bar, nothing after the last.
+  const [, first = "", second = "", after, ...beyond] = line.trimEnd().split("|");
+  if (after !== "" || beyond.length > 0) {
+    return refused("a row has two cells, a domain and its products, and ends with « | »");
+  }
+  const domain = first.trim();
+  const cell = second.trim();
+  if (domain === HEADER_CELLS[0] && cell === HEADER_CELLS[1]) return { kind: "layout" };
+  if (SEPARATOR_CELL.test(domain) && SEPARATOR_CELL.test(cell)) return { kind: "layout" };
+  if (!DOMAIN_CATEGORIES.has(domain)) {
+    return refused(`« ${domain} » is not a domain the category table maps`);
+  }
+  const products: string[] = [];
+  for (const item of cell.split(ITEM_SEPARATOR).map((text) => text.trim())) {
+    const identifier = ROW_ITEM.exec(item)?.[1];
+    if (identifier === undefined) {
+      return refused(
+        `« ${item} » does not start with a product identifier (P and two digits, then a blank or the end of the item)`,
+      );
+    }
+    products.push(identifier);
+  }
+  return { kind: "products", domain, products };
 }
 
 /**
  * The domain of each product of ADR-0042 §1: the first cell of the row of the
- * catalogue table a `Pnn` is written in. Same section as `parseCatalogue` of
- * the brick map (the heading « Le catalogue d'applications », numbered or not,
- * up to the next heading). A product written in two rows gets two domains, and
- * the evaluation refuses it: the table decides, this reader does not choose.
+ * catalogue table a `Pnn` is written in. A product written in two rows gets
+ * two domains, and the evaluation refuses it: the table decides, this reader
+ * does not choose.
  *
- * WHAT IS NOT READ IS SAID. A row is a line that starts with `|` at the first
- * column. An indented row, or one written without its leading bar, was skipped
- * in silence, so a product added that way required no fiche. Such a line is
- * returned in `unread`, and the evaluation fails on it. Two cases are unread:
- * a line that carries a product and a `|` without being a row, and a line that
- * names a product no row lists. A sentence of the section that cites a product
- * of the table is prose, and is left alone: the decision record has several.
+ * THE SECTION. From the heading « Le catalogue d'applications », numbered or
+ * not, to the next heading of the same depth or of a shallower one. A deeper
+ * heading is a sub-title of the section and does not close it: when any
+ * heading closed it, a table written under « #### Ajouts » added products
+ * that required no fiche (second review of 2026-11-15, F1a).
+ *
+ * WHAT IS NOT READ IS SAID. Every line of the section that carries a `|` is a
+ * line of the table, and is the header, the separator or a row read in full
+ * (`readRow`); any other is returned in `unread` with its reason, and the
+ * evaluation fails on it. A line without a `|` is prose: it is unread only
+ * when it names a product no row lists. A sentence that cites a product of the
+ * table is left alone: the decision record has several.
  */
 export function parseCatalogueTable(adr0042: string): CatalogueTable {
   const domains = new Map<string, string[]>();
-  const outside: { number: number; text: string; products: string[] }[] = [];
-  let inside = false;
+  const rows = new Map<string, string[]>();
+  const refused: { number: number; entry: string }[] = [];
+  const prose: { number: number; cited: string; products: string[] }[] = [];
+  let depth: number | null = null;
   adr0042.split("\n").forEach((line, at) => {
-    if (/^#{2,6}\s/.test(line)) {
-      inside = /^#{2,6}\s+(?:[0-9]+\.\s+)?Le catalogue d'applications\s*$/i.test(line);
+    const heading = /^(#{1,6})\s/.exec(line)?.[1]?.length;
+    if (heading !== undefined && (depth === null || heading <= depth)) {
+      depth = CATALOGUE_HEADING.test(line) ? heading : null;
       return;
     }
-    if (!inside) return;
-    if (!line.startsWith("|")) {
+    if (depth === null) return;
+    const cited = `line ${at + 1} « ${line.trim()} »`;
+    if (!line.includes("|")) {
       const products = [...line.matchAll(PRODUCT_IDENTIFIER)].map((match) => match[0]);
-      if (products.length > 0) outside.push({ number: at + 1, text: line.trim(), products });
+      if (products.length > 0) prose.push({ number: at + 1, cited, products });
       return;
     }
-    const cells = line.split("|");
-    const domain = (cells[1] ?? "").trim();
-    for (const match of cells.slice(2).join("|").matchAll(PRODUCT_IDENTIFIER)) {
-      const known = domains.get(match[0]) ?? [];
-      if (!known.includes(domain)) domains.set(match[0], [...known, domain]);
+    const row = readRow(line);
+    if (row.kind === "refused") refused.push({ number: at + 1, entry: `${cited}: ${row.reason}` });
+    if (row.kind !== "products") return;
+    for (const product of row.products) {
+      const known = domains.get(product) ?? [];
+      if (!known.includes(row.domain)) domains.set(product, [...known, row.domain]);
+      rows.set(product, [...(rows.get(product) ?? []), cited]);
     }
   });
-  const unread = outside
-    .filter((line) => line.text.includes("|") || line.products.some((id) => !domains.has(id)))
-    .map((line) => `line ${line.number} « ${line.text} »`);
-  return { domains, unread };
+  for (const line of prose) {
+    const unlisted = line.products.filter((id) => !domains.has(id));
+    if (unlisted.length === 0) continue;
+    refused.push({
+      number: line.number,
+      entry: `${line.cited}: names ${[...new Set(unlisted)].join(", ")}, which no row of the table lists`,
+    });
+  }
+  const unread = refused
+    .sort((left, right) => left.number - right.number)
+    .map((line) => line.entry);
+  return { domains, rows, unread };
+}
+
+/**
+ * The catalogue this gate judges, from its own reader of the table and from
+ * the reader the brick map shares (`parseCatalogue`).
+ *
+ * WHY BOTH. The set of products is read by two parsers of the same decision
+ * record, and the shared one closes the section at ANY heading and reads any
+ * `Pnn` of a row. Where they differ, the two gates count two catalogues: the
+ * difference is returned as unread lines, so the gate fails by naming them,
+ * and the catalogue is the union, so a product either reader sees needs a
+ * fiche. On the decision record as it is written the two agree.
+ */
+export function reconcileCatalogue(
+  table: CatalogueTable,
+  shared: ReadonlySet<string>,
+): { readonly catalogue: Set<string>; readonly unread: string[] } {
+  const unread = [...table.unread];
+  for (const [product, lines] of table.rows) {
+    if (shared.has(product)) continue;
+    for (const line of lines) {
+      unread.push(
+        `${line}: ${product} is read by this gate and not by the reader of the brick map, which closes the section at any heading`,
+      );
+    }
+  }
+  const alone = [...shared].filter((product) => !table.domains.has(product)).sort();
+  if (alone.length > 0) {
+    unread.push(
+      `${alone.join(", ")}: read by the reader of the brick map, and in no row this gate read in full`,
+    );
+  }
+  return { catalogue: new Set([...shared, ...table.domains.keys()].sort()), unread };
 }
 
 // ----------------------------------------------------------------- schema ---
 
-const schema: unknown = await Bun.file(
-  new URL("./schemas/produit.v1.schema.json", import.meta.url).pathname,
-).json();
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
-
-if (!isRecord(schema) || !isRecord(schema.properties)) {
-  throw new Error("ecosystem/schemas/produit.v1.schema.json declares no properties");
-}
-
-/** The fields a fiche may carry, read from the schema. */
-export const SCHEMA_FIELDS: ReadonlySet<string> = new Set(Object.keys(schema.properties));
 
 /**
  * The fields `a_relire` may not name. The version of the schema and the
@@ -229,20 +330,68 @@ export const SCHEMA_FIELDS: ReadonlySet<string> = new Set(Object.keys(schema.pro
  */
 const NOT_A_CONTENT_FIELD: ReadonlySet<string> = new Set(["schema_version", "id", "a_relire"]);
 
-const validateSchema = new Ajv2020({ allErrors: true, strict: true }).compile<ProduitData>(schema);
-
 function renderSchemaError(error: ErrorObject): string {
   const extra: unknown = error.params.additionalProperty;
   const detail = error.keyword === "additionalProperties" ? ` « ${String(extra)} »` : "";
   return `${error.instancePath || "/"}: ${error.message ?? "invalid"}${detail} (${error.keyword})`;
 }
 
-/** The fiche when the schema holds, or the schema errors. */
-export function validateFiche(
-  value: unknown,
-): { readonly data: ProduitData } | { readonly errors: readonly string[] } {
-  if (validateSchema(value)) return { data: value };
-  return { errors: (validateSchema.errors ?? []).map(renderSchemaError) };
+type FicheVerdict = { readonly data: ProduitData } | { readonly errors: readonly string[] };
+
+/** The schema once compiled, or why there is none: a reason is printed, never thrown. */
+type CompiledSchema =
+  | {
+      readonly ok: true;
+      /** The fields a fiche may carry, read from the schema. */
+      readonly fields: ReadonlySet<string>;
+      /** The fiche when the schema holds, or the schema errors. */
+      readonly validate: (value: unknown) => FicheVerdict;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Compile the schema from its text.
+ *
+ * WHY A RESULT AND NOT A MODULE CONSTANT. The schema was read and compiled
+ * when this module loaded: an empty file, a file that is not JSON or a
+ * directory in its place threw before the gate had printed a line — exit 1,
+ * no source named, no counter (second review of 2026-11-15, F4). It is a
+ * source like the two others: read by the effectful half from the tree
+ * judged, and an unreadable one is a named failure of the evaluation.
+ */
+export function compileSchema(source: ReadResult): CompiledSchema {
+  if (!source.ok) return { ok: false, reason: source.reason };
+  if (source.text.trim() === "") return { ok: false, reason: "the file is empty" };
+  let schema: unknown;
+  try {
+    schema = JSON.parse(source.text);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `not JSON (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+  if (!isRecord(schema) || !isRecord(schema.properties)) {
+    return { ok: false, reason: "it declares no properties" };
+  }
+  const fields = new Set(Object.keys(schema.properties));
+  if (fields.size === 0) return { ok: false, reason: "it declares no properties" };
+  try {
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile<ProduitData>(schema);
+    return {
+      ok: true,
+      fields,
+      validate: (value) =>
+        validate(value)
+          ? { data: value }
+          : { errors: (validate.errors ?? []).map(renderSchemaError) },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `not a schema that compiles (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
 }
 
 // ------------------------------------------------------------- evaluation ---
@@ -300,8 +449,18 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
     input.catalogue.size === 0
       ? "no product read: the decision record is missing, or its catalogue table could not be parsed — unreadable is not zero products"
       : input.catalogueUnread.length > 0
-        ? `catalogue line(s) not read: ${input.catalogueUnread.join(", ")} — a row of the catalogue table starts with « | » at the first column, and a product written anywhere else in the section would require no fiche`
+        ? `catalogue line(s) not read: ${input.catalogueUnread.join("; ")} — every line of the section that carries « | » is the header, the separator or a row read in full, and a product written any other way would require no fiche`
         : `${input.catalogue.size} product(s) read from the catalogue table, no line of the section left unread`,
+  );
+  // The schema is a source: unreadable, it is named here and no fiche is judged
+  // valid, so the counters below are still printed.
+  const compiled = compileSchema(input.schema);
+  check(
+    SCHEMA_PATH,
+    compiled.ok,
+    compiled.ok
+      ? `${compiled.fields.size} field(s) declared, compiled in strict mode`
+      : `unreadable (${compiled.reason}) — unreadable is not a schema every fiche holds`,
   );
   const labels = [...new Set([...input.domaines.values()].flat())];
   const unknownDomains = labels.filter((label) => !DOMAIN_CATEGORIES.has(label));
@@ -380,9 +539,11 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
     const file = input.unstaged.has(item) ? null : input.read(path);
     if (file === null) errors.push(STAGE_FIRST);
     else if (!file.ok) errors.push(`unreadable (${file.reason}) — unreadable is not a valid fiche`);
-    else {
+    else if (!compiled.ok) {
+      errors.push(`not judged: ${SCHEMA_PATH} is unreadable, and no fiche holds without a schema`);
+    } else {
       try {
-        const verdict = validateFiche(Bun.YAML.parse(file.text));
+        const verdict = compiled.validate(Bun.YAML.parse(file.text));
         if ("data" in verdict) data = verdict.data;
         else errors.push(...verdict.errors);
       } catch (error) {
@@ -450,7 +611,9 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
         );
       }
 
-      const strangers = data.a_relire.filter((field) => !SCHEMA_FIELDS.has(field));
+      // `data` is set only under a compiled schema: the fallback is never reached with a fiche to judge.
+      const declared = compiled.ok ? compiled.fields : new Set<string>();
+      const strangers = data.a_relire.filter((field) => !declared.has(field));
       if (strangers.length > 0) {
         errors.push(`a_relire names ${strangers.join(", ")}, which the schema does not declare`);
       }

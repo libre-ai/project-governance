@@ -44,6 +44,28 @@
         "etiquettes": ["Flux et sites", "Tri par question", "Pourquoi le lire"],
         "a_relire": []
       }
+    },
+    {
+      "name": "a_relire with names at the two bounds of the form, two letters and forty",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P03",
+        "nom_public": null,
+        "nom_provisoire": "Corpus",
+        "intitule": "entretien du corpus bibliographique",
+        "fonction": "Gestion de références",
+        "categorie": "connaissance",
+        "promesse": "Tenir une bibliographie propre, sur son poste.",
+        "pour_qui": "une personne qui cite ses sources",
+        "a_la_place_de": "votre gestionnaire de références en ligne",
+        "capacites": ["Importer et dédoublonner des références."],
+        "ne_fait_pas": ["Ne publie pas la bibliographie sans action explicite."],
+        "depend_de": [],
+        "realisation": "projet autonome",
+        "depot": null,
+        "etiquettes": ["Références", "Dédoublonnage", "Hors ligne"],
+        "a_relire": ["ab", "abcdefghijabcdefghijabcdefghijabcdefghij"]
+      }
     }
   ],
   "invalid": [
@@ -76,6 +98,24 @@
       "because": "a product is Pnn, as the catalogue writes it",
       "set": { "path": ["id"], "value": "PRD-01" },
       "expect": "/id: must match pattern"
+    },
+    {
+      "name": "an identifier with a third digit",
+      "because": "the form ends after two digits: without the anchor at the end, P011 was read as P01",
+      "set": { "path": ["id"], "value": "P011" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "an identifier with a letter before it",
+      "because": "the form starts at the P: without the anchor at the start, XP01 was read as P01",
+      "set": { "path": ["id"], "value": "XP01" },
+      "expect": "/id: must match pattern"
+    },
+    {
+      "name": "a dependency with a third digit",
+      "because": "a dependency is held to the same form as an identifier, at both ends",
+      "set": { "path": ["depend_de"], "value": ["P021"] },
+      "expect": "/depend_de/0: must match pattern"
     },
     {
       "name": "an identifier that is not a text",
@@ -498,6 +538,18 @@
       "name": "a_relire that is not a field name",
       "because": "a_relire lists field names, not sentences",
       "set": { "path": ["a_relire"], "value": ["la promesse est à relire"] },
+      "expect": "/a_relire/0: must match pattern"
+    },
+    {
+      "name": "a_relire that names a field of one letter",
+      "because": "a field name counts two letters at least: the lower bound of the form",
+      "set": { "path": ["a_relire"], "value": ["a"] },
+      "expect": "/a_relire/0: must match pattern"
+    },
+    {
+      "name": "a_relire that names a field of forty-one letters",
+      "because": "a field name counts forty letters at most: the upper bound of the form",
+      "set": { "path": ["a_relire"], "value": ["abcdefghijabcdefghijabcdefghijabcdefghija"] },
       "expect": "/a_relire/0: must match pattern"
     }
   ]

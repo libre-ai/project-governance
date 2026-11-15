@@ -381,6 +381,131 @@ describe("check-produits as a process", () => {
       expect(outcome.output).toContain("Product catalogue: P02: in the catalogue of ADR-0042 §1");
       expect(outcome.exitCode).toBe(1);
     });
+
+    // `GIT_WORK_TREE` alone keeps the index of the tree judged and moves the
+    // root git resolves paths from. Set to the directory above, every path of
+    // the index falls outside the prefix git computes for the tree judged:
+    // the listing came back empty, and a green tree had no fiche.
+    test("GIT_WORK_TREE set to the directory above does not empty the listing of a green tree", () => {
+      const root = freshTree("worktree-from-green");
+      const outcome = judge(root, { GIT_WORK_TREE: workspace });
+      expect(outcome.output).toContain("Product catalogue verified:");
+      expect(outcome.output).toContain("3 fiche(s) read = 3 valid + 0 in violation");
+      expect(outcome.exitCode).toBe(0);
+    });
+  });
+
+  // The promise « a line of the catalogue the reader cannot read is a failure »,
+  // on the forms that were green: each one added a product without a fiche.
+  describe("a line of the catalogue section that is not read in full is a failure", () => {
+    const HEAD =
+      "### 1. Le catalogue d'applications\n\n| Domaine | Produits |\n| --- | --- |\n| Connaissance | P01 un · P02 deux |\n| Collaboration | P03 trois |\n";
+    const judged = (name: string, tail: string): Run => {
+      const root = freshTree(`f1-${name}`);
+      write(root, CATALOGUE_ADR, `${HEAD}${tail}`);
+      git(root, "add", "--all");
+      return judge(root);
+    };
+
+    test("a table under a sub-title of the section adds its product to the catalogue", () => {
+      const outcome = judged("sub-title", "\n#### Ajouts\n\n| Collaboration | P41 truc |\n");
+      // The product needs a fiche…
+      expect(outcome.output).toContain(
+        "Product catalogue: P41: in the catalogue of ADR-0042 §1, and no fiche",
+      );
+      expect(outcome.output).toContain(
+        "4 product(s) in the catalogue of ADR-0042 §1 = 3 with a fiche + 1 missing",
+      );
+      // …and the reader of the brick map, which stops at the sub-title, is named with the line.
+      expect(outcome.output).toContain(
+        "catalogue line(s) not read: line 10 « | Collaboration | P41 truc | »: P41 is read by this gate and not by the reader of the brick map",
+      );
+      expect(outcome.exitCode).toBe(1);
+    });
+
+    test.each([
+      ["blank", "| Collaboration | P 41 truc |"],
+      ["three-digits", "| Collaboration | P100 truc |"],
+      ["lower-case", "| Collaboration | p41 truc |"],
+      ["hyphen", "| Collaboration | P-41 truc |"],
+      ["suffix", "| Collaboration | P41bis truc |"],
+      ["one-digit", "| Collaboration | P4 truc |"],
+      ["no-identifier", "| Collaboration | truc sans identifiant |"],
+      ["new-domain", "| Domaine nouveau | truc sans identifiant |"],
+    ])("an identifier or a row of another form (%s) is named with its line", (name, line) => {
+      const outcome = judged(name, `${line}\n`);
+      expect(outcome.output).toContain(
+        `catalogue of ADR-0042 §1: catalogue line(s) not read: line 7 « ${line} »: `,
+      );
+      // The three products read in full are still counted: the volume is printed.
+      expect(outcome.output).toContain(
+        "Product catalogue volume: 3 product(s) in the catalogue of ADR-0042 §1 = 3 with a fiche + 0 missing",
+      );
+      expect(outcome.output).toMatch(/Product catalogue failed: 1 of [0-9]+ assertion/);
+      expect(outcome.exitCode).toBe(1);
+    });
+
+    // The row is refused for its domain, whatever its cell of products holds;
+    // the reader of the brick map still reads the identifier, so the product
+    // is in the catalogue and has no fiche.
+    test("a row of a new domain with a well-formed identifier is named with its line", () => {
+      const line = "| Domaine nouveau | P41 truc |";
+      const outcome = judged("new-domain-identifier", `${line}\n`);
+      expect(outcome.output).toContain(
+        `catalogue line(s) not read: line 7 « ${line} »: « Domaine nouveau » is not a domain the category table maps`,
+      );
+      expect(outcome.output).toContain(
+        "P41: read by the reader of the brick map, and in no row this gate read in full",
+      );
+      expect(outcome.output).toContain(
+        "Product catalogue: P41: in the catalogue of ADR-0042 §1, and no fiche",
+      );
+      expect(outcome.exitCode).toBe(1);
+    });
+  });
+
+  // The schema is read from the tree judged. It was compiled while the module
+  // loaded: unreadable, the process died on an exception, without a line of
+  // the gate and without a counter.
+  describe("a schema that cannot be read is a failure the gate names, with its counters", () => {
+    const expectNamed = (outcome: Run, reason: string): void => {
+      expect(outcome.output).toContain(`Product catalogue: ${SCHEMA}: unreadable (${reason}`);
+      expect(outcome.output).toContain(
+        `ecosystem/produits/P01.v1.yaml: not judged: ${SCHEMA} is unreadable`,
+      );
+      expect(outcome.output).toContain(
+        "Product catalogue volume: 3 product(s) in the catalogue of ADR-0042 §1 = 3 with a fiche + 0 missing; 3 fiche(s) read = 0 valid + 3 in violation",
+      );
+      expect(outcome.output).toContain(
+        "carrier: 0 with a depot + 0 without + 3 not decidable (schema not held) = 3",
+      );
+      expect(outcome.output).toMatch(/Product catalogue failed: [0-9]+ of [0-9]+ assertion/);
+      expect(outcome.exitCode).toBe(1);
+    };
+
+    test("an empty schema", () => {
+      const root = freshTree("schema-empty");
+      write(root, SCHEMA, "");
+      git(root, "add", "--all");
+      expectNamed(judge(root), "the file is empty)");
+    });
+
+    test("a schema that is not JSON", () => {
+      const root = freshTree("schema-not-json");
+      write(root, SCHEMA, "{ type: object\n");
+      git(root, "add", "--all");
+      expectNamed(judge(root), "not JSON (");
+    });
+
+    test("a directory in place of the schema", () => {
+      const root = freshTree("schema-directory");
+      unlinkSync(join(root, SCHEMA));
+      write(root, `${SCHEMA}/inside.json`, "{}\n");
+      git(root, "add", "--all");
+      const outcome = judge(root);
+      expectNamed(outcome, "EISDIR");
+      expect(outcome.output).toContain(`sources: ${SCHEMA} is not in the index`);
+    });
   });
 
   test("a fiche that is a symbolic link is refused as a link, not read as its target", () => {

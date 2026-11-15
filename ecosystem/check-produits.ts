@@ -12,6 +12,8 @@ import {
   type ProduitsInput,
   parseCatalogueTable,
   type ReadResult,
+  reconcileCatalogue,
+  SCHEMA_PATH,
 } from "./produits";
 
 /**
@@ -22,12 +24,22 @@ import {
  * `evaluateProduits`, prints the counters and exits non-zero on any violation.
  * It never goes to the network.
  *
- * ONE READER PER SOURCE. The set of products, the inventory, what the index
- * says a path is and the list of files whose working copy is not the indexed
- * content come from the reader of the brick-map gate (`readBriquesInput`): two
- * gates that read the same decision record with two parsers would end up
- * counting two catalogues. Only what that reader does not give is read here:
- * the paths under `ecosystem/produits/` and the domain of each product.
+ * ONE READER PER SOURCE. The inventory, what the index says a path is and the
+ * list of files whose working copy is not the indexed content come from the
+ * reader of the brick-map gate (`readBriquesInput`). Only what that reader
+ * does not give is read here: the paths under `ecosystem/produits/`, the
+ * schema, and the domain of each product.
+ *
+ * ONE CATALOGUE, TWO READERS, HELD TOGETHER. The decision record is read by
+ * the reader of the brick map and by the stricter reader of this gate, which
+ * refuses any line of the table it does not read in full. Two parsers of one
+ * record end up counting two catalogues, so `reconcileCatalogue` fails the
+ * gate on any product one reads and the other does not.
+ *
+ * THE SCHEMA IS THE ONE OF THE TREE JUDGED. It is read here, from the same
+ * root as the fiches, and handed to the evaluation as a text: unreadable, it
+ * is a failure the gate names with its counters, not an exception thrown
+ * while the module loads.
  *
  * THE INDEX, NOT THE DISK. A fiche is a tracked regular file; a link is
  * refused and an untracked file is not part of the catalogue. Its content is
@@ -46,7 +58,6 @@ import {
  * hook, the gate listed another index and was green on it (same review, C8).
  */
 
-const SCHEMA = "ecosystem/schemas/produit.v1.schema.json";
 const REPOSITORIES = "ecosystem/repositories.v1.yaml";
 const CATALOGUE_ADR_PREFIX = "docs/adr/0042-";
 
@@ -120,18 +131,22 @@ function readProduitsInput(root: string): ProduitsInput {
   );
   const adr = cataloguePath === undefined ? null : readFile(join(root, cataloguePath));
   const table = parseCatalogueTable(adr?.ok === true ? adr.text : "");
+  const reconciled = reconcileCatalogue(table, shared.catalogue);
   return {
     entries: tracked.entries,
     listingError: tracked.error,
     read: (path) => readFile(join(root, PRODUITS_ROOT, path)),
-    catalogue: shared.catalogue,
+    schema: readFile(join(root, SCHEMA_PATH)),
+    catalogue: reconciled.catalogue,
     domaines: table.domains,
-    catalogueUnread: table.unread,
+    catalogueUnread: reconciled.unread,
     repositories: shared.repositories,
     unstaged: shared.unstaged,
-    sources: [REPOSITORIES, SCHEMA, ...(cataloguePath === undefined ? [] : [cataloguePath])].map(
-      (path) => ({ path, standing: shared.localTarget(path) }),
-    ),
+    sources: [
+      REPOSITORIES,
+      SCHEMA_PATH,
+      ...(cataloguePath === undefined ? [] : [cataloguePath]),
+    ].map((path) => ({ path, standing: shared.localTarget(path) })),
   };
 }
 

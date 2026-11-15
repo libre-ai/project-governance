@@ -7,17 +7,25 @@ import Ajv2020 from "ajv/dist/2020";
 import { CONTROL_CHARACTERS, type LocalTarget, parseCatalogue } from "./briques";
 import {
   type CatalogueEntry,
+  compileSchema,
   DOMAIN_CATEGORIES,
   evaluateProduits,
   PRODUITS_ROOT,
   type ProduitsInput,
   type ProduitsOutcome,
   parseCatalogueTable,
-  SCHEMA_FIELDS,
+  type ReadResult,
+  reconcileCatalogue,
+  SCHEMA_PATH,
   SCHEMA_VERSION,
   type SourceFile,
-  validateFiche,
 } from "./produits";
+
+/** The schema as the repository writes it: the one every rule below is judged under. */
+const SCHEMA_TEXT = readFileSync(join(import.meta.dir, "..", SCHEMA_PATH), "utf8");
+const COMPILED = compileSchema({ ok: true, text: SCHEMA_TEXT });
+if (!COMPILED.ok) throw new Error(`${SCHEMA_PATH}: ${COMPILED.reason}`);
+const { fields: SCHEMA_FIELDS, validate: validateFiche } = COMPILED;
 
 /**
  * The rules of the product catalogue, judged on a catalogue held in memory.
@@ -57,6 +65,7 @@ interface Reference {
   /** File name under the root to its content, as text. */
   files: Map<string, string>;
   entries: CatalogueEntry[] | null;
+  schema: ReadResult;
   catalogue: Set<string>;
   domaines: Map<string, string[]>;
   catalogueUnread: string[];
@@ -78,6 +87,7 @@ function reference(): Reference {
   return {
     files: new Map(["P01", "P02", "P03"].map((id) => [`${id}.v1.yaml`, JSON.stringify(fiche(id))])),
     entries: null,
+    schema: { ok: true, text: SCHEMA_TEXT },
     catalogue: new Set(["P01", "P02", "P03"]),
     domaines: new Map([
       ["P01", ["Connaissance"]],
@@ -103,6 +113,7 @@ function judge(state: Reference): ProduitsOutcome {
       const text = state.files.get(path);
       return text === undefined ? { ok: false, reason: "ENOENT" } : { ok: true, text };
     },
+    schema: state.schema,
     catalogue: state.catalogue,
     domaines: state.domaines,
     catalogueUnread: state.catalogueUnread,
@@ -361,6 +372,53 @@ describe("a source that cannot be read is a failure, never a zero", () => {
     );
   });
 
+  // The schema is a source: unreadable, it is named, no fiche is judged valid
+  // and the counters are still summed and printed. It used to throw while the
+  // module loaded, before the gate had printed a line.
+  test.each<[string, ReadResult, string]>([
+    ["that cannot be read", { ok: false, reason: "EISDIR" }, "unreadable (EISDIR)"],
+    ["that is empty", { ok: true, text: "" }, "unreadable (the file is empty)"],
+    ["made of blanks", { ok: true, text: " \n" }, "unreadable (the file is empty)"],
+    ["that is not JSON", { ok: true, text: "{ type: object" }, "unreadable (not JSON ("],
+    ["that is a list", { ok: true, text: "[]" }, "unreadable (it declares no properties)"],
+    [
+      "without a property",
+      { ok: true, text: '{"type":"object","properties":{}}' },
+      "unreadable (it declares no properties)",
+    ],
+    [
+      "that does not compile",
+      { ok: true, text: '{"type":"objet","properties":{"id":{"type":"string"}}}' },
+      "unreadable (not a schema that compiles (",
+    ],
+  ])("source schema: a schema %s is a named failure, and the counters are printed", (_name, schema, expected) => {
+    const state = reference();
+    state.schema = schema;
+    const outcome = judge(state);
+    expect(violationOf(outcome, SCHEMA_PATH)).toContain(expected);
+    // No fiche is valid under no schema, and each one says why.
+    expect(violationOf(outcome, item("P01"))).toContain(`not judged: ${SCHEMA_PATH} is unreadable`);
+    expect(outcome.compteurs).toMatchObject({
+      catalogue: 3,
+      couverts: 3,
+      fiches_lues: 3,
+      valides: 0,
+      en_violation: 3,
+      depot_indecidable: 3,
+    });
+    expect(outcome.volume).toContain("3 fiche(s) read = 0 valid + 3 in violation");
+    expectSums(outcome);
+  });
+
+  test("source schema: the schema as written is read, and says how many fields it declares", () => {
+    const check = judge(reference()).report.checks.find((entry) => entry.item === SCHEMA_PATH);
+    expect(check).toEqual({
+      item: SCHEMA_PATH,
+      ok: true,
+      note: `${SCHEMA_FIELDS.size} field(s) declared, compiled in strict mode`,
+    });
+  });
+
   test("source domains: a domain the category table does not map", () => {
     const state = reference();
     state.domaines.set("P03", ["Domaine nouveau"]);
@@ -503,6 +561,13 @@ describe("a source that cannot be read is a failure, never a zero", () => {
 });
 
 describe("the domains of ADR-0042 §1", () => {
+  const NOT_AT_FIRST_COLUMN = "a row of the catalogue table starts with « | » at the first column";
+  const NOT_TWO_CELLS = "a row has two cells, a domain and its products, and ends with « | »";
+  const notAnIdentifier = (item: string): string =>
+    `« ${item} » does not start with a product identifier (P and two digits, then a blank or the end of the item)`;
+  const notADomain = (domain: string): string =>
+    `« ${domain} » is not a domain the category table maps`;
+
   test("the reader gives each product the first cell of its row", () => {
     const adr = [
       "## Décision",
@@ -526,16 +591,21 @@ describe("the domains of ADR-0042 §1", () => {
       ["P02", ["Connaissance"]],
       ["P40", ["Poste de travail"]],
     ]);
+    // Each product is tied to the row it was read in, by line number.
+    expect(table.rows.get("P40")).toEqual(["line 8 « | Poste de travail | P40 fenêtres | »"]);
     // A sentence of the section that cites products of the table is prose.
     expect(table.unread).toEqual([]);
   });
 
   test("a product written in two rows gets both domains", () => {
-    const adr = "### Le catalogue d'applications\n| A | P01 |\n| B | P01 · P02 |\n| B | P02 |\n";
-    expect([...parseCatalogueTable(adr).domains]).toEqual([
-      ["P01", ["A", "B"]],
-      ["P02", ["B"]],
+    const adr =
+      "### Le catalogue d'applications\n| Connaissance | P01 |\n| Collaboration | P01 · P02 |\n| Collaboration | P02 |\n";
+    const table = parseCatalogueTable(adr);
+    expect([...table.domains]).toEqual([
+      ["P01", ["Connaissance", "Collaboration"]],
+      ["P02", ["Collaboration"]],
     ]);
+    expect(table.unread).toEqual([]);
   });
 
   test("no catalogue heading, no domain", () => {
@@ -545,22 +615,143 @@ describe("the domains of ADR-0042 §1", () => {
     expect(table.unread).toEqual([]);
   });
 
-  describe("unread: a line of the section that carries a product and is not a row", () => {
+  // The products come from the cell of products and from no other: an
+  // identifier written in the cell of the domain is not a product of the row.
+  test("cells: an identifier in the cell of the domain is not read as a product", () => {
+    const adr = "### Le catalogue d'applications\n| Connaissance | P01 un |\n| P41 | P02 deux |\n";
+    const table = parseCatalogueTable(adr);
+    expect([...table.domains]).toEqual([["P01", ["Connaissance"]]]);
+    expect(table.unread).toEqual([`line 3 « | P41 | P02 deux | »: ${notADomain("P41")}`]);
+  });
+
+  describe("section: it ends at the next heading of its depth or shallower, not at a sub-title", () => {
+    const table = (depth: string, next: string): ReturnType<typeof parseCatalogueTable> =>
+      parseCatalogueTable(
+        `${depth} 1. Le catalogue d'applications\n\n| Connaissance | P01 un |\n\n${next} Ajouts\n\n| Poste de travail | P41 truc |\n`,
+      );
+
+    test.each([
+      ["###", "####"],
+      ["###", "######"],
+      ["##", "###"],
+    ])("a table under a « %s » section and a « %s » sub-title is part of the catalogue", (depth, next) => {
+      const read = table(depth, next);
+      expect([...read.domains]).toEqual([
+        ["P01", ["Connaissance"]],
+        ["P41", ["Poste de travail"]],
+      ]);
+      expect(read.rows.get("P41")).toEqual(["line 7 « | Poste de travail | P41 truc | »"]);
+      expect(read.unread).toEqual([]);
+    });
+
+    test.each([
+      ["###", "###"],
+      ["###", "##"],
+      ["###", "#"],
+      ["####", "###"],
+    ])("a « %s » section is closed by a « %s » heading", (depth, next) => {
+      const read = table(depth, next);
+      expect([...read.domains]).toEqual([["P01", ["Connaissance"]]]);
+      expect(read.unread).toEqual([]);
+    });
+
+    test("a sub-title that names a product no row lists is unread, like any prose", () => {
+      const adr = "### Le catalogue d'applications\n| Connaissance | P01 un |\n#### P41 arrive\n";
+      expect(parseCatalogueTable(adr).unread).toEqual([
+        "line 3 « #### P41 arrive »: names P41, which no row of the table lists",
+      ]);
+    });
+  });
+
+  describe("unread: a line of the section that is not read in full", () => {
     const SECTION = "### 1. Le catalogue d'applications\n\n| Connaissance | P01 un · P02 deux |\n";
     const unreadOf = (line: string): string[] =>
       parseCatalogueTable(`${SECTION}${line}\n\n### 2. Autre\n\n  | Hors section | P77 |\n`).unread;
 
     test.each([
-      ["an indented row", "  | Collaboration | P03 trois |"],
-      ["a row indented by a tabulation", "\t| Collaboration | P03 trois |"],
-      ["a row without its leading bar", "Collaboration | P03 trois |"],
+      ["an indented row", "  | Collaboration | P03 trois |", NOT_AT_FIRST_COLUMN],
+      ["a row indented by a tabulation", "\t| Collaboration | P03 trois |", NOT_AT_FIRST_COLUMN],
+      ["a row without its leading bar", "Collaboration | P03 trois |", NOT_AT_FIRST_COLUMN],
       // The product is in the table: the row would give it a second domain.
-      ["an indented row of a product the table lists", "  | Collaboration | P01 un |"],
-      ["a list item naming a product no row lists", "- P03 trois"],
-      ["a sentence naming a product no row lists", "P03 rejoint le catalogue."],
-    ])("%s is returned, with its line number", (_name, line) => {
-      expect(unreadOf(line)).toEqual([`line 4 « ${line.trim()} »`]);
-      // The domains are those of the rows read: the line gave none.
+      [
+        "an indented row of a product the table lists",
+        "  | Collaboration | P01 un |",
+        NOT_AT_FIRST_COLUMN,
+      ],
+      [
+        "a list item naming a product no row lists",
+        "- P03 trois",
+        "names P03, which no row of the table lists",
+      ],
+      [
+        "a sentence naming a product no row lists",
+        "P03 rejoint le catalogue.",
+        "names P03, which no row of the table lists",
+      ],
+      // A line with a bar is a line of the table, with or without a product.
+      ["a line with a bar and no product", "Collaboration | rien |", NOT_AT_FIRST_COLUMN],
+      [
+        "an indented row of identifiers of another form",
+        "  | Collaboration | XP03 · P3 · P033 |",
+        NOT_AT_FIRST_COLUMN,
+      ],
+      // The forms a reader of identifiers anywhere in the row let through.
+      [
+        "an identifier cut by a blank",
+        "| Collaboration | P 41 truc |",
+        notAnIdentifier("P 41 truc"),
+      ],
+      [
+        "an identifier of three digits",
+        "| Collaboration | P100 truc |",
+        notAnIdentifier("P100 truc"),
+      ],
+      ["an identifier in lower case", "| Collaboration | p41 truc |", notAnIdentifier("p41 truc")],
+      [
+        "an identifier with a hyphen",
+        "| Collaboration | P-41 truc |",
+        notAnIdentifier("P-41 truc"),
+      ],
+      [
+        "an identifier with a suffix",
+        "| Collaboration | P41bis truc |",
+        notAnIdentifier("P41bis truc"),
+      ],
+      ["an identifier of one digit", "| Collaboration | P4 truc |", notAnIdentifier("P4 truc")],
+      [
+        "an identifier with a prefix",
+        "| Collaboration | XP03 truc |",
+        notAnIdentifier("XP03 truc"),
+      ],
+      ["a row without an identifier", "| Collaboration | truc |", notAnIdentifier("truc")],
+      ["a row with an empty cell of products", "| Collaboration | |", notAnIdentifier("")],
+      [
+        "a row whose second item has no identifier",
+        "| Collaboration | P03 trois · quatre |",
+        notAnIdentifier("quatre"),
+      ],
+      [
+        "a row whose identifier does not open its item",
+        "| Collaboration | le P03 trois |",
+        notAnIdentifier("le P03 trois"),
+      ],
+      [
+        "a new domain without an identifier",
+        "| Domaine nouveau | truc |",
+        notADomain("Domaine nouveau"),
+      ],
+      [
+        "a new domain with an identifier",
+        "| Domaine nouveau | P03 trois |",
+        notADomain("Domaine nouveau"),
+      ],
+      ["a row without a domain", "| | P03 trois |", notADomain("")],
+      ["a row of three cells", "| Collaboration | P03 trois | note |", NOT_TWO_CELLS],
+      ["a row of one cell", "| P03 trois |", NOT_TWO_CELLS],
+      ["a row that is not closed", "| Collaboration | P03 trois", NOT_TWO_CELLS],
+    ])("%s is returned, with its line number and the reason", (_name, line, reason) => {
+      expect(unreadOf(line)).toEqual([`line 4 « ${line.trim()} »: ${reason}`]);
+      // The domains are those of the rows read in full: the line gave none.
       expect([...parseCatalogueTable(`${SECTION}${line}\n`).domains]).toEqual([
         ["P01", ["Connaissance"]],
         ["P02", ["Connaissance"]],
@@ -570,10 +761,76 @@ describe("the domains of ADR-0042 §1", () => {
     test.each([
       ["a sentence citing products of the table", "P01 et P02 sortent du gel."],
       ["a list item citing a product of the table", "- Une capacité de **P02**."],
-      ["a line without a product", "Collaboration | rien |"],
-      ["an identifier of another form", "  | Collaboration | XP03 · P3 · P033 |"],
-    ])("%s is not a catalogue line", (_name, line) => {
+      ["a sentence without a product", "Les noms publics restent à fixer."],
+      ["the header of the table", "| Domaine | Produits |"],
+      ["the separator of the table", "| --- | --- |"],
+      ["an aligned separator", "|:---|---:|"],
+    ])("%s is not an unread line", (_name, line) => {
       expect(unreadOf(line)).toEqual([]);
+    });
+
+    test("a row read in full after the others is a row: its products are in the catalogue", () => {
+      const table = parseCatalogueTable(`${SECTION}| Collaboration | P03 trois (bêta) · P04 |\n`);
+      expect(table.unread).toEqual([]);
+      expect(table.domains.get("P03")).toEqual(["Collaboration"]);
+      expect(table.domains.get("P04")).toEqual(["Collaboration"]);
+    });
+
+    test("several unread lines are returned in the order of the section", () => {
+      const table = parseCatalogueTable(
+        `${SECTION}P09 arrive.\n| Collaboration | p41 truc |\n- P08 aussi\n`,
+      );
+      expect(table.unread.map((entry) => entry.slice(0, 6))).toEqual([
+        "line 4",
+        "line 5",
+        "line 6",
+      ]);
+    });
+  });
+
+  // The catalogue is read by two parsers: where they differ, the gate fails on
+  // the difference instead of counting one catalogue per gate.
+  describe("reconcile: the reader of the brick map and this one are held together", () => {
+    const SUB_TITLE =
+      "### 1. Le catalogue d'applications\n\n| Connaissance | P01 un |\n\n#### Ajouts\n\n| Poste de travail | P41 truc |\n";
+
+    test("control: the two readers agree, and nothing is added", () => {
+      const adr = "### Le catalogue d'applications\n| Connaissance | P01 un · P02 deux |\n";
+      const reconciled = reconcileCatalogue(parseCatalogueTable(adr), parseCatalogue(adr));
+      expect([...reconciled.catalogue]).toEqual(["P01", "P02"]);
+      expect(reconciled.unread).toEqual([]);
+    });
+
+    test("a product under a sub-title is in the catalogue, and its line is named", () => {
+      // The reader of the brick map closes the section at the sub-title.
+      expect([...parseCatalogue(SUB_TITLE)]).toEqual(["P01"]);
+      const reconciled = reconcileCatalogue(
+        parseCatalogueTable(SUB_TITLE),
+        parseCatalogue(SUB_TITLE),
+      );
+      expect([...reconciled.catalogue]).toEqual(["P01", "P41"]);
+      expect(reconciled.unread).toEqual([
+        "line 7 « | Poste de travail | P41 truc | »: P41 is read by this gate and not by the reader of the brick map, which closes the section at any heading",
+      ]);
+    });
+
+    test("a product only the reader of the brick map reads is in the catalogue, and is named", () => {
+      const adr = "### Le catalogue d'applications\n| Connaissance | P01 un (avec P41) |\n";
+      const table = parseCatalogueTable(adr);
+      expect(table.unread).toEqual([]);
+      const reconciled = reconcileCatalogue(table, parseCatalogue(adr));
+      expect([...reconciled.catalogue]).toEqual(["P01", "P41"]);
+      expect(reconciled.unread).toEqual([
+        "P41: read by the reader of the brick map, and in no row this gate read in full",
+      ]);
+    });
+
+    test("the unread lines of the table are kept", () => {
+      const adr =
+        "### Le catalogue d'applications\n| Connaissance | P01 un |\n| Connaissance | P 41 |\n";
+      const table = parseCatalogueTable(adr);
+      expect(reconcileCatalogue(table, parseCatalogue(adr)).unread).toEqual(table.unread);
+      expect(table.unread.length).toBe(1);
     });
   });
 
@@ -610,6 +867,62 @@ describe("the schema", () => {
   // does not check: only the set is held.
   test("its fields are the ones a fiche is written with", () => {
     expect([...SCHEMA_FIELDS].sort()).toEqual(Object.keys(fiche("P01")).sort());
+  });
+
+  // The enumeration of `realisation` is held to what the fiches write, read
+  // from the files at each run: a value added to the schema that no fiche
+  // employs turns this red, and so does a value a fiche employs outside it.
+  // No value is written here.
+  test("realisation: the enumeration is the set of values the fiches employ", () => {
+    const directory = join(import.meta.dir, "..", PRODUITS_ROOT);
+    const names = readdirSync(directory).filter((name) => /^P[0-9]{2}\.v1\.yaml$/.test(name));
+    // An emptied directory would compare the enumeration to nothing.
+    expect(names.length).toBeGreaterThan(0);
+    const employed = new Set<string>();
+    for (const name of names) {
+      const parsed: unknown = Bun.YAML.parse(readFileSync(join(directory, name), "utf8"));
+      const value = isRecord(parsed) ? parsed.realisation : undefined;
+      if (typeof value !== "string") throw new Error(`${name} carries no realisation`);
+      employed.add(value);
+    }
+    const schema: unknown = JSON.parse(SCHEMA_TEXT);
+    const properties = isRecord(schema) ? schema.properties : undefined;
+    const realisation = isRecord(properties) ? properties.realisation : undefined;
+    const enumeration: unknown = isRecord(realisation) ? realisation.enum : undefined;
+    if (!Array.isArray(enumeration)) throw new Error("realisation declares no enumeration");
+    expect(enumeration.map(String).sort()).toEqual([...employed].sort());
+  });
+});
+
+// An export nothing else reads is a surface with no consumer. The dead-code
+// gate counts the names of exported values only: a type is held here.
+describe("the exports of the module", () => {
+  const read = (name: string): string => readFileSync(join(import.meta.dir, name), "utf8");
+  const exported = [
+    ...read("produits.ts").matchAll(
+      /^export (?:async )?(?:const|function|interface|type|class) ([A-Za-z_][A-Za-z0-9_]*)/gm,
+    ),
+  ].flatMap((match) => match[1] ?? []);
+  // What the gate and the two suites import from the module, by name: a
+  // mention in a comment or in a string is not a consumer.
+  const imported = new Set(
+    ["check-produits.ts", "produits.test.ts", "check-produits.process.test.ts"].flatMap((name) =>
+      [...read(name).matchAll(/import\s*\{([^}]*)\}\s*from "\.\/produits";/g)].flatMap((match) =>
+        (match[1] ?? "")
+          .split(",")
+          .map((entry) => entry.trim().replace(/^type\s+/, ""))
+          .filter((entry) => entry.length > 0),
+      ),
+    ),
+  );
+
+  test("control: the module exports something, and something is imported from it", () => {
+    expect(exported.length).toBeGreaterThan(0);
+    expect(imported.size).toBeGreaterThan(0);
+  });
+
+  test.each(exported)("%s is imported outside the module", (name) => {
+    expect(imported.has(name)).toBe(true);
   });
 });
 
@@ -692,6 +1005,33 @@ describe("the text of a fiche", () => {
         JSON.stringify(blank),
       ]);
     }
+  });
+
+  // Five characters Unicode classes as a letter or a symbol print nothing: a
+  // value made of them alone passed the rule « one visible character ». The
+  // list is the one the schema declares; it is closed, not a class.
+  const INVISIBLE_LETTERS_AND_SYMBOLS = [0x115f, 0x1160, 0x2800, 0x3164, 0xffa0];
+
+  test.each(TEXT_FIELDS)("invisible letters and symbols alone are not a value of %s", (field) => {
+    for (const code of INVISIBLE_LETTERS_AND_SYMBOLS) {
+      // Three of them: long enough for every field, short enough for a name.
+      const text = String.fromCharCode(code).repeat(12);
+      const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+      const verdict = validateFiche(value);
+      expect([code.toString(16), "errors" in verdict ? verdict.errors.join("\n") : ""]).toEqual([
+        code.toString(16),
+        expect.stringContaining("must match pattern"),
+      ]);
+    }
+  });
+
+  test.each(
+    TEXT_FIELDS,
+  )("one visible character next to invisible ones is a value of %s", (field) => {
+    const text = `${String.fromCharCode(0x3164).repeat(11)}é`;
+    const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+    const verdict: unknown = validateFiche(value);
+    expect(verdict).toEqual({ data: value });
   });
 
   test("every field of the schema is a free text or a closed form", () => {
