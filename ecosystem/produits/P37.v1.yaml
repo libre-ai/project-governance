@@ -6,7 +6,7 @@ intitule: "coffre de secrets"
 fonction: "Coffre de mots de passe"
 categorie: outils-acces
 promesse: "Conserver et utiliser des secrets avec un accès, une récupération et un partage maîtrisés."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre gestionnaire de mots de passe en ligne par abonnement"
 capacites:
   - "Créer ou relier un coffre, ajouter des entrées, utiliser un secret, partager un périmètre et révoquer."
@@ -29,3 +29,4 @@ etiquettes:
   - "Récupération prévue"
 a_relire:
   - a_la_place_de
+  - pour_qui

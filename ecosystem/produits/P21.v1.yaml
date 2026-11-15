@@ -6,7 +6,7 @@ intitule: "assistant de réunion"
 fonction: "Assistant de réunion"
 categorie: collaboration
 promesse: "Transformer une réunion autorisée en décisions et actions vérifiables."
-pour_qui: "le propriétaire ; participants de réunions"
+pour_qui: "Participants de réunions"
 a_la_place_de: "votre service en ligne de transcription et de compte rendu de réunion par abonnement"
 capacites:
   - "Ordre du jour relié aux sources"

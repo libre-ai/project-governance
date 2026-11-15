@@ -6,7 +6,7 @@ intitule: "formulaires et bases"
 fonction: "Formulaires et bases de données"
 categorie: bureautique-donnees
 promesse: "Collecter des informations et les exploiter dans des tables cohérentes."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre outil de formulaires en ligne et votre base de données en tableau par abonnement"
 capacites:
   - "Champs typés, contraintes, choix, pièces jointes et conditions d'affichage."
@@ -33,4 +33,5 @@ etiquettes:
   - "Tableau des réponses"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de

@@ -6,7 +6,7 @@ intitule: "lecteur vidéo et abonnements"
 fonction: "Lecteur vidéo et abonnements"
 categorie: medias-jeu
 promesse: "Consulter ses abonnements et lire des vidéos avec maîtrise de l’historique et des réglages."
-pour_qui: "le propriétaire"
+pour_qui: "Toute personne qui suit des chaînes vidéo"
 a_la_place_de: "l’application officielle de votre plateforme de vidéos en ligne"
 capacites:
   - "Abonnements, recherche, playlists, favoris et file d’attente"
@@ -31,5 +31,6 @@ etiquettes:
   - "Reprise de lecture"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de
   - categorie

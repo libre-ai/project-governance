@@ -6,7 +6,7 @@ intitule: "agencement des fenêtres (Square Control)"
 fonction: "Agencement des fenêtres"
 categorie: poste-de-travail
 promesse: "Placer la fenêtre active sur une région de l'écran par un raccourci clavier, avec un outil dont on peut vérifier ce qu'il a le droit de faire."
-pour_qui: "le propriétaire (usage propre)"
+pour_qui: "Les personnes qui disposent des fenêtres d'applications sur un Mac toute la journée"
 a_la_place_de: "votre utilitaire de rangement de fenêtres à code fermé ou aux permissions étendues"
 capacites:
   - "Placement au clavier de la fenêtre active sur des régions de l'écran, avec annulation."

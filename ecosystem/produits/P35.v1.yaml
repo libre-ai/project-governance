@@ -6,7 +6,7 @@ intitule: "automatisations"
 fonction: "Automatisations entre applications"
 categorie: outils-acces
 promesse: "Répéter un enchaînement explicite de manière fiable et compréhensible."
-pour_qui: "le propriétaire ; équipe plateforme"
+pour_qui: "Équipe plateforme"
 a_la_place_de: "votre service d'automatisation entre applications par abonnement"
 capacites:
   - "Choisir un déclencheur, construire les étapes, tester sur données synthétiques, activer et surveiller les exécutions."

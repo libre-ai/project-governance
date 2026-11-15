@@ -6,7 +6,7 @@ intitule: "recherche transversale"
 fonction: "Recherche dans toutes vos applications"
 categorie: connaissance
 promesse: "Retrouver un objet ou une réponse dans ses applications sans connaître son emplacement, tout en respectant la séparation des données."
-pour_qui: "le propriétaire ; tous les produits de la boucle documentaire (catalogue)"
+pour_qui: "Toute personne qui utilise plusieurs applications Libre"
 a_la_place_de: "la recherche menée séparément dans chacune de vos applications"
 capacites:
   - "Recherche textuelle et filtres par type, date, source et espace ; recherche sémantique complémentaire."
@@ -28,3 +28,4 @@ etiquettes:
   - "Source affichée"
 a_relire:
   - a_la_place_de
+  - pour_qui

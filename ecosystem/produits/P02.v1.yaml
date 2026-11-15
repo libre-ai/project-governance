@@ -6,7 +6,7 @@ intitule: "veille documentaire"
 fonction: "Lecteur de flux et veille"
 categorie: connaissance
 promesse: "Fournir un flux de veille relié aux questions de l'utilisateur et à son corpus, avec une raison lisible de consulter chaque élément, la réussite étant la détection des informations utiles et des changements significatifs et non le volume de notifications."
-pour_qui: "le propriétaire (usage propre) ; lecteurs de flux RSS/Atom/OPML (catalogue)"
+pour_qui: "Lecteurs de flux RSS, Atom et OPML ; une personne ou une organisation qui veille des sources"
 a_la_place_de: "votre lecteur de flux en ligne par abonnement"
 capacites:
   - "Importer ou créer des abonnements, classer les sources, définir des sujets, langues et exclusions, choisir la fréquence des synthèses et lire dans une interface homogène."
@@ -20,10 +20,10 @@ ne_fait_pas:
   - "L'entrée dans Zotero est une action distincte."
   - "Les liens de partage ne diffusent pas les pièces privées du corpus."
   - "Une lecture ne vaut pas un consentement à utiliser le texte chez un fournisseur IA."
-  - "Charte : Parser des flux dans l'application macOS ou dans l'extension, qui délèguent à l'API."
-  - "Charte : Stocker une donnée de paiement."
-  - "Charte : Ouvrir mobile, Windows ou Linux au premier palier."
-  - "Charte : Dépendre d'un service managé pour le cœur."
+  - "Parser des flux dans l'application macOS ou dans l'extension, qui délèguent à l'API."
+  - "Stocker une donnée de paiement."
+  - "Ouvrir mobile, Windows ou Linux au premier palier."
+  - "Dépendre d'un service managé pour le cœur."
 depend_de:
   - P01
   - P03

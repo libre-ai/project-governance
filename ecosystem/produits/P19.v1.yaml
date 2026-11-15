@@ -6,7 +6,7 @@ intitule: "agenda"
 fonction: "Agenda partagé"
 categorie: collaboration
 promesse: "Organiser le temps et coordonner les disponibilités sans exposer les détails privés."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre agenda en ligne et votre outil de prise de rendez-vous par abonnement"
 capacites:
   - "Calendriers multiples et disponibilités."
@@ -33,4 +33,5 @@ etiquettes:
   - "Détails privés masqués"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de

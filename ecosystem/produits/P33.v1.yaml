@@ -6,7 +6,7 @@ intitule: "routeur de modèles"
 fonction: "Choix du modèle d'IA"
 categorie: outils-acces
 promesse: "Pour une opération précise, déterminer quels modèles et modes de traitement sont autorisés, puis choisir parmi ceux qui satisfont les exigences vérifiées."
-pour_qui: "le propriétaire ; équipe qui pose les règles"
+pour_qui: "L'équipe qui pose les règles"
 a_la_place_de: "le choix d'un modèle d'IA fait à la main, ou imposé par un fournisseur unique"
 capacites:
   - "Registre versionné des fournisseurs, modèles, endpoints, modes locaux ou distants, régions de traitement attestées, politiques de rétention, usages d’entraînement, sous-traitants pertinents, licences et restrictions documentées."

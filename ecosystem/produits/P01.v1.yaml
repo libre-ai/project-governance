@@ -6,7 +6,7 @@ intitule: "accès aux sources"
 fonction: "Exploration du web sourcée"
 categorie: connaissance
 promesse: "Permettre à une personne ou à un agent autorisé d'explorer des informations dispersées et d'obtenir des éléments exploitables, attribués et vérifiables, en rendant visible ce qui a été trouvé, ce qui a pu être lu et ce qui reste inaccessible."
-pour_qui: "Une personne ou un agent autorisé (fiche) ; le propriétaire ; produits du domaine Connaissance (P02 à P06) (catalogue)"
+pour_qui: "Une personne ou un agent autorisé"
 a_la_place_de: "vos recherches menées à la main dans un moteur de recherche, d'onglet en onglet"
 capacites:
   - "Saisir une question, sélectionner les catégories de sources, rechercher, ouvrir les résultats, extraire des passages, les comparer et constituer un dossier."

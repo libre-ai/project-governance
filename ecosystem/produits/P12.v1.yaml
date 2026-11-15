@@ -6,7 +6,7 @@ intitule: "atelier PDF et OCR"
 fonction: "Atelier PDF et numérisation"
 categorie: bureautique-donnees
 promesse: "Rendre les documents reçus lisibles, recherchables, annotables et transformables sans perdre le contrôle sur l'original."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre logiciel d'édition de PDF et votre application de numérisation"
 capacites:
   - "Importer ou scanner, corriger l'orientation et reconnaître le texte (OCR multilingue qualifié)."
@@ -32,4 +32,5 @@ etiquettes:
   - "Original intact"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de

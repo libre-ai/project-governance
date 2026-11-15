@@ -6,7 +6,7 @@ intitule: "promotion éditoriale"
 fonction: "Diffusion éditoriale"
 categorie: creation-publication
 promesse: "Transformer les contenus d’un site en une communication pertinente, mesurable et contrôlée."
-pour_qui: "le propriétaire"
+pour_qui: "Éditeurs de sites qui diffusent leurs contenus"
 a_la_place_de: "votre outil en ligne de programmation de publications et de campagnes par abonnement"
 capacites:
   - "Audit éditorial et technique du site, inventaire des contenus, liens cassés, métadonnées"
@@ -33,5 +33,6 @@ etiquettes:
   - "Vérifié avant envoi"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de
   - categorie

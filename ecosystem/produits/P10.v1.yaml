@@ -6,7 +6,7 @@ intitule: "présentations"
 fonction: "Présentations"
 categorie: bureautique-donnees
 promesse: "Passer d'un objectif de communication à une présentation éditable, cohérente et exportable."
-pour_qui: "le propriétaire ; organisations (catalogue)"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre logiciel de présentation par abonnement"
 capacites:
   - "Définir public et message, construire le fil, choisir un thème, éditer les diapositives, répéter et diffuser."
@@ -32,3 +32,4 @@ etiquettes:
   - "Mode présentateur"
 a_relire:
   - a_la_place_de
+  - pour_qui

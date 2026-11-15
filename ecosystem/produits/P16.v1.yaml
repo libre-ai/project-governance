@@ -6,7 +6,7 @@ intitule: "tâches"
 fonction: "Liste de tâches"
 categorie: collaboration
 promesse: "Capturer une action et la retrouver au bon moment sans administrer un projet complet."
-pour_qui: "le propriétaire"
+pour_qui: "Toute personne qui suit ses propres tâches"
 a_la_place_de: "votre application de listes de tâches"
 capacites:
   - "Boîte de réception, listes, tags et priorités."
@@ -31,4 +31,5 @@ etiquettes:
   - "Sans projet à gérer"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de

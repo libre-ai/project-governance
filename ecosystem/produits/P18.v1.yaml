@@ -6,7 +6,7 @@ intitule: "conversations et visio"
 fonction: "Messagerie d'équipe et visio"
 categorie: collaboration
 promesse: "Discuter, se réunir et partager le contexte d'un travail dans des espaces aux droits clairs."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre messagerie d'équipe et votre service de visioconférence par abonnement"
 capacites:
   - "Canaux, messages directs, fils, réactions et pièces."
@@ -30,3 +30,4 @@ etiquettes:
   - "Décisions retrouvables"
 a_relire:
   - a_la_place_de
+  - pour_qui

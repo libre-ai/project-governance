@@ -6,7 +6,7 @@ intitule: "messagerie"
 fonction: "Messagerie électronique"
 categorie: collaboration
 promesse: "Gérer ses correspondances avec des comptes maîtrisés, une recherche fiable et des envois sans ambiguïté."
-pour_qui: "le propriétaire ; organisations"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre client de messagerie électronique"
 capacites:
   - "Comptes multiples, dossiers ou libellés selon les capacités du fournisseur, fils."
@@ -30,3 +30,4 @@ etiquettes:
   - "Envoi vérifié"
 a_relire:
   - a_la_place_de
+  - pour_qui

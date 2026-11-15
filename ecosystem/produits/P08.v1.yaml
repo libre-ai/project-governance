@@ -6,7 +6,7 @@ intitule: "documents"
 fonction: "Traitement de texte"
 categorie: bureautique-donnees
 promesse: "Rédiger un document structuré, le relire à plusieurs, maîtriser les révisions et livrer un fichier utilisable hors de libre-ia."
-pour_qui: "le propriétaire ; organisations (catalogue)"
+pour_qui: "Personnes et organisations"
 a_la_place_de: "votre traitement de texte en ligne par abonnement"
 capacites:
   - "Partir d'un document vide, d'un modèle ou d'un import ; éditer ; commenter ; arbitrer les modifications ; vérifier le rendu ; exporter."
@@ -32,4 +32,5 @@ etiquettes:
   - "Suivi des modifications"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de

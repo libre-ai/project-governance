@@ -6,7 +6,7 @@ intitule: "entretien du corpus bibliographique"
 fonction: "Assistant de bibliothèque Zotero"
 categorie: connaissance
 promesse: "Aider à comprendre et entretenir une bibliothèque scientifique au service de questions explicites, en renforçant le gestionnaire bibliographique existant par l'exploration, la qualification et la veille, sans recréer la gestion bibliographique."
-pour_qui: "le propriétaire ; chercheurs utilisant Zotero (catalogue)"
+pour_qui: "Chercheurs utilisant Zotero"
 a_la_place_de: "le tri et le nettoyage à la main de votre bibliothèque de références (le produit complète votre gestionnaire bibliographique, il ne le remplace pas)"
 capacites:
   - "Sélectionner une collection, formuler son objectif de recherche et construire un état du corpus : références, pièces, annotations, versions et sujets."

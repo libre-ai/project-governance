@@ -6,7 +6,7 @@ intitule: "studio audio"
 fonction: "Studio audio et podcast"
 categorie: creation-publication
 promesse: "Produire un enregistrement, un montage ou un podcast avec une piste de travail révisable."
-pour_qui: "le propriétaire"
+pour_qui: "Créateurs de contenus audio et de podcasts"
 a_la_place_de: "votre logiciel de montage audio et votre service de production de podcasts par abonnement"
 capacites:
   - "Pistes, segments, fondus, niveaux, préécoute, marqueurs, annulation et export"
@@ -28,5 +28,6 @@ etiquettes:
   - "Transcription"
 a_relire:
   - a_la_place_de
+  - pour_qui
   - depend_de
   - categorie
