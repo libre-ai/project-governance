@@ -10,6 +10,7 @@ import {
   compileSchema,
   DOMAIN_CATEGORIES,
   evaluateProduits,
+  HOSTED_OFFERS_PATH,
   PRODUITS_ROOT,
   type ProduitsInput,
   type ProduitsOutcome,
@@ -66,6 +67,7 @@ interface Reference {
   files: Map<string, string>;
   entries: CatalogueEntry[] | null;
   schema: ReadResult;
+  offres: ReadResult;
   catalogue: Set<string>;
   domaines: Map<string, string[]>;
   catalogueUnread: string[];
@@ -75,12 +77,34 @@ interface Reference {
   listingError: string | null;
 }
 
-/** The three files the gate declares as its sources. */
+/** The four files the gate declares as its sources. */
 const SOURCE_PATHS = [
   "docs/adr/0042-x.md",
   "ecosystem/repositories.v1.yaml",
   "ecosystem/schemas/produit.v1.schema.json",
+  HOSTED_OFFERS_PATH,
 ] as const;
+
+/** The text of a list of hosted offers: JSON is YAML. */
+function offers(entries: readonly unknown[], changes: Fiche = {}): ReadResult {
+  return {
+    ok: true,
+    text: JSON.stringify({
+      schema_version: "libre-ai.hosted-offers.v1",
+      offres_hebergees: entries,
+      ...changes,
+    }),
+  };
+}
+
+/** A product with a decided hosted offer in the reference: P02, and no other. */
+const LISTED = { produit: "P02", decision: "ADR-0054" };
+
+/** The two texts of an offer, as a fiche writes them. */
+const OFFRE = {
+  sans_frais: "Le logiciel entier chez vous, sans limite.",
+  payant: "Le service hébergé : synchronisation et sauvegardes.",
+};
 
 /** Three products over two domains, every fiche valid, one carrier in the inventory. */
 function reference(): Reference {
@@ -88,6 +112,7 @@ function reference(): Reference {
     files: new Map(["P01", "P02", "P03"].map((id) => [`${id}.v1.yaml`, JSON.stringify(fiche(id))])),
     entries: null,
     schema: { ok: true, text: SCHEMA_TEXT },
+    offres: offers([LISTED]),
     catalogue: new Set(["P01", "P02", "P03"]),
     domaines: new Map([
       ["P01", ["Connaissance"]],
@@ -114,6 +139,7 @@ function judge(state: Reference): ProduitsOutcome {
       return text === undefined ? { ok: false, reason: "ENOENT" } : { ok: true, text };
     },
     schema: state.schema,
+    offresHebergees: state.offres,
     catalogue: state.catalogue,
     domaines: state.domaines,
     catalogueUnread: state.catalogueUnread,
@@ -143,6 +169,7 @@ function expectSums(outcome: ProduitsOutcome): void {
   expect(c.couverts + c.manquants).toBe(c.catalogue);
   expect(c.valides + c.en_violation).toBe(c.fiches_lues);
   expect(c.avec_depot + c.sans_depot + c.depot_indecidable).toBe(c.fiches_lues);
+  expect(c.avec_offre + c.sans_offre + c.offre_indecidable).toBe(c.fiches_lues);
   expect(c.couverts + c.hors_catalogue).toBe(c.fiches_lues);
   expect(c.fiches_lues + c.readmes + c.refuses + c.non_fusionnes).toBe(c.chemins_suivis);
 }
@@ -166,6 +193,9 @@ describe("the reference catalogue", () => {
       avec_depot: 0,
       sans_depot: 3,
       depot_indecidable: 0,
+      avec_offre: 0,
+      sans_offre: 3,
+      offre_indecidable: 0,
       champs_a_relire: 3,
       fiches_a_relire: 3,
     });
@@ -175,6 +205,9 @@ describe("the reference catalogue", () => {
     );
     expect(outcome.volume).toContain("3 fiche(s) read = 3 valid + 0 in violation");
     expect(outcome.volume).toContain("carrier: 0 with a depot + 3 without + 0 not decidable");
+    expect(outcome.volume).toContain(
+      "hosted offer: 0 with an offre + 3 without + 0 not decidable (schema not held) = 3",
+    );
     expect(outcome.volume).toContain("3 a_relire field(s) on 3 fiche(s)");
   });
 
@@ -351,6 +384,81 @@ describe("rules of the gate", () => {
     expect(outcome.compteurs.fiches_a_relire).toBe(2);
     expect(outcome.volume).toContain("3 a_relire field(s) on 2 fiche(s)");
   });
+
+  test("rule offer pair: an offre with one of its two texts is refused, and is not counted as an offer", () => {
+    for (const [written, absent] of [
+      ["sans_frais", "payant"],
+      ["payant", "sans_frais"],
+    ] as const) {
+      const outcome = judge(withFiche("P02", { offre: { [written]: OFFRE[written] } }));
+      expect(violationOf(outcome, item("P02"))).toContain(
+        `/offre: must have required property '${absent}'`,
+      );
+      expect(outcome.compteurs.avec_offre).toBe(0);
+      expect(outcome.compteurs.offre_indecidable).toBe(1);
+      expectSums(outcome);
+    }
+  });
+
+  test("rule offer listed: only a product the list of hosted offers names carries an offre", () => {
+    const listed = judge(withFiche("P02", { offre: OFFRE }));
+    expect(listed.report.violations).toEqual([]);
+    const outcome = judge(withFiche("P01", { offre: OFFRE }));
+    expect(outcome.report.violations).toEqual([
+      `${item("P01")}: offre is written, and ${HOSTED_OFFERS_PATH} does not list P01: a fiche describes a hosted offer once a decision admits one for its product (ADR-0066 D2)`,
+    ]);
+  });
+
+  // The forms the owner named, in any case, and two ways of hiding the word
+  // that print the same: a soft hyphen inside it, and full-width letters.
+  const GRATUIT_FORMS = [
+    "gratuit",
+    "Gratuite",
+    "GRATUITS",
+    "gratuites",
+    "gratuitement",
+    "Gratuité",
+    `gra${String.fromCharCode(0xad)}tuit`,
+    [0xff47, 0xff52, 0xff41, 0xff54, 0xff55, 0xff49, 0xff54]
+      .map((code) => String.fromCharCode(code))
+      .join(""),
+  ];
+
+  test.each(
+    GRATUIT_FORMS.flatMap((form) => [
+      ["sans_frais", form],
+      ["payant", form],
+    ]),
+  )("rule offer word: offre.%s does not say « %s »", (key, form) => {
+    const offre = { ...OFFRE, [key]: `Le logiciel est ${form} chez vous.` };
+    const outcome = judge(withFiche("P02", { offre }));
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining(`${item("P02")}: offre.${key} says « gratuit »`),
+    ]);
+    // The other text is not accused.
+    expect(outcome.report.violations.join("\n").match(/says « gratuit »/g)).toHaveLength(1);
+  });
+
+  test("rule offer word: « sans frais », with its condition, is what an offre says", () => {
+    const offre = { ...OFFRE, sans_frais: "Sans frais chez vous, tous filtres compris." };
+    expect(judge(withFiche("P02", { offre })).report.violations).toEqual([]);
+  });
+
+  test("rule counters offer: fiches with an offre and fiches without sum to the fiches read", () => {
+    const state = reference();
+    state.offres = offers([LISTED, { produit: "P03", decision: "ADR-0066" }]);
+    withFiche("P02", { offre: OFFRE }, state);
+    withFiche("P03", { offre: OFFRE }, state);
+    state.files.set("P01.v1.yaml", "not: [a fiche");
+    const outcome = judge(state);
+    expect(outcome.compteurs.avec_offre).toBe(2);
+    expect(outcome.compteurs.sans_offre).toBe(0);
+    expect(outcome.compteurs.offre_indecidable).toBe(1);
+    expect(outcome.volume).toContain(
+      "hosted offer: 2 with an offre + 0 without + 1 not decidable (schema not held) = 3",
+    );
+    expectSums(outcome);
+  });
 });
 
 describe("a source that cannot be read is a failure, never a zero", () => {
@@ -434,6 +542,77 @@ describe("a source that cannot be read is a failure, never a zero", () => {
     expect(violationOf(judge(state), "ecosystem/repositories.v1.yaml")).toContain(
       "no repository read",
     );
+  });
+
+  // The list of hosted offers is a source: unreadable or read in part, it is a
+  // named failure, and a fiche that carries an offre is then refused too.
+  test.each<[string, ReadResult, string]>([
+    ["that cannot be read", { ok: false, reason: "ENOENT" }, "unreadable (ENOENT)"],
+    ["that is not YAML", { ok: true, text: "offres_hebergees: [P02" }, "invalid YAML ("],
+    ["that is empty", { ok: true, text: "" }, "not a « libre-ai.hosted-offers.v1 » record"],
+    [
+      "of another version",
+      offers([LISTED], { schema_version: "libre-ai.hosted-offers.v2" }),
+      "not a « libre-ai.hosted-offers.v1 » record",
+    ],
+    [
+      "whose entries are not a list",
+      offers([], { offres_hebergees: { P02: "ADR-0054" } }),
+      "not a « libre-ai.hosted-offers.v1 » record",
+    ],
+    [
+      "with a foreign key",
+      offers([LISTED], { exemptions: ["P01"] }),
+      "« exemptions » is not a key",
+    ],
+    ["with an entry that is a text", offers([LISTED, "P01"]), "entry 2 is not a product"],
+    [
+      "with an entry of another form of identifier",
+      offers([LISTED, { produit: "P1", decision: "ADR-0066" }]),
+      "entry 2 names no product",
+    ],
+    [
+      "with an entry without its decision",
+      offers([LISTED, { produit: "P01" }]),
+      "entry 2 (P01) cites no decision record",
+    ],
+    [
+      "with an entry that carries another key",
+      offers([LISTED, { produit: "P01", decision: "ADR-0066", depuis: "2026-11-15" }]),
+      "entry 2 (P01) carries depuis",
+    ],
+    ["with a product listed twice", offers([LISTED, LISTED]), "P02 is listed twice"],
+    ["that lists no product", offers([]), "no product listed"],
+    [
+      "that lists a product outside the catalogue",
+      offers([LISTED, { produit: "P09", decision: "ADR-0066" }]),
+      "lists P09, which the catalogue of ADR-0042 §1 does not",
+    ],
+  ])("source hosted offers: a list %s is a named failure", (_name, list, expected) => {
+    const state = reference();
+    state.offres = list;
+    const outcome = judge(state);
+    expect(violationOf(outcome, HOSTED_OFFERS_PATH)).toContain(expected);
+    expectSums(outcome);
+  });
+
+  test("source hosted offers: under a list that cannot be read, no fiche carries an offre", () => {
+    const state = withFiche("P02", { offre: OFFRE });
+    state.offres = { ok: false, reason: "ENOENT" };
+    expect(violationOf(judge(state), item("P02"))).toContain(
+      `${HOSTED_OFFERS_PATH} does not list P02`,
+    );
+  });
+
+  test("source hosted offers: the list as written is read, and says how many products it names", () => {
+    const check = judge(reference()).report.checks.find(
+      (entry) => entry.item === HOSTED_OFFERS_PATH,
+    );
+    expect(check).toEqual({
+      item: HOSTED_OFFERS_PATH,
+      ok: true,
+      note: "1 product(s) with a decided hosted offer, each one in the catalogue",
+    });
   });
 
   test("source directory: no fiche tracked", () => {
@@ -866,7 +1045,18 @@ describe("the schema", () => {
   // The order of the properties is a convention of writing, which the gate
   // does not check: only the set is held.
   test("its fields are the ones a fiche is written with", () => {
-    expect([...SCHEMA_FIELDS].sort()).toEqual(Object.keys(fiche("P01")).sort());
+    expect([...SCHEMA_FIELDS].sort()).toEqual(Object.keys(fiche("P01", { offre: OFFRE })).sort());
+  });
+
+  // Every field is written, an absence as `null` or `[]`; `offre` alone is
+  // left out, by the products that have no decided hosted offer.
+  test("offre is the only field a fiche may omit", () => {
+    const schema: unknown = JSON.parse(SCHEMA_TEXT);
+    const required: unknown = isRecord(schema) ? schema.required : undefined;
+    if (!Array.isArray(required)) throw new Error("the schema requires no field");
+    expect([...SCHEMA_FIELDS].filter((field) => !required.includes(field))).toEqual(["offre"]);
+    const verdict: unknown = validateFiche(fiche("P01"));
+    expect(verdict).toEqual({ data: fiche("P01") });
   });
 
   // The enumeration of `realisation` is held to what the fiches write, read
@@ -943,22 +1133,53 @@ describe("the text of a fiche", () => {
   const NO_BREAK_SPACE = String.fromCharCode(0xa0);
   const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
   /** Every field written, so that every string of a fiche has a place to carry the character. */
-  const full = fiche("P01", { nom_public: "Nom public", depot: SELF, depend_de: ["P02"] });
+  const full = fiche("P01", {
+    nom_public: "Nom public",
+    depot: SELF,
+    depend_de: ["P02"],
+    offre: OFFRE,
+  });
 
   const inMiddle = (text: string, character: string): string => {
     const half = Math.floor(text.length / 2);
     return `${text.slice(0, half)}${character}${text.slice(half)}`;
   };
 
-  /** `full` with the character written in the middle of one field (of its first item, for a list). */
-  function carrying(field: string, character: string): Fiche {
+  /**
+   * A place of a fiche that holds a text: a field, or one text of a field that
+   * is an object, written `field.key` (`offre.payant`).
+   */
+  const partsOf = (place: string): [string, string | undefined] => {
+    const [field = "", key] = place.split(".");
+    return [field, key];
+  };
+
+  /** `full` with a text written at a place (as the only item, for a list). */
+  function holding(place: string, text: string): Fiche {
+    const [field, key] = partsOf(place);
     const value = full[field];
-    if (typeof value === "string") return { ...full, [field]: inMiddle(value, character) };
+    if (key === undefined) return { ...full, [field]: Array.isArray(value) ? [text] : text };
+    if (!isRecord(value)) throw new Error(`${field} is not an object in the reference fiche`);
+    return { ...full, [field]: { ...value, [key]: text } };
+  }
+
+  /** `full` with the character written in the middle of one place (of its first item, for a list). */
+  function carrying(place: string, character: string): Fiche {
+    const [field, key] = partsOf(place);
+    const value = full[field];
     if (Array.isArray(value) && typeof value[0] === "string") {
       return { ...full, [field]: [inMiddle(value[0], character), ...value.slice(1)] };
     }
-    throw new Error(`${field} carries no string in the reference fiche`);
+    const held = key === undefined ? value : isRecord(value) ? value[key] : undefined;
+    if (typeof held === "string") return holding(place, inMiddle(held, character));
+    throw new Error(`${place} carries no string in the reference fiche`);
   }
+
+  /** Every place of the reference fiche: its fields, and each text of a field that is an object. */
+  const PLACES = Object.keys(full).flatMap((field) => {
+    const value = full[field];
+    return isRecord(value) ? Object.keys(value).map((key) => `${field}.${key}`) : [field];
+  });
 
   test("control: the class walked is the one the gates escape, and the reference fiche holds", () => {
     expect(controls).toContain("\u001b");
@@ -969,7 +1190,7 @@ describe("the text of a fiche", () => {
     expect(verdict).toEqual({ data: full });
   });
 
-  test.each(Object.keys(full))("no control character is admitted in %s", (field) => {
+  test.each(PLACES)("no control character is admitted in %s", (field) => {
     const admitted = controls.filter(
       (character) => "data" in validateFiche(carrying(field, character)),
     );
@@ -984,6 +1205,8 @@ describe("the text of a fiche", () => {
     "promesse",
     "pour_qui",
     "a_la_place_de",
+    "offre.sans_frais",
+    "offre.payant",
     "capacites",
     "ne_fait_pas",
     "etiquettes",
@@ -998,8 +1221,7 @@ describe("the text of a fiche", () => {
 
   test.each(TEXT_FIELDS)("blanks alone are not a value of %s", (field) => {
     for (const blank of [" ", NO_BREAK_SPACE, ZERO_WIDTH_SPACE]) {
-      const text = blank.repeat(12);
-      const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+      const value = holding(field, blank.repeat(12));
       expect(["errors" in validateFiche(value), JSON.stringify(blank)]).toEqual([
         true,
         JSON.stringify(blank),
@@ -1015,8 +1237,7 @@ describe("the text of a fiche", () => {
   test.each(TEXT_FIELDS)("invisible letters and symbols alone are not a value of %s", (field) => {
     for (const code of INVISIBLE_LETTERS_AND_SYMBOLS) {
       // Three of them: long enough for every field, short enough for a name.
-      const text = String.fromCharCode(code).repeat(12);
-      const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+      const value = holding(field, String.fromCharCode(code).repeat(12));
       const verdict = validateFiche(value);
       expect([code.toString(16), "errors" in verdict ? verdict.errors.join("\n") : ""]).toEqual([
         code.toString(16),
@@ -1028,8 +1249,7 @@ describe("the text of a fiche", () => {
   test.each(
     TEXT_FIELDS,
   )("one visible character next to invisible ones is a value of %s", (field) => {
-    const text = `${String.fromCharCode(0x3164).repeat(11)}é`;
-    const value = { ...full, [field]: Array.isArray(full[field]) ? [text] : text };
+    const value = holding(field, `${String.fromCharCode(0x3164).repeat(11)}é`);
     const verdict: unknown = validateFiche(value);
     expect(verdict).toEqual({ data: value });
   });
@@ -1046,7 +1266,20 @@ describe("the text of a fiche", () => {
       "depot",
       "a_relire",
     ];
-    expect([...TEXT_FIELDS, ...closed].sort()).toEqual([...SCHEMA_FIELDS].sort());
+    const free = [...new Set(TEXT_FIELDS.map((place) => partsOf(place)[0]))];
+    expect([...free, ...closed].sort()).toEqual([...SCHEMA_FIELDS].sort());
+  });
+
+  test("every text of offre the schema declares is walked as a free text", () => {
+    const schema: unknown = JSON.parse(SCHEMA_TEXT);
+    const properties = isRecord(schema) ? schema.properties : undefined;
+    const offre = isRecord(properties) ? properties.offre : undefined;
+    const texts =
+      isRecord(offre) && isRecord(offre.properties) ? Object.keys(offre.properties) : [];
+    expect(texts.length).toBeGreaterThan(0);
+    expect(TEXT_FIELDS.filter((place) => place.startsWith("offre.")).sort()).toEqual(
+      texts.map((key) => `offre.${key}`).sort(),
+    );
   });
 });
 

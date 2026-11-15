@@ -7,7 +7,7 @@ fonction: "VPN et accès privé"
 categorie: outils-acces
 promesse: "Relier des appareils ou accéder à des services privés avec des règles explicites."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre service de réseau privé virtuel par abonnement"
+a_la_place_de: "votre service de réseau privé virtuel"
 capacites:
   - "Enrôler un appareil, choisir un profil, établir le tunnel, vérifier le routage et révoquer l'accès."
   - "Gestion d'appareils, clés, profils, routes, DNS, reconnexion et état."

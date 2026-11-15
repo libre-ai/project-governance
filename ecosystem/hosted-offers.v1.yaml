@@ -1,0 +1,20 @@
+schema_version: libre-ai.hosted-offers.v1
+# The products of the catalogue (ADR-0042 §1) that have a decided hosted
+# offer. Read by ecosystem/check-produits.ts: a fiche of ecosystem/produits/
+# carries the field `offre` only when its product is listed here.
+#
+# Why a list in data. ADR-0066 D2 (D110) names the products in a sentence, and
+# says that each later product declares its hosted offer in the decision
+# record that fixes its first version: the list is spread over decision
+# records written as prose, and a reader of prose would take « P07 has no
+# hosted offer » for an admission. Each entry cites the decision that admits
+# the offer instead; the gate does not open that record.
+#
+# Adding a product here is what allows its fiche to describe a paid offer:
+# admitting a hosted offer is an owner decision (ADR-0066 D2), so this file is
+# on the surface of check-review-evidence.
+offres_hebergees:
+  - produit: P02
+    decision: ADR-0054
+  - produit: P04
+    decision: ADR-0066

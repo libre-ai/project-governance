@@ -1,5 +1,5 @@
 {
-  "description": "Schema vectors of libre-ai.produit.v1. Each invalid vector is the first valid one with one change: `set` writes a value at a path, `unset` removes the key at a path. A path names one field of the fiche; an empty path is the fiche itself. `expect` is a fragment of the schema error. Every constraint of the schema has a vector here that becomes valid when the constraint is removed: ecosystem/produits.test.ts removes them one by one and fails on a constraint no vector holds. The rules that need another source (catalogue, inventory, other fiches, the count of etiquettes, the names of a_relire) are not schema rules: they are exercised in the same test file.",
+  "description": "Schema vectors of libre-ai.produit.v1. Each invalid vector is the first valid one with one change: `set` writes a value at a path, `unset` removes the key at a path. A path names one field of the fiche; an empty path is the fiche itself. `expect` is a fragment of the schema error. Every constraint of the schema has a vector here that becomes valid when the constraint is removed: ecosystem/produits.test.ts removes them one by one and fails on a constraint no vector holds. The rules that need another source (catalogue, inventory, other fiches, the count of etiquettes, the names of a_relire, who may carry offre and the word its texts refuse) are not schema rules: they are exercised in the same test file.",
   "valid": [
     {
       "name": "a product with a working name and no carrier",
@@ -65,6 +65,32 @@
         "depot": null,
         "etiquettes": ["Références", "Dédoublonnage", "Hors ligne"],
         "a_relire": ["ab", "abcdefghijabcdefghijabcdefghijabcdefghij"]
+      }
+    },
+    {
+      "name": "a product with a hosted offer: what is without charge, and what the subscription pays for",
+      "value": {
+        "schema_version": "libre-ai.produit.v1",
+        "id": "P04",
+        "nom_public": null,
+        "nom_provisoire": "Notes",
+        "intitule": "notes et mémoire personnelle",
+        "fonction": "Prise de notes",
+        "categorie": "connaissance",
+        "promesse": "Garder ses notes en fichiers ouverts, lisibles sans l'outil.",
+        "pour_qui": "une personne qui tient une base de notes",
+        "a_la_place_de": "votre application de notes fermée, où la synchronisation se paie",
+        "offre": {
+          "sans_frais": "Tout le logiciel, chez vous, sur un serveur que vous gérez.",
+          "payant": "Le service géré : synchronisation hébergée et sauvegarde."
+        },
+        "capacites": ["Écrire, relier et retrouver des notes."],
+        "ne_fait_pas": ["Ne remplace pas un traitement de texte."],
+        "depend_de": [],
+        "realisation": "projet autonome",
+        "depot": null,
+        "etiquettes": ["Fichiers ouverts", "Liens entre notes", "Hors ligne"],
+        "a_relire": []
       }
     }
   ],
@@ -551,6 +577,67 @@
       "because": "a field name counts forty letters at most: the upper bound of the form",
       "set": { "path": ["a_relire"], "value": ["abcdefghijabcdefghijabcdefghijabcdefghija"] },
       "expect": "/a_relire/0: must match pattern"
+    },
+    {
+      "name": "an offre written null",
+      "because": "offre is the one optional field: a product without a hosted offer does not carry it, and null is not an absence here",
+      "set": { "path": ["offre"], "value": null },
+      "expect": "/offre: must be object"
+    },
+    {
+      "name": "an offre that says only what is paid",
+      "because": "the two texts are written together: what is paid is read against what is without charge",
+      "set": {
+        "path": ["offre"],
+        "value": { "payant": "Le service hébergé : synchronisation et sauvegardes." }
+      },
+      "expect": "/offre: must have required property 'sans_frais'"
+    },
+    {
+      "name": "an offre that says only what is without charge",
+      "because": "the two texts are written together: « sans frais » alone hides that an offer is paid",
+      "set": {
+        "path": ["offre"],
+        "value": { "sans_frais": "Le logiciel entier chez vous, sans limite." }
+      },
+      "expect": "/offre: must have required property 'payant'"
+    },
+    {
+      "name": "an offre with a price",
+      "because": "the object is closed: a fiche fixes no price and no tier (ADR-0066, not decided there)",
+      "set": {
+        "path": ["offre"],
+        "value": {
+          "sans_frais": "Le logiciel entier chez vous, sans limite.",
+          "payant": "Le service hébergé : synchronisation et sauvegardes.",
+          "prix": "5 euros par mois"
+        }
+      },
+      "expect": "/offre: must NOT have additional properties « prix » (additionalProperties)"
+    },
+    {
+      "name": "an offre whose first text is one word",
+      "because": "what is without charge is a sentence that carries its condition, like every phrase of a fiche",
+      "set": {
+        "path": ["offre"],
+        "value": {
+          "sans_frais": "Tout",
+          "payant": "Le service hébergé : synchronisation et sauvegardes."
+        }
+      },
+      "expect": "/offre/sans_frais: must NOT have fewer than 12 characters"
+    },
+    {
+      "name": "an offre whose second text is one word",
+      "because": "what the subscription pays for is a sentence, like every phrase of a fiche",
+      "set": {
+        "path": ["offre"],
+        "value": {
+          "sans_frais": "Le logiciel entier chez vous, sans limite.",
+          "payant": "Le service"
+        }
+      },
+      "expect": "/offre/payant: must NOT have fewer than 12 characters"
     }
   ]
 }

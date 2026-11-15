@@ -7,7 +7,7 @@ fonction: "Stockage et partage de fichiers"
 categorie: bureautique-donnees
 promesse: "Retrouver, synchroniser et partager ses fichiers avec un contrôle compréhensible des droits et des versions."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre espace de stockage et de partage de fichiers en ligne par abonnement"
+a_la_place_de: "votre espace de stockage et de partage de fichiers en ligne, où la place se paie au volume"
 capacites:
   - "Dossiers, classement, recherche, aperçus et favoris."
   - "Chargements reprenables, quotas techniques explicites et synchronisation sélective."

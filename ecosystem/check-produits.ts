@@ -8,6 +8,7 @@ import { gitEnvironment, readBriquesInput } from "./check-briques";
 import {
   type CatalogueEntry,
   evaluateProduits,
+  HOSTED_OFFERS_PATH,
   PRODUITS_ROOT,
   type ProduitsInput,
   parseCatalogueTable,
@@ -28,7 +29,7 @@ import {
  * list of files whose working copy is not the indexed content come from the
  * reader of the brick-map gate (`readBriquesInput`). Only what that reader
  * does not give is read here: the paths under `ecosystem/produits/`, the
- * schema, and the domain of each product.
+ * schema, the list of hosted offers, and the domain of each product.
  *
  * ONE CATALOGUE, TWO READERS, HELD TOGETHER. The decision record is read by
  * the reader of the brick map and by the stricter reader of this gate, which
@@ -46,9 +47,15 @@ import {
  * read on disk, so a fiche whose working copy differs from the index is
  * refused: locally, stage what you changed before running the gate.
  *
- * THE SOURCES ARE HELD TO THE SAME RULE. The decision record, the inventory
- * and the schema are read on disk too. Each one is declared with what the
- * index says it is, and the evaluation refuses a source that is not a tracked
+ * THE HOSTED OFFERS ARE A LIST IN DATA. Which products may carry `offre` is
+ * read from `ecosystem/hosted-offers.v1.yaml`, as a text the evaluation
+ * parses: no identifier is written in the code, and an unreadable list is a
+ * named failure, not an empty one.
+ *
+ * THE SOURCES ARE HELD TO THE SAME RULE. The decision record, the inventory,
+ * the schema and the list of hosted offers are read on disk too. Each one is
+ * declared with what the index says it is, and the evaluation refuses a
+ * source that is not a tracked
  * regular file: a tracked symbolic link was followed, and a file removed from
  * the index was read, both attested « as indexed » (review of 2026-11-15, C2
  * and C4).
@@ -137,6 +144,7 @@ function readProduitsInput(root: string): ProduitsInput {
     listingError: tracked.error,
     read: (path) => readFile(join(root, PRODUITS_ROOT, path)),
     schema: readFile(join(root, SCHEMA_PATH)),
+    offresHebergees: readFile(join(root, HOSTED_OFFERS_PATH)),
     catalogue: reconciled.catalogue,
     domaines: table.domains,
     catalogueUnread: reconciled.unread,
@@ -145,6 +153,7 @@ function readProduitsInput(root: string): ProduitsInput {
     sources: [
       REPOSITORIES,
       SCHEMA_PATH,
+      HOSTED_OFFERS_PATH,
       ...(cataloguePath === undefined ? [] : [cataloguePath]),
     ].map((path) => ({ path, standing: shared.localTarget(path) })),
   };

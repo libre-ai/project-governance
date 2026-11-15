@@ -217,6 +217,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "ecosystem/hosted-offers.v1.yaml",
+      [
+        "ecosystem/hosted-offers.v2.yaml",
+        "ecosystem/hosted-offers.v1.yaml.bak",
+        "docs/ecosystem/hosted-offers.v1.yaml",
+        "ecosystem/produits/P02.v1.yaml",
+      ],
+    ],
+    [
       "ecosystem/schemas/knowledge-object.schema.json",
       [
         "ecosystem/schemas/knowledge-object.v2.schema.json",
