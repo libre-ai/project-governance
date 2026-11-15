@@ -10,7 +10,7 @@ Une fiche décrit une intention. Elle ne dit pas que le produit existe ni qu'il 
 
 Un fichier par produit : `Pnn.v1.yaml`, au schéma `ecosystem/schemas/produit.v1.schema.json`. Le schéma est fermé : un champ qu'il ne déclare pas fait échouer le gate.
 
-Les champs s'écrivent dans cet ordre. Tous sont obligatoires : une absence s'écrit `null` ou `[]`, elle ne s'omet pas.
+Les champs s'écrivent dans cet ordre. Tous sont obligatoires, sauf `offre` : une absence s'écrit `null` ou `[]`, elle ne s'omet pas. `offre` est le seul champ qu'une fiche omet : un produit sans offre hébergée décidée ne l'écrit pas, et `null` n'y est pas admis.
 
 Aucune valeur ne contient de caractère de contrôle (saut de ligne, échappement, U+0085, U+2028, U+2029 compris). Un texte contient au moins une lettre, un chiffre, un signe de ponctuation ou un symbole : des espaces seuls ne sont pas une valeur. Cinq caractères classés lettre ou symbole et qui n'affichent rien ne comptent pas : U+115F, U+1160, U+3164, U+FFA0 et U+2800.
 
@@ -26,6 +26,7 @@ Aucune valeur ne contient de caractère de contrôle (saut de ligne, échappemen
 | `promesse` | Ce que le produit doit apporter, en une phrase. |
 | `pour_qui` | Les personnes à qui le produit est destiné. |
 | `a_la_place_de` | Le genre d'outil que le produit doit remplacer. Aucune marque ni aucun service n'y est nommé. Le champ nomme ce que ce genre d'outil verrouille (voir plus bas). |
+| `offre` | Pour un produit qui a une offre hébergée décidée, et pour lui seul : ce qui est sans frais, et ce que l'abonnement au service hébergé paie (voir plus bas). |
 | `capacites` | Ce que le produit doit savoir faire. |
 | `ne_fait_pas` | Ce que le produit ne fait pas, et les limites qu'il garde. Chaque entrée est écrite comme une limite du produit (voir plus bas). |
 | `depend_de` | Les produits dont celui-ci a besoin pour fonctionner, par identifiant (voir plus bas). |
@@ -59,7 +60,31 @@ Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y ins
 
 `a_la_place_de` dit ce que le genre d'outil remplacé fait payer ou enferme. Exemples : la fonction vendue en supplément, la donnée gardée chez l'éditeur, le format qui ne s'exporte pas. Il ne dit pas « par abonnement » (ADR-0066, D112) : un produit du catalogue peut lui aussi avoir une offre hébergée par abonnement, et le mot ne dit donc pas ce qui change.
 
-Les fiches écrites avant cette règle portent encore « par abonnement ». Les réécrire est une proposition d'agent par fiche, à inscrire dans `a_relire`. Le gate ne lit pas cette forme : c'est une règle de rédaction.
+Le champ s'écrit sous cette forme : « votre *genre d'outil*, où *ce qui est payé en plus ou enfermé* ». Il n'affirme que ce qui est vrai du genre d'outil en général, pas d'un service en particulier.
+
+Chaque formule nomme un verrou, de l'un de ces quatre types :
+
+| Type de verrou | Ce que le genre d'outil fait payer ou enferme |
+| --- | --- |
+| Facturation par poste | Chaque personne ajoutée, ou chaque personne qui modifie, est facturée. |
+| Fonctions avancées en supplément | Une partie des fonctions n'est donnée qu'aux paliers supérieurs. |
+| Données, formats ou droits retenus chez l'éditeur | Ce que la personne produit ou confie est conservé chez l'éditeur, lié à son format ou soumis à sa licence. |
+| Volume plafonné ou payé à l'usage | La place, le nombre d'envois, de participants ou d'exécutions est plafonné selon le palier, ou payé à l'unité. |
+
+Les fiches qui portaient « par abonnement » ont été réécrites sous cette forme. Chaque réécriture est une proposition d'agent, sans source : le champ est inscrit dans `a_relire` de la fiche. Le gate ne lit ni cette forme ni le type de verrou : ce sont des règles de rédaction.
+
+## `offre`
+
+`offre` dit, pour un produit qui a une offre hébergée décidée, ce qui est sans frais et ce qui est payant (ADR-0066). Il a deux textes, écrits ensemble :
+
+- `sans_frais` : ce que la personne a sans frais, et à quelle condition ;
+- `payant` : ce que l'abonnement au service hébergé paie. C'est l'hébergement géré, jamais une fonction (ADR-0066 D1).
+
+Un produit sans offre hébergée décidée n'écrit pas le champ. Les produits qui en ont une sont listés dans `ecosystem/hosted-offers.v1.yaml`, avec la décision qui admet chaque offre. ADR-0066 D2 les nomme dans une phrase et renvoie chaque produit suivant à son propre ADR : aucune source versionnée ne porte donc la liste sous une forme qu'un lecteur automatique tienne. Ce fichier la porte en donnée. Y ajouter un produit est une décision du propriétaire, et le fichier est sur la surface de `check-review-evidence`.
+
+Aucun des deux textes ne dit « gratuit », sous aucune forme (gratuite, gratuits, gratuitement, gratuité) : le mot reste interdit comme affirmation absolue (ADR-0033, ADR-0066 D3). Le texte dit ce qui est sans frais, avec sa condition.
+
+`offre` ne fixe ni prix, ni palier, ni seuil : ADR-0066 ne les décide pas.
 
 ## `ne_fait_pas`
 
@@ -99,7 +124,7 @@ git add <ce que tu as modifié> && bun run check:produits
 
 Le gate lit ce que git suit, dans le dépôt où il est lancé. Les variables qui redirigent git vers un autre dépôt (`GIT_DIR`, `GIT_INDEX_FILE` et les autres) ne sont pas transmises à ses appels.
 
-Ces règles valent pour les fiches et pour les trois sources du gate (l'ADR-0042, l'inventaire `ecosystem/repositories.v1.yaml`, le schéma) :
+Ces règles valent pour les fiches et pour les quatre sources du gate (l'ADR-0042, l'inventaire `ecosystem/repositories.v1.yaml`, le schéma, la liste des offres hébergées `ecosystem/hosted-offers.v1.yaml`) :
 
 - un fichier non indexé n'est pas lu. Une fiche non indexée ne fait pas partie du catalogue. Une source non indexée est un échec ;
 - un lien symbolique est refusé. Le gate ne suit jamais un lien ;
@@ -116,7 +141,11 @@ Ses règles :
 - chaque identifiant de `depend_de` désigne une fiche qui existe, et pas la fiche elle-même ;
 - `depot`, s'il est renseigné, est un dépôt de l'inventaire ;
 - `etiquettes` compte exactement trois entrées ;
-- chaque nom de `a_relire` est un champ de contenu du schéma.
+- chaque nom de `a_relire` est un champ de contenu du schéma ;
+- `offre`, s'il est écrit, porte ses deux textes (c'est une contrainte du schéma) ;
+- `offre` n'est écrit que par un produit que la liste des offres hébergées nomme ;
+- aucun des deux textes de `offre` ne contient « gratuit », en toute casse et sous toute forme construite sur le mot ;
+- chaque produit de la liste des offres hébergées est un produit du catalogue, cite une décision (`ADR-nnnn`) et n'est listé qu'une fois.
 
 Chaque contrainte du schéma a un vecteur dans `ecosystem/fixtures/produits/vectors.v1.json`. Un test retire les contraintes une par une : si aucun vecteur ne change de verdict, le test échoue.
 
@@ -136,13 +165,14 @@ Hors du tableau, le gate échoue quand une ligne de la section nomme un produit 
 
 Le catalogue est lu deux fois : par ce gate, et par le lecteur de la carte des briques (`ecosystem/briques.ts`). Ce second lecteur ferme la section à n'importe quel titre et lit tout identifiant d'une ligne. Quand les deux lecteurs ne lisent pas les mêmes produits, le gate échoue et nomme la ligne. Un tableau sous un sous-titre fait donc échouer le gate tant que le lecteur de la carte des briques ne lit pas la section de la même façon.
 
-Une source illisible est un échec, jamais un zéro : ADR absent, tableau du catalogue introuvable, inventaire absent, dossier sans fiche, schéma absent, vide, mal formé ou remplacé par un dossier. Quand le schéma est illisible, aucune fiche n'est jugée valide, et le gate imprime quand même ses compteurs.
+Une source illisible est un échec, jamais un zéro : ADR absent, tableau du catalogue introuvable, inventaire absent, dossier sans fiche, schéma absent, vide, mal formé ou remplacé par un dossier, liste des offres hébergées absente, mal formée, vide ou lue en partie. Quand cette liste est illisible, aucune fiche ne peut porter `offre`. Quand le schéma est illisible, aucune fiche n'est jugée valide, et le gate imprime quand même ses compteurs.
 
 Le gate imprime ses compteurs, en succès comme en échec :
 
 - produits du catalogue = produits avec fiche + produits sans fiche ;
 - fiches lues = fiches valides + fiches en violation, avec le nombre de fiches hors catalogue ;
 - fiches avec dépôt + fiches sans dépôt + fiches dont le schéma ne tient pas = fiches lues ;
+- fiches avec `offre` + fiches sans `offre` + fiches dont le schéma ne tient pas = fiches lues ;
 - nombre de champs `a_relire`, et nombre de fiches qui en portent ;
 - chemins suivis sous `ecosystem/produits/` = fiches lues + README + chemins refusés + chemins en conflit de fusion.
 
@@ -151,6 +181,8 @@ Limites du lecteur, déclarées :
 - une clé écrite deux fois dans une fiche ne provoque pas d'erreur : le lecteur YAML garde la dernière ;
 - le gate ne vérifie pas l'ordre des champs ;
 - le gate ne lit pas le sens des textes. Il ne détecte pas une marque dans `a_la_place_de`, un outil tiers nommé à tort, une dépendance écrite dans le mauvais sens, ni une phrase qui présenterait un produit comme disponible. Ce sont des règles de rédaction ;
+- dans `offre`, le gate ne juge pas si `payant` décrit un service ou une fonction : qu'aucune fonction ne soit réservée à l'offre payante (ADR-0066 D1) reste une règle de revue. Il ne refuse « gratuit » que dans les deux textes de `offre`, pas dans les autres champs. Une lettre d'un autre alphabet qui ressemble à une lettre latine n'est pas reconnue ;
+- le gate n'exige pas qu'un produit de la liste des offres hébergées écrive `offre` : une offre peut être admise avant que ses deux textes soient adoptés. Il n'ouvre pas la décision que la liste cite ;
 - hors du tableau, le gate ne reconnaît un produit qu'à son identifiant de forme exacte. Une phrase ou une liste qui annonce un produit sous une autre forme (`P 41`, `p41`) et sans barre verticale n'est pas vue ;
 - un caractère invisible sans largeur (U+200B par exemple) n'est pas un caractère de contrôle. Seul, il ne fait pas une valeur ; au milieu d'un texte, il est accepté. Il en va de même du caractère d'inversion du sens d'écriture U+202E et des caractères à usage privé : refusés seuls, acceptés au milieu d'un texte ;
 - la liste des caractères invisibles classés lettre ou symbole est courte et fermée (U+115F, U+1160, U+3164, U+FFA0, U+2800). Un autre caractère de ces classes qui n'afficherait rien n'est pas reconnu, et ces cinq-là sont acceptés au milieu d'un texte.

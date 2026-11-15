@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:libre-ai:schema:produit:v1",
   "title": "libre-ai.produit.v1 — one product of the catalogue",
-  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names content fields of this schema. Every constraint written here has a vector in ecosystem/fixtures/produits/vectors.v1.json that becomes valid when the constraint is removed: a test holds the two together.",
+  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names content fields of this schema; offre is carried only by a product the list of hosted offers names, and neither of its texts says « gratuit ». Every constraint written here has a vector in ecosystem/fixtures/produits/vectors.v1.json that becomes valid when the constraint is removed: a test holds the two together.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -70,6 +70,22 @@
     "a_la_place_de": {
       "description": "The kind of tool the product is meant to replace, described without naming a brand or a service.",
       "$ref": "#/$defs/phrase"
+    },
+    "offre": {
+      "description": "What a product with a decided hosted offer gives without charge, and what the subscription to the hosted service pays for (ADR-0066). The only optional field: a product without a decided hosted offer does not carry it, and null is not an absence here. Both texts are written, or none. The checker refuses the field on a product the list of hosted offers (ecosystem/hosted-offers.v1.yaml) does not name, and refuses the word « gratuit », in any form, in either text.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sans_frais", "payant"],
+      "properties": {
+        "sans_frais": {
+          "description": "What the person has without charge, and under which condition.",
+          "$ref": "#/$defs/phrase"
+        },
+        "payant": {
+          "description": "What the subscription to the hosted service pays for: the managed hosting, never a function (ADR-0066 D1).",
+          "$ref": "#/$defs/phrase"
+        }
+      }
     },
     "capacites": {
       "type": "array",

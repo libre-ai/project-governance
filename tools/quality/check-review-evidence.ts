@@ -75,6 +75,12 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * runs its gate from the governance checkout, so a `preload` in the root one
  * would execute code inside the gate of every consumer.
  *
+ * `ecosystem/hosted-offers.v1.yaml` joined on 2026-11-15, the day it was
+ * written: it lists the products whose fiche may describe a paid hosted offer
+ * (`check-produits.ts`), and admitting a hosted offer for a product is an
+ * owner decision (ADR-0066 D2). Adding an entry is what lets a fiche say that
+ * something is paid.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -161,6 +167,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/schemas\/brique\.v1\.schema\.json$/,
   // check-produits.ts: what a product fiche must carry, and the closed list of its fields.
   /^ecosystem\/schemas\/produit\.v1\.schema\.json$/,
+  // check-produits.ts: the products whose fiche may describe a paid hosted offer (ADR-0066 D2).
+  /^ecosystem\/hosted-offers\.v1\.yaml$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
   // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
@@ -198,6 +206,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/schemas/project.v1.schema.json",
   "ecosystem/schemas/brique.v1.schema.json",
   "ecosystem/schemas/produit.v1.schema.json",
+  "ecosystem/hosted-offers.v1.yaml",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
   "distribution/templates/dependabot/cargo.yml",

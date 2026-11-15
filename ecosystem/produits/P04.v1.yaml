@@ -8,6 +8,9 @@ categorie: connaissance
 promesse: "Vos notes sont des fichiers ouverts que vous et vos agents lisez et modifiez selon les mêmes règles, avec la trace de chaque changement."
 pour_qui: "Les personnes qui tiennent une base de notes durable ; les personnes et équipes qui font travailler des agents sur leurs notes"
 a_la_place_de: "votre application de notes fermée, où la synchronisation passe par un abonnement"
+offre:
+  sans_frais: "Tout le logiciel, l'accès par programme et la synchronisation vers un serveur que vous gérez."
+  payant: "Le service géré : synchronisation hébergée, sauvegarde, publication."
 capacites:
   - "Les fichiers font foi : un coffre de notes Markdown existant s'ouvre tel quel, et l'index se reconstruit depuis les fichiers."
   - "Un identifiant stable par note : renommer ou déplacer ne casse aucun lien."

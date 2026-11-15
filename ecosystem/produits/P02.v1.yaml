@@ -8,6 +8,9 @@ categorie: connaissance
 promesse: "Vous ne recevez que ce que vous avez demandé : chaque élément arrive avec la raison de sa présence, et le reste ne vous dérange pas."
 pour_qui: "Les personnes qui suivent beaucoup de sources et lisent peu de ce qu'elles reçoivent ; les équipes qui tiennent une veille sur un sujet, un marché ou une réglementation"
 a_la_place_de: "votre lecteur de flux en ligne, où le tri fin se paie en supplément"
+offre:
+  sans_frais: "Le logiciel entier chez vous, tous filtres compris, sans limite de flux."
+  payant: "Le service hébergé : synchronisation entre appareils, relève quand votre machine est éteinte, adresse de réception des lettres d'information, sauvegardes."
 capacites:
   - "Tous les filtres sont dans le logiciel : mots, auteurs, doublons, expressions régulières ; aucun n'est réservé à une offre."
   - "Signaler les changements et pas seulement les nouveautés : une page suivie qui change de façon significative est signalée, avec ce qui a changé."

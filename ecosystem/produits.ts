@@ -31,6 +31,15 @@ export const SCHEMA_VERSION = "libre-ai.produit.v1";
 export const PRODUITS_ROOT = "ecosystem/produits";
 /** The schema a fiche is held to, relative to the repository root: a source of the gate. */
 export const SCHEMA_PATH = "ecosystem/schemas/produit.v1.schema.json";
+/**
+ * The products that have a decided hosted offer, relative to the repository
+ * root: a source of the gate, in data. ADR-0066 D2 names them in a sentence
+ * and sends each later product to its own decision record, so no versioned
+ * source carries the list in a form a reader can hold; it is not written in
+ * this code either.
+ */
+export const HOSTED_OFFERS_PATH = "ecosystem/hosted-offers.v1.yaml";
+const HOSTED_OFFERS_VERSION = "libre-ai.hosted-offers.v1";
 
 type Categorie =
   | "connaissance"
@@ -70,6 +79,8 @@ interface ProduitData {
   readonly promesse: string;
   readonly pour_qui: string;
   readonly a_la_place_de: string;
+  /** The only optional field: written by a product that has a decided hosted offer, by no other. */
+  readonly offre?: { readonly sans_frais: string; readonly payant: string };
   readonly capacites: readonly string[];
   readonly ne_fait_pas: readonly string[];
   readonly depend_de: readonly string[];
@@ -112,6 +123,8 @@ export interface ProduitsInput {
   readonly read: (path: string) => ReadResult;
   /** The text of the schema (`SCHEMA_PATH`) of the tree judged, or why it could not be read. */
   readonly schema: ReadResult;
+  /** The text of the list of hosted offers (`HOSTED_OFFERS_PATH`) of the tree judged, or why it could not be read. */
+  readonly offresHebergees: ReadResult;
   /** `P01`…: the products of the catalogue of ADR-0042 §1. */
   readonly catalogue: ReadonlySet<string>;
   /** The domain label(s) the catalogue table gives each product (one, unless the table is wrong). */
@@ -144,6 +157,11 @@ interface ProduitsCounters {
   readonly sans_depot: number;
   /** Fiches the schema did not hold: whether they name a carrier is not known. */
   readonly depot_indecidable: number;
+  /** Fiches that carry `offre`. */
+  readonly avec_offre: number;
+  readonly sans_offre: number;
+  /** Fiches the schema did not hold: whether they carry an offer is not known. */
+  readonly offre_indecidable: number;
   readonly champs_a_relire: number;
   readonly fiches_a_relire: number;
 }
@@ -394,6 +412,89 @@ export function compileSchema(source: ReadResult): CompiledSchema {
   }
 }
 
+// ---------------------------------------------------------- hosted offers ---
+
+interface HostedOffers {
+  /** The products the list names. */
+  readonly products: ReadonlySet<string>;
+  /** Why the list, or one of its entries, was not read: a reason is printed, never dropped. */
+  readonly errors: readonly string[];
+}
+
+const HOSTED_OFFERS_KEYS: ReadonlySet<string> = new Set(["schema_version", "offres_hebergees"]);
+const HOSTED_OFFER_KEYS: ReadonlySet<string> = new Set(["produit", "decision"]);
+
+/**
+ * The products that have a decided hosted offer, from the text of the list.
+ *
+ * Read in full or refused: an entry that names no product, cites no decision
+ * record, carries another key or repeats a product is an error the evaluation
+ * fails on, never an entry skipped. An entry skipped would be a product whose
+ * offer is refused for a reason nothing prints.
+ */
+function readHostedOffers(source: ReadResult): HostedOffers {
+  const refused = (reason: string): HostedOffers => ({ products: new Set(), errors: [reason] });
+  if (!source.ok) return refused(`unreadable (${source.reason})`);
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(source.text);
+  } catch (error) {
+    return refused(`invalid YAML (${error instanceof Error ? error.message : String(error)})`);
+  }
+  if (
+    !isRecord(parsed) ||
+    parsed.schema_version !== HOSTED_OFFERS_VERSION ||
+    !Array.isArray(parsed.offres_hebergees)
+  ) {
+    return refused(
+      `not a « ${HOSTED_OFFERS_VERSION} » record with a list « offres_hebergees »: nothing says which products have a hosted offer`,
+    );
+  }
+  const products = new Set<string>();
+  const errors = Object.keys(parsed)
+    .filter((key) => !HOSTED_OFFERS_KEYS.has(key))
+    .map((key) => `« ${key} » is not a key of the record`);
+  const entries: readonly unknown[] = parsed.offres_hebergees;
+  entries.forEach((entry, at) => {
+    const place = `entry ${at + 1}`;
+    if (!isRecord(entry)) {
+      errors.push(`${place} is not a product and its decision`);
+      return;
+    }
+    const { produit, decision } = entry;
+    const strangers = Object.keys(entry).filter((key) => !HOSTED_OFFER_KEYS.has(key));
+    if (typeof produit !== "string" || !/^P[0-9]{2}$/.test(produit)) {
+      errors.push(`${place} names no product (« produit »: P and two digits)`);
+    } else if (typeof decision !== "string" || !/^ADR-[0-9]{4}$/.test(decision)) {
+      errors.push(
+        `${place} (${produit}) cites no decision record (« decision »: ADR and four digits)`,
+      );
+    } else if (strangers.length > 0) {
+      errors.push(
+        `${place} (${produit}) carries ${strangers.join(", ")}, which is not a key of an entry`,
+      );
+    } else if (products.has(produit)) {
+      errors.push(`${produit} is listed twice`);
+    } else products.add(produit);
+  });
+  return { products, errors };
+}
+
+/**
+ * Whether a text says « gratuit », in any case and any form built on the word
+ * (gratuite, gratuits, gratuitement, gratuité).
+ *
+ * WHY THE STEM, NOT A LIST OF FORMS. Every French form of the word contains
+ * it, and no other French word does. The text is brought to its compatibility
+ * form and its invisible format characters (soft hyphen, zero-width space) are
+ * removed first, so that a full-width letter or a hyphenation point does not
+ * hide the word. A letter of another alphabet that looks like a Latin one is
+ * not caught.
+ */
+function saysGratuit(text: string): boolean {
+  return /gratuit/i.test(text.normalize("NFKC").replace(/\p{Cf}/gu, ""));
+}
+
 // ------------------------------------------------------------- evaluation ---
 
 const STAGE_FIRST =
@@ -479,6 +580,21 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
     input.repositories.size > 0
       ? `${input.repositories.size} repository(ies) read`
       : "no repository read: the inventory is missing or could not be parsed — unreadable is not zero repositories",
+  );
+  // The list of hosted offers is a source: unreadable or read in part, it is
+  // named here, and no fiche is then allowed an offer.
+  const offers = readHostedOffers(input.offresHebergees);
+  const unlisted = [...offers.products].filter((id) => !input.catalogue.has(id)).sort();
+  check(
+    HOSTED_OFFERS_PATH,
+    offers.errors.length === 0 && offers.products.size > 0 && unlisted.length === 0,
+    offers.errors.length > 0
+      ? `${offers.errors.join("; ")} — a list not read in full is not a list of the products that have a hosted offer`
+      : offers.products.size === 0
+        ? "no product listed: an empty list is not read as « no product has a hosted offer »"
+        : unlisted.length > 0
+          ? `lists ${unlisted.join(", ")}, which the catalogue of ADR-0042 §1 does not`
+          : `${offers.products.size} product(s) with a decided hosted offer, each one in the catalogue`,
   );
   // A source is read on disk, so the attestation « as indexed » needs two
   // things of each one: the index holds it as a regular file, and the bytes on
@@ -605,6 +721,24 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
         errors.push(`depot ${data.depot} is not in ecosystem/repositories.v1.yaml`);
       }
 
+      // `offre` with one text only is refused by the schema. What the schema
+      // cannot say is held here: who may carry the field, and the word
+      // ADR-0033 refuses as an absolute claim (ADR-0066 D3).
+      if (data.offre !== undefined) {
+        if (!offers.products.has(fiche.id)) {
+          errors.push(
+            `offre is written, and ${HOSTED_OFFERS_PATH} does not list ${fiche.id}: a fiche describes a hosted offer once a decision admits one for its product (ADR-0066 D2)`,
+          );
+        }
+        for (const key of ["sans_frais", "payant"] as const) {
+          if (saysGratuit(data.offre[key])) {
+            errors.push(
+              `offre.${key} says « gratuit »: the word stays refused as an absolute claim (ADR-0033, ADR-0066 D3) — say what is without charge, and under which condition`,
+            );
+          }
+        }
+      }
+
       if (data.etiquettes.length !== 3) {
         errors.push(
           `etiquettes counts ${data.etiquettes.length} entry(ies), exactly three expected`,
@@ -660,6 +794,9 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
     avec_depot: decided.filter((data) => data.depot !== null).length,
     sans_depot: decided.filter((data) => data.depot === null).length,
     depot_indecidable: loaded.length - decided.length,
+    avec_offre: decided.filter((data) => data.offre !== undefined).length,
+    sans_offre: decided.filter((data) => data.offre === undefined).length,
+    offre_indecidable: loaded.length - decided.length,
     champs_a_relire: decided.reduce((sum, data) => sum + data.a_relire.length, 0),
     fiches_a_relire: decided.filter((data) => data.a_relire.length > 0).length,
   };
@@ -667,6 +804,7 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
     `${compteurs.catalogue} product(s) in the catalogue of ADR-0042 §1 = ${compteurs.couverts} with a fiche + ${compteurs.manquants} missing; ` +
     `${compteurs.fiches_lues} fiche(s) read = ${compteurs.valides} valid + ${compteurs.en_violation} in violation, ${compteurs.hors_catalogue} of them outside the catalogue; ` +
     `carrier: ${compteurs.avec_depot} with a depot + ${compteurs.sans_depot} without + ${compteurs.depot_indecidable} not decidable (schema not held) = ${compteurs.fiches_lues}; ` +
+    `hosted offer: ${compteurs.avec_offre} with an offre + ${compteurs.sans_offre} without + ${compteurs.offre_indecidable} not decidable (schema not held) = ${compteurs.fiches_lues}; ` +
     `${compteurs.champs_a_relire} a_relire field(s) on ${compteurs.fiches_a_relire} fiche(s), not reread by the owner; ` +
     `${compteurs.chemins_suivis} tracked path(s) under ${PRODUITS_ROOT}/ = ${compteurs.fiches_lues} fiche(s) + ${compteurs.readmes} README + ${compteurs.refuses} refused + ${compteurs.non_fusionnes} unmerged`;
   gate.volume(volume);

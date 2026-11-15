@@ -12,7 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { SCHEMA_VERSION } from "./produits";
+import { HOSTED_OFFERS_PATH, SCHEMA_VERSION } from "./produits";
 
 /**
  * The product-catalogue gate run as a process, against a real repository.
@@ -45,8 +45,14 @@ const ENVIRONMENT = {
 const CATALOGUE_ADR = "docs/adr/0042-catalogue.md";
 const INVENTORY = "ecosystem/repositories.v1.yaml";
 const SCHEMA = "ecosystem/schemas/produit.v1.schema.json";
-/** The three files the gate declares as its sources. */
-const SOURCES: string[] = [CATALOGUE_ADR, INVENTORY, SCHEMA];
+/** The four files the gate declares as its sources. */
+const SOURCES: string[] = [CATALOGUE_ADR, INVENTORY, SCHEMA, HOSTED_OFFERS_PATH];
+
+/** The two texts of an offer, as a fiche writes them. */
+const OFFRE = {
+  sans_frais: "Le logiciel entier chez vous, sans limite.",
+  payant: "Le service hébergé : synchronisation et sauvegardes.",
+};
 
 interface Run {
   readonly exitCode: number;
@@ -88,7 +94,12 @@ function write(root: string, path: string, text: string): void {
   writeFileSync(join(root, path), text);
 }
 
-function fiche(id: string, categorie: string, depot: string | null): string {
+function fiche(
+  id: string,
+  categorie: string,
+  depot: string | null,
+  offre?: Readonly<Record<string, string>>,
+): string {
   // JSON is YAML: the fiche is written without a YAML serialiser.
   return JSON.stringify(
     {
@@ -102,6 +113,8 @@ function fiche(id: string, categorie: string, depot: string | null): string {
       promesse: "Faire une chose pour quelqu'un, de façon vérifiable.",
       pour_qui: "une personne nommée",
       a_la_place_de: "votre outil en ligne par abonnement",
+      // Left out when undefined: a product without a hosted offer does not carry the field.
+      offre,
       capacites: ["Faire la chose annoncée."],
       ne_fait_pas: ["Faire autre chose que la chose annoncée."],
       depend_de: [],
@@ -128,7 +141,13 @@ function plantTree(root: string): void {
   mkdirSync(dirname(join(root, SCHEMA)), { recursive: true });
   copyFileSync(join(import.meta.dir, "schemas", "produit.v1.schema.json"), join(root, SCHEMA));
   write(root, "ecosystem/produits/P01.v1.yaml", fiche("P01", "connaissance", SELF));
-  write(root, "ecosystem/produits/P02.v1.yaml", fiche("P02", "connaissance", null));
+  // One product has a decided hosted offer, and its fiche says what it is.
+  write(
+    root,
+    HOSTED_OFFERS_PATH,
+    "schema_version: libre-ai.hosted-offers.v1\noffres_hebergees:\n  - produit: P02\n    decision: ADR-0054\n",
+  );
+  write(root, "ecosystem/produits/P02.v1.yaml", fiche("P02", "connaissance", null, OFFRE));
   write(root, "ecosystem/produits/P03.v1.yaml", fiche("P03", "collaboration", null));
   write(root, "ecosystem/produits/README.md", "# Catalogue\n");
 }
@@ -177,6 +196,9 @@ describe("check-produits as a process", () => {
     expect(outcome.output).toContain("3 fiche(s) read = 3 valid + 0 in violation");
     expect(outcome.output).toContain(
       "carrier: 1 with a depot + 2 without + 0 not decidable (schema not held) = 3",
+    );
+    expect(outcome.output).toContain(
+      "hosted offer: 1 with an offre + 2 without + 0 not decidable (schema not held) = 3",
     );
     expect(outcome.output).toContain("6 a_relire field(s) on 3 fiche(s)");
     expect(outcome.output).toContain(
@@ -284,6 +306,46 @@ describe("check-produits as a process", () => {
     expect(outcome.exitCode).toBe(1);
   });
 
+  test("an offre on a product the list of hosted offers does not name reaches the exit code", () => {
+    const root = freshTree("offer-unlisted");
+    write(root, "ecosystem/produits/P03.v1.yaml", fiche("P03", "collaboration", null, OFFRE));
+    git(root, "add", "--all");
+    const outcome = judge(root);
+    expect(outcome.output).toContain(
+      `ecosystem/produits/P03.v1.yaml: offre is written, and ${HOSTED_OFFERS_PATH} does not list P03`,
+    );
+    expect(outcome.output).toMatch(/Product catalogue failed: 1 of [0-9]+ assertion/);
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("« gratuit » in a text of an offre reaches the exit code", () => {
+    const root = freshTree("offer-word");
+    write(
+      root,
+      "ecosystem/produits/P02.v1.yaml",
+      fiche("P02", "connaissance", null, { ...OFFRE, sans_frais: "Le logiciel est gratuit." }),
+    );
+    git(root, "add", "--all");
+    const outcome = judge(root);
+    expect(outcome.output).toContain(
+      "ecosystem/produits/P02.v1.yaml: offre.sans_frais says « gratuit »",
+    );
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  // The list is read from the tree judged: removed, no product has a hosted
+  // offer the gate can name, and that is a failure, not an empty list.
+  test("the list of hosted offers removed is a named failure, not zero product listed", () => {
+    const root = freshTree("offer-list-removed");
+    // Staged and never committed: git removes it from the index and the disk only when forced.
+    git(root, "rm", "--quiet", "--force", HOSTED_OFFERS_PATH);
+    const outcome = judge(root);
+    expect(outcome.output).toContain(`${HOSTED_OFFERS_PATH}: unreadable (`);
+    expect(outcome.output).toContain(`sources: ${HOSTED_OFFERS_PATH} is not in the index`);
+    expect(outcome.output).toContain(`${HOSTED_OFFERS_PATH} does not list P02`);
+    expect(outcome.exitCode).toBe(1);
+  });
+
   // One probe per declared source: a list of sources that forgot one of them
   // would leave that one read on disk and attested as indexed.
   test.each(SOURCES)("the source %s changed on disk and not staged is refused", (source) => {
@@ -309,6 +371,7 @@ describe("check-produits as a process", () => {
   test.each([
     INVENTORY,
     SCHEMA,
+    HOSTED_OFFERS_PATH,
   ])("the source %s on disk and absent from the index is refused", (source) => {
     const root = freshTree(`source-untracked-${SOURCES.indexOf(source)}`);
     git(root, "rm", "--quiet", "--cached", source);
