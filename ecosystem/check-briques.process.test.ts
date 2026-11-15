@@ -49,13 +49,18 @@ interface Run {
   readonly output: string;
 }
 
-function run(argv: readonly string[], cwd: string): Run {
+function run(
+  argv: readonly string[],
+  cwd: string,
+  /** Variables added to the declared environment, for the probe that redirects git. */
+  env: Readonly<Record<string, string>> = {},
+): Run {
   const result = Bun.spawnSync([...argv], {
     cwd,
     stdin: "ignore",
     stdout: "pipe",
     stderr: "pipe",
-    env: ENVIRONMENT,
+    env: { ...ENVIRONMENT, ...env },
   });
   const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
   return {
@@ -429,5 +434,21 @@ describe("check-briques as a process", () => {
     const outcome = judge(root);
     expect(outcome.output).toContain(expected);
     expect(outcome.exitCode).toBe(1);
+  });
+
+  // A hook, or a command run from a linked worktree, exports these variables.
+  // The gate passed them on to git: it listed the index of that other
+  // repository, and judged a tree nobody asked about.
+  test("the repository judged is the one the gate is run in, whatever GIT_DIR and GIT_INDEX_FILE say", () => {
+    const root = freshTree("redirected");
+    const other = join(workspace, "redirected-elsewhere");
+    mkdirSync(other);
+    git(other, "init", "--quiet");
+    const outcome = run([process.execPath, GATE], root, {
+      GIT_DIR: join(other, ".git"),
+      GIT_INDEX_FILE: join(other, ".git", "index"),
+    });
+    expect(outcome.output).toContain("Brick map verified:");
+    expect(outcome.exitCode).toBe(0);
   });
 });

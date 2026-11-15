@@ -69,10 +69,37 @@ function kindOfMode(mode: string): EntryKind {
   return mode === "100644" || mode === "100755" ? "file" : "other";
 }
 
+/** The variables by which git reads another repository, index or tree than the one it is run in. */
+const GIT_REDIRECTIONS: readonly string[] = [
+  "GIT_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+];
+
+/**
+ * The environment a git child of a gate runs in: the one of this process,
+ * without the variables that point git at another repository than its `cwd`.
+ *
+ * A hook, or a command run from a linked worktree, exports them. A gate that
+ * passed them on listed the index of that other repository and read the files
+ * of this one: it judged a tree nobody asked about, and could be green on it.
+ * Written once, for every reader of the index (this gate, the product
+ * catalogue, the page generator).
+ */
+export function gitEnvironment(): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => !GIT_REDIRECTIONS.includes(name)),
+  );
+}
+
 function git(root: string, argv: readonly string[], input?: string): string {
   return execFileSync("git", [...argv], {
     encoding: "utf8",
     cwd: root,
+    env: gitEnvironment(),
     input,
     maxBuffer: 256 * 1024 * 1024,
     stdio: [input === undefined ? "ignore" : "pipe", "pipe", "ignore"],
