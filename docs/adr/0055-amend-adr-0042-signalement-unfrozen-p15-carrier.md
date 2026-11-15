@@ -1,6 +1,6 @@
 # ADR-0055 — Amendement d'ADR-0042 §1 : `signalement` sort du gel et porte P15
 
-- **Statut :** accepted — fusionné ; statut clos le 2026-11-09.
+- **Statut :** accepted — fusionné ; statut clos le 2026-11-09. **Amendé par :** ADR-0067 (D1 : « P15 (projets, tickets et support) » se lit « P15 (capture et relais de signalements) » ; D2 : « P15 n'est pas scindé. » se lit « P15 n'est pas partagé entre deux dépôts. », P15 et P41 étant deux produits, D113)
 - **Arbitrage :** décisions du propriétaire du 2026-10-22 en chat, prises par
   questions structurées (ADR-0022/I-24) pendant la session de cadrage v1.0 de
   `signalement` : lever le gel de `signalement` ; faire de `signalement` le

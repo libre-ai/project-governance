@@ -57,7 +57,7 @@ Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y ins
 
 ## `a_la_place_de`
 
-`a_la_place_de` nomme ce que le genre d'outil remplacé verrouille : la fonction vendue en supplément, la donnée gardée chez l'éditeur, le format qui ne s'exporte pas. Il ne dit pas « par abonnement » (ADR-0066, D112) : un produit du catalogue peut lui aussi avoir une offre hébergée par abonnement, et le mot ne dit donc pas ce qui change.
+`a_la_place_de` dit ce que le genre d'outil remplacé fait payer ou enferme. Exemples : la fonction vendue en supplément, la donnée gardée chez l'éditeur, le format qui ne s'exporte pas. Il ne dit pas « par abonnement » (ADR-0066, D112) : un produit du catalogue peut lui aussi avoir une offre hébergée par abonnement, et le mot ne dit donc pas ce qui change.
 
 Les fiches écrites avant cette règle portent encore « par abonnement ». Les réécrire est une proposition d'agent par fiche, à inscrire dans `a_relire`. Le gate ne lit pas cette forme : c'est une règle de rédaction.
 
