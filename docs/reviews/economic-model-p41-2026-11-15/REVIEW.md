@@ -1,18 +1,19 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Modèle économique commun (ADR-0066) et scission de P15 (ADR-0067) : une passe de revue rendue, une passe à faire
+# Modèle économique commun (ADR-0066) et scission de P15 (ADR-0067) : trois passes de revue
 
 **Date :** 2026-11-15
 **Objet :** les deux ADR proposés `docs/adr/0066-economic-model-hosted-service-only.md` et `docs/adr/0067-amend-adr-0042-p15-split-p41-tickets.md`, les lignes D109 à D113 du registre, les fiches `ecosystem/produits/P15.v1.yaml` et `ecosystem/produits/P41.v1.yaml`, et les documents que ces ADR amendent.
 **Nature :** dossier de revue d'une pull request écrite par des agents. Il ne vaut pas arbitrage du propriétaire : il rend compte de ce qui a été relu, sur quel commit, de ce qui a été corrigé ensuite, et de ce qui reste à relire.
-**État :** ce dossier ne porte **aucun verdict final**. La passe 1 a rendu `reject`. Les corrections qui suivent n'ont pas été relues : la passe 2 est à faire.
+**État :** les passes 1 et 2 ont rendu `reject`. Le verdict du dossier est celui de la passe 3, dans le tableau ci-dessous. Deux réserves mineures restent ouvertes (M1 et M4) : elles se tranchent à la signature.
 
 ## Les passes
 
 | Passe | Identifiant | Mode | Commit relu | Verdict |
 | --- | --- | --- | --- | --- |
 | 1 | `economic-model-p41-pass-1` | revue seule, relecteur indépendant à contexte neuf | `e0c2832e74e09139c2a560a95fca90642b8e7418` | `reject` : 6 constats à corriger, 8 mineurs |
-| 2 | à attribuer | revue seule, par un relecteur distinct de l'auteur des corrections | à faire sur le commit final de la branche | à faire |
+| 2 | `economic-model-p41-pass-2` | revue seule, relecteur indépendant à contexte neuf, distinct de l'auteur des corrections | `5615d556a27ba590b76327141338f33db7414005` | `reject` : 1 constat à corriger, 5 mineurs |
+| 3 | `economic-model-p41-pass-3` | relecture des corrections de la passe 2, par le relecteur de la passe 2 | PASS3_COMMIT | PASS3_VERDICT |
 
 Le commit relu par la passe 1 est un commit de la branche de travail ; la fusion par squash ne le garde pas.
 
@@ -41,13 +42,28 @@ Les gravités sont celles du relecteur. « Corrigé » veut dire : modifié par 
 
 ## Passe 2
 
-**À faire sur le commit final par un relecteur distinct.** Elle n'a pas eu lieu. Ce dossier n'en invente ni les constats ni le verdict.
+Relecteur indépendant à contexte neuf, distinct de l'auteur et de l'auteur des corrections. Commit relu : `5615d556a27ba590b76327141338f33db7414005`. Verdict : `reject`, pour un constat à corriger. Les 14 constats de la passe 1 sont relus : 13 corrigés et justes, le constat 6 partiel tant que cette passe n'était pas inscrite ici.
 
-Ce qu'elle doit relire au minimum : chaque ligne « Corrigé » du tableau ci-dessus ; la fidélité des citations d'ADR-0066 et d'ADR-0067 aux textes reproduits plus bas ; chaque « lecture de l'auteur », qui n'est pas arbitrée ; les mentions « Amendé par » ajoutées à trois ADR déjà fusionnés.
+Commandes rejouées par le relecteur sur ce commit, toutes `pass` : `bun install --frozen-lockfile`, `bun run check:produits` (41 produits = 41 fiches, 36 champs `a_relire` sur 18 fiches), `bun run check:briques`, `bun run check:doctrine`, `bun run build:vision` suivi d'un `git status --short` vide, `bun test ecosystem/ distribution/build-vision.test.ts` (1009 pass, 0 fail). Elles ont tourné sous Bun 1.4.4, pas sous la révision épinglée. CI sur ce commit : 15 verts, 1 rouge, « Index freshness and GitHub reconciliation », rouge aussi sur la tête de la branche servie `275ed6277580fb65b99e8ae6b625770ecbe13d12`.
+
+| N° | Gravité | Constat | Suite donnée après la passe |
+| --- | --- | --- | --- |
+| A1 | à corriger | La ligne D109 du registre écrit comme arbitré « aucune fonction n'est réservée à l'offre payante », qu'ADR-0066 range sous lecture de l'auteur. | Corrigé : D109 porte le même marqueur que D110, D111 et D113, et cite l'option écartée. |
+| M1 | mineur | La même lecture est écrite sans marqueur dans les non-objectifs, la brique EXP-08, `vision.md`, la mention « Amendé par » d'ADR-0054 et le titre d'ADR-0066. | Non corrigé, réserve ouverte. La question posée et l'option écartée, reproduites plus bas, la soutiennent ; le mot pour mot n'y est pas. À confirmer à la signature. |
+| M2 | mineur | ADR-0066 ajoute à I-10 et à I-17 deux gloses qui ne sont pas dans leur texte. | Corrigé : les deux gloses sont séparées du texte des invariants et marquées lecture de l'auteur. |
+| M3 | mineur | Le tableau de lecture d'ADR-0067 donne pour ADR-0064 D1 le texte d'après modification, et le texte d'avant pour les autres lignes. | Corrigé : la cellule donne le texte d'avant et son remplacement. |
+| M4 | mineur | La brique PRD-15 et la mention « Amendé par » d'ADR-0042 écrivent l'intitulé de P15 et l'attribution à P41 comme acquis. | Non corrigé, réserve ouverte : ADR-0067 les dit propositions de l'auteur, et la signature les tranche. |
+| M5 | mineur | Ce dossier disait encore « passe 2 à faire ». | Corrigé par la présente section. |
+
+Ce que la passe 2 n'a pas pu vérifier : la fidélité des textes retenus à la page de décision, qui n'est pas versionnée ; le relevé des sept lecteurs de flux cité par ADR-0066, sans source versionnée ; les contrôles sous la révision de Bun épinglée.
+
+## Passe 3
+
+Relecture des seules corrections de A1, M2 et M3 par le relecteur de la passe 2, sur le commit qui les porte. Son verdict est dans le tableau des passes.
 
 ## Textes retenus par le propriétaire le 2026-11-15
 
-La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur des corrections a reçus par son mandat ; il n'a pas lu la page. Ils sont reproduits ici pour qu'un lecteur du dépôt puisse confronter les deux ADR à ce qui a été retenu. Les options écartées n'ont pas été transmises.
+La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur des corrections a reçus par son mandat ; il n'a pas lu la page. Ils sont reproduits ici pour qu'un lecteur du dépôt puisse confronter les deux ADR à ce qui a été retenu. Pour la première question, les deux options écartées étaient « Le service et des fonctions avancées » (« Certaines fonctions sont réservées à l'offre hébergée payante. ») et « Produit par produit ». Les options écartées des autres questions n'ont pas été transmises.
 
 | Décision | Question posée | Libellé retenu | Conséquence affichée sous ce libellé |
 | --- | --- | --- | --- |

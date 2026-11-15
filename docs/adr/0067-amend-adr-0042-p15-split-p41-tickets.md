@@ -63,7 +63,7 @@ ADR-0064 est encore proposé. Il écrit le nombre de produits ou leur plage à c
 | Titre | « les quarante produits sont des briques » | se lit « les produits du catalogue sont des briques » |
 | « Amende » | « les 40 produits P01 à P40 » | se lit « les produits du catalogue d'ADR-0042 §1 » |
 | « Contexte » | « le catalogue d'ADR-0042 §1 (40 produits, en prose) » | inchangé : c'est un état daté du 2026-11-09, vrai à cette date |
-| D1, tableau des couches, couche `produit` | « P01 à P41 » | modifié en place dans cette pull request, parce qu'un test de `ecosystem/briques.test.ts` tient la table du code à ce tableau |
+| D1, tableau des couches, couche `produit` | « P01 à P40 » | remplacé par « P01 à P41 », modifié en place dans cette pull request, parce qu'un test de `ecosystem/briques.test.ts` tient la table du code à ce tableau |
 | « Ce qui n'est pas décidé » | « au-delà des 40 produits du catalogue » | se lit « au-delà des produits du catalogue » |
 
 Cinq trouvés : un modifié en place, trois couverts par cette clause de lecture, un laissé comme état daté. ADR-0064 n'est pas réécrit au-delà de la cellule nommée : il porte la mention « Amendé par » qui renvoie ici.
