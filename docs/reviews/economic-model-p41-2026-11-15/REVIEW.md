@@ -1,11 +1,11 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Modèle économique commun (ADR-0066) et scission de P15 (ADR-0067) : trois passes de revue
+# Modèle économique commun (ADR-0066) et scission de P15 (ADR-0067) : quatre passes de revue
 
 **Date :** 2026-11-15
 **Objet :** les deux ADR proposés `docs/adr/0066-economic-model-hosted-service-only.md` et `docs/adr/0067-amend-adr-0042-p15-split-p41-tickets.md`, les lignes D109 à D113 du registre, les fiches `ecosystem/produits/P15.v1.yaml` et `ecosystem/produits/P41.v1.yaml`, et les documents que ces ADR amendent.
 **Nature :** dossier de revue d'une pull request écrite par des agents. Il ne vaut pas arbitrage du propriétaire : il rend compte de ce qui a été relu, sur quel commit, de ce qui a été corrigé ensuite, et de ce qui reste à relire.
-**État :** les passes 1 et 2 ont rendu `reject`. Le verdict du dossier est celui de la passe 3, dans le tableau ci-dessous. Deux réserves mineures restent ouvertes (M1 et M4) : elles se tranchent à la signature.
+**État :** les passes 1, 2 et 3 ont rendu `reject`. Le verdict du dossier est celui de la passe 4, dans le tableau ci-dessous. Deux réserves mineures restent ouvertes (M1 et M4) : elles se tranchent à la signature.
 
 ## Les passes
 
@@ -13,7 +13,8 @@
 | --- | --- | --- | --- | --- |
 | 1 | `economic-model-p41-pass-1` | revue seule, relecteur indépendant à contexte neuf | `e0c2832e74e09139c2a560a95fca90642b8e7418` | `reject` : 6 constats à corriger, 8 mineurs |
 | 2 | `economic-model-p41-pass-2` | revue seule, relecteur indépendant à contexte neuf, distinct de l'auteur des corrections | `5615d556a27ba590b76327141338f33db7414005` | `reject` : 1 constat à corriger, 5 mineurs |
-| 3 | `economic-model-p41-pass-3` | relecture des corrections de la passe 2, par le relecteur de la passe 2 | PASS3_COMMIT | PASS3_VERDICT |
+| 3 | `economic-model-p41-pass-3` | revue seule du seul diff postérieur à la passe 2, relecteur indépendant à contexte neuf | `a60cac27e92cb87fc2ecb3d43018d9c59db40e9b` | `reject` : 2 constats à corriger, 3 mineurs |
+| 4 | `economic-model-p41-pass-4` | revue seule du seul diff postérieur à la passe 3, relecteur indépendant à contexte neuf | PASS4_COMMIT | PASS4_VERDICT |
 
 Le commit relu par la passe 1 est un commit de la branche de travail ; la fusion par squash ne le garde pas.
 
@@ -21,7 +22,7 @@ Ce que ce dossier ne sait pas de la passe 1 : son rapport complet n'est pas vers
 
 ## Passe 1 : les 14 constats, et ce qui a suivi
 
-Les gravités sont celles du relecteur. « Corrigé » veut dire : modifié par l'auteur des corrections après la passe 1, et **non relu**.
+Les gravités sont celles du relecteur. « Corrigé » veut dire : modifié par l'auteur des corrections après la passe 1. La passe 2 a relu ces corrections.
 
 | N° | Gravité | Constat | Suite |
 | --- | --- | --- | --- |
@@ -59,11 +60,23 @@ Ce que la passe 2 n'a pas pu vérifier : la fidélité des textes retenus à la 
 
 ## Passe 3
 
-Relecture des seules corrections de A1, M2 et M3 par le relecteur de la passe 2, sur le commit qui les porte. Son verdict est dans le tableau des passes.
+Relecteur indépendant à contexte neuf, sans continuité avec la passe 2. Il a relu le seul diff entre `5615d556a27ba590b76327141338f33db7414005` et `a60cac27e92cb87fc2ecb3d43018d9c59db40e9b`. Verdict : `reject`. A1 est corrigé pour la phrase visée, M2 et M3 sont corrigés. Commandes rejouées, toutes `pass` sous Bun 1.4.4 : `bun install --frozen-lockfile`, `bun run check:doctrine`, `bun run check:produits`, et le gate de revue appelé comme la CI l'appelle.
+
+| N° | Gravité | Constat | Suite donnée après la passe |
+| --- | --- | --- | --- |
+| C1 | à corriger | D109 écrivait encore sans marqueur que les mêmes fonctions valent « sur l'instance qu'on héberge soi-même et sur l'offre hébergée », qu'ADR-0066 range sous lecture de l'auteur. | Corrigé : D109 cite « Mêmes fonctions partout » et marque ce que « partout » couvre comme lecture de l'auteur. |
+| C2 | à corriger | Trois phrases de ce dossier étaient fausses : il disait ne pas couvrir la passe 2, disait les corrections non relues, et attribuait la passe 3 au relecteur de la passe 2. | Corrigé : les trois phrases sont réécrites. |
+| N1 | mineur | Les deux options écartées de la première question sont citées sans dire par quel canal elles sont arrivées. | Corrigé : le canal est dit sous le tableau des textes retenus. |
+| N2 | mineur | D109 disait « l'option écartée » au singulier. | Corrigé. |
+| N3 | mineur | Une virgule fautive dans la ligne « Invariants » d'ADR-0066. | Corrigé. |
+
+## Passe 4
+
+Relecteur indépendant à contexte neuf, sur le seul diff postérieur à la passe 3. Son verdict est dans le tableau des passes ; c'est le verdict de ce dossier.
 
 ## Textes retenus par le propriétaire le 2026-11-15
 
-La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur des corrections a reçus par son mandat ; il n'a pas lu la page. Ils sont reproduits ici pour qu'un lecteur du dépôt puisse confronter les deux ADR à ce qui a été retenu. Pour la première question, les deux options écartées étaient « Le service et des fonctions avancées » (« Certaines fonctions sont réservées à l'offre hébergée payante. ») et « Produit par produit ». Les options écartées des autres questions n'ont pas été transmises.
+La page de décision n'est pas versionnée. Ces textes sont ceux que l'auteur des corrections a reçus par son mandat ; il n'a pas lu la page. Ils sont reproduits ici pour qu'un lecteur du dépôt puisse confronter les deux ADR à ce qui a été retenu. Après la passe 2, l'agent qui tient la page de décision a transmis les options écartées de la première question ; elles ne sont pas plus vérifiables depuis ce dépôt que les textes retenus. Les deux options écartées étaient « Le service et des fonctions avancées » (« Certaines fonctions sont réservées à l'offre hébergée payante. ») et « Produit par produit ». Les options écartées des autres questions n'ont pas été transmises.
 
 | Décision | Question posée | Libellé retenu | Conséquence affichée sous ce libellé |
 | --- | --- | --- | --- |
@@ -79,7 +92,7 @@ Deux commentaires du propriétaire, écrits le même jour sur une autre page non
 
 ## Ce que ce dossier ne couvre pas
 
-- **La passe 2**, et donc tout verdict sur l'état corrigé.
+- **Une relecture d'ensemble après la passe 2.** Les passes 3 et 4 ne relisent que le diff postérieur à la passe qui les précède.
 - **Les sources.** Ni la page de décision ni la page de relecture du catalogue ne sont dans ce dépôt. Un tiers peut confronter les ADR aux textes reproduits ci-dessus ; il ne peut pas confronter ces textes aux pages.
 - **Le rapport de la passe 1.** Seuls ses constats sont résumés ici, un par ligne.
 - **La version de Bun.** Les contrôles locaux nommés dans le corps de la pull request ont tourné sous une version de Bun qui n'est pas la révision épinglée ; la CI juge sous la révision épinglée.
