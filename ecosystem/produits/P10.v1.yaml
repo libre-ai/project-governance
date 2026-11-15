@@ -7,7 +7,7 @@ fonction: "Présentations"
 categorie: bureautique-donnees
 promesse: "Passer d'un objectif de communication à une présentation éditable, cohérente et exportable."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre logiciel de présentation par abonnement"
+a_la_place_de: "votre logiciel de présentation, où vos diapositives restent liées au format de l'éditeur"
 capacites:
   - "Définir public et message, construire le fil, choisir un thème, éditer les diapositives, répéter et diffuser."
   - "Masques, thèmes, mises en page, blocs de texte, médias, tableaux, graphiques, notes orateur, transitions et mode présentation dans le périmètre qualifié."
@@ -31,3 +31,4 @@ etiquettes:
   - "Mode présentateur"
 a_relire:
   - pour_qui
+  - a_la_place_de

@@ -7,7 +7,7 @@ fonction: "Tableau blanc et diagrammes"
 categorie: bureautique-donnees
 promesse: "Structurer visuellement une réflexion et la relier à des objets exploitables."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre tableau blanc collaboratif en ligne par abonnement"
+a_la_place_de: "votre tableau blanc collaboratif en ligne, où chaque personne qui modifie un tableau est facturée"
 capacites:
   - "Zones, formes, connecteurs, texte, notes adhésives et images."
   - "Cartes mentales, navigation, alignement et modèles."
@@ -28,3 +28,4 @@ etiquettes:
   - "Décisions en tâches"
 a_relire:
   - pour_qui
+  - a_la_place_de

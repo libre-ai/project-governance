@@ -7,7 +7,7 @@ fonction: "Coffre de mots de passe"
 categorie: outils-acces
 promesse: "Conserver et utiliser des secrets avec un accès, une récupération et un partage maîtrisés."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre gestionnaire de mots de passe en ligne par abonnement"
+a_la_place_de: "votre gestionnaire de mots de passe en ligne, où votre coffre est conservé sur les serveurs de l'éditeur"
 capacites:
   - "Créer ou relier un coffre, ajouter des entrées, utiliser un secret, partager un périmètre et révoquer."
   - "Entrées, dossiers, recherche locale autorisée, générateur, verrouillage, sessions, export chiffré et récupération documentée."
@@ -28,3 +28,4 @@ etiquettes:
   - "Récupération prévue"
 a_relire:
   - pour_qui
+  - a_la_place_de

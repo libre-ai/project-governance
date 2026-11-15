@@ -7,7 +7,7 @@ fonction: "Assistant IA personnel"
 categorie: outils-acces
 promesse: "Aider à comprendre et agir dans les applications choisies tout en gardant le contexte et les permissions visibles."
 pour_qui: "Toute personne qui veut un assistant IA dans ses applications"
-a_la_place_de: "votre assistant conversationnel en ligne par abonnement"
+a_la_place_de: "votre assistant conversationnel en ligne, où vos conversations et sa mémoire sont conservées chez l'éditeur"
 capacites:
   - "Poser une question, choisir les sources, examiner la réponse ou le plan d'action et suivre l'exécution autorisée."
   - "Conversations, pièces, sélection de contexte, historique, mémoire contrôlée, citations, modèles autorisés et outils par périmètre."
@@ -29,4 +29,5 @@ etiquettes:
   - "Sources visibles"
   - "Demande avant d'agir"
   - "Permissions claires"
-a_relire: []
+a_relire:
+  - a_la_place_de

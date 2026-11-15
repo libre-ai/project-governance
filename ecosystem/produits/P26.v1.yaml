@@ -7,7 +7,7 @@ fonction: "Diffusion éditoriale"
 categorie: creation-publication
 promesse: "Transformer les contenus d'un site en une communication pertinente, mesurable et contrôlée."
 pour_qui: "Éditeurs de sites qui diffusent leurs contenus"
-a_la_place_de: "votre outil en ligne de programmation de publications et de campagnes par abonnement"
+a_la_place_de: "votre outil en ligne de programmation de publications et de campagnes, où le nombre de comptes reliés et d'envois dépend du palier"
 capacites:
   - "Audit éditorial et technique du site, inventaire des contenus, liens cassés, métadonnées."
   - "Calendrier de publication et bibliothèque de campagnes."
@@ -31,4 +31,5 @@ etiquettes:
   - "Variantes par canal"
   - "Programmation"
   - "Vérifié avant envoi"
-a_relire: []
+a_relire:
+  - a_la_place_de

@@ -7,7 +7,7 @@ fonction: "Prototypage produit"
 categorie: creation-publication
 promesse: "Un atelier où l'on peut comprendre, essayer et décider d'une évolution produit avec une traçabilité jusqu'à sa réalisation."
 pour_qui: "Un concepteur ou un développeur"
-a_la_place_de: "votre outil de maquettage et de prototypage d'interfaces en ligne par abonnement"
+a_la_place_de: "votre outil de maquettage et de prototypage d'interfaces en ligne, où chaque personne qui modifie une maquette est facturée"
 capacites:
   - "Inventaire du design system avec provenance fichier/révision, composants, tokens, contraintes d'accessibilité et exemples."
   - "Cartographie de parcours, états vides et d'erreur, comportements métier et alternatives."
@@ -31,4 +31,5 @@ etiquettes:
   - "Depuis votre code"
   - "Composants réutilisés"
   - "Spécification transmise"
-a_relire: []
+a_relire:
+  - a_la_place_de

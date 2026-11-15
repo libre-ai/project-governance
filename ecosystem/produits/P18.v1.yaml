@@ -7,7 +7,7 @@ fonction: "Messagerie d'équipe et visio"
 categorie: collaboration
 promesse: "Discuter, se réunir et partager le contexte d'un travail dans des espaces aux droits clairs."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre messagerie d'équipe et votre service de visioconférence par abonnement"
+a_la_place_de: "votre messagerie d'équipe et votre service de visioconférence, où chaque membre est facturé et où l'historique des échanges reste chez l'éditeur"
 capacites:
   - "Canaux, messages directs, fils, réactions et pièces."
   - "Recherche, présence, notifications et modération."
@@ -29,3 +29,4 @@ etiquettes:
   - "Décisions retrouvables"
 a_relire:
   - pour_qui
+  - a_la_place_de

@@ -7,7 +7,7 @@ fonction: "Tableur"
 categorie: bureautique-donnees
 promesse: "Organiser des données et obtenir des calculs exacts, explicables et reproductibles."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre tableur en ligne par abonnement"
+a_la_place_de: "votre tableur en ligne, où vos données et vos formules sont conservées chez l'éditeur"
 capacites:
   - "Importer, typer, nettoyer, calculer, visualiser, vérifier et exporter."
   - "Classeur à plusieurs feuilles, références absolues et relatives, plages, fonctions documentées, tris et filtres, validation de données, tableaux, graphiques et analyses agrégées."
@@ -30,3 +30,4 @@ etiquettes:
   - "Résultats reproductibles"
 a_relire:
   - pour_qui
+  - a_la_place_de

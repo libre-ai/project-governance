@@ -7,7 +7,7 @@ fonction: "Médiathèque créative"
 categorie: creation-publication
 promesse: "Retrouver le bon média et savoir comment il peut être réutilisé."
 pour_qui: "Créateurs"
-a_la_place_de: "votre banque de médias et de ressources graphiques en ligne par abonnement"
+a_la_place_de: "votre banque de médias et de ressources graphiques en ligne, où l'usage de chaque ressource reste soumis à la licence de la banque"
 capacites:
   - "Images, sons, vidéos, modèles, polices si autorisées, vignettes et métadonnées."
   - "Recherche, tags, collections et détection de doublons."
@@ -26,4 +26,5 @@ etiquettes:
   - "Images, sons, vidéos"
   - "Licence connue ou inconnue"
   - "Usages suivis"
-a_relire: []
+a_relire:
+  - a_la_place_de

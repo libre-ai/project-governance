@@ -7,7 +7,7 @@ fonction: "Activités pédagogiques en direct"
 categorie: pedagogie
 promesse: "Permettre à un formateur, un enseignant ou un animateur de construire une expérience collective à partir de connaissances vérifiables, puis de prolonger l'apprentissage individuellement."
 pour_qui: "Un formateur, un enseignant ou un animateur"
-a_la_place_de: "votre outil de quiz et de sondages en direct par abonnement"
+a_la_place_de: "votre outil de quiz et de sondages en direct, où le nombre de participants est plafonné selon le palier"
 capacites:
   - "Créer un projet pédagogique, préciser public, prérequis et objectifs observables, joindre les sources autorisées et produire un déroulé."
   - "Catalogue extensible d'activités : QCM, réponse courte, question ouverte, classement, association, sondage, nuage de mots, contributions sur tableau et simulation de situation."
@@ -39,4 +39,5 @@ etiquettes:
   - "Quiz et votes"
   - "Depuis vos documents"
   - "Séance en direct"
-a_relire: []
+a_relire:
+  - a_la_place_de

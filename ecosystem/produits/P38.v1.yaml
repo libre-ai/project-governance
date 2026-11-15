@@ -7,7 +7,7 @@ fonction: "Sauvegarde et restauration"
 categorie: outils-acces
 promesse: "Retrouver ses données après erreur, panne ou perte d'un service."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre service de sauvegarde en ligne par abonnement"
+a_la_place_de: "votre service de sauvegarde en ligne, où la place se paie au volume et où restaurer passe par l'éditeur"
 capacites:
   - "Choisir le périmètre et la destination, sauvegarder, contrôler puis restaurer réellement dans un environnement distinct."
   - "Sauvegardes cohérentes des bases, fichiers, métadonnées, configurations nécessaires et références ; historique, chiffrement, rétention et inventaire."
@@ -27,3 +27,4 @@ etiquettes:
   - "Comparaison à l'original"
 a_relire:
   - pour_qui
+  - a_la_place_de

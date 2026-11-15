@@ -7,7 +7,7 @@ fonction: "Formulaires et bases de données"
 categorie: bureautique-donnees
 promesse: "Collecter des informations et les exploiter dans des tables cohérentes."
 pour_qui: "Personnes et organisations"
-a_la_place_de: "votre outil de formulaires en ligne et votre base de données en tableau par abonnement"
+a_la_place_de: "votre outil de formulaires en ligne et votre base de données en tableau, où le nombre de réponses et de lignes est plafonné selon le palier"
 capacites:
   - "Champs typés, contraintes, choix, pièces jointes et conditions d'affichage."
   - "Relations entre tables et vues filtrées."
@@ -29,3 +29,4 @@ etiquettes:
   - "Tableau des réponses"
 a_relire:
   - pour_qui
+  - a_la_place_de
