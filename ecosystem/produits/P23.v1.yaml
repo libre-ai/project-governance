@@ -31,8 +31,4 @@ etiquettes:
   - "Depuis votre code"
   - "Composants réutilisés"
   - "Spécification transmise"
-a_relire:
-  - a_la_place_de
-  - depend_de
-  - ne_fait_pas
-  - capacites
+a_relire: []

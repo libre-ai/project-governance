@@ -17,7 +17,6 @@ capacites:
   - "Résumé d'un historique et proposition de relance sous forme de brouillon, par IA."
 ne_fait_pas:
   - "N'est ni un réseau social, ni une application de rencontres, ni un système de notation des personnes."
-  - "Le sens du besoin (contacts et suivi des échanges) reste à confirmer."
   - "Ne lie que les comptes et échanges autorisés."
   - "N'infère pas de caractéristiques sensibles, ne fabrique pas de proximité et n'attribue pas de réputation."
   - "Une suggestion de suivi ne doit déclencher aucun message."
@@ -30,11 +29,4 @@ etiquettes:
   - "Carnet de contacts"
   - "Historique choisi"
   - "Prochaine relance"
-a_relire:
-  - a_la_place_de
-  - pour_qui
-  - promesse
-  - capacites
-  - ne_fait_pas
-  - depend_de
-  - etiquettes
+a_relire: []
