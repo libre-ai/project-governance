@@ -89,7 +89,9 @@ describe("compareParity: nombres", () => {
 
   test("16 777 216 avec espace, espace insécable ou fine insécable se lit pareil", () => {
     const withValue = (value: string) =>
-      doc({ prose: `The server MUST accept ${value} bytes. A client SHOULD wait. It MAY stop.` });
+      doc({
+        prose: `The server MUST accept ${value} bytes. A client SHOULD wait. It MAY stop.`,
+      });
     const plain = withValue("16777216");
     for (const separated of ["16 777 216", "16 777 216", "16 777 216"]) {
       expect(compareParity(plain, withValue(separated)).violations).toEqual([]);
@@ -99,7 +101,9 @@ describe("compareParity: nombres", () => {
 
   test("16 777 216 contre 16 777 217 reste détecté malgré la normalisation", () => {
     const withValue = (value: string) =>
-      doc({ prose: `The server MUST accept ${value} bytes. A client SHOULD wait. It MAY stop.` });
+      doc({
+        prose: `The server MUST accept ${value} bytes. A client SHOULD wait. It MAY stop.`,
+      });
     expect(categories(withValue("16 777 216"), withValue("16 777 217"))).toEqual(["nombres"]);
   });
 
@@ -114,8 +118,64 @@ describe("compareParity: nombres", () => {
   });
 
   test("un nombre dans un bloc de code ne compte pas comme nombre de prose", () => {
-    const changed = doc({ code: [`${FENCE}json`, '{"a": 2}', FENCE].join("\n") });
+    const changed = doc({
+      code: [`${FENCE}json`, '{"a": 2}', FENCE].join("\n"),
+    });
     expect(categories(doc(), changed)).toEqual(["blocs"]);
+  });
+});
+
+describe("compareParity: la virgule dépend de la langue de chaque côté", () => {
+  const prose = (text: string) => doc({ prose: `${text} The server MUST stop. A SHOULD. B MAY.` });
+
+  test("1500 en anglais contre 1,500 en français (décimale 1.500) : seuil changé, détecté", () => {
+    const violations = compareParity(prose("Limit 1500."), prose("Limite 1,500.")).violations;
+    expect(violations.map((v) => v.category)).toEqual(["nombres"]);
+  });
+
+  test("1,500 en anglais (milliers) contre 1500 ou « 1 500 » en français : même nombre", () => {
+    for (const fr of ["Limite 1500.", "Limite 1 500.", "Limite 1 500.", "Limite 1 500."]) {
+      expect(compareParity(prose("Limit 1,500."), prose(fr)).violations).toEqual([]);
+    }
+  });
+
+  test("0.125 en anglais contre 0,125 en français : même nombre, pas de fausse violation", () => {
+    expect(compareParity(prose("Ratio 0.125."), prose("Ratio 0,125.")).violations).toEqual([]);
+  });
+
+  test("1,234,567 en anglais contre 1234567 : même nombre", () => {
+    expect(compareParity(prose("Max 1,234,567."), prose("Max 1234567.")).violations).toEqual([]);
+  });
+
+  test("les langues se règlent par côté : a français, b anglais", () => {
+    const options = { langA: "fr", langB: "en" } as const;
+    expect(compareParity(prose("Limite 1,5."), prose("Limit 1.5."), options).violations).toEqual(
+      [],
+    );
+    expect(
+      compareParity(prose("Limite 1,500."), prose("Limit 1500."), options).violations.map(
+        (v) => v.category,
+      ),
+    ).toEqual(["nombres"]);
+  });
+});
+
+describe("compareParity: le signe des nombres", () => {
+  const prose = (text: string) => doc({ prose: `${text} The server MUST stop. A SHOULD. B MAY.` });
+
+  test("-5 contre 5 est détecté", () => {
+    expect(categories(prose("Offset -5."), prose("Décalage 5."))).toEqual(["nombres"]);
+  });
+
+  test("le moins ASCII et le moins typographique U+2212 se lisent pareil", () => {
+    expect(compareParity(prose("Offset -5."), prose("Décalage −5.")).violations).toEqual([]);
+  });
+
+  test("un tiret entre deux nombres ou après un mot n'est pas un signe", () => {
+    expect(
+      compareParity(prose("Plage 1-3, id a-3."), prose("Plage 1-3, id a-3.")).violations,
+    ).toEqual([]);
+    expect(categories(prose("Plage 1-3."), prose("Plage 1 3."))).toEqual([]);
   });
 });
 
@@ -128,6 +188,32 @@ describe("compareParity: structure", () => {
     expect(violations.map((v) => v.category)).toEqual(["tableaux"]);
     expect(violations[0]?.message).toMatch(/4/);
     expect(violations[0]?.message).toMatch(/3/);
+  });
+
+  test("un tableau sans barre initiale est compté, ligne ajoutée sans chiffre comprise", () => {
+    const pipeless = (rows: string[]) =>
+      doc({ table: ["name | value", "--- | ---", ...rows].join("\n") });
+    const full = pipeless(["a | x", "b | y"]);
+    const short = pipeless(["a | x"]);
+    const result = compareParity(full, full);
+    expect(result.counts.find((c) => c.category === "tableaux")).toMatchObject({
+      a: 1,
+      b: 1,
+    });
+    const violations = compareParity(full, short).violations;
+    expect(violations.map((v) => v.category)).toEqual(["tableaux"]);
+    expect(violations[0]?.message).toMatch(/4/);
+    expect(violations[0]?.message).toMatch(/3/);
+  });
+
+  test("un filet « --- » seul n'ouvre pas de tableau", () => {
+    const withRule = doc({ table: "a | b\n---\n\nFin." });
+    expect(
+      compareParity(withRule, withRule).counts.find((c) => c.category === "tableaux"),
+    ).toMatchObject({
+      a: 0,
+      b: 0,
+    });
   });
 
   test("un bloc de code différent d'un octet est détecté", () => {
@@ -146,9 +232,14 @@ describe("compareParity: structure", () => {
   });
 
   test("un dièse dans un bloc de code n'est pas un titre", () => {
-    const withComment = doc({ code: [`${FENCE}sh`, "# a comment", FENCE].join("\n") });
+    const withComment = doc({
+      code: [`${FENCE}sh`, "# a comment", FENCE].join("\n"),
+    });
     const result = compareParity(withComment, withComment);
-    expect(result.counts.find((c) => c.category === "titres")).toMatchObject({ a: 4, b: 4 });
+    expect(result.counts.find((c) => c.category === "titres")).toMatchObject({
+      a: 4,
+      b: 4,
+    });
   });
 
   test("niveau de titre changé : détecté", () => {
@@ -171,11 +262,21 @@ describe("compareParity: structure", () => {
 
   test("code en ligne : un segment perdu ou changé est détecté (multi-ensemble)", () => {
     expect(
-      categories(doc(), docFr({ inline: "Utiliser `max_size` et `retry`, puis `autre` encore." })),
+      categories(
+        doc(),
+        docFr({
+          inline: "Utiliser `max_size` et `retry`, puis `autre` encore.",
+        }),
+      ),
     ).toEqual(["code-en-ligne"]);
     // Même ensemble de segments, multiplicité différente : un multi-ensemble le voit.
     expect(
-      categories(doc(), docFr({ inline: "Utiliser `max_size` et `retry`, puis `retry` encore." })),
+      categories(
+        doc(),
+        docFr({
+          inline: "Utiliser `max_size` et `retry`, puis `retry` encore.",
+        }),
+      ),
     ).toEqual(["code-en-ligne"]);
   });
 
@@ -183,7 +284,9 @@ describe("compareParity: structure", () => {
     expect(
       compareParity(
         doc(),
-        docFr({ inline: "Utiliser `retry` et `max_size`, puis `max_size` encore." }),
+        docFr({
+          inline: "Utiliser `retry` et `max_size`, puis `max_size` encore.",
+        }),
       ).violations,
     ).toEqual([]);
   });
@@ -210,16 +313,65 @@ describe("compareParity: mots-clés d'exigence", () => {
 
   test("MUST NOT contre NE DOIT PAS est une classe, distincte de MUST", () => {
     const en = doc({ prose: "A MUST NOT be empty. B SHOULD NOT be large." });
-    const fr = doc({ prose: "A NE DOIT PAS être vide. B NE DEVRAIT PAS être grand." });
+    const fr = doc({
+      prose: "A NE DOIT PAS être vide. B NE DEVRAIT PAS être grand.",
+    });
     expect(compareParity(en, fr).violations).toEqual([]);
-    const wrong = doc({ prose: "A DOIT être vide. B NE DEVRAIT PAS être grand." });
+    const wrong = doc({
+      prose: "A DOIT être vide. B NE DEVRAIT PAS être grand.",
+    });
     expect(categories(en, wrong)).toEqual(["exigences"]);
   });
 
   test("un mot-clé dans un bloc de code ne compte pas", () => {
-    const withKeyword = doc({ code: [`${FENCE}text`, "MUST", FENCE].join("\n") });
+    const withKeyword = doc({
+      code: [`${FENCE}text`, "MUST", FENCE].join("\n"),
+    });
     expect(categories(doc(), withKeyword)).toEqual(["blocs"]);
   });
+
+  test("toutes les flexions françaises s'apparient à leur classe", () => {
+    const pairs: [string, string][] = [
+      ["It is RECOMMENDED.", "Il est RECOMMANDÉ."],
+      ["They are RECOMMENDED.", "Elles sont RECOMMANDÉES."],
+      ["It is OPTIONAL.", "Il est FACULTATIF."],
+      ["They are OPTIONAL.", "Elles sont FACULTATIVES."],
+      ["They are NOT RECOMMENDED.", "Elles sont NON RECOMMANDÉES."],
+    ];
+    for (const [en, fr] of pairs) {
+      expect(compareParity(doc({ prose: en }), doc({ prose: fr })).violations).toEqual([]);
+    }
+  });
+
+  test("un mot-clé français en forme décomposée (NFD) est reconnu", () => {
+    const nfd = "Il est RECOMMANDÉ.";
+    expect(
+      compareParity(doc({ prose: "It is RECOMMENDED." }), doc({ prose: nfd })).violations,
+    ).toEqual([]);
+  });
+});
+
+describe("compareParity: durée bornée sur une entrée hostile", () => {
+  // Un texte soumis en MR est une entrée externe : aucune ligne ne doit coûter plus
+  // que linéairement. Avant correction, '# a' + 800 espaces + 'x' prenait 1,8 s et
+  // la durée croissait en n³.
+  const BUDGET_MS = 100;
+  const hostile: [string, string][] = [
+    ["titre, blancs non terminaux", `# a${" ".repeat(1500)}x`],
+    ["titre, tabulation-espace puis dièse", `# a${"\t ".repeat(1500)}#x`],
+    ["titre, blancs puis dièses", `# a${" ".repeat(1500)}${"#".repeat(1500)}x`],
+    ["code en ligne, backticks isolés", "`a ".repeat(3000)],
+    ["tableau, blancs", `a |${" ".repeat(3000)}x\n---|${" ".repeat(3000)}x`],
+    ["nombres, groupes d'espaces", `1${" 000".repeat(3000)}x`],
+  ];
+
+  for (const [name, text] of hostile) {
+    test(`${name} : moins de ${BUDGET_MS} ms`, () => {
+      const start = performance.now();
+      compareParity(text, text);
+      expect(performance.now() - start).toBeLessThan(BUDGET_MS);
+    });
+  }
 });
 
 describe("renderParity", () => {
@@ -231,7 +383,9 @@ describe("renderParity", () => {
   });
 
   test("une ligne par violation, localisée par fichier et ligne", () => {
-    const fr = docFr({ table: ["| nom | valeur |", "| --- | --- |", "| a | 1 |"].join("\n") });
+    const fr = docFr({
+      table: ["| nom | valeur |", "| --- | --- |", "| a | 1 |"].join("\n"),
+    });
     const lines = renderParity(compareParity(doc(), fr));
     expect(lines.filter((line) => line.startsWith("tableaux:"))).toHaveLength(1);
     expect(lines.join("\n")).toContain("violations=1");
@@ -302,6 +456,20 @@ describe("runParity: codes de sortie 0, 1, 2", () => {
     expect(result.code).toBe(2);
   });
 
+  test("--lang-a / --lang-b règlent la langue de chaque côté ; valeur inconnue : code 2", async () => {
+    const withLimit = (text: string) => doc({ prose: `${text} A MUST. B SHOULD. C MAY.` });
+    const en = file("l-en.md", withLimit("Limit 1,500."));
+    const fr = file("l-fr.md", withLimit("Limite 1,500."));
+    // Par défaut a est anglais (1,500 = 1500) et b français (1,500 = 1.500) : différents.
+    expect((await runParity([en, fr])).code).toBe(1);
+    // b anglais aussi : 1500 des deux côtés.
+    expect((await runParity([en, fr, "--lang-b=en"])).code).toBe(0);
+    // a français aussi : 1.500 des deux côtés.
+    expect((await runParity([en, fr, "--lang-a=fr"])).code).toBe(0);
+    expect((await runParity([en, fr, "--lang-a=de"])).code).toBe(2);
+    expect((await runParity([en, fr, "--inconnu"])).code).toBe(2);
+  });
+
   test("le processus sort avec le code de runParity", async () => {
     const script = join(import.meta.dir, "check-bilingual-parity.ts");
     const run = async (args: string[]) => {
@@ -312,8 +480,12 @@ describe("runParity: codes de sortie 0, 1, 2", () => {
       });
       return await child.exited;
     };
-    expect(await run([join(dir, "en.md"), join(dir, "fr.md")])).toBe(0);
-    expect(await run([join(dir, "en1.md"), join(dir, "fr1.md")])).toBe(1);
-    expect(await run([join(dir, "en.md"), join(dir, "absent.md")])).toBe(2);
+    // Fichiers propres à ce test : il ne dépend d'aucun test précédent.
+    const en = file("p-en.md", doc());
+    const fr = file("p-fr.md", docFr());
+    const frDiff = file("p-fr-diff.md", docFr({ annex: "## Annexe B" }));
+    expect(await run([en, fr])).toBe(0);
+    expect(await run([en, frDiff])).toBe(1);
+    expect(await run([en, join(dir, "absent.md")])).toBe(2);
   });
 });
