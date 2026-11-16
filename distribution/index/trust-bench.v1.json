@@ -1,0 +1,2121 @@
+{
+  "schema_version": "libre-ai.trust-bench.v1",
+  "source": "verification/trust-bench/build-evidence.ts",
+  "mesures": [
+    {
+      "id": "2026-11-16-pi-evidence",
+      "date": "2026-11-16",
+      "depot": "libre-ai/pi-evidence",
+      "revision": "fd2dfacf2c307c28b863b63a9f8c595b43c3e9a1",
+      "corpus": {
+        "fichier": "verification/trust-bench/corpus/pi-evidence.json",
+        "defauts": 10,
+        "sains": 9
+      },
+      "couches": [
+        {
+          "couche": "L1a-lint",
+          "cout": 1,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 0,
+          "apport_au_dela_du_moins_cher": 0,
+          "cas_de_l_apport": [],
+          "sains_soumis": 9,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 0,
+          "duree_totale_ms": 3935,
+          "commande": ["bun", "run", "lint"]
+        },
+        {
+          "couche": "L1b-types",
+          "cout": 1,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 1,
+          "apport_au_dela_du_moins_cher": 1,
+          "cas_de_l_apport": ["D07"],
+          "sains_soumis": 9,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 0,
+          "duree_totale_ms": 10833,
+          "commande": ["bun", "run", "typecheck"]
+        },
+        {
+          "couche": "L2-tests",
+          "cout": 2,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 7,
+          "apport_au_dela_du_moins_cher": 6,
+          "cas_de_l_apport": ["D01", "D02", "D05", "D06", "D09", "D10"],
+          "sains_soumis": 9,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 0,
+          "duree_totale_ms": 222138,
+          "commande": ["bun", "test"]
+        },
+        {
+          "couche": "L3-controles-depot",
+          "cout": 2,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 0,
+          "apport_au_dela_du_moins_cher": 0,
+          "cas_de_l_apport": [],
+          "sains_soumis": 9,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 0,
+          "duree_totale_ms": 16138,
+          "commande": ["sh", "-c", "bun run check:markers && bun run check:licenses"]
+        },
+        {
+          "couche": "L4-execution-reelle",
+          "cout": 3,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 4,
+          "apport_au_dela_du_moins_cher": 2,
+          "cas_de_l_apport": ["D03", "D08"],
+          "sains_soumis": 9,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 0,
+          "duree_totale_ms": 26765,
+          "commande": ["sh", "{BANC}/pilote-pi-evidence.sh", "{COPIE}"]
+        },
+        {
+          "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+          "cout": 4,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 10,
+          "apport_au_dela_du_moins_cher": 1,
+          "cas_de_l_apport": ["D04"],
+          "sains_soumis": 8,
+          "faux_positifs": 1,
+          "cas_faux_positifs": ["T03"],
+          "illisibles": 0,
+          "duree_totale_ms": 143374,
+          "commande": null
+        },
+        {
+          "couche": "L5-relecture-qwen3-8b-q4km",
+          "cout": 4,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 10,
+          "apport_au_dela_du_moins_cher": 1,
+          "cas_de_l_apport": ["D04"],
+          "sains_soumis": 8,
+          "faux_positifs": 1,
+          "cas_faux_positifs": ["T08"],
+          "illisibles": 1,
+          "duree_totale_ms": 484860,
+          "commande": null
+        },
+        {
+          "couche": "L6-croisee-accord-des-deux",
+          "cout": 5,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 10,
+          "apport_au_dela_du_moins_cher": 0,
+          "cas_de_l_apport": [],
+          "sains_soumis": 8,
+          "faux_positifs": 0,
+          "cas_faux_positifs": [],
+          "illisibles": 1,
+          "duree_totale_ms": 628234,
+          "commande": null
+        },
+        {
+          "couche": "L6-croisee-au-moins-un-signale",
+          "cout": 5,
+          "defauts_soumis": 10,
+          "defauts_attrapes": 10,
+          "apport_au_dela_du_moins_cher": 0,
+          "cas_de_l_apport": [],
+          "sains_soumis": 8,
+          "faux_positifs": 2,
+          "cas_faux_positifs": ["T03", "T08"],
+          "illisibles": 1,
+          "duree_totale_ms": 628234,
+          "commande": null
+        }
+      ],
+      "defauts_attrapes_par_aucune_couche": [],
+      "cas": [
+        {
+          "id": "SAIN",
+          "attendu": false,
+          "nature": "révision d'origine",
+          "origine": "référence",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 252
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 695
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 13247
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1125
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1487
+            }
+          ]
+        },
+        {
+          "id": "D01",
+          "attendu": true,
+          "nature": "logique de verdict",
+          "origine": "phase A, H1",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 252
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 606
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12832
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 937
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": true,
+              "illisible": false,
+              "ms": 1603
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12440
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 25162
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 37602
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 37602
+            }
+          ]
+        },
+        {
+          "id": "D02",
+          "attendu": true,
+          "nature": "comparaison de rejeu affaiblie",
+          "origine": "phase A, H2",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 217
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 578
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12827
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1198
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1575
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 5652
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 15113
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 20765
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 20765
+            }
+          ]
+        },
+        {
+          "id": "D03",
+          "attendu": true,
+          "nature": "porte qui laisse passer un verdict non conforme",
+          "origine": "phase A, H3",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 240
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 662
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 12533
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 847
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": true,
+              "illisible": false,
+              "ms": 1387
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 8793
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 21841
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 30634
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 30634
+            }
+          ]
+        },
+        {
+          "id": "D04",
+          "attendu": true,
+          "nature": "contrôle de dépôt neutralisé",
+          "origine": "phase A, H4",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 215
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 564
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 12708
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 907
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1313
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 7965
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 16882
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 24847
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 24847
+            }
+          ]
+        },
+        {
+          "id": "D05",
+          "attendu": true,
+          "nature": "validation d'entrée retirée (sécurité)",
+          "origine": "phase A, H5",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 263
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 552
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12495
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 800
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1655
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 7897
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 15009
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 22906
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 22906
+            }
+          ]
+        },
+        {
+          "id": "D06",
+          "attendu": true,
+          "nature": "masquage d'un secret retiré (sécurité)",
+          "origine": "phase A, H6",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 206
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 556
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 11831
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 862
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": true,
+              "illisible": false,
+              "ms": 1402
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 5368
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 23081
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 28449
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 28449
+            }
+          ]
+        },
+        {
+          "id": "D07",
+          "attendu": true,
+          "nature": "valeur hors du type déclaré",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 215
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": true,
+              "illisible": false,
+              "ms": 558
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 11956
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 844
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1333
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 6254
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 13116
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 19370
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 19370
+            }
+          ]
+        },
+        {
+          "id": "D08",
+          "attendu": true,
+          "nature": "environnement du processus journalisé (donnée sensible)",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 242
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 575
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 12702
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 858
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": true,
+              "illisible": false,
+              "ms": 1738
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 4854
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 15281
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 20135
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 20135
+            }
+          ]
+        },
+        {
+          "id": "D09",
+          "attendu": true,
+          "nature": "condition inversée",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 250
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 601
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12007
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1015
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1559
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 9473
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 29690
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 39163
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 39163
+            }
+          ]
+        },
+        {
+          "id": "D10",
+          "attendu": true,
+          "nature": "délai par défaut divisé par cent",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 266
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 643
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": true,
+              "illisible": false,
+              "ms": 12703
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 923
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 2015
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 6942
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 26668
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 33610
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": true,
+              "illisible": false,
+              "ms": 33610
+            }
+          ]
+        },
+        {
+          "id": "T01",
+          "attendu": false,
+          "nature": "témoin sain : opérandes d'un ET permutés",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 247
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 535
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 12493
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 886
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1433
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9214
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 15908
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": false,
+              "ms": 25122
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 25122
+            }
+          ]
+        },
+        {
+          "id": "T02",
+          "attendu": false,
+          "nature": "témoin sain : commentaire ajouté",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 233
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 679
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 11769
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 937
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1352
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 5830
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": true,
+              "ms": 126183
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": true,
+              "ms": 132013
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": true,
+              "ms": 132013
+            }
+          ]
+        },
+        {
+          "id": "T03",
+          "attendu": false,
+          "nature": "témoin sain : ternaire inversé, même résultat",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 165
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 608
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 10828
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 727
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1142
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 10005
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 21990
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 31995
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 31995
+            }
+          ]
+        },
+        {
+          "id": "T04",
+          "attendu": false,
+          "nature": "témoin sain : comparaison équivalente",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 146
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 512
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9989
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 684
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1144
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 8252
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 12838
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": false,
+              "ms": 21090
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 21090
+            }
+          ]
+        },
+        {
+          "id": "T05",
+          "attendu": false,
+          "nature": "témoin sain : condition réécrite par De Morgan",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 140
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 484
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9825
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 726
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1137
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 7009
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 25553
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": false,
+              "ms": 32562
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 32562
+            }
+          ]
+        },
+        {
+          "id": "T06",
+          "attendu": false,
+          "nature": "témoin sain : commentaire ajouté sur une constante",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 141
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 502
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9915
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 725
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1186
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 4567
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 38843
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": false,
+              "ms": 43410
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 43410
+            }
+          ]
+        },
+        {
+          "id": "T07",
+          "attendu": false,
+          "nature": "témoin sain : changement voulu, une famille de secret de plus est masquée",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 156
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 491
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9791
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 569
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1137
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 11931
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 15535
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": false,
+              "illisible": false,
+              "ms": 27466
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 27466
+            }
+          ]
+        },
+        {
+          "id": "T08",
+          "attendu": false,
+          "nature": "témoin sain : changement voulu, identifiant de contrôle plus long admis",
+          "origine": "écrit à la main",
+          "verdicts": [
+            {
+              "couche": "L1a-lint",
+              "rouge": false,
+              "illisible": false,
+              "ms": 89
+            },
+            {
+              "couche": "L1b-types",
+              "rouge": false,
+              "illisible": false,
+              "ms": 432
+            },
+            {
+              "couche": "L2-tests",
+              "rouge": false,
+              "illisible": false,
+              "ms": 9687
+            },
+            {
+              "couche": "L3-controles-depot",
+              "rouge": false,
+              "illisible": false,
+              "ms": 568
+            },
+            {
+              "couche": "L4-execution-reelle",
+              "rouge": false,
+              "illisible": false,
+              "ms": 1167
+            },
+            {
+              "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+              "rouge": false,
+              "illisible": false,
+              "ms": 10928
+            },
+            {
+              "couche": "L5-relecture-qwen3-8b-q4km",
+              "rouge": true,
+              "illisible": false,
+              "ms": 26167
+            },
+            {
+              "couche": "L6-croisee-au-moins-un-signale",
+              "rouge": true,
+              "illisible": false,
+              "ms": 37095
+            },
+            {
+              "couche": "L6-croisee-accord-des-deux",
+              "rouge": false,
+              "illisible": false,
+              "ms": 37095
+            }
+          ]
+        }
+      ],
+      "relecture": {
+        "serveur": "llama-server, sur la machine de mesure ; version non consignée",
+        "temperature": 0,
+        "seed": 1,
+        "max_tokens": 4000,
+        "langue_de_la_consigne": "anglais",
+        "consigne": "verification/trust-bench/relecture.ts",
+        "passages_par_modele": 1
+      },
+      "modeles": [
+        {
+          "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+          "etiquette": "mistral-small-3.2-24b-q4km",
+          "nom": "Mistral Small 3.2 24B Instruct 2506",
+          "quantification": "Q4_K_M",
+          "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json",
+          "source_amont": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
+          "revision_amont": null,
+          "sha256": "80f5bda68f156f12650ca03a0a2dbfae06a215ac41caa773b8631a479f82415e",
+          "octets": 14333915264,
+          "licence": "Apache-2.0"
+        },
+        {
+          "couche": "L5-relecture-qwen3-8b-q4km",
+          "etiquette": "qwen3-8b-q4km",
+          "nom": "Qwen3-8B",
+          "quantification": "Q4_K_M",
+          "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.qwen3-8b.json",
+          "source_amont": null,
+          "revision_amont": "7c41481f",
+          "sha256": null,
+          "octets": null,
+          "licence": null
+        }
+      ],
+      "reference": {
+        "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.json",
+        "condition": "machine au calme"
+      },
+      "second_passage": {
+        "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.passage2.json",
+        "condition": "forte charge machine",
+        "statut": "publié à part, jamais fusionné à la référence",
+        "lignes_comparees": 95,
+        "verdicts": [
+          {
+            "cas": "SAIN",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 656
+          },
+          {
+            "cas": "SAIN",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3611
+          },
+          {
+            "cas": "SAIN",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 38488
+          },
+          {
+            "cas": "SAIN",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4563
+          },
+          {
+            "cas": "SAIN",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4576
+          },
+          {
+            "cas": "D01",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 612
+          },
+          {
+            "cas": "D01",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3177
+          },
+          {
+            "cas": "D01",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 30040
+          },
+          {
+            "cas": "D01",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 3269
+          },
+          {
+            "cas": "D01",
+            "couche": "L4-execution-reelle",
+            "attrape": true,
+            "code": 1,
+            "ms": 4747
+          },
+          {
+            "cas": "D02",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 493
+          },
+          {
+            "cas": "D02",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2596
+          },
+          {
+            "cas": "D02",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 36225
+          },
+          {
+            "cas": "D02",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4133
+          },
+          {
+            "cas": "D02",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 5223
+          },
+          {
+            "cas": "D03",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 565
+          },
+          {
+            "cas": "D03",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3791
+          },
+          {
+            "cas": "D03",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 37343
+          },
+          {
+            "cas": "D03",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4602
+          },
+          {
+            "cas": "D03",
+            "couche": "L4-execution-reelle",
+            "attrape": true,
+            "code": 1,
+            "ms": 5668
+          },
+          {
+            "cas": "D04",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 593
+          },
+          {
+            "cas": "D04",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3784
+          },
+          {
+            "cas": "D04",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 39570
+          },
+          {
+            "cas": "D04",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4385
+          },
+          {
+            "cas": "D04",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 5149
+          },
+          {
+            "cas": "D05",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 470
+          },
+          {
+            "cas": "D05",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3173
+          },
+          {
+            "cas": "D05",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 36342
+          },
+          {
+            "cas": "D05",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4005
+          },
+          {
+            "cas": "D05",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 5224
+          },
+          {
+            "cas": "D06",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 483
+          },
+          {
+            "cas": "D06",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3372
+          },
+          {
+            "cas": "D06",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 33540
+          },
+          {
+            "cas": "D06",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4171
+          },
+          {
+            "cas": "D06",
+            "couche": "L4-execution-reelle",
+            "attrape": true,
+            "code": 1,
+            "ms": 4993
+          },
+          {
+            "cas": "D07",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 635
+          },
+          {
+            "cas": "D07",
+            "couche": "L1b-types",
+            "attrape": true,
+            "code": 1,
+            "ms": 2045
+          },
+          {
+            "cas": "D07",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 38320
+          },
+          {
+            "cas": "D07",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2505
+          },
+          {
+            "cas": "D07",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4454
+          },
+          {
+            "cas": "D08",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 645
+          },
+          {
+            "cas": "D08",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2597
+          },
+          {
+            "cas": "D08",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 29981
+          },
+          {
+            "cas": "D08",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 3078
+          },
+          {
+            "cas": "D08",
+            "couche": "L4-execution-reelle",
+            "attrape": true,
+            "code": 1,
+            "ms": 4522
+          },
+          {
+            "cas": "D09",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 524
+          },
+          {
+            "cas": "D09",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2168
+          },
+          {
+            "cas": "D09",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 28660
+          },
+          {
+            "cas": "D09",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2720
+          },
+          {
+            "cas": "D09",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4664
+          },
+          {
+            "cas": "D10",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 551
+          },
+          {
+            "cas": "D10",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2054
+          },
+          {
+            "cas": "D10",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 31802
+          },
+          {
+            "cas": "D10",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2654
+          },
+          {
+            "cas": "D10",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 3783
+          },
+          {
+            "cas": "T01",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 417
+          },
+          {
+            "cas": "T01",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 1435
+          },
+          {
+            "cas": "T01",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 31245
+          },
+          {
+            "cas": "T01",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2581
+          },
+          {
+            "cas": "T01",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 3977
+          },
+          {
+            "cas": "T02",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 398
+          },
+          {
+            "cas": "T02",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 1430
+          },
+          {
+            "cas": "T02",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 29597
+          },
+          {
+            "cas": "T02",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2793
+          },
+          {
+            "cas": "T02",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 3858
+          },
+          {
+            "cas": "T03",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 338
+          },
+          {
+            "cas": "T03",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 1527
+          },
+          {
+            "cas": "T03",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 32001
+          },
+          {
+            "cas": "T03",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2833
+          },
+          {
+            "cas": "T03",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4459
+          },
+          {
+            "cas": "T04",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 362
+          },
+          {
+            "cas": "T04",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2436
+          },
+          {
+            "cas": "T04",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 32199
+          },
+          {
+            "cas": "T04",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2824
+          },
+          {
+            "cas": "T04",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 3991
+          },
+          {
+            "cas": "T05",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 278
+          },
+          {
+            "cas": "T05",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 1555
+          },
+          {
+            "cas": "T05",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 28684
+          },
+          {
+            "cas": "T05",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 3509
+          },
+          {
+            "cas": "T05",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 5328
+          },
+          {
+            "cas": "T06",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 720
+          },
+          {
+            "cas": "T06",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2196
+          },
+          {
+            "cas": "T06",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 39792
+          },
+          {
+            "cas": "T06",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 4951
+          },
+          {
+            "cas": "T06",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4557
+          },
+          {
+            "cas": "T07",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 572
+          },
+          {
+            "cas": "T07",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 2964
+          },
+          {
+            "cas": "T07",
+            "couche": "L2-tests",
+            "attrape": true,
+            "code": 1,
+            "ms": 44681
+          },
+          {
+            "cas": "T07",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 3736
+          },
+          {
+            "cas": "T07",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4509
+          },
+          {
+            "cas": "T08",
+            "couche": "L1a-lint",
+            "attrape": false,
+            "code": 0,
+            "ms": 609
+          },
+          {
+            "cas": "T08",
+            "couche": "L1b-types",
+            "attrape": false,
+            "code": 0,
+            "ms": 3306
+          },
+          {
+            "cas": "T08",
+            "couche": "L2-tests",
+            "attrape": false,
+            "code": 0,
+            "ms": 33353
+          },
+          {
+            "cas": "T08",
+            "couche": "L3-controles-depot",
+            "attrape": false,
+            "code": 0,
+            "ms": 2911
+          },
+          {
+            "cas": "T08",
+            "couche": "L4-execution-reelle",
+            "attrape": false,
+            "code": 0,
+            "ms": 4603
+          }
+        ],
+        "bascules": [
+          {
+            "cas": "D03",
+            "couche": "L2-tests",
+            "reference": false,
+            "second_passage": true
+          },
+          {
+            "cas": "D04",
+            "couche": "L2-tests",
+            "reference": false,
+            "second_passage": true
+          },
+          {
+            "cas": "T06",
+            "couche": "L2-tests",
+            "reference": false,
+            "second_passage": true
+          },
+          {
+            "cas": "T07",
+            "couche": "L2-tests",
+            "reference": false,
+            "second_passage": true
+          }
+        ]
+      },
+      "limites": [
+        "Un diff d'une ligne portant un seul changement est le cas le plus favorable à un relecteur : ces résultats ne se transposent pas à une vraie pull request, où le défaut est noyé dans des changements voulus.",
+        "18 cas, une seule brique, un seul passage par modèle à température 0 : aucune répétition, aucun intervalle.",
+        "Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.",
+        "L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.",
+        "Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.",
+        "Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.",
+        "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu.",
+        "La commande qui a normalisé les mesures brutes en pi-evidence.mesures.json n'a pas été conservée ; le contrôle recoupe ce fichier ligne à ligne avec les mesures brutes.",
+        "Les diffs soumis aux modèles ne sont pas versionnés : le lanceur les reproduit depuis le corpus et la révision (option --diffs).",
+        "Le pilote versionné diffère de celui de la mesure sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables ; cette version n'a pas été rejouée.",
+        "Pour Qwen3-8B, ni l'empreinte du fichier ni le propriétaire du dépôt amont ne sont consignés, seulement la révision amont ; pour Mistral Small 3.2, l'empreinte du fichier est consignée, pas la révision amont."
+      ],
+      "fichiers_d_origine": [
+        {
+          "fichier": "corpus/pi-evidence.json",
+          "sha256": "216beaa8fdd272dbb096303eec2f121f2e3360b564b18b1d2fa6a2b0269339db"
+        },
+        {
+          "fichier": "resultats/pi-evidence.mesures.json",
+          "sha256": "c37ffa634f0a56d9d126d90994c2103da9988c44e9cde6881b3a401e30b2af56"
+        },
+        {
+          "fichier": "resultats/pi-evidence.synthese.json",
+          "sha256": "84545593449b10e1988f2fb38552641af283c198a86ddd596cb1c9ec5949577b"
+        },
+        {
+          "fichier": "resultats/pi-evidence.deterministe.jsonl",
+          "sha256": "6be4da76513a13c69bada5c17c46627aa272dc04f0f35af6bcff0a6dd087546c"
+        },
+        {
+          "fichier": "resultats/pi-evidence.deterministe.passage2.jsonl",
+          "sha256": "4571a7f2b7765978254b06f787c41f0dba5056b6f7d5e17b0deb2497dd3e209f"
+        },
+        {
+          "fichier": "resultats/pi-evidence.relecture.mistral-small-3.2.jsonl",
+          "sha256": "34fbd89d3ce7caa7d81c0fe8dcd8ad0848b9b3055a5920c8a446cb5f746ae7fb"
+        },
+        {
+          "fichier": "resultats/pi-evidence.relecture.qwen3-8b.jsonl",
+          "sha256": "476f60086b3ed0f76bbbb810839c72c341f207541922665a79220f0f697fa152"
+        }
+      ],
+      "sources": [
+        {
+          "fichier": "verification/trust-bench/corpus/pi-evidence.json",
+          "sha256": "074ee7f143d992adb3cc68dbae01ef533b4bee0ab6fef991b0bb3facf42072e4"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.json",
+          "sha256": "cacd6e8c1b5572ffbeaeb5870e8109a295292a7b4018e04b66541f641f842ba3"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.passage2.json",
+          "sha256": "8acd59a503d9d3209133b6906a089f29d319c48f0dc2663381937609fcc9fa50"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.mesures.json",
+          "sha256": "c37ffa634f0a56d9d126d90994c2103da9988c44e9cde6881b3a401e30b2af56"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.provenance.json",
+          "sha256": "2121c75b2df0db85f65d171b12fda8dce6a2d44d09b19c461a0d91409061e268"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json",
+          "sha256": "f9b99118c22657afea3bab5614afa3a376fc50780b49a7cbefe00f4fadb3bab7"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.qwen3-8b.json",
+          "sha256": "a356f4bd4ec26ee7ceefbb2e8e49c0751273448b41cf327da69794909884d897"
+        },
+        {
+          "fichier": "verification/trust-bench/resultats/pi-evidence.synthese.json",
+          "sha256": "706dcea0cf3ff3dfdccb66eb7bd1789cf6933d1f10e4967225552bf5f5bb4bef"
+        },
+        {
+          "fichier": "verification/trust-bench/synthese.jq",
+          "sha256": "e3bf28edbfff4f0dbddd66e4f3516a0b542f633a1bc6bf9660620239e8a7e457"
+        }
+      ]
+    }
+  ]
+}

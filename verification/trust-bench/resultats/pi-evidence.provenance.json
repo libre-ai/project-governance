@@ -1,0 +1,96 @@
+{
+  "id": "2026-11-16-pi-evidence",
+  "date": "2026-11-16",
+  "depot": "libre-ai/pi-evidence",
+  "revision": "fd2dfacf2c307c28b863b63a9f8c595b43c3e9a1",
+  "corpus": "verification/trust-bench/corpus/pi-evidence.json",
+  "mesures": "verification/trust-bench/resultats/pi-evidence.mesures.json",
+  "synthese": "verification/trust-bench/resultats/pi-evidence.synthese.json",
+  "reference": {
+    "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.json",
+    "condition": "machine au calme"
+  },
+  "second_passage": {
+    "fichier": "verification/trust-bench/resultats/pi-evidence.deterministe.passage2.json",
+    "condition": "forte charge machine",
+    "statut": "publié à part, jamais fusionné à la référence"
+  },
+  "relecture": {
+    "serveur": "llama-server, sur la machine de mesure ; version non consignée",
+    "temperature": 0,
+    "seed": 1,
+    "max_tokens": 4000,
+    "langue_de_la_consigne": "anglais",
+    "consigne": "verification/trust-bench/relecture.ts",
+    "passages_par_modele": 1
+  },
+  "modeles": [
+    {
+      "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+      "etiquette": "mistral-small-3.2-24b-q4km",
+      "nom": "Mistral Small 3.2 24B Instruct 2506",
+      "quantification": "Q4_K_M",
+      "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json",
+      "source_amont": "bartowski/mistralai_Mistral-Small-3.2-24B-Instruct-2506-GGUF",
+      "revision_amont": null,
+      "sha256": "80f5bda68f156f12650ca03a0a2dbfae06a215ac41caa773b8631a479f82415e",
+      "octets": 14333915264,
+      "licence": "Apache-2.0"
+    },
+    {
+      "couche": "L5-relecture-qwen3-8b-q4km",
+      "etiquette": "qwen3-8b-q4km",
+      "nom": "Qwen3-8B",
+      "quantification": "Q4_K_M",
+      "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.qwen3-8b.json",
+      "source_amont": null,
+      "revision_amont": "7c41481f",
+      "sha256": null,
+      "octets": null,
+      "licence": null
+    }
+  ],
+  "fichiers_d_origine": [
+    {
+      "fichier": "corpus/pi-evidence.json",
+      "sha256": "216beaa8fdd272dbb096303eec2f121f2e3360b564b18b1d2fa6a2b0269339db"
+    },
+    {
+      "fichier": "resultats/pi-evidence.mesures.json",
+      "sha256": "c37ffa634f0a56d9d126d90994c2103da9988c44e9cde6881b3a401e30b2af56"
+    },
+    {
+      "fichier": "resultats/pi-evidence.synthese.json",
+      "sha256": "84545593449b10e1988f2fb38552641af283c198a86ddd596cb1c9ec5949577b"
+    },
+    {
+      "fichier": "resultats/pi-evidence.deterministe.jsonl",
+      "sha256": "6be4da76513a13c69bada5c17c46627aa272dc04f0f35af6bcff0a6dd087546c"
+    },
+    {
+      "fichier": "resultats/pi-evidence.deterministe.passage2.jsonl",
+      "sha256": "4571a7f2b7765978254b06f787c41f0dba5056b6f7d5e17b0deb2497dd3e209f"
+    },
+    {
+      "fichier": "resultats/pi-evidence.relecture.mistral-small-3.2.jsonl",
+      "sha256": "34fbd89d3ce7caa7d81c0fe8dcd8ad0848b9b3055a5920c8a446cb5f746ae7fb"
+    },
+    {
+      "fichier": "resultats/pi-evidence.relecture.qwen3-8b.jsonl",
+      "sha256": "476f60086b3ed0f76bbbb810839c72c341f207541922665a79220f0f697fa152"
+    }
+  ],
+  "limites": [
+    "Un diff d'une ligne portant un seul changement est le cas le plus favorable à un relecteur : ces résultats ne se transposent pas à une vraie pull request, où le défaut est noyé dans des changements voulus.",
+    "18 cas, une seule brique, un seul passage par modèle à température 0 : aucune répétition, aucun intervalle.",
+    "Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.",
+    "L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.",
+    "Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.",
+    "Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.",
+    "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu.",
+    "La commande qui a normalisé les mesures brutes en pi-evidence.mesures.json n'a pas été conservée ; le contrôle recoupe ce fichier ligne à ligne avec les mesures brutes.",
+    "Les diffs soumis aux modèles ne sont pas versionnés : le lanceur les reproduit depuis le corpus et la révision (option --diffs).",
+    "Le pilote versionné diffère de celui de la mesure sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables ; cette version n'a pas été rejouée.",
+    "Pour Qwen3-8B, ni l'empreinte du fichier ni le propriétaire du dépôt amont ne sont consignés, seulement la révision amont ; pour Mistral Small 3.2, l'empreinte du fichier est consignée, pas la révision amont."
+  ]
+}
