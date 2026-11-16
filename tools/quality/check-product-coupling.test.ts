@@ -279,6 +279,24 @@ describe("evaluateCoupling — declared trees", () => {
     expect(renderCoupling(result).lines.join("\n")).toContain("3 test file(s) excluded");
   });
 
+  test("a specification or data file named .spec. or .test. is scanned, not excluded as a test", () => {
+    const result = evaluateCoupling(
+      input({
+        "packages/shared/api.spec.md": "widgetor\n",
+        "packages/shared/openapi.spec.yaml": "widgetor\n",
+        "packages/shared/sample.test.json": "widgetor\n",
+        "packages/shared/src/a.test.tsx": "widgetor\n",
+      }),
+    );
+    expect(result.violations.map((violation) => violation.path)).toEqual([
+      "packages/shared/api.spec.md",
+      "packages/shared/openapi.spec.yaml",
+      "packages/shared/sample.test.json",
+    ]);
+    expect(result.counts.scanned).toBe(3);
+    expect(result.counts.testsExcluded).toBe(1);
+  });
+
   test("a tree holding only test files examined nothing and fails", () => {
     const result = evaluateCoupling(
       input({ "packages/shared/src/a.test.ts": "x\n" }, { workspaces: [] }),

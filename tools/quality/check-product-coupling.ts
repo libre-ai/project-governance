@@ -34,7 +34,7 @@ import { parseAllowlist } from "./allowlist";
 //   - a pattern that matches an empty string (one finding per position);
 //   - zero file examined.
 //
-// Test files are out of scope (`.test.` / `.spec.` before the extension):
+// Source test files are out of scope (`.test.` / `.spec.` before a script extension):
 // whether they should be scanned is an open decision, so they are COUNTED as
 // excluded on every run instead of disappearing from the volume. Tracked
 // symbolic links and submodules are counted apart and never followed. Every
@@ -49,7 +49,9 @@ export const PRODUCT_COUPLING_EXEMPTIONS = "tools/quality/product-coupling-exemp
 
 const GATE = "product-coupling";
 const EXCERPT_LIMIT = 200;
-const TEST_FILE = /\.(test|spec)\.[^/]+$/;
+// Source test files only. A specification or a data file whose name merely
+// carries `.spec.` or `.test.` (`api.spec.md`, `openapi.spec.yaml`) is scanned.
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: replacing control characters is the point.
 const CONTROL = /[\u0000-\u001f\u007f]/g;
 
