@@ -115,12 +115,24 @@ interface FleetVersionsCounters {
   readonly cards_without_consumer: number;
 }
 
+/** A product whose code path the served branch of its carrier repository tracks. */
+export interface ProductWithCode {
+  readonly product: string;
+  readonly repository: string;
+  readonly code: string;
+}
+
 export interface FleetVersionsOutcome {
   readonly report: GateReport;
   readonly compteurs: FleetVersionsCounters;
   readonly volume: string;
   /** `repository#phase (Pnn)` of each version ready to be worked on. */
   readonly ready: readonly string[];
+  /**
+   * The products counted as verified, sorted by product then repository: the
+   * source of the "Du code existe" marker (owner's choice of 2026-11-15).
+   */
+  readonly withCode: readonly ProductWithCode[];
   /** Repository to the repositories whose `dependencies` name it. */
   readonly consumers: ReadonlyMap<string, readonly string[]>;
   /** Repositories whose card no other card read names in its dependencies. */
@@ -355,6 +367,7 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
   let unresolved = 0;
   let phaseCount = 0;
   const ready: string[] = [];
+  const withCode: ProductWithCode[] = [];
 
   for (const { source, parsed: result } of parsed) {
     if (!result.ok) {
@@ -402,6 +415,7 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
         );
       } else if (pathIsTracked(product.code, tree.paths)) {
         verified += 1;
+        withCode.push({ product: product.id, repository, code: product.code });
       } else {
         absent += 1;
         problems.push(
@@ -548,5 +562,11 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
     `${c.consumed_entries} dependency entry(ies) of the cards read = ${c.consumed_entries_on_a_card} on a card read + ${c.consumed_entries_elsewhere} elsewhere; ` +
     `consumption: ${c.cards_with_consumer} card(s) with a consumer + ${c.cards_without_consumer} without = ${c.cards_read}`;
   report.volume(volume);
-  return { report, compteurs, volume, ready, consumers, withoutConsumer };
+  // Code-unit order, not a locale: the committed list must not depend on the
+  // machine that generated it.
+  const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+  withCode.sort(
+    (a, b) => byCodeUnit(a.product, b.product) || byCodeUnit(a.repository, b.repository),
+  );
+  return { report, compteurs, volume, ready, withCode, consumers, withoutConsumer };
 }

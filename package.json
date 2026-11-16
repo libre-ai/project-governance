@@ -37,6 +37,7 @@
     "check:briques": "bun run check:bun:runtime && bun ecosystem/check-briques.ts",
     "check:produits": "bun run check:bun:runtime && bun ecosystem/check-produits.ts",
     "build:vision": "bun run check:bun:runtime && bun distribution/build-vision.ts",
+    "build:products-with-code": "bun run check:bun:runtime && bun distribution/build-products-with-code.ts",
     "check:attestation": "bun run check:bun:runtime && bun tools/attestation/neutralise-check.ts",
     "heal:card-status": "bun run check:bun:runtime && bun tools/presentation/heal-card-status.ts",
     "check:objects": "bun run check:bun:runtime && bun tools/quality/validate-knowledge-objects.ts",

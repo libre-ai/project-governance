@@ -293,6 +293,47 @@ describe("evaluateFleetVersions", () => {
       ),
     ]);
     expect(outcome.compteurs.products_path_absent).toBe(1);
+    expect(outcome.withCode).toEqual([]);
+  });
+
+  test("with code: a verified product is listed with its carrier and its path", () => {
+    const outcome = evaluateFleetVersions(input([notes(), socle()], [notesTree]));
+    expect(outcome.withCode).toEqual([
+      { product: "P04", repository: "libre-ai/notes", code: "src/notes" },
+    ]);
+  });
+
+  test("with code: a product refused or not judged is never listed", () => {
+    const unknown = evaluateFleetVersions(
+      input([notes({ products: [{ id: "P09", code: "src/notes" }] }), socle()], [notesTree]),
+    );
+    const elsewhere = evaluateFleetVersions(
+      input([notes({ products: [{ id: "P05", code: "src/notes" }] }), socle()], [notesTree]),
+    );
+    const unreadable = evaluateFleetVersions(
+      input([notes(), socle()], [["libre-ai/notes", { kind: "unreadable", reason: "HTTP 403" }]]),
+    );
+    expect(unknown.withCode).toEqual([]);
+    expect(elsewhere.withCode).toEqual([]);
+    expect(unreadable.withCode).toEqual([]);
+  });
+
+  test("with code: the list is sorted by product then repository, whatever the order read", () => {
+    const carrier = (repository: string, id: string): CardSource =>
+      source(repository, card(repository, { products: [{ id, code: "src" }] }));
+    const trees: [string, TreeListing][] = [
+      ["libre-ai/a", listed("src/main.ts")],
+      ["libre-ai/b", listed("src/main.ts")],
+    ];
+    const forward = evaluateFleetVersions(
+      input([carrier("libre-ai/a", "P01"), carrier("libre-ai/b", "P02")], trees),
+    );
+    const backward = evaluateFleetVersions(
+      input([carrier("libre-ai/b", "P02"), carrier("libre-ai/a", "P01")], trees),
+    );
+    expect(forward.report.violations).toEqual([]);
+    expect(backward.withCode).toEqual(forward.withCode);
+    expect(forward.withCode.map((entry) => entry.product)).toEqual(["P01", "P02"]);
   });
 
   test("rule code: an unreadable tree is a failure, never a verified path", () => {
