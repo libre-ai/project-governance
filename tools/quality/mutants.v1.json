@@ -1,0 +1,61 @@
+{
+  "schema": "mutants.v1",
+  "mutants": [
+    {
+      "id": "mutant-anchor-unique",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (found !== 1) throw new SiteError",
+      "substitution": "if (found === -1) throw new SiteError",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-substitution-differs",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (substitution === anchor) throw new SiteError",
+      "substitution": "if (substitution !== substitution) throw new SiteError",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-crash-is-invalid",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (assertions === 0) return { verdict: \"invalid\"",
+      "substitution": "if (assertions < 0) return { verdict: \"invalid\"",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-trace-required",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (trace !== undefined && !output.includes(trace))",
+      "substitution": "if (trace !== undefined && false)",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-empty-list-red",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "const allKilled = selected.length > 0 && killed === selected.length;",
+      "substitution": "const allKilled = killed === selected.length;",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-environment-purged",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "env: { PATH: process.env.PATH ?? \"\", HOME: home,",
+      "substitution": "env: { ...process.env, PATH: process.env.PATH ?? \"\", HOME: home,",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-restore-original",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "writeFileSync(target, original);",
+      "substitution": "writeFileSync(target, mutated);",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-interrupt-cleans",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (active.work !== null) rmSync(active.work",
+      "substitution": "if (active.work === \"\") rmSync(active.work",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    }
+  ]
+}
