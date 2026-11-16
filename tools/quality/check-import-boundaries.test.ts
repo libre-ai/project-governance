@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -18,7 +18,11 @@ import {
 // (exact module and sub-paths), comment lines are not read, and a package
 // importing itself is not in violation.
 
-const EMPTY_TABLE: BoundaryTable = { products: [], forbidden: {} };
+const EMPTY_TABLE: BoundaryTable = { products: [], forbidden: new Map() };
+
+function tableOf(forbidden: Record<string, readonly string[]>): BoundaryTable {
+  return { products: [], forbidden: new Map(Object.entries(forbidden)) };
+}
 
 function manifest(fields: Record<string, unknown>): string {
   return JSON.stringify({ name: "@libre-ai/alpha", ...fields });
@@ -116,6 +120,46 @@ describe("rule 1 — an internal import matches a declared dependency", () => {
     );
     expect(result.violations).toHaveLength(2);
   });
+
+  // A nameless manifest cannot be bound by the table of forbidden modules, which
+  // names packages: reading it as valid would lift every refusal of that package.
+  test.each([
+    ["no name", JSON.stringify({ dependencies: {} })],
+    ["an empty name", JSON.stringify({ name: "  " })],
+    ["a non-string name", JSON.stringify({ name: 3 })],
+  ])("a manifest with %s fails closed like an unreadable one", (_label, text) => {
+    const result = checkImportBoundaries(
+      [alpha('import { b } from "@libre-ai/beta";\n', text)],
+      EMPTY_TABLE,
+    );
+    expect(result.violations.map((violation) => violation.file)).toEqual([
+      "packages/alpha/package.json",
+      "packages/alpha/src/index.ts",
+    ]);
+  });
+
+  test("a package named like an Object.prototype member is judged, not thrown on", () => {
+    const named: PackageInput = {
+      dir: "packages/constructor",
+      manifest: JSON.stringify({ name: "constructor" }),
+      files: [{ path: "packages/constructor/src/a.ts", content: 'import "@libre-ai/beta";\n' }],
+    };
+    const result = checkImportBoundaries([named], EMPTY_TABLE);
+    expect(result.violations.map((violation) => violation.target)).toEqual(["@libre-ai/beta"]);
+  });
+});
+
+describe("the import reader stays linear", () => {
+  // `import` followed by many spaces is the input on which two `\s*` separated
+  // by an optional token backtrack quadratically: 80 000 spaces took 19 s.
+  test("an import keyword followed by 200 000 spaces is read in well under a second", () => {
+    const source = `import${" ".repeat(200_000)}x\nimport "@libre-ai/beta";\n`;
+    const started = performance.now();
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    const elapsed = performance.now() - started;
+    expect(result.violations.map((violation) => violation.line)).toEqual([2]);
+    expect(elapsed).toBeLessThan(1000);
+  });
 });
 
 describe("rule 2 — no import targets a product", () => {
@@ -127,7 +171,7 @@ describe("rule 2 — no import targets a product", () => {
           manifest({ dependencies: { "@libre-ai/notebook": "1.0.0" } }),
         ),
       ],
-      { products: ["@libre-ai/notebook"], forbidden: {} },
+      { products: ["@libre-ai/notebook"], forbidden: new Map() },
     );
     expect(result.violations).toHaveLength(1);
     expect(result.violations[0]?.target).toBe("@libre-ai/notebook/server");
@@ -142,17 +186,14 @@ describe("rule 2 — no import targets a product", () => {
           manifest({ dependencies: { "@libre-ai/notebook-kit": "1.0.0" } }),
         ),
       ],
-      { products: ["@libre-ai/notebook"], forbidden: {} },
+      { products: ["@libre-ai/notebook"], forbidden: new Map() },
     );
     expect(result.violations).toEqual([]);
   });
 });
 
 describe("rule 3 — the table of forbidden modules wins over declarations", () => {
-  const table: BoundaryTable = {
-    products: [],
-    forbidden: { "@libre-ai/alpha": ["@libre-ai/beta", "node:child_process"] },
-  };
+  const table = tableOf({ "@libre-ai/alpha": ["@libre-ai/beta", "node:child_process"] });
   const declared = manifest({ dependencies: { "@libre-ai/beta": "1.0.0" } });
 
   test("a forbidden module is refused even when declared, sub-paths included", () => {
@@ -183,7 +224,34 @@ describe("rule 3 — the table of forbidden modules wins over declarations", () 
       }),
       files: [{ path: "packages/delta/src/index.ts", content: 'import "@libre-ai/beta";\n' }],
     };
-    expect(checkImportBoundaries([other], table).violations).toEqual([]);
+    const result = checkImportBoundaries([alpha("export {};\n", declared), other], table);
+    expect(result.violations).toEqual([]);
+    expect(result.counters.boundForbiddenLists).toBe(1);
+  });
+
+  // A key that names no package lifts nothing it was meant to refuse: the
+  // package it meant was renamed, or the key is misspelt. Either way the
+  // refusal is open, so the key itself is the violation.
+  test.each([
+    ["a misspelt key", "@libre-ai/alhpa", "@libre-ai/alpha"],
+    ["a package renamed away from its key", "@libre-ai/alpha", "@libre-ai/alpha2"],
+  ])("%s is a violation naming the key", (_label, key, packageName) => {
+    const renamed: PackageInput = {
+      dir: "packages/alpha",
+      manifest: JSON.stringify({ name: packageName }),
+      files: [{ path: "packages/alpha/src/index.ts", content: 'import "node:child_process";\n' }],
+    };
+    const result = checkImportBoundaries([renamed], tableOf({ [key]: ["node:child_process"] }));
+    expect(result.violations).toEqual([
+      {
+        package: key,
+        file: TABLE_PATH,
+        line: 0,
+        target: key,
+        reason: expect.stringContaining("names no package of this workspace"),
+      },
+    ]);
+    expect(result.counters.boundForbiddenLists).toBe(0);
   });
 });
 
@@ -208,6 +276,61 @@ describe("comment lines are not read", () => {
     const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
     expect(result.violations.map((violation) => violation.line)).toEqual([4]);
   });
+
+  test("code after a block comment closed on the same line is read", () => {
+    const source = [
+      '/* x */ import { b } from "@libre-ai/beta";',
+      "/*",
+      ' note */ import "@libre-ai/gamma";',
+    ].join("\n");
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations.map((violation) => [violation.line, violation.target])).toEqual([
+      [1, "@libre-ai/beta"],
+      [3, "@libre-ai/gamma"],
+    ]);
+  });
+
+  test("a block comment opened after code hides the lines it covers", () => {
+    const source = [
+      "const a = 1; /* start",
+      'import { b } from "@libre-ai/beta";',
+      "end */ const c = 2; // trailing",
+      'const d = 3; // import "@libre-ai/gamma";',
+    ].join("\n");
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations).toEqual([]);
+  });
+
+  test("comment openers inside a string do not open a comment", () => {
+    const source = [
+      'const s = "/*"; import "@libre-ai/beta";',
+      'const u = "http://x"; import "@libre-ai/gamma";',
+    ].join("\n");
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations.map((violation) => violation.target)).toEqual([
+      "@libre-ai/beta",
+      "@libre-ai/gamma",
+    ]);
+  });
+});
+
+describe("template-literal specifiers", () => {
+  test("a dynamic import written as a plain template literal is read", () => {
+    const result = checkImportBoundaries(
+      [alpha("const m = await import(`@libre-ai/beta`);\n")],
+      EMPTY_TABLE,
+    );
+    expect(result.violations.map((violation) => violation.target)).toEqual(["@libre-ai/beta"]);
+  });
+
+  test("a template literal with a substitution is not a readable specifier", () => {
+    const result = checkImportBoundaries(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the substitution is the fixture.
+      [alpha("const m = await import(`@libre-ai/${name}`);\n")],
+      EMPTY_TABLE,
+    );
+    expect(result.counters.imports).toBe(0);
+  });
 });
 
 describe("parseBoundaryTable", () => {
@@ -221,8 +344,18 @@ describe("parseBoundaryTable", () => {
     );
     expect(table).toEqual({
       products: ["@libre-ai/notebook"],
-      forbidden: { "@libre-ai/alpha": ["node:fs"] },
+      forbidden: new Map([["@libre-ai/alpha", ["node:fs"]]]),
     });
+  });
+
+  test("a __proto__ key is kept as a key, not lost into the prototype", () => {
+    const table = parseBoundaryTable(
+      '{"because":"x","products":[],"forbidden":{"__proto__":["node:fs"],"constructor":["node:os"]}}',
+    );
+    expect([...table.forbidden.entries()]).toEqual([
+      ["__proto__", ["node:fs"]],
+      ["constructor", ["node:os"]],
+    ]);
   });
 
   test.each([
@@ -235,6 +368,10 @@ describe("parseBoundaryTable", () => {
       JSON.stringify({ because: "x", products: [], forbidden: { a: "b" } }),
     ],
     ["an unknown key", JSON.stringify({ because: "x", products: [], forbidden: {}, extra: 1 })],
+    [
+      "an empty package key",
+      JSON.stringify({ because: "x", products: [], forbidden: { " ": [] } }),
+    ],
   ])("refuses %s", (_label, text) => {
     expect(() => parseBoundaryTable(text)).toThrow();
   });
@@ -293,6 +430,23 @@ describe("readWorkspace", () => {
     put(root, "packages/alpha/src/a.ts", "export {};\n");
     expect(readWorkspace(root).packages[0]?.manifest).toBeNull();
   });
+
+  // The brief keeps an unreadable source folder at zero files without error;
+  // what it must not do is look like an absent one, so it is counted apart.
+  test("an unreadable source folder holds zero files and is counted, an absent one is not", () => {
+    const root = fixtureRoot();
+    put(root, "packages/alpha/package.json", manifest({}));
+    put(root, "packages/alpha/src/a.ts", "export {};\n");
+    put(root, "packages/beta/package.json", "{}");
+    chmodSync(join(root, "packages/alpha/src"), 0o000);
+    try {
+      const workspace = readWorkspace(root);
+      expect(workspace.packages[0]?.files).toEqual([]);
+      expect(workspace.unreadableDirectories).toEqual(["packages/alpha/src"]);
+    } finally {
+      chmodSync(join(root, "packages/alpha/src"), 0o755);
+    }
+  });
 });
 
 describe("command", () => {
@@ -328,6 +482,39 @@ describe("command", () => {
     expect(result.stdout).toContain("1 package(s)");
     expect(result.stdout).toContain("1 file(s)");
     expect(result.stdout).toContain("1 internal import(s)");
+    expect(result.stdout).toContain("0 unreadable directory(ies)");
+  });
+
+  test("the success line says how many forbidden-module lists bound a package", () => {
+    const root = fixtureRoot();
+    put(
+      root,
+      TABLE_PATH,
+      JSON.stringify({
+        because: "test",
+        products: [],
+        forbidden: { "@libre-ai/alpha": ["node:child_process"] },
+      }),
+    );
+    put(root, "packages/alpha/package.json", manifest({}));
+    put(root, "packages/alpha/src/a.ts", "export {};\n");
+    const result = run(root);
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain("1 forbidden-module list(s) bound to a package");
+  });
+
+  test("an orphan key of the table fails the command", () => {
+    const root = fixtureRoot();
+    put(
+      root,
+      TABLE_PATH,
+      JSON.stringify({ because: "test", products: [], forbidden: { "@libre-ai/alhpa": ["x"] } }),
+    );
+    put(root, "packages/alpha/package.json", manifest({}));
+    put(root, "packages/alpha/src/a.ts", "export {};\n");
+    const result = run(root);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("@libre-ai/alhpa");
   });
 
   test("exit 1 with the list and the total on stderr", () => {

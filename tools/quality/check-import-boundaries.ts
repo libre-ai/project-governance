@@ -19,15 +19,34 @@
  * The forbidden lists win over the declarations: rules 2 and 3 are checked
  * first, and an import receives one verdict.
  *
- * FAIL CLOSED ON THE MANIFEST. A missing or unparsable `package.json` is a
- * violation of its own and declares nothing, so every internal import of that
- * package becomes a violation too. A missing source folder is not an error: the
- * package holds zero files, and the success line says how many files it read.
+ * FAIL CLOSED ON THE MANIFEST. A missing, unparsable or nameless `package.json`
+ * is a violation of its own and declares nothing, so every internal import of
+ * that package becomes a violation too. A missing source folder is not an
+ * error: the package holds zero files, and the success line says how many files
+ * it read. A source folder that exists but cannot be listed also holds zero
+ * files, without failing, as the brief wants; it is counted apart and printed,
+ * so it never reads as absent.
  *
- * WHAT A LINE READER CANNOT SEE. A line that opens with `//`, `*` or `/*`, and
- * every line inside a block comment, is skipped. A specifier written on another
- * line than its keyword is not read, and a dynamic import built from a variable
- * is not read: both escape this gate by construction.
+ * FAIL CLOSED ON THE TABLE. A forbidden-module list whose key names no package
+ * examined (a misspelt key, a renamed package) is a violation: it refuses
+ * nothing, and staying green over it would open the refusal in silence. The
+ * success line prints how many lists bound a package.
+ *
+ * DECLARED, NOT PINNED. Rule 1 reads the names a manifest declares, not the
+ * version it declares them at: `"*"` satisfies it. Which forms pin an internal
+ * dependency (exact version, git revision, workspace protocol) is a fleet
+ * contract no gate of this repository holds today; this gate does not decide it.
+ *
+ * WHAT THIS READER CANNOT SEE. Comments are blanked out before reading,
+ * wherever they open on a line, and string literals are stepped over so that a
+ * `/*` or `//` inside one opens nothing. Still out of reach by construction:
+ *   - a specifier written on another line than its keyword;
+ *   - a dynamic import built from a variable or from a template literal with a
+ *     substitution (a template literal without one is read);
+ *   - a regular-expression literal holding an unbalanced quote blinds the rest
+ *     of its line.
+ * And one false positive: text shaped like `from "@scope/x"` inside a string
+ * literal is read as an import.
  *
  * THE PACKAGE IS NAMED BY ITS MANIFEST, not by its directory, so a directory
  * renamed without its manifest does not change what "itself" means. A symbolic
@@ -47,7 +66,11 @@ const INTERNAL_SCOPE = "@libre-ai/";
 const DECLARING_FIELDS = ["dependencies", "peerDependencies", "devDependencies"] as const;
 
 // One alternation per form: `from "x"`, `import "x"`, `import("x")`, `require("x")`.
-const SPECIFIER = /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["']([^"'\n]+)["']/g;
+// The quote may be a backquote: a template literal without substitution is a
+// plain specifier. The second `\s*` of the import branch exists only behind a
+// parenthesis actually read: `\s*\(?\s*` splits a run of blanks between two
+// quantifiers and backtracks quadratically (80 000 spaces took 19 s).
+const SPECIFIER = /(?:\bfrom\s*|\bimport\s*(?:\(\s*)?|\brequire\s*\(\s*)(["'`])([^"'`\n]+)\1/g;
 
 export interface SourceFile {
   readonly path: string;
@@ -64,7 +87,11 @@ export interface PackageInput {
 
 export interface BoundaryTable {
   readonly products: readonly string[];
-  readonly forbidden: Readonly<Record<string, readonly string[]>>;
+  /**
+   * Package name → forbidden modules. A Map, not an object: the keys come from
+   * data, and `constructor` or `__proto__` must stay keys, not prototype members.
+   */
+  readonly forbidden: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface BoundaryViolation {
@@ -80,6 +107,8 @@ export interface BoundaryCounters {
   readonly files: number;
   readonly imports: number;
   readonly internalImports: number;
+  /** Lists of the table whose key names a package examined: the ones that refused anything. */
+  readonly boundForbiddenLists: number;
 }
 
 export interface BoundaryResult {
@@ -119,22 +148,30 @@ export function parseBoundaryTable(text: string): BoundaryTable {
   if (typeof forbiddenRaw !== "object" || forbiddenRaw === null || Array.isArray(forbiddenRaw)) {
     throw new Error(`${TABLE_PATH}: "forbidden" must map a package name to a list of modules`);
   }
-  const forbidden: Record<string, readonly string[]> = {};
+  const forbidden = new Map<string, readonly string[]>();
   for (const [name, modules] of Object.entries(forbiddenRaw)) {
+    if (name.trim() === "" || name !== name.trim()) {
+      throw new Error(`${TABLE_PATH}: "forbidden" has a key that is not a package name`);
+    }
     if (!isStringList(modules)) {
       throw new Error(`${TABLE_PATH}: "forbidden.${name}" must be a list of non-empty modules`);
     }
-    forbidden[name] = modules;
+    forbidden.set(name, modules);
   }
   return { products: record.products, forbidden };
 }
 
 interface Manifest {
-  readonly name: string | null;
+  readonly name: string;
   readonly declared: ReadonlySet<string>;
 }
 
-/** Null when the manifest is absent, unparsable or holds a malformed field. */
+/**
+ * Null when the manifest is absent, unparsable, nameless or holds a malformed
+ * field. A nameless manifest is unreadable for this gate: the table of
+ * forbidden modules binds packages by name, so a package without one would
+ * escape its refusals in silence.
+ */
 function readManifest(text: string | null): Manifest | null {
   if (text === null) return null;
   let raw: unknown;
@@ -145,6 +182,8 @@ function readManifest(text: string | null): Manifest | null {
   }
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
+  const name = record.name;
+  if (typeof name !== "string" || name.trim() === "") return null;
   const declared = new Set<string>();
   for (const field of DECLARING_FIELDS) {
     const entries = record[field];
@@ -152,7 +191,7 @@ function readManifest(text: string | null): Manifest | null {
     if (typeof entries !== "object" || entries === null || Array.isArray(entries)) return null;
     for (const name of Object.keys(entries)) declared.add(name);
   }
-  return { name: typeof record.name === "string" ? record.name : null, declared };
+  return { name, declared };
 }
 
 function matchesModule(specifier: string, module: string): boolean {
@@ -164,25 +203,78 @@ function internalPackageOf(specifier: string): string {
   return specifier.split("/").slice(0, 2).join("/");
 }
 
-/** Each import specifier of a source, with its 1-based line, comment lines skipped. */
+type LexState = "code" | "line-comment" | "block-comment" | "'" | '"' | "`";
+
+/**
+ * The source with every comment replaced by spaces, line breaks kept so that
+ * line numbers hold. String and template literals are stepped over, so `"/*"`
+ * or `"http://x"` opens no comment; a backslash in code escapes the next
+ * character, so the literal `/a\/*b/` opens none either. A quoted string ends at its line
+ * break at the latest: an unbalanced quote blinds the rest of its line, never
+ * the rest of the file.
+ */
+function blankComments(content: string): string {
+  const out: string[] = [];
+  let state: LexState = "code";
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index] ?? "";
+    const next = content[index + 1] ?? "";
+    switch (state) {
+      case "code":
+        if (char === "/" && next === "/") {
+          state = "line-comment";
+          out.push("  ");
+          index += 1;
+        } else if (char === "/" && next === "*") {
+          state = "block-comment";
+          out.push("  ");
+          index += 1;
+        } else if (char === "\\") {
+          out.push(char, next);
+          index += 1;
+        } else {
+          if (char === "'" || char === '"' || char === "`") state = char;
+          out.push(char);
+        }
+        break;
+      case "line-comment":
+        if (char === "\n") state = "code";
+        out.push(char === "\n" ? "\n" : " ");
+        break;
+      case "block-comment":
+        if (char === "*" && next === "/") {
+          state = "code";
+          out.push("  ");
+          index += 1;
+        } else {
+          out.push(char === "\n" ? "\n" : " ");
+        }
+        break;
+      default:
+        // Inside a literal whose opening quote is `state`.
+        if (char === "\\" && next !== "\n") {
+          out.push(char, next);
+          index += 1;
+        } else {
+          if (char === state || (char === "\n" && state !== "`")) state = "code";
+          out.push(char);
+        }
+    }
+  }
+  return out.join("");
+}
+
+/** Each import specifier of a source, with its 1-based line, comments blanked out. */
 function specifiersOf(content: string): { line: number; specifier: string }[] {
   const found: { line: number; specifier: string }[] = [];
-  let inBlockComment = false;
-  const lines = content.split("\n");
+  const lines = blankComments(content).split("\n");
   for (let index = 0; index < lines.length; index += 1) {
-    const trimmed = (lines[index] ?? "").trimStart();
-    if (inBlockComment) {
-      if (trimmed.includes("*/")) inBlockComment = false;
-      continue;
-    }
-    if (trimmed.startsWith("/*")) {
-      inBlockComment = !trimmed.includes("*/", 2);
-      continue;
-    }
-    if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
-    for (const match of trimmed.matchAll(SPECIFIER)) {
-      const specifier = match[1];
-      if (specifier !== undefined) found.push({ line: index + 1, specifier });
+    for (const match of (lines[index] ?? "").matchAll(SPECIFIER)) {
+      const [, quote, specifier] = match;
+      if (specifier === undefined) continue;
+      // A substitution makes the specifier a runtime value this reader cannot know.
+      if (quote === "`" && specifier.includes("${")) continue;
+      found.push({ line: index + 1, specifier });
     }
   }
   return found;
@@ -197,9 +289,11 @@ export function checkImportBoundaries(
   let files = 0;
   let imports = 0;
   let internalImports = 0;
+  const examinedNames = new Set<string>();
 
   for (const entry of packages) {
     const manifest = readManifest(entry.manifest);
+    if (manifest !== null) examinedNames.add(manifest.name);
     const name = manifest?.name ?? entry.dir;
     if (manifest === null) {
       violations.push({
@@ -213,7 +307,7 @@ export function checkImportBoundaries(
       });
     }
     const declared = manifest?.declared ?? new Set<string>();
-    const forbidden = manifest?.name ? (table.forbidden[manifest.name] ?? []) : [];
+    const forbidden = manifest === null ? [] : (table.forbidden.get(manifest.name) ?? []);
 
     for (const file of entry.files) {
       files += 1;
@@ -221,7 +315,7 @@ export function checkImportBoundaries(
         imports += 1;
         const internal = specifier.startsWith(INTERNAL_SCOPE);
         if (internal) internalImports += 1;
-        if (manifest?.name && matchesModule(specifier, manifest.name)) continue;
+        if (manifest !== null && matchesModule(specifier, manifest.name)) continue;
 
         const at = { package: name, file: file.path, line, target: specifier };
         const product = table.products.find((module) => matchesModule(specifier, module));
@@ -249,24 +343,42 @@ export function checkImportBoundaries(
     }
   }
 
+  // A key that names no package examined refuses nothing: the package it meant
+  // was renamed, lost its manifest, or the key is misspelt. The refusal it was
+  // written for is open, so the key itself is the violation.
+  let boundForbiddenLists = 0;
+  for (const key of table.forbidden.keys()) {
+    if (examinedNames.has(key)) {
+      boundForbiddenLists += 1;
+      continue;
+    }
+    violations.push({
+      package: key,
+      file: TABLE_PATH,
+      line: 0,
+      target: key,
+      reason:
+        "this forbidden-module list names no package of this workspace, so it refuses nothing",
+    });
+  }
+
   return {
     violations,
-    counters: { packages: packages.length, files, imports, internalImports },
+    counters: { packages: packages.length, files, imports, internalImports, boundForbiddenLists },
   };
 }
 
 export interface Workspace {
   readonly packages: readonly PackageInput[];
   readonly linksSkipped: number;
+  /**
+   * Directories that exist but could not be listed. They hold zero files, as
+   * the brief wants, and are named here so that they never look absent.
+   */
+  readonly unreadableDirectories: readonly string[];
 }
 
-function readDirectory(path: string): Dirent[] {
-  try {
-    return readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
-  } catch {
-    return [];
-  }
-}
+const ABSENT_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 /**
  * Read the first-level packages under `<root>/packages`. Only directory entries
@@ -274,10 +386,24 @@ function readDirectory(path: string): Dirent[] {
  */
 export function readWorkspace(root: string): Workspace {
   let linksSkipped = 0;
+  const unreadableDirectories: string[] = [];
   const packages: PackageInput[] = [];
 
+  /** The sorted entries of a directory; [] when absent, [] and recorded when unreadable. */
+  function readDirectory(relative: string): Dirent[] {
+    try {
+      return readdirSync(join(root, relative), { withFileTypes: true }).sort((a, b) =>
+        a.name.localeCompare(b.name),
+      );
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === undefined || !ABSENT_CODES.has(code)) unreadableDirectories.push(relative);
+      return [];
+    }
+  }
+
   function collect(relative: string, into: SourceFile[]): void {
-    for (const entry of readDirectory(join(root, relative))) {
+    for (const entry of readDirectory(relative)) {
       const path = `${relative}/${entry.name}`;
       if (entry.isSymbolicLink()) {
         linksSkipped += 1;
@@ -289,7 +415,7 @@ export function readWorkspace(root: string): Workspace {
     }
   }
 
-  for (const entry of readDirectory(join(root, PACKAGES_DIR))) {
+  for (const entry of readDirectory(PACKAGES_DIR)) {
     if (entry.isSymbolicLink()) {
       linksSkipped += 1;
       continue;
@@ -303,12 +429,12 @@ export function readWorkspace(root: string): Workspace {
       manifest = null;
     }
     const files: SourceFile[] = [];
-    const source = readDirectory(join(root, dir)).find((child) => child.name === SOURCE_DIR);
+    const source = readDirectory(dir).find((child) => child.name === SOURCE_DIR);
     if (source?.isSymbolicLink()) linksSkipped += 1;
     else if (source?.isDirectory()) collect(`${dir}/${SOURCE_DIR}`, files);
     packages.push({ dir, manifest, files });
   }
-  return { packages, linksSkipped };
+  return { packages, linksSkipped, unreadableDirectories };
 }
 
 if (import.meta.main) {
@@ -333,15 +459,26 @@ if (import.meta.main) {
     }
     for (const entry of workspace.packages) {
       if (!result.violations.some((violation) => violation.file.startsWith(`${entry.dir}/`))) {
-        report.check(entry.dir, true, `${entry.files.length} source file(s) within boundaries`);
+        const unreadable = workspace.unreadableDirectories.filter((path) =>
+          path.startsWith(`${entry.dir}/`),
+        );
+        const note =
+          unreadable.length === 0 ? "" : ` (unreadable, read as empty: ${unreadable.join(", ")})`;
+        report.check(
+          entry.dir,
+          true,
+          `${entry.files.length} source file(s) within boundaries${note}`,
+        );
       }
     }
-    const { packages, files, imports, internalImports } = result.counters;
+    const { packages, files, imports, internalImports, boundForbiddenLists } = result.counters;
     report.volume(
       `${packages} package(s), ${files} file(s), ${imports} import(s) of which ` +
         `${internalImports} internal import(s), ${workspace.linksSkipped} link(s) not followed, ` +
+        `${workspace.unreadableDirectories.length} unreadable directory(ies) read as empty, ` +
         `${table.products.length} product package(s) and ` +
-        `${Object.keys(table.forbidden).length} forbidden-module list(s) in ${TABLE_PATH}`,
+        `${table.forbidden.size} forbidden-module list(s) in ${TABLE_PATH}, ` +
+        `${boundForbiddenLists} forbidden-module list(s) bound to a package`,
     );
   }
   concludeGate("Import boundaries", report);
