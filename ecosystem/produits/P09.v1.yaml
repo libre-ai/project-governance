@@ -6,6 +6,7 @@ intitule: "tableur"
 fonction: "Tableur"
 categorie: bureautique-donnees
 promesse: "Organiser des données et obtenir des calculs exacts, explicables et reproductibles."
+accroche: "Des calculs exacts, explicables et reproductibles."
 pour_qui: "Personnes et organisations"
 a_la_place_de: "votre tableur en ligne, où vos données et vos formules sont conservées chez l'éditeur"
 capacites:

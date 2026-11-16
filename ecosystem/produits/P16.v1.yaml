@@ -6,6 +6,7 @@ intitule: "tâches"
 fonction: "Liste de tâches"
 categorie: collaboration
 promesse: "Capturer une action et la retrouver au bon moment sans administrer un projet complet."
+accroche: "Notez une action, retrouvez-la au bon moment."
 pour_qui: "Toute personne qui suit ses propres tâches"
 a_la_place_de: "votre application de listes de tâches"
 capacites:

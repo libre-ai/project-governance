@@ -12,6 +12,7 @@
         "fonction": "Prise de notes",
         "categorie": "connaissance",
         "promesse": "Garder ses notes sur son poste, lisibles sans l'outil.",
+        "accroche": "Vos notes sur votre poste, lisibles sans l'outil.",
         "pour_qui": "une personne qui prend des notes",
         "a_la_place_de": "votre application de notes en ligne par abonnement",
         "capacites": ["Écrire, relier et retrouver des notes."],
@@ -34,6 +35,7 @@
         "fonction": "Lecteur de flux",
         "categorie": "connaissance",
         "promesse": "Suivre des sources et lire hors ligne ce qu'on a conservé.",
+        "accroche": "Suivez vos sources, lisez hors ligne ce que vous gardez.",
         "pour_qui": "une personne ou une organisation qui suit des sources",
         "a_la_place_de": "votre lecteur de flux en ligne par abonnement",
         "capacites": ["Importer des abonnements.", "Classer les sources par sujet."],
@@ -56,6 +58,7 @@
         "fonction": "Gestion de références",
         "categorie": "connaissance",
         "promesse": "Tenir une bibliographie propre, sur son poste.",
+        "accroche": "Une bibliographie propre, sur votre poste.",
         "pour_qui": "une personne qui cite ses sources",
         "a_la_place_de": "votre gestionnaire de références en ligne",
         "capacites": ["Importer et dédoublonner des références."],
@@ -78,6 +81,7 @@
         "fonction": "Prise de notes",
         "categorie": "connaissance",
         "promesse": "Garder ses notes en fichiers ouverts, lisibles sans l'outil.",
+        "accroche": "Vos notes en fichiers ouverts, lisibles sans l'outil.",
         "pour_qui": "une personne qui tient une base de notes",
         "a_la_place_de": "votre application de notes fermée, où la synchronisation se paie",
         "offre": {
@@ -196,6 +200,12 @@
       "because": "every field is required",
       "unset": { "path": ["promesse"] },
       "expect": "must have required property 'promesse'"
+    },
+    {
+      "name": "a missing accroche",
+      "because": "every field is required: the card of the site reads its line from the fiche",
+      "unset": { "path": ["accroche"] },
+      "expect": "must have required property 'accroche'"
     },
     {
       "name": "a missing pour_qui",
@@ -397,6 +407,42 @@
       "because": "blanks alone are not a value",
       "set": { "path": ["promesse"], "value": "            " },
       "expect": "/promesse: must match pattern \"[\\p{L}"
+    },
+    {
+      "name": "an accroche longer than the line of a card",
+      "because": "the accroche is the short line of a card; the promise carries the sentence",
+      "set": {
+        "path": ["accroche"],
+        "value": "Une accroche qui dépasse la ligne d'une carte de quatre-vingt-dix caractères, et d'un mot de plus."
+      },
+      "expect": "/accroche: must NOT have more than 90 characters"
+    },
+    {
+      "name": "an accroche with a line break",
+      "because": "a value printed by the gate must not forge a line of its output",
+      "set": {
+        "path": ["accroche"],
+        "value": "Vos notes sur votre poste.\nProduct catalogue verified"
+      },
+      "expect": "/accroche: must match pattern \"^[^"
+    },
+    {
+      "name": "an accroche that is a number",
+      "because": "a number has no length and no character, so it must be refused for what it is",
+      "set": { "path": ["accroche"], "value": 12 },
+      "expect": "/accroche: must be string"
+    },
+    {
+      "name": "an accroche of one word",
+      "because": "the card says what the product does, in a phrase",
+      "set": { "path": ["accroche"], "value": "Vos notes." },
+      "expect": "/accroche: must NOT have fewer than 12 characters"
+    },
+    {
+      "name": "an accroche made of blanks",
+      "because": "blanks alone are not a value",
+      "set": { "path": ["accroche"], "value": "            " },
+      "expect": "/accroche: must match pattern \"[\\p{L}"
     },
     {
       "name": "a_la_place_de longer than a sentence",

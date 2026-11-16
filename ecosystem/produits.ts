@@ -77,6 +77,8 @@ interface ProduitData {
   readonly fonction: string;
   readonly categorie: Categorie;
   readonly promesse: string;
+  /** The short line the card of the site prints: the fiche is its source, the site projects it. */
+  readonly accroche: string;
   readonly pour_qui: string;
   readonly a_la_place_de: string;
   /** The only optional field: written by a product that has a decided hosted offer, by no other. */
@@ -737,6 +739,15 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
             );
           }
         }
+      }
+
+      // The accroche is the most public text of a fiche: the card of the site
+      // prints it. The word is refused there for the reason it is refused in
+      // an offre.
+      if (saysGratuit(data.accroche)) {
+        errors.push(
+          "accroche says « gratuit »: the word stays refused as an absolute claim (ADR-0033, ADR-0066 D3) — the card says what the product does",
+        );
       }
 
       if (data.etiquettes.length !== 3) {
