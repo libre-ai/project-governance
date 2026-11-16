@@ -37,10 +37,12 @@ import {
 export const PRODUCTS_WITH_CODE_SCHEMA_VERSION = "libre-ai.products-with-code.v1";
 export const PRODUCTS_WITH_CODE_PATH = "distribution/index/products-with-code.v1.json";
 
+// The rule lives in distribution/README.md and in the description of
+// ecosystem/schemas/products-with-code.v1.schema.json, not in the data: a
+// rewording would otherwise change the file and every pinned copy of it.
 interface ProductsWithCodeDocument {
   readonly schema_version: typeof PRODUCTS_WITH_CODE_SCHEMA_VERSION;
   readonly source: string;
-  readonly rule: string;
   readonly products: readonly ProductWithCode[];
 }
 
@@ -82,7 +84,6 @@ export function projectProductsWithCode(
   const document: ProductsWithCodeDocument = {
     schema_version: PRODUCTS_WITH_CODE_SCHEMA_VERSION,
     source: "ecosystem/check-fleet-versions.ts",
-    rule: "A product is listed when the card of the repository its fiche names as carrier declares it in products, and the served branch of that repository tracks the declared code path.",
     products: outcome.withCode.map(({ product, repository, code }) => ({
       product,
       repository,

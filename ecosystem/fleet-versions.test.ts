@@ -318,6 +318,26 @@ describe("evaluateFleetVersions", () => {
     expect(unreadable.withCode).toEqual([]);
   });
 
+  test("with code: a product declared twice in a card, with two paths, is refused", () => {
+    const outcome = evaluateFleetVersions(
+      input(
+        [
+          notes({
+            products: [
+              { id: "P04", code: "src/notes" },
+              { id: "P04", code: "src" },
+            ],
+          }),
+          socle(),
+        ],
+        [notesTree],
+      ),
+    );
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining("libre-ai/notes: products P04 is declared twice"),
+    ]);
+  });
+
   test("with code: the list is sorted by product then repository, whatever the order read", () => {
     const carrier = (repository: string, id: string): CardSource =>
       source(repository, card(repository, { products: [{ id, code: "src" }] }));

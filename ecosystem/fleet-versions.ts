@@ -130,7 +130,9 @@ export interface FleetVersionsOutcome {
   readonly ready: readonly string[];
   /**
    * The products counted as verified, sorted by product then repository: the
-   * source of the "Du code existe" marker (owner's choice of 2026-11-15).
+   * source of the "Du code existe" marker (owner's choice of 2026-11-15). It
+   * holds the verified products of a card in violation too: publish it only
+   * when `report.violations` is empty, as the generator does.
    */
   readonly withCode: readonly ProductWithCode[];
   /** Repository to the repositories whose `dependencies` name it. */
@@ -392,6 +394,14 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
 
     const declared = card.products ?? [];
     productsDeclared += declared.length;
+    // The schema refuses the same {id, code} twice, not the same id with two
+    // paths: a product declared twice would be listed twice, in the order of
+    // the card, so reordering two lines would change the generated list.
+    const declaredIds = new Set<string>();
+    for (const product of declared) {
+      if (declaredIds.has(product.id)) problems.push(`products ${product.id} is declared twice`);
+      declaredIds.add(product.id);
+    }
     const tree = input.trees.get(repository);
     for (const product of declared) {
       const elsewhere = known(product.id)

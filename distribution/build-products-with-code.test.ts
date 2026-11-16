@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
+import Ajv2020 from "ajv/dist/2020";
 
 import type { FleetVersionsOutcome } from "../ecosystem/fleet-versions";
+import schema from "../ecosystem/schemas/products-with-code.v1.schema.json";
 import { GateReport } from "../tools/quality/gate-report";
 import {
+  PRODUCTS_WITH_CODE_PATH,
   PRODUCTS_WITH_CODE_SCHEMA_VERSION,
   projectProductsWithCode,
 } from "./build-products-with-code";
+
+const validate = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
 
 /**
  * The list of products with code is a projection of the fleet versions gate:
@@ -62,9 +67,17 @@ describe("projectProductsWithCode", () => {
     );
   });
 
-  test("a gate that asserted nothing gives no list, never an empty one", () => {
+  test("a gate that asserted nothing gives no list", () => {
     const projection = projectProductsWithCode(outcome({ report: new GateReport(), withCode: [] }));
     expect(projection.ok).toBe(false);
+  });
+
+  test("a green gate without any product gives an empty list: no product has code yet", () => {
+    const projection = projectProductsWithCode(outcome({ withCode: [] }));
+    expect(projection.ok).toBe(true);
+    if (!projection.ok) return;
+    expect(JSON.parse(projection.json).products).toEqual([]);
+    expect(validate(JSON.parse(projection.json))).toBe(true);
   });
 
   test("a list that disagrees with the verified count is not published", () => {
@@ -92,5 +105,45 @@ describe("projectProductsWithCode", () => {
     expect(projection.ok).toBe(true);
     if (!projection.ok) return;
     expect(JSON.parse(projection.json).products).toEqual([P04]);
+  });
+});
+
+describe("products-with-code.v1 schema", () => {
+  test("the generated document and the committed file are valid", async () => {
+    const projection = projectProductsWithCode(outcome());
+    expect(projection.ok).toBe(true);
+    if (!projection.ok) return;
+    expect(validate(JSON.parse(projection.json))).toBe(true);
+    const committed = await Bun.file(
+      new URL(`../${PRODUCTS_WITH_CODE_PATH}`, import.meta.url),
+    ).json();
+    expect(validate(committed), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  // Each constraint of the schema has a document it refuses: removing the
+  // constraint turns its case green, and this test red.
+  const valid = {
+    schema_version: PRODUCTS_WITH_CODE_SCHEMA_VERSION,
+    source: "ecosystem/check-fleet-versions.ts",
+    products: [P04],
+  };
+  test.each([
+    ["another schema version", { ...valid, schema_version: "libre-ai.products-with-code.v2" }],
+    ["another source", { ...valid, source: "hand-written" }],
+    ["a field the contract does not have", { ...valid, rule: "a sentence" }],
+    ["no products field", { schema_version: valid.schema_version, source: valid.source }],
+    ["a product that is not Pnn", { ...valid, products: [{ ...P04, product: "notes" }] }],
+    [
+      "a repository outside the organization",
+      { ...valid, products: [{ ...P04, repository: "other/notes" }] },
+    ],
+    ["a path that leaves the repository", { ...valid, products: [{ ...P04, code: "../secrets" }] }],
+    [
+      "an entry without its path",
+      { ...valid, products: [{ product: "P04", repository: P04.repository }] },
+    ],
+    ["an entry with an extra field", { ...valid, products: [{ ...P04, sha: "abc" }] }],
+  ])("refused: %s", (_name, document) => {
+    expect(validate(document)).toBe(false);
   });
 });
