@@ -31,12 +31,15 @@ import { parseAllowlist } from "./allowlist";
 //     hard-coded list of trees omitted three packages out of nine, one of
 //     which carried a product name);
 //   - an unreadable or non-UTF-8 source (never "zero findings");
+//   - a pattern that matches an empty string (one finding per position);
 //   - zero file examined.
 //
 // Test files are out of scope (`.test.` / `.spec.` before the extension):
 // whether they should be scanned is an open decision, so they are COUNTED as
-// excluded on every run instead of disappearing from the volume. Every other
-// tracked file under a tree is scanned, whatever its extension.
+// excluded on every run instead of disappearing from the volume. Tracked
+// symbolic links and submodules are counted apart and never followed. Every
+// other tracked file under a tree is scanned, whatever its extension. Paths are
+// printed with their control characters replaced, like the excerpts.
 //
 // Exit codes: 0 pass, 1 anything else (violation, unreadable source, invalid
 // data, missing tree).
@@ -79,16 +82,22 @@ export interface CouplingInput {
   /** Workspace package directories of the root manifest, already expanded. */
   readonly workspaces: readonly string[];
   readonly tracked: readonly string[];
+  /** Tracked symbolic links and submodules (git modes 120000 and 160000): never read. */
+  readonly links: ReadonlySet<string>;
   readonly exempted: ReadonlySet<string>;
   /** The UTF-8 text of a tracked file, or null when it cannot be read as such. */
   readonly read: (path: string) => string | null;
 }
 
 export interface CouplingCounts {
-  /** Tracked files under the declared trees = scanned + testsExcluded. */
+  /** Tracked entries under the declared trees = scanned + testsExcluded + unreadable + links. */
   readonly underRoots: number;
+  /** Files actually read and examined. */
   readonly scanned: number;
   readonly testsExcluded: number;
+  readonly unreadable: number;
+  /** Symbolic links and submodules: counted, not followed (their target is not the tracked content). */
+  readonly links: number;
   readonly lines: number;
 }
 
@@ -99,6 +108,8 @@ export interface CouplingResult {
   readonly uncoveredWorkspaces: readonly string[];
   readonly unreadable: readonly string[];
   readonly staleExemptions: readonly string[];
+  /** Patterns that produced a zero-length match: invalid data, not findings. */
+  readonly emptyMatchPatterns: readonly string[];
   readonly exemptedFiles: number;
   readonly counts: CouplingCounts;
 }
@@ -242,9 +253,11 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
   const tolerated: CouplingFinding[] = [];
   const unreadable: string[] = [];
   const toleratingFiles = new Set<string>();
+  const emptyMatchPatterns = new Set<string>();
   let underRoots = 0;
   let scanned = 0;
   let testsExcluded = 0;
+  let links = 0;
   let lineCount = 0;
 
   const missingRoots = config.roots.filter(
@@ -261,18 +274,30 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
       testsExcluded += 1;
       continue;
     }
-    scanned += 1;
+    // A link's target may lie outside the tree, or outside the repository:
+    // reading it would attribute foreign content to the link's path.
+    if (input.links.has(path)) {
+      links += 1;
+      continue;
+    }
     const text = input.read(path);
     if (text === null) {
       unreadable.push(path);
       continue;
     }
+    scanned += 1;
     const lines = text.split(/\r?\n/);
     if (lines.at(-1) === "") lines.pop();
     lineCount += lines.length;
     for (const [index, line] of lines.entries()) {
       for (const pattern of config.patterns) {
         for (const match of line.matchAll(pattern.regex)) {
+          // A zero-width match (`(?=x)`, `\b`) names no text: the pattern is
+          // wrong, and reporting it once per position would bury the cause.
+          if (match[0].length === 0) {
+            emptyMatchPatterns.add(pattern.name);
+            continue;
+          }
           const finding: CouplingFinding = {
             path,
             line: index + 1,
@@ -297,13 +322,26 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
     uncoveredWorkspaces,
     unreadable,
     staleExemptions: [...exempted].filter((path) => !toleratingFiles.has(path)).sort(),
+    emptyMatchPatterns: [...emptyMatchPatterns].sort(),
     exemptedFiles: exempted.size,
-    counts: { underRoots, scanned, testsExcluded, lines: lineCount },
+    counts: {
+      underRoots,
+      scanned,
+      testsExcluded,
+      unreadable: unreadable.length,
+      links,
+      lines: lineCount,
+    },
   };
 }
 
+/** A tracked path may hold any byte but NUL: printed raw, a newline in it forges a log line. */
+function safePath(path: string): string {
+  return path.replace(CONTROL, "?");
+}
+
 function render(finding: CouplingFinding): string {
-  return `${finding.path}:${finding.line}: ${finding.pattern}: ${finding.excerpt}`;
+  return `${safePath(finding.path)}:${finding.line}: ${finding.pattern}: ${finding.excerpt}`;
 }
 
 /** Pure rendering: `ok` is the verdict, each line says where it goes by its prefix. */
@@ -314,19 +352,24 @@ export function renderCoupling(result: CouplingResult): {
   const { counts } = result;
   const volume =
     `${counts.underRoots} tracked file(s) under the shared trees = ${counts.scanned} file(s) scanned ` +
-    `+ ${counts.testsExcluded} test file(s) excluded; ${counts.lines} line(s) read; ` +
+    `+ ${counts.testsExcluded} test file(s) excluded + ${counts.unreadable} unreadable ` +
+    `+ ${counts.links} link(s) or submodule(s) not followed; ${counts.lines} line(s) read; ` +
     `${result.tolerated.length} tolerated match(es) in ${result.exemptedFiles} exempted file(s)`;
   const lines = result.tolerated.map((finding) => `${GATE}: tolerated: ${render(finding)}`);
   const failures = [
     ...result.violations.map((finding) => render(finding)),
-    ...result.missingRoots.map((root) => `declared tree ${root} holds no tracked file`),
+    ...result.missingRoots.map((root) => `declared tree ${safePath(root)} holds no tracked file`),
     ...result.uncoveredWorkspaces.map(
-      (workspace) => `workspace package ${workspace} lies outside every declared tree`,
+      (workspace) => `workspace package ${safePath(workspace)} lies outside every declared tree`,
     ),
-    ...result.unreadable.map((path) => `${path} cannot be read as UTF-8 text`),
+    ...result.unreadable.map((path) => `${safePath(path)} cannot be read as UTF-8 text`),
     ...result.staleExemptions.map(
       (path) =>
-        `exemption ${path} tolerates no match; remove it from ${PRODUCT_COUPLING_EXEMPTIONS}`,
+        `exemption ${safePath(path)} tolerates no match; remove it from ${PRODUCT_COUPLING_EXEMPTIONS}`,
+    ),
+    ...result.emptyMatchPatterns.map(
+      (name) =>
+        `pattern ${name} matched an empty string; fix its regex in ${PRODUCT_COUPLING_CONFIG}`,
     ),
   ];
   if (failures.length === 0 && counts.scanned === 0) {
@@ -356,6 +399,34 @@ function git(args: readonly string[]): string {
   return new TextDecoder().decode(result.stdout);
 }
 
+export interface StagedEntries {
+  readonly tracked: string[];
+  /** Symbolic links (mode 120000) and submodules (mode 160000). */
+  readonly links: Set<string>;
+}
+
+/**
+ * Parse `git ls-files --stage -z`: `<mode> <object> <stage>\t<path>` per NUL-ended
+ * record. A conflicted path appears once per stage and is kept once. A record
+ * without that shape throws: a guessed parse is how a file drops out of the scan.
+ */
+export function parseStagedEntries(output: string): StagedEntries {
+  const tracked = new Set<string>();
+  const links = new Set<string>();
+  for (const record of output.split("\0")) {
+    if (record === "") continue;
+    const tab = record.indexOf("\t");
+    const mode = /^([0-7]{6}) [0-9a-f]+ [0-3]$/.exec(record.slice(0, tab))?.[1];
+    if (tab < 0 || mode === undefined) {
+      throw new Error("git ls-files --stage printed a record of unknown shape");
+    }
+    const path = record.slice(tab + 1);
+    tracked.add(path);
+    if (mode === "120000" || mode === "160000") links.add(path);
+  }
+  return { tracked: [...tracked], links };
+}
+
 function readUtf8(root: string, path: string): string | null {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(readFileSync(join(root, path)));
@@ -370,16 +441,15 @@ function main(argv: readonly string[]): number {
     return 1;
   }
   let root: string;
-  let tracked: string[];
+  let staged: StagedEntries;
   try {
     root = git(["rev-parse", "--show-toplevel"]).trim();
-    tracked = git(["-C", root, "ls-files", "-z"])
-      .split("\0")
-      .filter((path) => path !== "");
+    staged = parseStagedEntries(git(["-C", root, "ls-files", "--stage", "-z"]));
   } catch (error) {
     console.error(`${GATE}: ${(error as Error).message}`);
     return 1;
   }
+  const { tracked, links } = staged;
   const trackedSet = new Set(tracked);
 
   const sources: Record<string, string> = {};
@@ -427,6 +497,7 @@ function main(argv: readonly string[]): number {
     config: config.config,
     workspaces: workspaces.packages,
     tracked,
+    links,
     exempted: exemptions.paths,
     read: (path) => readUtf8(root, path),
   });

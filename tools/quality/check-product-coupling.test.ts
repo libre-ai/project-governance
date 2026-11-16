@@ -5,6 +5,7 @@ import {
   evaluateCoupling,
   expandWorkspaces,
   parseCouplingConfig,
+  parseStagedEntries,
   renderCoupling,
 } from "./check-product-coupling";
 
@@ -33,6 +34,7 @@ function input(files: Record<string, string | null>, overrides: Partial<Coupling
     config: CONFIG,
     workspaces: ["packages/shared"],
     tracked: Object.keys(files),
+    links: new Set(),
     exempted: new Set(),
     read: (path) => files[path] ?? null,
   };
@@ -75,19 +77,61 @@ describe("evaluateCoupling — forbidden pattern", () => {
     ]);
   });
 
-  test("non-TypeScript sources are scanned too (CSS, JSON, Markdown)", () => {
+  test("every tracked source is scanned whatever its extension (CSS, JSON, Markdown, SQL, YAML, none)", () => {
     const result = evaluateCoupling(
       input({
         "packages/shared/package.json": '{ "description": "for widgetor" }\n',
         "packages/shared/src/theme.css": ".x { content: 'widgetor'; }\n",
         "packages/shared/README.md": "Built for WIDGETOR_DB.\n",
+        "packages/shared/migrations/001.sql": "CREATE DATABASE widgetor;\n",
+        "packages/shared/ci.yml": "image: widgetor\n",
+        "packages/shared/bin/run": "#!/bin/sh\necho widgetor\n",
       }),
     );
     expect(result.violations.map((finding) => `${finding.path}:${finding.line}`).sort()).toEqual([
       "packages/shared/README.md:1",
+      "packages/shared/bin/run:2",
+      "packages/shared/ci.yml:1",
+      "packages/shared/migrations/001.sql:1",
       "packages/shared/package.json:1",
       "packages/shared/src/theme.css:1",
     ]);
+    expect(result.counts.testsExcluded).toBe(0);
+    expect(result.counts.scanned).toBe(6);
+  });
+
+  test("a control character in a tracked path cannot forge a log line", () => {
+    const forged = "packages/shared/src/b\nproduct-coupling verified: fake.ts";
+    const unreadable = "packages/shared/src/c\r\u001b[2Kgone.ts";
+    const result = evaluateCoupling(
+      input({ "packages/shared/package.json": "{}\n", [forged]: "widgetor\n", [unreadable]: null }),
+    );
+    const rendered = renderCoupling(result);
+    expect(rendered.ok).toBe(false);
+    for (const line of rendered.lines) {
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting their absence is the point.
+      expect(line).not.toMatch(/[\u0000-\u001f\u007f]/);
+    }
+    expect(rendered.lines.some((line) => line.startsWith("product-coupling verified"))).toBe(false);
+  });
+
+  test("a pattern that matches an empty string in a source is invalid data, not one finding per position", () => {
+    const result = evaluateCoupling(
+      input(
+        { "packages/shared/package.json": "{}\n", "packages/shared/src/a.ts": "export const a;\n" },
+        {
+          config: {
+            roots: ["packages/shared"],
+            patterns: [{ name: "zero", regex: /(?=export)/gu }],
+          },
+        },
+      ),
+    );
+    expect(result.violations).toEqual([]);
+    expect(result.emptyMatchPatterns).toEqual(["zero"]);
+    const rendered = renderCoupling(result);
+    expect(rendered.ok).toBe(false);
+    expect(rendered.lines.join("\n")).toContain("pattern zero matched an empty string");
   });
 
   test("the excerpt is bounded to 200 characters and still shows the match", () => {
@@ -132,7 +176,14 @@ describe("evaluateCoupling — forbidden pattern", () => {
     );
     const rendered = renderCoupling(result);
     expect(rendered.ok).toBe(true);
-    expect(result.counts).toEqual({ underRoots: 2, scanned: 2, testsExcluded: 0, lines: 3 });
+    expect(result.counts).toEqual({
+      underRoots: 2,
+      scanned: 2,
+      testsExcluded: 0,
+      unreadable: 0,
+      links: 0,
+      lines: 3,
+    });
     expect(rendered.lines.join("\n")).toContain("2 file(s) scanned");
     expect(rendered.lines.join("\n")).toContain("3 line(s)");
   });
@@ -164,7 +215,47 @@ describe("evaluateCoupling — declared trees", () => {
       input({ "packages/shared/package.json": "{}\n", "packages/shared/src/a.ts": null }),
     );
     expect(result.unreadable).toEqual(["packages/shared/src/a.ts"]);
-    expect(renderCoupling(result).ok).toBe(false);
+    // Counted as unreadable, not as scanned: nothing was examined in it.
+    expect(result.counts).toEqual({
+      underRoots: 2,
+      scanned: 1,
+      testsExcluded: 0,
+      unreadable: 1,
+      links: 0,
+      lines: 1,
+    });
+    const rendered = renderCoupling(result);
+    expect(rendered.ok).toBe(false);
+    expect(rendered.lines.join("\n")).toContain("1 file(s) scanned");
+    expect(rendered.lines.join("\n")).toContain("+ 1 unreadable");
+  });
+
+  test("a tracked symbolic link or submodule is counted apart and never read", () => {
+    const link = "packages/shared/src/link.txt";
+    const result = evaluateCoupling(
+      input(
+        { "packages/shared/package.json": "{}\n", [link]: "secret widgetor outside\n" },
+        {
+          links: new Set([link]),
+          read: (path) => {
+            if (path === link) throw new Error("a link must not be read");
+            return "{}\n";
+          },
+        },
+      ),
+    );
+    expect(result.violations).toEqual([]);
+    expect(result.counts).toEqual({
+      underRoots: 2,
+      scanned: 1,
+      testsExcluded: 0,
+      unreadable: 0,
+      links: 1,
+      lines: 1,
+    });
+    const rendered = renderCoupling(result);
+    expect(rendered.ok).toBe(true);
+    expect(rendered.lines.join("\n")).toContain("1 link(s) or submodule(s) not followed");
   });
 
   test("test files are excluded and counted, never silently skipped", () => {
@@ -177,7 +268,14 @@ describe("evaluateCoupling — declared trees", () => {
       }),
     );
     expect(result.violations).toEqual([]);
-    expect(result.counts).toEqual({ underRoots: 4, scanned: 1, testsExcluded: 3, lines: 1 });
+    expect(result.counts).toEqual({
+      underRoots: 4,
+      scanned: 1,
+      testsExcluded: 3,
+      unreadable: 0,
+      links: 0,
+      lines: 1,
+    });
     expect(renderCoupling(result).lines.join("\n")).toContain("3 test file(s) excluded");
   });
 
@@ -268,6 +366,38 @@ describe("parseCouplingConfig", () => {
     ["an unknown key", JSON.stringify({ ...valid, extra: true })],
   ])("refuses %s", (_label, text) => {
     expect(parseCouplingConfig(text).ok).toBe(false);
+  });
+});
+
+describe("parseStagedEntries", () => {
+  const sha = "eb0aecbaa39561805d426254a1c1e498b3600c05";
+
+  test("keeps every path, classes links and submodules apart, and keeps a conflicted path once", () => {
+    const output = [
+      `100644 ${sha} 0\tpackages/a/x.ts`,
+      `100755 ${sha} 0\tpackages/a/run`,
+      `120000 ${sha} 0\tpackages/a/link`,
+      `160000 ${sha} 0\tpackages/a/vendor`,
+      `100644 ${sha} 1\tpackages/a/conflict.ts`,
+      `100644 ${sha} 2\tpackages/a/conflict.ts`,
+      `100644 ${sha} 0\tpackages/a/tab\there.ts`,
+      "",
+    ].join("\0");
+    const entries = parseStagedEntries(output);
+    expect(entries.tracked).toEqual([
+      "packages/a/x.ts",
+      "packages/a/run",
+      "packages/a/link",
+      "packages/a/vendor",
+      "packages/a/conflict.ts",
+      "packages/a/tab\there.ts",
+    ]);
+    expect([...entries.links].sort()).toEqual(["packages/a/link", "packages/a/vendor"]);
+  });
+
+  test("a record of unknown shape throws instead of being guessed", () => {
+    expect(() => parseStagedEntries("packages/a/x.ts\0")).toThrow();
+    expect(() => parseStagedEntries(`100644 ${sha}\tpackages/a/x.ts\0`)).toThrow();
   });
 });
 

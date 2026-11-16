@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -24,10 +24,10 @@ const CONFIG = {
   patterns: [{ name: "product-name", regex: "\\bwidgetor\\b", why: "a consumer product" }],
 };
 
-function repository(files: Record<string, string>): string {
+function repository(files: Record<string, string | Uint8Array>): string {
   const root = mkdtempSync(join(tmpdir(), "product-coupling-"));
   created.push(root);
-  const all: Record<string, string> = {
+  const all: Record<string, string | Uint8Array> = {
     "package.json": JSON.stringify({ workspaces: ["packages/*"] }),
     "tools/quality/product-coupling.v1.json": JSON.stringify(CONFIG),
     "tools/quality/product-coupling-exemptions.txt": "# path # reason\n",
@@ -105,6 +105,67 @@ describe("check-product-coupling as a process", () => {
     const outcome = run(root);
     expect(outcome.code).toBe(1);
     expect(outcome.stderr).toContain("missing-reason");
+  });
+
+  // The manifest -> scanned trees wiring: a hard-coded list of trees once
+  // omitted three packages out of nine, one of which carried a product name.
+  test("a workspace package of the root manifest outside every declared tree exits 1", () => {
+    const root = repository({
+      "packages/shared/src/a.ts": "export const a = 1;\n",
+      "packages/forms/package.json": "{}\n",
+    });
+    const outcome = run(root);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr).toContain(
+      "workspace package packages/forms lies outside every declared tree",
+    );
+  });
+
+  test("a workspace entry the guard cannot expand exactly exits 1", () => {
+    const root = repository({
+      "package.json": JSON.stringify({ workspaces: ["packages/**"] }),
+      "packages/shared/src/a.ts": "export const a = 1;\n",
+    });
+    const outcome = run(root);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr).toContain('workspace "packages/**" cannot be expanded exactly');
+  });
+
+  test("a tracked source that is not UTF-8 exits 1, never zero findings", () => {
+    const root = repository({
+      "packages/shared/src/a.ts": "export const a = 1;\n",
+      "packages/shared/src/bin.dat": new Uint8Array([0xff, 0xfe, 0x77]),
+    });
+    const outcome = run(root);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr).toContain("packages/shared/src/bin.dat cannot be read as UTF-8 text");
+  });
+
+  test("a tracked source deleted from the disk exits 1", () => {
+    const root = repository({
+      "packages/shared/src/a.ts": "export const a = 1;\n",
+      "packages/shared/src/gone.ts": "export const gone = 1;\n",
+    });
+    rmSync(join(root, "packages/shared/src/gone.ts"));
+    const outcome = run(root);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr).toContain("packages/shared/src/gone.ts cannot be read as UTF-8 text");
+  });
+
+  test("a tracked symbolic link is counted, never followed out of the tree", () => {
+    const root = repository({
+      "packages/shared/src/a.ts": "export const a = 1;\n",
+      "outside/x.txt": "secret widgetor outside\n",
+    });
+    symlinkSync("../../../outside/x.txt", join(root, "packages/shared/src/link.txt"));
+    git(root, ["add", "-A"]);
+    const outcome = run(root);
+    expect(outcome.stderr).toBe("");
+    expect(outcome.code).toBe(0);
+    expect(outcome.stdout).toContain(
+      "3 tracked file(s) under the shared trees = 2 file(s) scanned + 0 test file(s) excluded " +
+        "+ 0 unreadable + 1 link(s) or submodule(s) not followed",
+    );
   });
 
   test("an unreadable configuration exits 1", () => {
