@@ -176,6 +176,12 @@ export const NOT_GATED: readonly NotGated[] = [
     because: `check-product-coupling.ts tolerates the matches of every file it lists; the guard is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
     awaitingOwnerArbitration: true,
   },
+  // The table of a gate that is outside the aggregate: it delimits no verdict yet.
+  {
+    path: "tools/quality/import-boundaries.v1.json",
+    because:
+      "the product packages and forbidden modules check-import-boundaries.ts refuses, empty today; that gate is not in `bun run check`, so no aggregate verdict depends on this table yet. Removing an entry lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
