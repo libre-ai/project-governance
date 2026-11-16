@@ -19,6 +19,10 @@
  * truncated without a word. An empty inventory is a failure here, not a green:
  * it is what a truncated or failed listing looks like from this side.
  *
+ * Known gap: the name list and its path exceptions are the constant
+ * DEFAULT_NAME_RULES; the command line takes neither, so an exception is a code
+ * change. `parseNameRules` validates the shape a future `--rules` file would take.
+ *
  * Exit codes: 0 report produced (and, with --strict, no violation), 1 --strict
  * with at least one violation, 2 usage error or unreadable source.
  */
@@ -27,6 +31,8 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { HARDENING_FLAGS, hardenedGitEnvironment } from "./check-pinned-citations";
 
 const MIB = 1024 * 1024;
 export const DEFAULT_THRESHOLD = 5 * MIB;
@@ -255,13 +261,18 @@ function parseBlobLines(output: string): BlobEntry[] {
   return entries;
 }
 
-// Only these transports clone: `ext::` and its kin run commands.
-const GIT_ENV_KEYS = ["PATH", "HOME", "SSH_AUTH_SOCK", "TMPDIR"];
+// Same hardening as the citation resolver (no user or system config, no prompt,
+// transport list). Only these transports clone: `ext::` and its kin run commands.
+// HOME and SSH_AUTH_SOCK are kept on purpose: a private repository over ssh needs
+// the caller's key and known_hosts; BatchMode keeps a host-key question from blocking.
+const GIT_ENV_KEYS = ["SSH_AUTH_SOCK", "TMPDIR"];
+export const GIT_FLAGS: readonly string[] = HARDENING_FLAGS.filter((flag) => flag !== "-c");
+export const GIT_TIMEOUT_MS = 600_000;
 
-function gitEnvironment(): Record<string, string> {
+export function gitEnvironment(): Record<string, string> {
   const env: Record<string, string> = {
-    GIT_ALLOW_PROTOCOL: "file:https:ssh",
-    GIT_TERMINAL_PROMPT: "0",
+    ...hardenedGitEnvironment(process.env.HOME ?? tmpdir(), "file:https:ssh"),
+    GIT_SSH_COMMAND: "ssh -o BatchMode=yes",
   };
   for (const key of GIT_ENV_KEYS) {
     const value = process.env[key];
@@ -275,7 +286,12 @@ function gitEnvironment(): Record<string, string> {
  * code only: git's stderr can echo a remote URL, and a URL can hold credentials.
  */
 async function git(args: string[], input?: string): Promise<string> {
-  const child = spawn("git", args, { env: gitEnvironment(), stdio: ["pipe", "pipe", "ignore"] });
+  const hardening = GIT_FLAGS.flatMap((flag) => ["-c", flag]);
+  const child = spawn("git", [...hardening, ...args], {
+    env: gitEnvironment(),
+    stdio: ["pipe", "pipe", "ignore"],
+    timeout: GIT_TIMEOUT_MS,
+  });
   const chunks: Buffer[] = [];
   child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
   child.stdin.on("error", () => {
@@ -398,8 +414,14 @@ async function runBlobs(args: string[]): Promise<RunResult> {
 
 export async function run(argv: string[], readStdin: () => Promise<string>): Promise<RunResult> {
   const [command, ...args] = argv;
-  if (command === "names") return runNames(args, readStdin);
-  if (command === "blobs") return runBlobs(args);
+  try {
+    if (command === "names") return await runNames(args, readStdin);
+    if (command === "blobs") return await runBlobs(args);
+  } catch (error) {
+    // A broken source is exit 2, never the exit 1 of --strict with a violation.
+    const reason = error instanceof Error ? error.message : String(error);
+    return { code: 2, out: "", err: `${printable(reason)}\n` };
+  }
   return usageError(command === undefined ? "missing command" : "unknown command");
 }
 

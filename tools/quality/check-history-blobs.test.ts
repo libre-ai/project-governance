@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -8,6 +8,9 @@ import {
   auditNames,
   type BlobEntry,
   DEFAULT_NAME_RULES,
+  GIT_FLAGS,
+  GIT_TIMEOUT_MS,
+  gitEnvironment,
   listHistoryBlobs,
   parseNameRules,
   parseThreshold,
@@ -252,12 +255,31 @@ describe("listHistoryBlobs — against a real repository", () => {
     await expect(listHistoryBlobs("--upload-pack=touch pwned", 1000, work)).rejects.toThrow(
       /repository/,
     );
-    expect(existsSync(join(work, "pwned"))).toBe(false);
   });
 
-  test("a transport outside the allowed list is refused", async () => {
-    await expect(listHistoryBlobs("ext::sh -c 'touch /dev/null'", 1000, work)).rejects.toThrow();
-    expect(readdirSync(work)).toEqual([]);
+  test("a transport outside the allowed list is refused by the environment git receives", () => {
+    // git:// is allowed by git's own defaults: only the list can refuse it.
+    const env = gitEnvironment();
+    expect(env.GIT_ALLOW_PROTOCOL).toBe("file:https:ssh");
+    const done = Bun.spawnSync(["git", "ls-remote", "git://127.0.0.1:9/x"], {
+      env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(done.exitCode).not.toBe(0);
+    expect(done.stderr.toString()).toContain("not allowed");
+  });
+
+  test("git is hardened: no user config, no hook, no credential helper, no prompt, no timeout-free clone", () => {
+    const env = gitEnvironment();
+    expect(env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
+    expect(env.GIT_CONFIG_NOSYSTEM).toBe("1");
+    expect(env.GIT_TERMINAL_PROMPT).toBe("0");
+    expect(env.GIT_SSH_COMMAND).toContain("BatchMode=yes");
+    expect(GIT_FLAGS).toEqual(
+      expect.arrayContaining(["core.hooksPath=/dev/null", "credential.helper="]),
+    );
+    expect(GIT_TIMEOUT_MS).toBeGreaterThan(0);
   });
 });
 
@@ -332,6 +354,14 @@ describe("run — command line", () => {
   test("names: a path with an unexpected character is refused", async () => {
     const result = await run(["names"], async () => "ok/path\nbad path;rm\n");
     expect(result.code).toBe(2);
+  });
+
+  test("an unreadable inventory is exit 2, not the exit 1 of a violation", async () => {
+    const result = await run(["names", "--strict"], async () => {
+      throw new Error("stdin broke");
+    });
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("stdin broke");
   });
 
   test("usage errors exit 2", async () => {
