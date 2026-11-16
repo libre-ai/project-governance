@@ -1,0 +1,484 @@
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
+import { concludeGate, GateReport } from "./gate-report";
+import { readGit } from "./git-diff";
+
+/**
+ * Long and old governance documents.
+ *
+ * A document of thousands of lines nobody has edited for months becomes a
+ * phantom source of truth: it contradicts the doctrine that is maintained, and
+ * it pollutes search and every agent that reads it. This command lists every
+ * tracked document that is BOTH longer than `maxLines` AND without a useful
+ * edit for more than `maxAgeDays`; each one goes through a human audit with
+ * three outcomes — migrate (content taken up elsewhere, original archived),
+ * archive (moved out of this repository into a quarterly archive folder,
+ * renamed with its date, alongside a migration index mapping its old sections
+ * to their maintained targets), or reconfirm (a useful edit that resets the
+ * counter). The eviction decision stays human; this command only lists.
+ *
+ * Definitions the brief left open, fixed here so they are testable:
+ *
+ * - **Useful edit**: any commit touching the file, except the commits listed
+ *   in `nonUsefulCommits` (reformatting, a pure move), each with its reason.
+ *   A path touched only by such commits keeps the date of its OLDEST one: it
+ *   has existed unedited at least since then.
+ * - **Age**: whole days between the committer date of that commit and now.
+ *   "More than 60 days" means 61 or more; "more than 500 lines" means 501.
+ * - **A shallow clone fails.** Its history stops at the graft, so every age
+ *   read from it is the age of the graft, not of the document.
+ * - A rename resets the counter (the log runs `--no-renames`): a move commit
+ *   that should not count is declared in `nonUsefulCommits`.
+ *
+ * ADRs are outside the policy: a decision record is immutable by design, and
+ * its age is the point.
+ *
+ * The thresholds live in `STALENESS_POLICY` below, as data a reviewer reads in
+ * the diff — not in a JSON file, because every tracked data file must be
+ * declared to the data-inventory gate, and doing that is a change to a guard
+ * in service.
+ *
+ * With `--archives <dir>`, the command also checks archive/index parity in an
+ * archive tree laid out as `<dir>/<YYYY-Qn>/<archive folder>/<index file>`:
+ * every archive folder holds its own migration index, and no index lies
+ * outside a folder, so the number of folders equals the number of indexes.
+ *
+ * Usage: bun tools/quality/check-document-staleness.ts [--archives <dir>]
+ */
+
+export interface NonUsefulCommit {
+  /** Full 40-hex commit id. */
+  readonly sha: string;
+  readonly because: string;
+}
+
+export interface StalenessPolicy {
+  /** A document is long when it has MORE lines than this. */
+  readonly maxLines: number;
+  /** A document is old when its last useful edit is MORE days ago than this. */
+  readonly maxAgeDays: number;
+  /** The git pathspec of the governance documents. */
+  readonly documentPathspec: string;
+  /** Repository-relative prefixes outside the policy. */
+  readonly excludedPrefixes: readonly string[];
+  readonly nonUsefulCommits: readonly NonUsefulCommit[];
+  readonly migrationIndexFileName: string;
+}
+
+export const STALENESS_POLICY: StalenessPolicy = {
+  maxLines: 500,
+  maxAgeDays: 60,
+  documentPathspec: "*.md",
+  excludedPrefixes: ["docs/adr/"],
+  nonUsefulCommits: [],
+  migrationIndexFileName: "migration-index.v1.yaml",
+};
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
+const SECONDS_PER_DAY = 86_400;
+
+/** Every reason the policy cannot be applied; empty when it can. */
+export function validatePolicy(policy: StalenessPolicy): string[] {
+  const problems: string[] = [];
+  if (!Number.isInteger(policy.maxLines) || policy.maxLines < 1) {
+    problems.push(`maxLines must be a positive integer, got ${policy.maxLines}`);
+  }
+  if (!Number.isInteger(policy.maxAgeDays) || policy.maxAgeDays < 1) {
+    problems.push(`maxAgeDays must be a positive integer, got ${policy.maxAgeDays}`);
+  }
+  for (const prefix of policy.excludedPrefixes) {
+    if (
+      prefix === "" ||
+      isAbsolute(prefix) ||
+      prefix.split("/").includes("..") ||
+      !prefix.endsWith("/")
+    ) {
+      problems.push(
+        `excluded prefix "${prefix}" must be a repository-relative directory ending with /`,
+      );
+    }
+  }
+  for (const commit of policy.nonUsefulCommits) {
+    if (!FULL_SHA.test(commit.sha))
+      problems.push(`non-useful commit "${commit.sha}" is not a full commit id`);
+    if (commit.because.trim() === "")
+      problems.push(`non-useful commit "${commit.sha}" has no reason`);
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(policy.migrationIndexFileName)) {
+    problems.push(
+      `migration index file name "${policy.migrationIndexFileName}" must be a plain file name`,
+    );
+  }
+  return problems;
+}
+
+export function countLines(text: string): number {
+  if (text === "") return 0;
+  const newlines = text.split("\n").length - 1;
+  return text.endsWith("\n") ? newlines : newlines + 1;
+}
+
+export type DocumentClass = "excluded" | "triggered" | "below" | "uncommitted";
+
+export interface DocumentFacts {
+  readonly path: string;
+  readonly lines: number;
+  /** Committer time (seconds) of the last useful edit; null before the first commit. */
+  readonly lastUsefulEdit: number | null;
+}
+
+export function ageInDays(lastUsefulEdit: number, nowSeconds: number): number {
+  return Math.floor((nowSeconds - lastUsefulEdit) / SECONDS_PER_DAY);
+}
+
+/** Outside the policy (ADRs): the one site that decides it. */
+function isExcluded(path: string, policy: StalenessPolicy): boolean {
+  return policy.excludedPrefixes.some((prefix) => path.startsWith(prefix));
+}
+
+/** Both criteria must hold; ADRs never qualify. */
+export function classifyDocument(
+  facts: DocumentFacts,
+  policy: StalenessPolicy,
+  nowSeconds: number,
+): DocumentClass {
+  if (isExcluded(facts.path, policy)) return "excluded";
+  if (facts.lastUsefulEdit === null) return "uncommitted";
+  const long = facts.lines > policy.maxLines;
+  const old = ageInDays(facts.lastUsefulEdit, nowSeconds) > policy.maxAgeDays;
+  return long && old ? "triggered" : "below";
+}
+
+export type EditLogRead =
+  | { readonly ok: true; readonly edits: ReadonlyMap<string, number> }
+  | { readonly ok: false; readonly reason: string };
+
+const LOG_HEADER = /^([0-9a-f]{40}) (\d+)$/;
+
+/**
+ * Pure parse of `git log -z --format=%x01%H %ct --name-only`, newest first:
+ * `\x01<sha> <time>\0\n<path>\0<path>\0`, repeated. Returns, per path, the
+ * time of its newest useful commit, or of its oldest commit when none is.
+ */
+export function parseUsefulEditLog(output: string, nonUseful: ReadonlySet<string>): EditLogRead {
+  const useful = new Map<string, number>();
+  const oldest = new Map<string, number>();
+  if (output !== "" && !output.startsWith("\x01")) {
+    return { ok: false, reason: "git log output does not start with a commit record" };
+  }
+  for (const record of output.split("\x01").slice(1)) {
+    const headerEnd = record.indexOf("\0");
+    const header = headerEnd < 0 ? record : record.slice(0, headerEnd);
+    const match = header.match(LOG_HEADER);
+    if (match === null) return { ok: false, reason: `unexpected git log record "${header}"` };
+    const [, sha = "", time = ""] = match;
+    const committedAt = Number(time);
+    const paths = record
+      .slice(headerEnd + 1)
+      .replace(/^\n/, "")
+      .split("\0")
+      .filter((path) => path !== "");
+    for (const path of paths) {
+      oldest.set(path, committedAt);
+      if (!nonUseful.has(sha) && !useful.has(path)) useful.set(path, committedAt);
+    }
+  }
+  const edits = new Map(oldest);
+  for (const [path, time] of useful) edits.set(path, time);
+  return { ok: true, edits };
+}
+
+export interface TriggeredDocument {
+  readonly path: string;
+  readonly lines: number;
+  readonly ageDays: number;
+  readonly lastUsefulEdit: number;
+}
+
+export interface AuditCounts {
+  /** tracked = excluded + nonRegular + triggered + below + uncommitted */
+  readonly tracked: number;
+  readonly excluded: number;
+  readonly nonRegular: number;
+  readonly triggered: number;
+  readonly below: number;
+  readonly uncommitted: number;
+}
+
+export type AuditRead =
+  | {
+      readonly ok: true;
+      readonly triggered: readonly TriggeredDocument[];
+      readonly counts: AuditCounts;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+const REGULAR_FILE_MODES: ReadonlySet<string> = new Set(["100644", "100755"]);
+const STAGE_ENTRY = /^([0-7]{6}) [0-9a-f]+ \d\t(.+)$/s;
+
+/** Read the tracked documents of `root` and their history; list the ones due for an audit. */
+export function auditDocuments(
+  root: string,
+  policy: StalenessPolicy,
+  nowSeconds: number,
+): AuditRead {
+  const problems = validatePolicy(policy);
+  if (problems.length > 0) return { ok: false, reason: `invalid policy: ${problems.join("; ")}` };
+
+  const shallow = readGit(
+    ["-C", root, "rev-parse", "--is-shallow-repository"],
+    "tell whether the clone is shallow",
+  );
+  if (!shallow.ok) return shallow;
+  if (shallow.stdout.trim() !== "false") {
+    return {
+      ok: false,
+      reason:
+        "shallow clone: ages read from a truncated history are wrong — fetch the full history first",
+    };
+  }
+
+  const listed = readGit(
+    ["-C", root, "ls-files", "-z", "-s", "--", policy.documentPathspec],
+    "list tracked documents",
+  );
+  if (!listed.ok) return listed;
+  const entries: { mode: string; path: string }[] = [];
+  for (const line of listed.stdout.split("\0").filter((entry) => entry !== "")) {
+    const match = line.match(STAGE_ENTRY);
+    if (match === null) return { ok: false, reason: `unexpected ls-files entry "${line}"` };
+    const [, mode = "", path = ""] = match;
+    if (isAbsolute(path) || path.split("/").includes("..")) {
+      return { ok: false, reason: `tracked path "${path}" leaves the repository root` };
+    }
+    entries.push({ mode, path });
+  }
+
+  // A repository without a commit has no HEAD and no history: every tracked
+  // document is uncommitted. Any other failure to read the log is a failure.
+  const hasHead = readGit(["-C", root, "rev-parse", "--verify", "-q", "HEAD"], "resolve HEAD").ok;
+  // One log over the whole pathspec rather than one per document: no N+1.
+  const log = hasHead
+    ? readGit(
+        [
+          "-C",
+          root,
+          "log",
+          "-z",
+          "--no-renames",
+          "--format=%x01%H %ct",
+          "--name-only",
+          "HEAD",
+          "--",
+          policy.documentPathspec,
+        ],
+        "read the history of tracked documents",
+      )
+    : ({ ok: true, stdout: "" } as const);
+  if (!log.ok) return log;
+  const parsed = parseUsefulEditLog(
+    log.stdout,
+    new Set(policy.nonUsefulCommits.map((commit) => commit.sha)),
+  );
+  if (!parsed.ok) return parsed;
+
+  const triggered: TriggeredDocument[] = [];
+  const counts = {
+    tracked: entries.length,
+    excluded: 0,
+    nonRegular: 0,
+    triggered: 0,
+    below: 0,
+    uncommitted: 0,
+  };
+  for (const { mode, path } of entries) {
+    // Decided before the read: an ADR is never opened, so it cannot fail the run.
+    if (isExcluded(path, policy)) {
+      counts.excluded += 1;
+      continue;
+    }
+    // A symlink or a gitlink is not read through: the verdict would be about its target.
+    if (!REGULAR_FILE_MODES.has(mode)) {
+      counts.nonRegular += 1;
+      continue;
+    }
+    const absolute = join(root, path);
+    let text: string;
+    try {
+      if (!lstatSync(absolute).isFile())
+        return { ok: false, reason: `${path}: tracked as a file, not a file on disk` };
+      text = readFileSync(absolute, "utf8");
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `${path}: unreadable (${error instanceof Error ? error.message : String(error)})`,
+      };
+    }
+    const facts: DocumentFacts = {
+      path,
+      lines: countLines(text),
+      lastUsefulEdit: parsed.edits.get(path) ?? null,
+    };
+    const verdict = classifyDocument(facts, policy, nowSeconds);
+    counts[verdict] += 1;
+    if (verdict === "triggered" && facts.lastUsefulEdit !== null) {
+      triggered.push({
+        path,
+        lines: facts.lines,
+        ageDays: ageInDays(facts.lastUsefulEdit, nowSeconds),
+        lastUsefulEdit: facts.lastUsefulEdit,
+      });
+    }
+  }
+  return { ok: true, triggered, counts };
+}
+
+export interface ArchiveLayout {
+  /** `<quarter>/<folder>` */
+  readonly folders: readonly string[];
+  /** Every file named as the migration index, anywhere under the root, relative to it. */
+  readonly indexes: readonly string[];
+  /** Entries at the root that are not quarter directories. */
+  readonly unexpected: readonly string[];
+}
+
+export type ArchiveLayoutRead =
+  | { readonly ok: true; readonly layout: ArchiveLayout }
+  | { readonly ok: false; readonly reason: string };
+
+const QUARTER = /^\d{4}-Q[1-4]$/;
+
+/** Walk an archive root without following links; a link or an unreadable directory is a failure. */
+export function readArchiveLayout(root: string, indexFileName: string): ArchiveLayoutRead {
+  const folders: string[] = [];
+  const indexes: string[] = [];
+  const unexpected: string[] = [];
+  const walk = (relative: string): string | null => {
+    const entries = readdirSync(join(root, relative), { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const child = relative === "" ? entry.name : `${relative}/${entry.name}`;
+      if (entry.isSymbolicLink()) return `${child}: a link inside the archive tree is not followed`;
+      if (entry.isDirectory()) {
+        const failure = walk(child);
+        if (failure !== null) return failure;
+      } else if (entry.name === indexFileName) {
+        indexes.push(child);
+      }
+    }
+    return null;
+  };
+  try {
+    if (!lstatSync(root).isDirectory()) return { ok: false, reason: `${root}: not a directory` };
+    for (const quarter of readdirSync(root, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      if (!quarter.isDirectory() || !QUARTER.test(quarter.name)) {
+        unexpected.push(quarter.name);
+        continue;
+      }
+      for (const folder of readdirSync(join(root, quarter.name), { withFileTypes: true }).sort(
+        (a, b) => a.name.localeCompare(b.name),
+      )) {
+        if (folder.isDirectory()) folders.push(`${quarter.name}/${folder.name}`);
+      }
+    }
+    const failure = walk("");
+    if (failure !== null) return { ok: false, reason: failure };
+  } catch (error) {
+    return {
+      ok: false,
+      reason: `archive tree unreadable (${error instanceof Error ? error.message : String(error)})`,
+    };
+  }
+  return { ok: true, layout: { folders, indexes, unexpected } };
+}
+
+export interface ArchiveParity {
+  readonly folders: number;
+  readonly indexes: number;
+  readonly problems: readonly string[];
+}
+
+/** Each archive folder holds exactly its own index, and no index lies elsewhere. */
+export function compareArchiveParity(layout: ArchiveLayout, indexFileName: string): ArchiveParity {
+  const problems: string[] = [];
+  const expected = new Set(layout.folders.map((folder) => `${folder}/${indexFileName}`));
+  for (const folder of layout.folders) {
+    if (!layout.indexes.includes(`${folder}/${indexFileName}`))
+      problems.push(`${folder}: archive without migration index`);
+  }
+  for (const index of layout.indexes) {
+    if (!expected.has(index)) problems.push(`${index}: migration index outside an archive folder`);
+  }
+  for (const entry of layout.unexpected)
+    problems.push(`${entry}: not a quarter directory (YYYY-Qn)`);
+  return { folders: layout.folders.length, indexes: layout.indexes.length, problems };
+}
+
+function parseArguments(argv: readonly string[]): { archives: string | null } | null {
+  if (argv.length === 0) return { archives: null };
+  if (argv.length === 2 && argv[0] === "--archives" && argv[1] !== undefined && argv[1] !== "") {
+    return { archives: argv[1] };
+  }
+  return null;
+}
+
+if (import.meta.main) {
+  const gate = "Document staleness";
+  const args = parseArguments(process.argv.slice(2));
+  if (args === null) {
+    console.error(
+      `${gate}: usage: bun tools/quality/check-document-staleness.ts [--archives <dir>]`,
+    );
+    process.exit(2);
+  }
+  const top = readGit(["rev-parse", "--show-toplevel"], "find the repository root");
+  if (!top.ok) {
+    console.error(`${gate}: ${top.reason}`);
+    process.exit(1);
+  }
+  const report = new GateReport();
+  const audit = auditDocuments(top.stdout.trim(), STALENESS_POLICY, Math.floor(Date.now() / 1000));
+  if (!audit.ok) {
+    report.check("documents", false, audit.reason);
+  } else {
+    for (const document of audit.triggered) {
+      report.check(
+        document.path,
+        false,
+        `${document.lines} lines, no useful edit for ${document.ageDays} days (since ` +
+          `${new Date(document.lastUsefulEdit * 1000).toISOString()}) — audit it: migrate, archive with a migration index, or reconfirm`,
+      );
+    }
+    const { counts } = audit;
+    // Printed on success as the volume, and on failure inside the failed check:
+    // a red run says what it examined as much as a green one.
+    const examined =
+      `tracked=${counts.tracked} excluded=${counts.excluded} non-regular=${counts.nonRegular} ` +
+      `triggered=${counts.triggered} below=${counts.below} uncommitted=${counts.uncommitted} ` +
+      `(thresholds: more than ${STALENESS_POLICY.maxLines} lines and ${STALENESS_POLICY.maxAgeDays} days)`;
+    report.check(
+      "documents",
+      counts.tracked > 0 && counts.triggered === 0,
+      counts.tracked === 0
+        ? `no tracked document matches ${STALENESS_POLICY.documentPathspec}`
+        : examined,
+    );
+    report.volume(examined);
+  }
+  if (args.archives !== null) {
+    const layout = readArchiveLayout(args.archives, STALENESS_POLICY.migrationIndexFileName);
+    if (!layout.ok) {
+      report.check("archives", false, layout.reason);
+    } else {
+      const parity = compareArchiveParity(layout.layout, STALENESS_POLICY.migrationIndexFileName);
+      for (const problem of parity.problems) report.check("archives", false, problem);
+      report.check(
+        "archives",
+        parity.problems.length === 0,
+        `archive folders=${parity.folders} migration indexes=${parity.indexes}`,
+      );
+    }
+  }
+  concludeGate(gate, report);
+}
