@@ -88,23 +88,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-fleet-versions.ts
-      # The "Du code existe" marker of the site reads a pinned copy of this
-      # list. It depends on the cards of other repositories: a card that
-      # declares, moves or drops a product turns this step red until the list
-      # is regenerated here, so the marker never lags the fleet in silence.
-      - name: Regenerate the list of products with code and fail on drift
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          bun distribution/build-products-with-code.ts
-          # intent-to-add makes a deleted or never committed list visible to
-          # git diff; without it, a regenerated untracked file passes silently.
-          git add --intent-to-add distribution/index/products-with-code.v1.json
-          if ! git diff --exit-code -- distribution/index/products-with-code.v1.json; then
-            echo "::error::distribution/index/products-with-code.v1.json is stale — run 'bun run build:products-with-code' and commit the result"
-            exit 1
-          fi
       - name: Every hub path has a destination, replacement or eviction
         if: always()
         env:

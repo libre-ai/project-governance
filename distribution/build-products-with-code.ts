@@ -26,6 +26,7 @@
 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import Ajv2020 from "ajv/dist/2020";
 
 import { readFleetVersionsInput } from "../ecosystem/check-fleet-versions";
 import {
@@ -33,9 +34,15 @@ import {
   type FleetVersionsOutcome,
   type ProductWithCode,
 } from "../ecosystem/fleet-versions";
+import schema from "../ecosystem/schemas/products-with-code.v1.schema.json";
 
 export const PRODUCTS_WITH_CODE_SCHEMA_VERSION = "libre-ai.products-with-code.v1";
 export const PRODUCTS_WITH_CODE_PATH = "distribution/index/products-with-code.v1.json";
+
+// The schema copies the patterns of project.v1 for `code` and `repository`:
+// should the two drift, the generator refuses to publish a document outside
+// its own contract rather than letting a consumer find out.
+const validateDocument = new Ajv2020({ allErrors: true, strict: true }).compile(schema);
 
 // The rule lives in distribution/README.md and in the description of
 // ecosystem/schemas/products-with-code.v1.schema.json, not in the data: a
@@ -90,6 +97,14 @@ export function projectProductsWithCode(
       code,
     })),
   };
+  if (!validateDocument(document)) {
+    return {
+      ok: false,
+      lines: [
+        `Products with code not generated: the document is outside ${PRODUCTS_WITH_CODE_SCHEMA_VERSION} (${JSON.stringify(validateDocument.errors)}).`,
+      ],
+    };
+  }
   return {
     ok: true,
     json: `${JSON.stringify(document, null, 2)}\n`,

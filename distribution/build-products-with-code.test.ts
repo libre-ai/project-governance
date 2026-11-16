@@ -106,6 +106,15 @@ describe("projectProductsWithCode", () => {
     if (!projection.ok) return;
     expect(JSON.parse(projection.json).products).toEqual([P04]);
   });
+
+  test("a document outside its own schema is not published", () => {
+    const projection = projectProductsWithCode(
+      outcome({ withCode: [{ ...P04, code: "apps/desktop/" }] }),
+    );
+    expect(projection.ok).toBe(false);
+    if (projection.ok) return;
+    expect(projection.lines[0]).toContain("outside libre-ai.products-with-code.v1");
+  });
 });
 
 describe("products-with-code.v1 schema", () => {

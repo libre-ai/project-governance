@@ -1,0 +1,92 @@
+name: Products with code
+
+# The "Du code existe" marker of the public site reads a pinned copy of
+# distribution/index/products-with-code.v1.json, generated from the fleet
+# versions gate. The list depends on the cards of other repositories: a card
+# that declares, moves or drops a product makes the committed list stale with
+# no change here. This workflow regenerates it and fails on drift.
+#
+# A workflow of its own, not a step of inventory-drift: that job was red on
+# every run for causes unrelated to this list (raw SQL and web headers of
+# another repository, measured on runs 43849529353, 43848325684 and
+# 43803554711), so a drift step there changed no visible verdict. Not a
+# required context either: the drift can come from another repository, and a
+# required check no governance pull request can turn green is the phantom
+# requirement the branch-protection norm forbids. The weekly run catches the
+# drift that comes from elsewhere; two red scheduled runs in a row file a
+# governance issue.
+on:
+  push:
+    # The served branch is listed: with `[main]` alone no verdict would ever
+    # be attached to a merged head (feeds-freshness.yml).
+    branches: [main, migrate/recover-code]
+  pull_request:
+  schedule:
+    - cron: "17 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The repeat-failure alert files and closes governance issues on the
+  # scheduled and dispatched runs only (see the event guard on its steps).
+  issues: write
+
+concurrency:
+  group: products-with-code-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  products-with-code:
+    name: Regenerate the list of products with code and fail on drift
+    runs-on: ubuntu-latest
+    # The generator reads one card and at most a few trees per repository of
+    # the index: a minute. A run that lasts is a defect, and fails closed here.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # `bun install` runs after this step: the token is not left in the clone.
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # The generator validates the cards (ajv) and its own output against its
+      # schema, so the lockfile is installed rather than resolved at run time.
+      - run: bun install --frozen-lockfile
+      - name: Regenerate the list and fail on drift
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The generator exits non-zero on a red fleet versions gate: no list from a red gate.
+          bun run build:products-with-code
+          # intent-to-add makes a deleted or never committed list visible to
+          # git diff; without it, a regenerated untracked file passes silently.
+          git add --intent-to-add distribution/index/products-with-code.v1.json
+          if ! git diff --exit-code -- distribution/index/products-with-code.v1.json; then
+            echo "::error::distribution/index/products-with-code.v1.json is stale — run 'bun run build:products-with-code' and commit the result"
+            exit 1
+          fi
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Products with code
+          WORKFLOW_FILE: products-with-code.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      - name: Close the repeat-failure issue now that the list is fresh
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Products with code
+          WORKFLOW_FILE: products-with-code.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve
