@@ -66,7 +66,7 @@
       "$ref": "#/$defs/phrase"
     },
     "accroche": {
-      "description": "The short line the card of the site prints under the name of the product: what the product does, addressed to the reader. The promise carries the sentence; the accroche fits a card. 90 characters at most: the longest line the site carried when the field was created measured 77. The checker refuses the word « gratuit », in any form.",
+      "description": "The short line the card of the site prints under the name of the product: what the product does, addressed to the reader. The promise carries the sentence; the accroche fits a card. 90 characters at most, a bound the agent chose: the longest line the site carried when the field was created counts 75 characters. The checker refuses the word « gratuit », in any form.",
       "$ref": "#/$defs/accroche"
     },
     "pour_qui": {

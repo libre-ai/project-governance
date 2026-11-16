@@ -27,4 +27,5 @@ etiquettes:
   - "Enregistrer, couper"
   - "Nettoyage du son"
   - "Transcription"
-a_relire: []
+a_relire:
+  - accroche

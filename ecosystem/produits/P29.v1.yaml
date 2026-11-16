@@ -29,4 +29,5 @@ etiquettes:
   - "Vos chaînes"
   - "Historique maîtrisé"
   - "Reprise de lecture"
-a_relire: []
+a_relire:
+  - accroche
