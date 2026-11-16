@@ -298,7 +298,13 @@ describe("listHistoryBlobs — against a real repository", () => {
     const standIn = join(bin, "git");
     writeFileSync(
       standIn,
-      '#!/bin/sh\ndir=${0%/*}\nprintf \'%s\\n\' "$@" > "$dir/argv"\nexport -p > "$dir/env"\nexit 1\n',
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$@" > '${bin}/argv'`,
+        `export -p > '${bin}/env'`,
+        "exit 1",
+        "",
+      ].join("\n"),
     );
     chmodSync(standIn, 0o755);
     const path = process.env.PATH ?? "";
