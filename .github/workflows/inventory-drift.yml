@@ -80,6 +80,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun ecosystem/check-fleet-presentation.ts
+      - name: Products with code are tracked, versions resolve their dependencies
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bun ecosystem/check-fleet-versions.ts
       - name: Every hub path has a destination, replacement or eviction
         if: always()
         env:
