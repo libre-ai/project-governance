@@ -1,5 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -280,6 +288,42 @@ describe("listHistoryBlobs — against a real repository", () => {
       expect.arrayContaining(["core.hooksPath=/dev/null", "credential.helper="]),
     );
     expect(GIT_TIMEOUT_MS).toBeGreaterThan(0);
+  });
+
+  test("the git that listHistoryBlobs runs receives the hardening flags and the hardened environment", async () => {
+    // The two tests above read the values; this one reads what the clone path
+    // actually hands to the process, through a stand-in `git` that records it.
+    const bin = join(scratch, "recording-git");
+    mkdirSync(bin);
+    const standIn = join(bin, "git");
+    writeFileSync(
+      standIn,
+      '#!/bin/sh\ndir=${0%/*}\nprintf \'%s\\n\' "$@" > "$dir/argv"\nexport -p > "$dir/env"\nexit 1\n',
+    );
+    chmodSync(standIn, 0o755);
+    const path = process.env.PATH ?? "";
+    process.env.PATH = bin;
+    process.env.HISTORY_BLOBS_AMBIENT = "must-not-reach-git";
+    try {
+      await expect(listHistoryBlobs(repo, 1000, work)).rejects.toThrow("git clone failed");
+    } finally {
+      process.env.PATH = path;
+      process.env.HISTORY_BLOBS_AMBIENT = "";
+    }
+    const argv = readFileSync(join(bin, "argv"), "utf8").split("\n");
+    expect(argv.slice(0, 5)).toEqual([
+      "-c",
+      "core.hooksPath=/dev/null",
+      "-c",
+      "credential.helper=",
+      "clone",
+    ]);
+    const env = readFileSync(join(bin, "env"), "utf8");
+    expect(env).toMatch(/GIT_ALLOW_PROTOCOL=["']file:https:ssh["']/);
+    expect(env).toMatch(/GIT_CONFIG_GLOBAL=["']\/dev\/null["']/);
+    expect(env).toMatch(/GIT_CONFIG_NOSYSTEM=["']1["']/);
+    expect(env).toMatch(/GIT_TERMINAL_PROMPT=["']0["']/);
+    expect(env).not.toContain("must-not-reach-git");
   });
 });
 
