@@ -34,6 +34,7 @@
     "check:refusals": "bun run check:bun:runtime && bun tools/quality/check-refusals.ts",
     "check:cards": "bun run check:bun:runtime && bun ecosystem/validate-cards.ts",
     "check:fleet-versions": "bun run check:bun:runtime && bun ecosystem/check-fleet-versions.ts",
+    "check:fleet-gates": "bun run check:bun:runtime && bun ecosystem/check-fleet-gates.ts",
     "check:briques": "bun run check:bun:runtime && bun ecosystem/check-briques.ts",
     "check:produits": "bun run check:bun:runtime && bun ecosystem/check-produits.ts",
     "build:vision": "bun run check:bun:runtime && bun distribution/build-vision.ts",
