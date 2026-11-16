@@ -13,6 +13,7 @@ import {
   type StalenessPolicy,
   validatePolicy,
 } from "./check-document-staleness";
+import type { GitRead } from "./git-diff";
 
 // The thresholds below come from the brief, not from the code: "more than 500
 // lines" and "no useful edit for more than 60 days", ADRs out of the policy.
@@ -53,6 +54,30 @@ function git(dir: string, args: readonly string[], when?: number): string {
     throw new Error(`git ${args.join(" ")}: ${new TextDecoder().decode(result.stderr)}`);
   }
   return new TextDecoder().decode(result.stdout);
+}
+
+/**
+ * The reader handed to auditDocuments: the purged environment above, never the
+ * one this process inherited. Under a git hook, GIT_DIR is already set and
+ * points at the hook's repository; `git -C <fixture>` would then read it, and
+ * the test would measure the ambient run instead of its own case. Removing it
+ * from `process.env` is not enough: measured on Bun 1.4.4, `Bun.spawnSync`
+ * without `env` does not see a `delete process.env.X`.
+ */
+function fixtureGit(argv: readonly string[], what: string): GitRead {
+  const result = Bun.spawnSync(["git", ...argv], {
+    env: gitEnvironment,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = new TextDecoder().decode(result.stdout);
+  if (result.exitCode !== 0) {
+    return {
+      ok: false,
+      reason: `could not ${what}: ${new TextDecoder().decode(result.stderr).trim()}`,
+    };
+  }
+  return { ok: true, stdout };
 }
 
 let repositoryCount = 0;
@@ -151,6 +176,16 @@ describe("parseUsefulEditLog", () => {
     expect(read.ok && Object.fromEntries(read.edits)).toEqual({ "x.md": 200, "y.md": 100 });
   });
 
+  test("the newest useful date wins whatever the order of the log (a child dated before its parent)", () => {
+    // git log walks the graph, not the dates: a commit can be listed before an
+    // older-dated one and after a newer-dated one.
+    const skewed = `\x01${shaA} 100\0\nx.md\0\x01${shaB} 300\0\nx.md\0\x01${shaC} 200\0\nx.md\0`;
+    const read = parseUsefulEditLog(skewed, new Set());
+    expect(read.ok && Object.fromEntries(read.edits)).toEqual({ "x.md": 300 });
+    const onlyNonUseful = parseUsefulEditLog(skewed, new Set([shaA, shaB, shaC]));
+    expect(onlyNonUseful.ok && Object.fromEntries(onlyNonUseful.edits)).toEqual({ "x.md": 100 });
+  });
+
   test("an unexpected record is a failure, never an empty map", () => {
     expect(parseUsefulEditLog("\x01not-a-sha 1\0\nx.md\0", new Set()).ok).toBe(false);
   });
@@ -174,7 +209,12 @@ describe("validatePolicy", () => {
       excludedPrefixes: ["../outside/"],
       nonUsefulCommits: [{ sha: "abc", because: "" }],
     });
-    expect(problems.length).toBe(4);
+    expect(problems).toEqual([
+      "maxLines must be a positive integer, got 0",
+      'excluded prefix "../outside/" must be a repository-relative directory ending with /',
+      'non-useful commit "abc" is not a full commit id',
+      'non-useful commit "abc" has no reason',
+    ]);
   });
 });
 
@@ -189,7 +229,7 @@ describe("auditDocuments on a real history", () => {
     writeLines(dir, "docs/recent-long.md", 501);
     commitAll(dir, "recent", NOW - 59 * DAY);
 
-    const audit = auditDocuments(dir, POLICY, NOW);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
     if (!audit.ok) throw new Error(audit.reason);
     expect(audit.triggered.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
     expect(audit.triggered[0]?.lines).toBe(501);
@@ -215,11 +255,12 @@ describe("auditDocuments on a real history", () => {
       dir,
       { ...POLICY, nonUsefulCommits: [{ sha: formatting, because: "whitespace only" }] },
       NOW,
+      fixtureGit,
     );
     if (!declared.ok) throw new Error(declared.reason);
     expect(declared.triggered.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
 
-    const undeclared = auditDocuments(dir, POLICY, NOW);
+    const undeclared = auditDocuments(dir, POLICY, NOW, fixtureGit);
     if (!undeclared.ok) throw new Error(undeclared.reason);
     expect(undeclared.triggered).toEqual([]);
   });
@@ -229,7 +270,7 @@ describe("auditDocuments on a real history", () => {
     writeLines(dir, "docs/a.md", 3);
     symlinkSync("a.md", join(dir, "docs/link.md"));
     commitAll(dir, "one", NOW - 100 * DAY);
-    const audit = auditDocuments(dir, POLICY, NOW);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
     if (!audit.ok) throw new Error(audit.reason);
     expect(audit.counts.nonRegular).toBe(1);
     expect(audit.counts.tracked).toBe(2);
@@ -242,7 +283,7 @@ describe("auditDocuments on a real history", () => {
     commitAll(origin, "two", NOW - 1 * DAY);
     const shallow = join(scratch, `shallow-${repositoryCount}`);
     git(scratch, ["clone", "-q", "--depth", "1", `file://${origin}`, shallow]);
-    const audit = auditDocuments(shallow, POLICY, NOW);
+    const audit = auditDocuments(shallow, POLICY, NOW, fixtureGit);
     expect(audit.ok).toBe(false);
     if (!audit.ok) expect(audit.reason).toContain("shallow");
   });
@@ -252,7 +293,16 @@ describe("auditDocuments on a real history", () => {
     writeLines(dir, "docs/a.md", 3);
     commitAll(dir, "one", NOW - 100 * DAY);
     rmSync(join(dir, "docs/a.md"));
-    expect(auditDocuments(dir, POLICY, NOW).ok).toBe(false);
+    expect(auditDocuments(dir, POLICY, NOW, fixtureGit).ok).toBe(false);
+  });
+
+  test("a root below the top of the repository is refused, never a green over unmatched paths", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "old", NOW - 200 * DAY);
+    const audit = auditDocuments(join(dir, "docs"), POLICY, NOW, fixtureGit);
+    expect(audit.ok).toBe(false);
+    if (!audit.ok) expect(audit.reason).toContain("not the top of its repository");
   });
 });
 
@@ -261,11 +311,13 @@ describe("archive parity", () => {
     expect(
       compareArchiveParity(
         {
+          quarters: ["2026-Q3", "2026-Q4"],
           folders: ["2026-Q3/2026-08-01-roadmap", "2026-Q4/2026-11-01-plan"],
           indexes: [
             "2026-Q3/2026-08-01-roadmap/migration-index.v1.yaml",
             "2026-Q4/2026-11-01-plan/migration-index.v1.yaml",
           ],
+          loose: [],
           unexpected: [],
         },
         "migration-index.v1.yaml",
@@ -276,28 +328,61 @@ describe("archive parity", () => {
   test("a folder without an index breaks parity", () => {
     const parity = compareArchiveParity(
       {
+        quarters: ["2026-Q3", "2026-Q4"],
         folders: ["2026-Q3/2026-08-01-roadmap", "2026-Q4/2026-11-01-plan"],
         indexes: ["2026-Q3/2026-08-01-roadmap/migration-index.v1.yaml"],
+        loose: [],
         unexpected: [],
       },
       "migration-index.v1.yaml",
     );
-    expect(parity.problems.length).toBeGreaterThan(0);
+    expect(parity.problems).toEqual(["2026-Q4/2026-11-01-plan: archive without migration index"]);
   });
 
   test("an index outside any archive folder breaks parity", () => {
     const parity = compareArchiveParity(
       {
+        quarters: ["2026-Q3"],
         folders: ["2026-Q3/2026-08-01-roadmap"],
         indexes: [
           "2026-Q3/2026-08-01-roadmap/migration-index.v1.yaml",
           "2026-Q3/migration-index.v1.yaml",
         ],
+        loose: [],
         unexpected: [],
       },
       "migration-index.v1.yaml",
     );
-    expect(parity.problems.length).toBeGreaterThan(0);
+    expect(parity.problems).toEqual([
+      "2026-Q3/migration-index.v1.yaml: migration index outside an archive folder",
+    ]);
+  });
+
+  test("a file laid directly in a quarter is an archive without a folder nor an index", () => {
+    const parity = compareArchiveParity(
+      {
+        quarters: ["2026-Q3"],
+        folders: [],
+        indexes: [],
+        loose: ["2026-Q3/2026-08-01-ROADMAP.md"],
+        unexpected: [],
+      },
+      "migration-index.v1.yaml",
+    );
+    expect(parity.problems).toEqual([
+      "2026-Q3/2026-08-01-ROADMAP.md: archived file outside an archive folder",
+    ]);
+  });
+
+  test("readArchiveLayout counts a file laid directly in a quarter", () => {
+    const root = join(scratch, "archives-loose");
+    mkdirSync(join(root, "2026-Q3"), { recursive: true });
+    writeFileSync(join(root, "2026-Q3/2026-08-01-ROADMAP.md"), "old\n");
+    const layout = readArchiveLayout(root, "migration-index.v1.yaml");
+    if (!layout.ok) throw new Error(layout.reason);
+    expect(layout.layout.quarters).toEqual(["2026-Q3"]);
+    expect(layout.layout.folders).toEqual([]);
+    expect(layout.layout.loose).toEqual(["2026-Q3/2026-08-01-ROADMAP.md"]);
   });
 
   test("readArchiveLayout reads quarters, folders and indexes from disk", () => {
@@ -313,7 +398,9 @@ describe("archive parity", () => {
       "2026-Q4/2026-11-01-plan",
     ]);
     expect(layout.layout.indexes).toEqual(["2026-Q3/2026-08-01-roadmap/migration-index.v1.yaml"]);
-    expect(compareArchiveParity(layout.layout, "migration-index.v1.yaml").problems.length).toBe(1);
+    expect(compareArchiveParity(layout.layout, "migration-index.v1.yaml").problems).toEqual([
+      "2026-Q4/2026-11-01-plan: archive without migration index",
+    ]);
   });
 
   test("an entry that is not a quarter, and an unreadable root, are named", () => {
@@ -322,7 +409,9 @@ describe("archive parity", () => {
     const layout = readArchiveLayout(root, "migration-index.v1.yaml");
     if (!layout.ok) throw new Error(layout.reason);
     expect(layout.layout.unexpected).toEqual(["misc"]);
-    expect(compareArchiveParity(layout.layout, "migration-index.v1.yaml").problems.length).toBe(1);
+    expect(compareArchiveParity(layout.layout, "migration-index.v1.yaml").problems).toEqual([
+      "misc: not a quarter directory (YYYY-Qn)",
+    ]);
     expect(readArchiveLayout(join(scratch, "absent"), "migration-index.v1.yaml").ok).toBe(false);
   });
 });
@@ -360,6 +449,72 @@ describe("command", () => {
     const result = run(dir);
     expect(result.code).toBe(0);
     expect(result.out).toContain("tracked=1");
+  });
+
+  test("a repository without any tracked document fails instead of passing over nothing", () => {
+    const dir = newRepository();
+    writeFileSync(join(dir, "notes.txt"), "x\n");
+    commitAll(dir, "one", Math.floor(Date.now() / 1000) - 1 * DAY);
+    const result = run(dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("no tracked document matches");
+  });
+
+  test("a document whose extension is upper case is examined like any other", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/BIG.MD", 600);
+    commitAll(dir, "old", Math.floor(Date.now() / 1000) - 200 * DAY);
+    const result = run(dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("docs/BIG.MD");
+  });
+
+  function archiveTree(name: string): string {
+    const root = join(scratch, name);
+    mkdirSync(join(root, "2026-Q3/2026-08-01-roadmap"), { recursive: true });
+    writeFileSync(join(root, "2026-Q3/2026-08-01-roadmap/ROADMAP.md"), "old\n");
+    return root;
+  }
+
+  function freshRepository(): string {
+    const dir = newRepository();
+    writeLines(dir, "docs/short.md", 10);
+    commitAll(dir, "one", Math.floor(Date.now() / 1000) - 1 * DAY);
+    return dir;
+  }
+
+  test("--archives: an archive folder without its migration index fails the command", () => {
+    const root = archiveTree("cli-archives-no-index");
+    const result = run(freshRepository(), ["--archives", root]);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("2026-Q3/2026-08-01-roadmap: archive without migration index");
+  });
+
+  test("--archives: a file laid directly in a quarter fails the command", () => {
+    const root = join(scratch, "cli-archives-loose");
+    mkdirSync(join(root, "2026-Q3"), { recursive: true });
+    writeFileSync(join(root, "2026-Q3/2026-08-01-ROADMAP.md"), "old\n");
+    const result = run(freshRepository(), ["--archives", root]);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain(
+      "2026-Q3/2026-08-01-ROADMAP.md: archived file outside an archive folder",
+    );
+  });
+
+  test("--archives: parity passes and prints the archive counters on the success line", () => {
+    const root = archiveTree("cli-archives-parity");
+    writeFileSync(join(root, "2026-Q3/2026-08-01-roadmap/migration-index.v1.yaml"), "x: 1\n");
+    const result = run(freshRepository(), ["--archives", root]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("archives: quarters=1 folders=1 indexes=1 loose=0 unexpected=0");
+  });
+
+  test("--archives: an empty archive tree passes and says so on the success line", () => {
+    const root = join(scratch, "cli-archives-empty");
+    mkdirSync(root, { recursive: true });
+    const result = run(freshRepository(), ["--archives", root]);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("archives: quarters=0 folders=0 indexes=0 loose=0 unexpected=0");
   });
 
   test("an unknown argument is refused", () => {
