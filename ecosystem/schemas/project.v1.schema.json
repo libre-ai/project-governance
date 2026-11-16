@@ -275,7 +275,7 @@
       "description": "unstable \u2192 the aggregator reports \u00ab Avancement non calculable \u2014 p\u00e9rim\u00e8tre \u00e0 clarifier \u00bb instead of a ratio. Information, not a defect."
     },
     "products": {
-      "description": "The products of the catalogue (ecosystem/produits/ of libre-ai/project-governance) this repository carries code for, each with the path of that code in this repository. Owner's choice of 2026-11-16, « Produit + chemin vérifié »: the fleet gate ecosystem/check-fleet-versions.ts holds each identifier to the catalogue and each path to the tree of the served branch. A repository that carries no product code leaves the field out.",
+      "description": "The products of the catalogue (ecosystem/produits/ of libre-ai/project-governance) this repository carries code for, each with the path of that code in this repository. Owner's choice of 2026-11-16, « Produit + chemin vérifié »: the fleet gate ecosystem/check-fleet-versions.ts holds each identifier to the catalogue and each path to the tree of the served branch. Owner's choice of 2026-11-16, « Exiger la cohérence »: the fiche of each product must name this repository in its depot field, so the catalogue stays the one source of which repository carries which product. A repository that carries no product code leaves the field out.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -321,7 +321,7 @@
             "type": "string"
           },
           "product": {
-            "description": "The product of the catalogue (ecosystem/produits/ of libre-ai/project-governance) this phase is a version of. A phase with a product is a version: it says what it delivers. Owner's choice of 2026-11-16, « Phases = versions ». The fleet gate ecosystem/check-fleet-versions.ts holds it to the catalogue.",
+            "description": "The product of the catalogue (ecosystem/produits/ of libre-ai/project-governance) this phase is a version of. A phase with a product is a version: it says what it delivers. Owner's choice of 2026-11-16, « Phases = versions ». The fleet gate ecosystem/check-fleet-versions.ts holds it to the catalogue, and to a fiche whose depot names this repository (« Exiger la cohérence »).",
             "type": "string",
             "pattern": "^P[0-9]{2}$"
           },

@@ -124,6 +124,8 @@ Le gate compte ces champs et imprime le total à chaque exécution.
 
 `null` veut dire qu'aucune décision ne désigne de dépôt porteur pour ce produit. C'est vrai même quand l'inventaire contient un dépôt du même domaine : un dépôt voisin n'est pas un dépôt porteur tant qu'une décision ne l'a pas dit. Cela ne veut pas dire qu'aucun travail n'existe ailleurs.
 
+`depot` est la seule source du lien entre un produit et son dépôt. Une fiche de projet (`project.v1.yaml`) ne peut déclarer un produit dans `products`, ni une phase comme version d'un produit (`phases[].product`), que si la fiche de ce produit nomme ce dépôt dans `depot`. Le contrôle de flotte `ecosystem/check-fleet-versions.ts` refuse tout autre cas, y compris un produit dont `depot` vaut `null` (choix du propriétaire du 2026-11-16, « Exiger la cohérence »). Pour qu'un dépôt déclare un produit, la fiche du produit doit donc d'abord le désigner, ce qui demande que ce dépôt figure à l'inventaire.
+
 ## `depend_de`
 
 `depend_de` liste les produits dont CE produit a besoin pour fonctionner. Un produit qu'il sert ou qu'il alimente n'y figure pas : c'est la fiche de cet autre produit qui cite celui-ci.

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { TreeListing } from "./fleet-tree";
 import {
   type CardSource,
+  catalogueFromFiches,
   evaluateFleetVersions,
   type FleetVersionsInput,
   parseCatalogueListing,
@@ -82,7 +83,20 @@ function source(repository: string, value: Card | null, error: string | null = n
   return { repository, text: value === null ? null : JSON.stringify(value), error };
 }
 
-const CATALOGUE = { ok: true as const, ids: new Set(["P01", "P02", "P04"]) };
+/**
+ * Each fiche with the repository its `depot` names. P05 is carried by a
+ * repository no test card is, and P06 by none (`depot: null`).
+ */
+const CATALOGUE = {
+  ok: true as const,
+  carriers: new Map<string, string | null>([
+    ["P01", "libre-ai/a"],
+    ["P02", "libre-ai/b"],
+    ["P04", "libre-ai/notes"],
+    ["P05", "libre-ai/autre"],
+    ["P06", null],
+  ]),
+};
 
 function input(
   cards: CardSource[],
@@ -114,6 +128,59 @@ describe("parseCatalogueListing", () => {
       reason: "no fiche tracked under ecosystem/produits/",
     });
     expect(parseCatalogueListing("").ok).toBe(false);
+  });
+});
+
+describe("catalogueFromFiches", () => {
+  const fiche = (id: string, depot: string | null): string =>
+    `schema_version: libre-ai.produit.v1\nid: ${id}\ndepot: ${depot === null ? "null" : depot}\n`;
+
+  test("each fiche with the repository its depot names, or null", () => {
+    const catalogue = catalogueFromFiches([
+      { id: "P04", text: fiche("P04", "libre-ai/notes"), error: null },
+      { id: "P02", text: fiche("P02", null), error: null },
+    ]);
+    expect(catalogue).toEqual({
+      ok: true,
+      carriers: new Map([
+        ["P04", "libre-ai/notes"],
+        ["P02", null],
+      ]),
+    });
+  });
+
+  test("a fiche that cannot be read makes the catalogue unreadable, never a product without carrier", () => {
+    const catalogue = catalogueFromFiches([
+      { id: "P04", text: fiche("P04", "libre-ai/notes"), error: null },
+      { id: "P02", text: null, error: "ENOENT" },
+    ]);
+    expect(catalogue).toEqual({ ok: false, reason: "fiche P02 unreadable (ENOENT)" });
+  });
+
+  test("a fiche without a depot field, or with a depot that is not a repository, is unreadable", () => {
+    expect(catalogueFromFiches([{ id: "P04", text: "id: P04\n", error: null }])).toEqual({
+      ok: false,
+      reason: "fiche P04 has no depot field",
+    });
+    expect(catalogueFromFiches([{ id: "P04", text: "id: P04\ndepot: 3\n", error: null }]).ok).toBe(
+      false,
+    );
+    expect(catalogueFromFiches([{ id: "P04", text: "id: P04\ndepot: [\n", error: null }]).ok).toBe(
+      false,
+    );
+  });
+
+  test("a fiche whose id is not its file name is unreadable: the carrier would be attributed to the wrong product", () => {
+    expect(
+      catalogueFromFiches([{ id: "P04", text: fiche("P05", "libre-ai/notes"), error: null }]),
+    ).toEqual({
+      ok: false,
+      reason: "fiche P04 declares id P05",
+    });
+  });
+
+  test("no fiche is an unreadable catalogue, not an empty one", () => {
+    expect(catalogueFromFiches([]).ok).toBe(false);
   });
 });
 
@@ -326,6 +393,7 @@ describe("evaluateFleetVersions", () => {
             products: [
               { id: "P04", code: "src/notes" },
               { id: "P09", code: "src" },
+              { id: "P05", code: "src" },
             ],
           }),
           socle("pending"),
@@ -344,8 +412,10 @@ describe("evaluateFleetVersions", () => {
       c.products_verified +
         c.products_path_absent +
         c.products_tree_unreadable +
-        c.products_unknown,
+        c.products_unknown +
+        c.products_other_carrier,
     ).toBe(c.products_declared);
+    expect(c.products_other_carrier).toBe(1);
     expect(c.versions_done + c.versions_ready + c.versions_blocked).toBe(c.versions);
     expect(c.versions + c.foundation_phases).toBe(c.phases);
     expect(c.dependencies_resolved + c.dependencies_unresolved).toBe(c.dependencies);
@@ -476,6 +546,59 @@ describe("evaluateFleetVersions", () => {
     );
     expect(outcome.report.violations.join("\n")).not.toContain("is not a fiche of the catalogue");
     expect(outcome.compteurs.products_unknown).toBe(1);
+  });
+
+  test("carrier: a product whose fiche names another repository is refused, and its path not judged", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ products: [{ id: "P05", code: "src/notes" }] }), socle()], [notesTree]),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: products P05, whose fiche names libre-ai/autre as its carrier, not libre-ai/notes",
+      ),
+    );
+    expect(outcome.compteurs).toMatchObject({
+      products_declared: 1,
+      products_other_carrier: 1,
+      products_verified: 0,
+    });
+    expect(outcome.volume).toContain("+ 1 carried by another repository");
+  });
+
+  test("carrier: a product whose fiche names no carrier (depot: null) is refused", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ products: [{ id: "P06", code: "src/notes" }] }), socle()], [notesTree]),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: products P06, whose fiche names no carrier repository (depot: null), not libre-ai/notes",
+      ),
+    );
+    expect(outcome.compteurs.products_other_carrier).toBe(1);
+  });
+
+  test("carrier: a version of a product carried elsewhere is refused and never ready", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ phases: [version("v1", "pending", "P05")] }), socle()], [notesTree]),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: phase v1 is a version of P05, whose fiche names libre-ai/autre as its carrier, not libre-ai/notes",
+      ),
+    );
+    expect(outcome.ready).toEqual([]);
+    expect(outcome.compteurs.versions_blocked).toBe(1);
+  });
+
+  test("carrier: a version done of a product carried elsewhere is still refused", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ phases: [version("v1", "accepted", "P06")] }), socle()], [notesTree]),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: phase v1 is a version of P06, whose fiche names no carrier",
+      ),
+    );
   });
 
   test("consumption: an entry that names no card read is counted elsewhere, never dropped", () => {

@@ -7,7 +7,9 @@ import {
 import { listTrackedPaths, type TreeListing } from "./fleet-tree";
 import {
   type CardSource,
+  catalogueFromFiches,
   evaluateFleetVersions,
+  type FicheSource,
   type FleetVersionsInput,
   parseCatalogueListing,
   repositoriesToList,
@@ -19,14 +21,18 @@ import {
  *
  * It reads the cards of every repository of the index that declares one, at
  * its served branch (`HEAD:`, the fetcher of the fleet presentation gate), the
- * identifiers of the fiches tracked under `ecosystem/produits/`, and, for each
+ * fiches tracked under `ecosystem/produits/` with the carrier each names in
+ * `depot`, and, for each
  * card that declares products, the tree of its served branch. It prints the
  * ready versions and the cards no other card consumes, then the verdict and
  * its volume.
  */
 
-/** The identifiers of the fiches git tracks: an untracked fiche is not part of the catalogue. */
-function readCatalogue(): FleetVersionsInput["catalogue"] {
+/**
+ * The fiches git tracks, each with its carrier: an untracked fiche is not part
+ * of the catalogue.
+ */
+async function readCatalogue(): Promise<FleetVersionsInput["catalogue"]> {
   const listing = Bun.spawnSync(["git", "ls-files", "-z", "--", "ecosystem/produits"], {
     stdout: "pipe",
     stderr: "pipe",
@@ -34,7 +40,18 @@ function readCatalogue(): FleetVersionsInput["catalogue"] {
   if (listing.exitCode !== 0) {
     return { ok: false, reason: `git ls-files failed: ${listing.stderr.toString().trim()}` };
   }
-  return parseCatalogueListing(listing.stdout.toString());
+  const tracked = parseCatalogueListing(listing.stdout.toString());
+  if (!tracked.ok) return tracked;
+  const fiches: FicheSource[] = await Promise.all(
+    [...tracked.ids].map(async (id) => {
+      try {
+        return { id, text: await Bun.file(`ecosystem/produits/${id}.v1.yaml`).text(), error: null };
+      } catch (error) {
+        return { id, text: null, error: error instanceof Error ? error.message : String(error) };
+      }
+    }),
+  );
+  return catalogueFromFiches(fiches);
 }
 
 if (import.meta.main) {
@@ -61,7 +78,7 @@ if (import.meta.main) {
   );
   const outcome = evaluateFleetVersions({
     cards,
-    catalogue: readCatalogue(),
+    catalogue: await readCatalogue(),
     trees,
     withoutCard,
   });
