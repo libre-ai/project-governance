@@ -6,6 +6,7 @@ intitule: "notes et mémoire personnelle"
 fonction: "Prise de notes"
 categorie: connaissance
 promesse: "Vos notes sont des fichiers ouverts que vous et vos agents lisez et modifiez selon les mêmes règles, avec la trace de chaque changement."
+accroche: "Capturez vos idées avec leur contexte, éditables et exportables."
 pour_qui: "Les personnes qui tiennent une base de notes durable ; les personnes et équipes qui font travailler des agents sur leurs notes"
 a_la_place_de: "votre application de notes fermée, où la synchronisation passe par un abonnement"
 offre:
@@ -38,4 +39,5 @@ etiquettes:
   - "Fichiers Markdown ouverts"
   - "Lisible par les agents"
   - "Chaque changement tracé"
-a_relire: []
+a_relire:
+  - accroche

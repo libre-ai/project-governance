@@ -6,6 +6,7 @@ intitule: "accès aux sources"
 fonction: "Exploration du web sourcée"
 categorie: connaissance
 promesse: "Posez une question, suivez un sujet ou branchez un agent : chaque réponse montre ce qui a été trouvé, ce qui a été lu et ce qui est resté fermé."
+accroche: "Explorez le web et repartez avec des sources attribuées et vérifiables."
 pour_qui: "Les personnes qui doivent justifier ce qu'elles avancent : veille, enquête, étude, décision ; les équipes qui confient des recherches à un agent"
 a_la_place_de: "les moteurs de réponse par IA qui citent sans montrer ce qu'ils ont lu, et vos recherches menées à la main, d'onglet en onglet"
 capacites:
@@ -35,3 +36,4 @@ etiquettes:
   - "Vos accès, votre choix"
 a_relire:
   - a_la_place_de
+  - accroche

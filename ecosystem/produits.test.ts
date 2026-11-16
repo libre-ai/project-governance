@@ -49,6 +49,7 @@ function fiche(id: string, changes: Fiche = {}): Fiche {
     fonction: "Fait une chose",
     categorie: id === "P03" ? "collaboration" : "connaissance",
     promesse: "Faire une chose pour quelqu'un, de façon vérifiable.",
+    accroche: "Faites une chose, vérifiez-la.",
     pour_qui: "une personne nommée",
     a_la_place_de: "votre outil en ligne par abonnement",
     capacites: ["Faire la chose annoncée."],
@@ -437,6 +438,21 @@ describe("rules of the gate", () => {
     ]);
     // The other text is not accused.
     expect(outcome.report.violations.join("\n").match(/says « gratuit »/g)).toHaveLength(1);
+  });
+
+  // The accroche is the text the card of the site prints: the most public text
+  // of a fiche, and the word ADR-0033 refuses as an absolute claim is refused
+  // there as in an offre.
+  test.each(GRATUIT_FORMS)("rule accroche word: the accroche does not say « %s »", (form) => {
+    const outcome = judge(withFiche("P01", { accroche: `Un outil ${form} pour vous.` }));
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining(`${item("P01")}: accroche says « gratuit »`),
+    ]);
+  });
+
+  test("rule accroche word: an accroche without the word is admitted", () => {
+    const accroche = "Retrouvez vos notes, sans frais chez vous.";
+    expect(judge(withFiche("P01", { accroche })).report.violations).toEqual([]);
   });
 
   test("rule offer word: « sans frais », with its condition, is what an offre says", () => {
@@ -1203,6 +1219,7 @@ describe("the text of a fiche", () => {
     "intitule",
     "fonction",
     "promesse",
+    "accroche",
     "pour_qui",
     "a_la_place_de",
     "offre.sans_frais",

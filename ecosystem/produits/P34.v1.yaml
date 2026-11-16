@@ -6,6 +6,7 @@ intitule: "assistant IA"
 fonction: "Assistant IA personnel"
 categorie: outils-acces
 promesse: "Aider à comprendre et agir dans les applications choisies tout en gardant le contexte et les permissions visibles."
+accroche: "Un assistant qui montre ses sources et demande avant d'agir."
 pour_qui: "Toute personne qui veut un assistant IA dans ses applications"
 a_la_place_de: "votre assistant conversationnel en ligne, où vos conversations et sa mémoire sont conservées chez l'éditeur"
 capacites:
