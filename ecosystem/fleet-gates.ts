@@ -68,7 +68,7 @@ function isKey(value: string): value is Key {
   return (KEYS as readonly string[]).includes(value);
 }
 
-const KEY_LINE = /^#\s*([a-z]+)\s*:\s*(.*?)\s*$/;
+const KEY_LINE = /^#\s*([a-z]+)\s*:(.*)$/;
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const INTEGER = /^(0|[1-9][0-9]*)$/;
 
@@ -84,7 +84,8 @@ export function parseDetectorHeader(text: string): HeaderParse {
       errors.push(`key « ${key} » declared twice`);
       continue;
     }
-    found.set(key, match[2] ?? "");
+    // Trimmed here, not in the regex: overlapping quantifiers backtrack quadratically.
+    found.set(key, (match[2] ?? "").trim());
   }
 
   for (const key of KEYS) {

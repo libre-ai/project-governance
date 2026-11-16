@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 
 import { discoverDetectors, parseDetectorHeader } from "./fleet-gates";
 
@@ -135,9 +135,18 @@ describe("discoverDetectors", () => {
 
   test("a relative directory still yields absolute paths", async () => {
     const root = directory({ "a.sh": header() });
-    const found = await discoverDetectors(join(root, "..", root.split("/").pop() ?? ""));
+    const rel = relative(process.cwd(), root);
+    expect(isAbsolute(rel)).toBe(false);
+    const found = await discoverDetectors(rel);
     expect(found.ok).toBe(true);
-    if (found.ok) expect(isAbsolute(found.detectors[0]?.path ?? "")).toBe(true);
+    if (found.ok) expect(found.detectors[0]?.path).toBe(join(root, "a.sh"));
+  });
+
+  test("the header reader stays linear on a line of spaces", () => {
+    const line = `# titre:${" ".repeat(100_000)}x${" ".repeat(100_000)}y`;
+    const start = performance.now();
+    parseDetectorHeader(line);
+    expect(performance.now() - start).toBeLessThan(100);
   });
 
   test("two detectors with the same identifier fail the discovery", async () => {
