@@ -295,3 +295,34 @@ generations:
       from this declaration until the wave lands. The R note's condition
       (every consumer moves before another declaration) is not met; the owner
       accepted it knowingly. No generation is retired here.
+  - sha: 5f7742d86a3c16e9d55a62bc0ea9dc67dc011240
+    added_on: 2026-11-16
+    note: >-
+      The project card schema admits the optional fields of the owner's
+      choices of 2026-11-16 (#191): `products` (« Produit + chemin vérifié »),
+      and `phases[].product`, `delivers`, `depends_on` (« Phases = versions »);
+      #192 holds them to the carrier each product fiche names (« Exiger la
+      cohérence »). A consumer whose own CI validates its card against the
+      schema of the generation it pins (signalement, `check:card`) cannot
+      carry these fields on 75d6ea08, whose schema refuses them; that is
+      the reason for this declaration. Of what a consumer runs from its pin,
+      only ecosystem/schemas/project.v1.schema.json changes, by 48 added
+      lines and none removed (`git diff --stat 75d6ea08 5f7742d --
+      ecosystem/validate-cards.ts ecosystem/project-cards.ts
+      ecosystem/schemas/project.v1.schema.json`): every card valid on
+      75d6ea08 stays valid. The composition manifest and the
+      reusable-*.yml templates are unchanged (`git diff 75d6ea08 5f7742d
+      -- .github/composition/manifest.json '.github/workflows/reusable-*.yml'`
+      is empty), and none of the 7 tool paths those templates call changed;
+      package.json gains scripts and no dependency, so no bun.lock
+      resolution changes. Generation coherence is replayed by
+      generation-coherence.yml on this pull request; the local replay could
+      not reach the forge (the tool keeps an allow-listed environment, which
+      drops the proxy of the sandbox it ran in). Declared by owner decision
+      of 2026-11-16 (« Déclarer 5f7742d, bump signalement seul »), followed
+      by one bump, signalement; no wave. Grace window, measured by
+      `bun tools/fleet/bump-generation.ts --dry-run` before this
+      declaration: 18 consumers on 75d6ea08, 2 repositories without a pin
+      surface, 0 refused, 0 unreadable. With this declaration 75d6ea08 is
+      one generation behind, inside the grace window: no pin turns red. No
+      generation is retired here.
