@@ -6,6 +6,7 @@ intitule: "recherche transversale"
 fonction: "Recherche dans toutes vos applications"
 categorie: connaissance
 promesse: "Une seule question retrouve vos notes, courriels et fichiers, dit d'où vient chaque réponse et dit aussi ce qui n'a pas été cherché."
+accroche: "Retrouvez n'importe quoi dans vos applications, sans mélanger les données."
 pour_qui: "Les personnes et équipes dont l'information est dispersée entre plusieurs applications et dossiers ; les agents qui travaillent pour elles, avec les mêmes droits et pas davantage"
 a_la_place_de: "votre moteur de recherche d'entreprise hébergé par son éditeur et facturé par poste"
 capacites:
@@ -32,4 +33,5 @@ etiquettes:
   - "Notes, courriels, fichiers"
   - "Droits d'origine respectés"
   - "Couverture affichée"
-a_relire: []
+a_relire:
+  - accroche

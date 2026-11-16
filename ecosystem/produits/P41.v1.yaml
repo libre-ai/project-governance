@@ -6,6 +6,7 @@ intitule: "projets, tickets et support"
 fonction: "Tickets et support"
 categorie: collaboration
 promesse: "Transformer un problème ou une demande en travail traçable jusqu'à sa résolution vérifiée."
+accroche: "D'une demande à sa résolution vérifiée, sans rien perdre en route."
 pour_qui: "Équipes support"
 a_la_place_de: "votre outil de suivi de tickets et de support en ligne, où l'historique de vos demandes reste chez l'éditeur"
 capacites:
@@ -35,3 +36,4 @@ a_relire:
   - depend_de
   - realisation
   - etiquettes
+  - accroche

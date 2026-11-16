@@ -6,6 +6,7 @@ intitule: "automatisations"
 fonction: "Automatisations entre applications"
 categorie: outils-acces
 promesse: "Répéter un enchaînement explicite de manière fiable et compréhensible."
+accroche: "Automatisez des enchaînements explicites, testés avant d'être activés."
 pour_qui: "Équipes qui administrent des enchaînements entre applications"
 a_la_place_de: "votre service d'automatisation entre applications, où chaque exécution est comptée et le volume plafonné selon le palier"
 capacites:

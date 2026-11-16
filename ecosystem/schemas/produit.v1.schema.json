@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:libre-ai:schema:produit:v1",
   "title": "libre-ai.produit.v1 — one product of the catalogue",
-  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names content fields of this schema; offre is carried only by a product the list of hosted offers names, and neither of its texts says « gratuit ». Every constraint written here has a vector in ecosystem/fixtures/produits/vectors.v1.json that becomes valid when the constraint is removed: a test holds the two together.",
+  "description": "One file per product under ecosystem/produits/ (catalogue of ADR-0042 §1): what the product does, for whom, what it does not do and which other products it relies on. No field states an advancement: the state of a product is read in the project.v1.yaml card of its carrier repository. Rules that need another source are enforced by ecosystem/check-produits.ts, each under its own name, not by this schema: the identifier is the file name and is in the catalogue; the category is the domain the ADR gives the product; exactly one of nom_public and nom_provisoire is set; a dependency names another fiche; the carrier is in the repository inventory; a fiche carries exactly three etiquettes; a_relire names content fields of this schema; offre is carried only by a product the list of hosted offers names, and neither of its texts says « gratuit »; the accroche does not say « gratuit ». Every constraint written here has a vector in ecosystem/fixtures/produits/vectors.v1.json that becomes valid when the constraint is removed: a test holds the two together.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -14,6 +14,7 @@
     "fonction",
     "categorie",
     "promesse",
+    "accroche",
     "pour_qui",
     "a_la_place_de",
     "capacites",
@@ -63,6 +64,10 @@
     "promesse": {
       "description": "What the product is meant to bring, in one sentence. An intention, not a statement that it exists.",
       "$ref": "#/$defs/phrase"
+    },
+    "accroche": {
+      "description": "The short line the card of the site prints under the name of the product: what the product does, addressed to the reader. The promise carries the sentence; the accroche fits a card. 90 characters at most: the longest line the site carried when the field was created measured 77. The checker refuses the word « gratuit », in any form.",
+      "$ref": "#/$defs/accroche"
     },
     "pour_qui": {
       "$ref": "#/$defs/ligne"
@@ -176,6 +181,16 @@
       ],
       "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
       "description": "One line of prose: no control character, and one visible character (see ligne)."
+    },
+    "accroche": {
+      "type": "string",
+      "minLength": 12,
+      "maxLength": 90,
+      "allOf": [
+        { "pattern": "[\\p{L}\\p{N}\\p{P}\\p{S}](?<![\\u115f\\u1160\\u2800\\u3164\\uffa0])" }
+      ],
+      "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f\\u2028\\u2029]*$",
+      "description": "A phrase that fits the line of a card: the constraints of phrase, and 90 characters at most."
     }
   }
 }

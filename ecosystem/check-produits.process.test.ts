@@ -111,6 +111,7 @@ function fiche(
       fonction: "Fait une chose",
       categorie,
       promesse: "Faire une chose pour quelqu'un, de façon vérifiable.",
+      accroche: "Faites une chose, vérifiez-la.",
       pour_qui: "une personne nommée",
       a_la_place_de: "votre outil en ligne par abonnement",
       // Left out when undefined: a product without a hosted offer does not carry the field.

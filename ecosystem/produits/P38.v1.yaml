@@ -6,6 +6,7 @@ intitule: "sauvegarde"
 fonction: "Sauvegarde et restauration"
 categorie: outils-acces
 promesse: "Retrouver ses données après erreur, panne ou perte d'un service."
+accroche: "Des sauvegardes réellement restaurées, pas seulement copiées."
 pour_qui: "Personnes et organisations"
 a_la_place_de: "votre service de sauvegarde en ligne, où la place se paie au volume et où restaurer passe par l'éditeur"
 capacites:

@@ -2,7 +2,7 @@
 
 Ce dossier porte une fiche par produit du catalogue d'ADR-0042 §1. Une fiche dit ce que le produit doit faire, pour qui, ce qu'il ne fait pas, et de quels autres produits il dépend.
 
-C'est la source de données du catalogue. La fiche fait autorité sur `fonction` et `etiquettes` : le site les projette, il ne les définit plus. Le lecteur du site ne vit pas dans ce dépôt. La carte des briques (`ecosystem/briques/`) est prévue pour lire ces fiches et ne les lit pas encore.
+C'est la source de données du catalogue. La fiche fait autorité sur `fonction`, `accroche` et `etiquettes` : le site les projette, il ne les définit plus. Le lecteur du site ne vit pas dans ce dépôt. La carte des briques (`ecosystem/briques/`) est prévue pour lire ces fiches et ne les lit pas encore.
 
 Une fiche décrit une intention. Elle ne dit pas que le produit existe ni qu'il est utilisable.
 
@@ -24,6 +24,7 @@ Aucune valeur ne contient de caractère de contrôle (saut de ligne, échappemen
 | `fonction` | Le genre d'outil, en quelques mots. |
 | `categorie` | Le domaine du catalogue, sous forme d'identifiant. |
 | `promesse` | Ce que le produit doit apporter, en une phrase. |
+| `accroche` | La ligne courte que la carte du site affiche sous le nom du produit (voir plus bas). |
 | `pour_qui` | Les personnes à qui le produit est destiné. |
 | `a_la_place_de` | Le genre d'outil que le produit doit remplacer. Aucune marque ni aucun service n'y est nommé. Le champ nomme ce que ce genre d'outil verrouille (voir plus bas). |
 | `offre` | Pour un produit qui a une offre hébergée décidée, et pour lui seul : ce qui est sans frais, et ce que l'abonnement au service hébergé paie (voir plus bas). |
@@ -55,6 +56,17 @@ Cette correspondance est écrite une fois, dans `ecosystem/produits.ts`. Un test
 `nom_public` est le nom « Libre X » que le propriétaire a tranché pour le produit (décision du 2026-11-09, consignée dans le dépôt du site).
 
 Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y inscrire reste un acte du propriétaire : une fiche ne remplace pas cette entrée.
+
+## `accroche`
+
+`accroche` est la ligne que la carte du site affiche sous le nom du produit : ce que le produit fait, adressé au lecteur. La `promesse` porte la phrase complète ; l'accroche tient sur une carte, 90 caractères au plus (décision du propriétaire du 2026-11-15 : « Un champ "accroche" court dans la fiche »).
+
+Les accroches ont été reprises des phrases que le site portait (`src/content/applications.ts` de `libre-ai/project-website`, acceptées le 2026-11-09). Trois cas sont dans `a_relire` :
+
+- les fiches réécrites après le 2026-11-09 (P01, P02, P03, P04, P06) : la phrase du site a été écrite avant la fiche ;
+- P15 : la phrase du site décrivait l'outil de tickets, qui est devenu P41 (ADR-0067). P41 reprend cette phrase, et l'accroche de P15 est écrite par un agent à partir de sa promesse.
+
+Comme la `promesse`, l'accroche décrit une intention : elle ne dit pas que le produit existe. Elle ne dit pas « gratuit », sous aucune forme (ADR-0033, ADR-0066 D3).
 
 ## `a_la_place_de`
 
@@ -147,6 +159,7 @@ Ses règles :
 - `offre`, s'il est écrit, porte ses deux textes (c'est une contrainte du schéma) ;
 - `offre` n'est écrit que par un produit que la liste des offres hébergées nomme ;
 - aucun des deux textes de `offre` ne contient « gratuit », en toute casse et sous toute forme construite sur le mot ;
+- `accroche` ne contient pas « gratuit », sous la même règle ;
 - chaque produit de la liste des offres hébergées est un produit du catalogue, cite une décision (`ADR-nnnn`) et n'est listé qu'une fois.
 
 Chaque contrainte du schéma a un vecteur dans `ecosystem/fixtures/produits/vectors.v1.json`. Un test retire les contraintes une par une : si aucun vecteur ne change de verdict, le test échoue.
@@ -183,7 +196,7 @@ Limites du lecteur, déclarées :
 - une clé écrite deux fois dans une fiche ne provoque pas d'erreur : le lecteur YAML garde la dernière ;
 - le gate ne vérifie pas l'ordre des champs ;
 - le gate ne lit pas le sens des textes. Il ne détecte pas une marque dans `a_la_place_de`, un outil tiers nommé à tort, une dépendance écrite dans le mauvais sens, ni une phrase qui présenterait un produit comme disponible. Ce sont des règles de rédaction ;
-- dans `offre`, le gate ne juge pas si `payant` décrit un service ou une fonction : qu'aucune fonction ne soit réservée à l'offre payante (ADR-0066 D1) reste une règle de revue. Il ne refuse « gratuit » que dans les deux textes de `offre`, pas dans les autres champs. Une lettre d'un autre alphabet qui ressemble à une lettre latine n'est pas reconnue ;
+- dans `offre`, le gate ne juge pas si `payant` décrit un service ou une fonction : qu'aucune fonction ne soit réservée à l'offre payante (ADR-0066 D1) reste une règle de revue. Il ne refuse « gratuit » que dans les deux textes de `offre` et dans `accroche`, pas dans les autres champs. Une lettre d'un autre alphabet qui ressemble à une lettre latine n'est pas reconnue ;
 - le gate n'exige pas qu'un produit de la liste des offres hébergées écrive `offre` : une offre peut être admise avant que ses deux textes soient adoptés. Il n'ouvre pas la décision que la liste cite ;
 - hors du tableau, le gate ne reconnaît un produit qu'à son identifiant de forme exacte. Une phrase ou une liste qui annonce un produit sous une autre forme (`P 41`, `p41`) et sans barre verticale n'est pas vue ;
 - un caractère invisible sans largeur (U+200B par exemple) n'est pas un caractère de contrôle. Seul, il ne fait pas une valeur ; au milieu d'un texte, il est accepté. Il en va de même du caractère d'inversion du sens d'écriture U+202E et des caractères à usage privé : refusés seuls, acceptés au milieu d'un texte ;

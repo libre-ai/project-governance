@@ -6,6 +6,7 @@ intitule: "veille documentaire"
 fonction: "Lecteur de flux et veille"
 categorie: connaissance
 promesse: "Vous ne recevez que ce que vous avez demandé : chaque élément arrive avec la raison de sa présence, et le reste ne vous dérange pas."
+accroche: "Une veille reliée à vos questions, qui dit pourquoi chaque article compte."
 pour_qui: "Les personnes qui suivent beaucoup de sources et lisent peu de ce qu'elles reçoivent ; les équipes qui tiennent une veille sur un sujet, un marché ou une réglementation"
 a_la_place_de: "votre lecteur de flux en ligne, où le tri fin se paie en supplément"
 offre:
@@ -42,3 +43,4 @@ etiquettes:
   - "Vos règles, vos données"
 a_relire:
   - depend_de
+  - accroche
