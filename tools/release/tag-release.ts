@@ -22,10 +22,14 @@
  * never a free tag.
  *
  * Inputs are the CI variables GITHUB_SERVER_URL, GITHUB_REPOSITORY,
- * GITHUB_API_URL, GITHUB_SHA, GITHUB_REF_NAME and GITHUB_TOKEN (the last two
- * of the API side only when a tag must be created). Of a forge answer only the
- * HTTP status is printed, plus, on a refusal, its `message` with the token
- * removed, control characters neutralised and the length bounded to 200.
+ * GITHUB_API_URL, GITHUB_SHA, GITHUB_REF (the full ref: tag mode needs
+ * `refs/heads/<served branch>`, so a pushed tag of the same short name is not
+ * the branch) and GITHUB_TOKEN (GITHUB_API_URL and GITHUB_TOKEN read only when
+ * a tag must be created). Each git or forge call is bounded to 30 s; ls-remote
+ * refs that only end like the ones asked about are counted and set aside. Of a
+ * forge answer only the HTTP status is printed, plus, on a refusal, its
+ * `message` with the token removed, control characters neutralised and the
+ * length bounded to 200. Any other error is code 3, printed by name only.
  *
  * Release notes are out of scope: the release is created bare.
  */
@@ -37,6 +41,8 @@ export interface TagReleaseInput {
   readonly args: readonly string[];
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly repositoryRoot: string;
+  /** Bound on each git or forge call; 30 s when absent. */
+  readonly timeoutMs?: number;
 }
 
 export interface TagReleaseResult {
@@ -47,7 +53,8 @@ export interface TagReleaseResult {
 const VERSION_LINE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\n?$/;
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 const REPOSITORY = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-const BRANCH = /^[A-Za-z0-9._/-]+$/;
+const REF = /^refs\/[A-Za-z0-9._/-]+$/;
+const BRANCH_PREFIX = "refs/heads/";
 const TOKEN = /^[\x21-\x7e]+$/;
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const MESSAGE_LIMIT = 200;
@@ -63,6 +70,8 @@ interface RemoteState {
   /** Commit the tag points at (peeled), or null when the tag is free. */
   readonly tagCommit: string | null;
   readonly refLines: number;
+  /** Lines naming a ref that only ends like one asked about. */
+  readonly ignored: number;
 }
 
 function required(environment: TagReleaseInput["environment"], name: string): string {
@@ -127,7 +136,7 @@ function repositoryName(environment: TagReleaseInput["environment"]): string {
  * Git's stderr is not relayed: a remote configured with credentials would
  * otherwise print them.
  */
-async function readRemote(remote: string, tag: string): Promise<RemoteState> {
+async function readRemote(remote: string, tag: string, timeoutMs: number): Promise<RemoteState> {
   const tagRef = `refs/tags/${tag}`;
   const peeledRef = `${tagRef}^{}`;
   let proc: ReturnType<typeof Bun.spawn>;
@@ -136,6 +145,8 @@ async function readRemote(remote: string, tag: string): Promise<RemoteState> {
       stdout: "pipe",
       stderr: "pipe",
       stdin: "ignore",
+      timeout: timeoutMs,
+      killSignal: "SIGKILL",
       env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     });
   } catch {
@@ -145,18 +156,25 @@ async function readRemote(remote: string, tag: string): Promise<RemoteState> {
     new Response(proc.stdout as ReadableStream).text(),
     proc.exited,
   ]);
+  if (proc.signalCode !== null) throw new UnreachableError("git ls-remote did not answer");
   if (code !== 0) throw new UnreachableError(`git ls-remote exited ${code}`);
 
   let servedBranch: string | null = null;
   let direct: string | null = null;
   let peeled: string | null = null;
   let refLines = 0;
+  let ignored = 0;
   for (const line of stdout.split("\n")) {
     if (line.length === 0) continue;
     refLines += 1;
-    const symref = /^ref: refs\/heads\/(\S+)\tHEAD$/.exec(line);
-    if (symref?.[1] !== undefined) {
-      servedBranch = symref[1];
+    const symref = /^ref: (\S+)\t(\S+)$/.exec(line);
+    if (symref !== null) {
+      const [, target, name] = symref;
+      if (name === "HEAD" && target?.startsWith(BRANCH_PREFIX)) {
+        servedBranch = target.slice(BRANCH_PREFIX.length);
+      } else if (name !== "HEAD") {
+        ignored += 1;
+      }
       continue;
     }
     const entry = /^(\S+)\t(\S+)$/.exec(line);
@@ -164,12 +182,15 @@ async function readRemote(remote: string, tag: string): Promise<RemoteState> {
     if (commit === undefined || ref === undefined || !COMMIT.test(commit)) {
       throw new UnreachableError("git ls-remote returned a line it should not");
     }
+    // ls-remote matches its patterns on the tail of a ref name: a branch named
+    // `x/HEAD` or `refs/tags/<tag>` comes back too. It is not one of the refs
+    // asked about, so it is counted and set aside, never read as the tag.
     if (ref === tagRef) direct = commit;
     else if (ref === peeledRef) peeled = commit;
-    else if (ref !== "HEAD") throw new UnreachableError(`git ls-remote returned ${ref}`);
+    else if (ref !== "HEAD") ignored += 1;
   }
   if (servedBranch === null) throw new UnreachableError("the remote reports no served branch");
-  return { servedBranch, tagCommit: peeled ?? direct, refLines };
+  return { servedBranch, tagCommit: peeled ?? direct, refLines, ignored };
 }
 
 /** The forge's own words, made safe to print. */
@@ -200,14 +221,18 @@ async function createRelease(
   token: string,
   tag: string,
   commit: string,
+  timeoutMs: number,
   lines: string[],
 ): Promise<void> {
   let response: Response;
+  let body: string;
+  // The body is read inside the same try: a connection cut or the timeout
+  // while it streams is the forge not answering, not an exception to escape.
   try {
     response = await fetch(`${api}/repos/${repository}/releases`, {
       method: "POST",
       redirect: "manual",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         Accept: "application/vnd.github+json",
         Authorization: `Bearer ${token}`,
@@ -215,10 +240,10 @@ async function createRelease(
       },
       body: JSON.stringify({ tag_name: tag, target_commitish: commit, name: tag }),
     });
+    body = await response.text();
   } catch {
     throw new UnreachableError("the release API did not answer");
   }
-  const body = await response.text();
   lines.push(`forge: HTTP ${response.status}`);
   if (response.status !== 201) {
     const message = boundedMessage(body, token);
@@ -233,11 +258,15 @@ async function decide(input: TagReleaseInput, lines: string[]): Promise<TagRelea
     throw new UsageError("usage: tag-release [--check]");
   }
   const checkOnly = flag === "--check";
+  const timeoutMs = input.timeoutMs ?? REQUEST_TIMEOUT_MS;
   const environment = input.environment;
   const remote = `${serverUrl(environment)}/${repositoryName(environment)}.git`;
   const repository = repositoryName(environment);
   const commit = matching(environment, "GITHUB_SHA", COMMIT);
-  const branch = matching(environment, "GITHUB_REF_NAME", BRANCH);
+  // GITHUB_REF, not GITHUB_REF_NAME: the short name of a pushed tag can equal
+  // the served branch's, and only the full ref tells them apart.
+  const ref = matching(environment, "GITHUB_REF", REF);
+  const branch = ref.startsWith(BRANCH_PREFIX) ? ref.slice(BRANCH_PREFIX.length) : null;
 
   let content: string;
   try {
@@ -251,12 +280,18 @@ async function decide(input: TagReleaseInput, lines: string[]): Promise<TagRelea
     return 1;
   }
   const tag = `v${version}`;
-  lines.push(`version: ${version}`, `tag: ${tag}`, `commit: ${commit}`, `branch: ${branch}`);
-
-  const before = await readRemote(remote, tag);
-  const tagging = !checkOnly && branch === before.servedBranch;
   lines.push(
-    `remote: ${before.refLines} ref line(s) read, served branch ${before.servedBranch}, ` +
+    `version: ${version}`,
+    `tag: ${tag}`,
+    `commit: ${commit}`,
+    `branch: ${branch ?? `none (${ref})`}`,
+  );
+
+  const before = await readRemote(remote, tag, timeoutMs);
+  const tagging = !checkOnly && branch !== null && branch === before.servedBranch;
+  lines.push(
+    `remote: ${before.refLines} ref line(s) read, ${before.ignored} ignored, ` +
+      `served branch ${before.servedBranch}, ` +
       `tag ${before.tagCommit === null ? "free" : `at ${before.tagCommit}`}`,
     `mode: ${tagging ? "tag" : "check"}`,
   );
@@ -276,9 +311,9 @@ async function decide(input: TagReleaseInput, lines: string[]): Promise<TagRelea
 
   const api = apiUrl(environment);
   const token = matching(environment, "GITHUB_TOKEN", TOKEN);
-  await createRelease(api, repository, token, tag, commit, lines);
+  await createRelease(api, repository, token, tag, commit, timeoutMs, lines);
 
-  const after = await readRemote(remote, tag);
+  const after = await readRemote(remote, tag, timeoutMs);
   if (after.tagCommit !== commit) {
     throw new UnreachableError(
       `the forge answered 201 but ${tag} is ${after.tagCommit === null ? "absent" : `at ${after.tagCommit}`}`,
@@ -302,7 +337,12 @@ export async function tagRelease(input: TagReleaseInput): Promise<TagReleaseResu
       lines.push(`unreachable: ${error.message}`);
       return { code: 3, lines };
     }
-    throw error;
+    // Anything else is an unexpected answer: code 3 with the lines already
+    // gathered, never an uncaught exception whose exit 1 would read as a
+    // refusal. Only the error's name is printed: its message may quote data.
+    const name = error instanceof Error ? error.name : typeof error;
+    lines.push(`unexpected: ${name}`);
+    return { code: 3, lines };
   }
 }
 

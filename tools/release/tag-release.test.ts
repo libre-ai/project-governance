@@ -65,7 +65,7 @@ function environment(overrides: Record<string, string | undefined> = {}) {
     GITHUB_API_URL: `http://127.0.0.1:${port}`,
     GITHUB_REPOSITORY: OWNER_REPOSITORY,
     GITHUB_SHA: current,
-    GITHUB_REF_NAME: SERVED,
+    GITHUB_REF: `refs/heads/${SERVED}`,
     GITHUB_TOKEN: TOKEN,
     ...overrides,
   };
@@ -194,7 +194,63 @@ describe("tag-release on the served branch", () => {
     const output = result.lines.join("\n");
     expect(output).toContain("HTTP 422");
     expect(output).toContain("bad credential");
-    expect(output).not.toContain("x".repeat(201));
+    // The brief bounds the forge's message to 200 characters: measured on the
+    // line itself, with a message whose useful part is longer than that.
+    const prefix = "forge message: ";
+    const messageLine = result.lines.find((line) => line.startsWith(prefix));
+    expect(messageLine).toBeDefined();
+    expect((messageLine ?? "").length - prefix.length).toBe(200);
+  });
+
+  test("a connection cut while the forge's body is read is code 3, never a crash", async () => {
+    // Headers of a 422 are sent, then the connection closes before the body
+    // the Content-Length announces.
+    const cutting = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data(socket) {
+          socket.write(
+            "HTTP/1.1 422 Unprocessable Entity\r\nContent-Type: application/json\r\n" +
+              'Content-Length: 1000\r\n\r\n{"mess',
+          );
+          socket.end();
+        },
+      },
+    });
+    try {
+      const result = await run([], { GITHUB_API_URL: `http://127.0.0.1:${cutting.port}` });
+      expect(result.code).toBe(3);
+      expect(result.lines).toContain("unreachable: the release API did not answer");
+      expect(result.lines.some((line) => line.startsWith("version: "))).toBe(true);
+    } finally {
+      cutting.stop(true);
+    }
+  });
+
+  test("a redirect from the release API is not followed: the token stays home", async () => {
+    const reached: string[] = [];
+    const target = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch(request) {
+        reached.push(request.headers.get("authorization") ?? "");
+        return Response.json({ id: 1 }, { status: 201 });
+      },
+    });
+    try {
+      reply = async () =>
+        new Response(null, {
+          status: 307,
+          headers: { Location: `http://127.0.0.1:${target.port}/elsewhere` },
+        });
+      const result = await run();
+      expect(result.code).toBe(3);
+      expect(result.lines).toContain("forge: HTTP 307");
+      expect(reached).toHaveLength(0);
+    } finally {
+      target.stop(true);
+    }
   });
 
   test("a forge message cannot inject lines into the log", async () => {
@@ -241,6 +297,26 @@ describe("tag-release on the served branch", () => {
     expect(posted).toHaveLength(0);
   });
 
+  test("a pushed tag named like the served branch is not the served branch", async () => {
+    const result = await run([], { GITHUB_REF: `refs/tags/${SERVED}` });
+    expect(result.code).toBe(0);
+    expect(result.lines).toContain("mode: check");
+    expect(posted).toHaveLength(0);
+    expect(tagsAt("v1.2.3")).toBe("");
+  });
+
+  test("a branch ending in HEAD or in the tag path does not block the run", async () => {
+    git(["update-ref", "refs/heads/x/HEAD", other]);
+    git(["update-ref", "refs/heads/refs/tags/v1.2.3", other]);
+    // A symbolic ref ending in HEAD is listed twice: its `ref:` line and its value.
+    git(["symbolic-ref", "refs/heads/y/HEAD", "refs/heads/feature"]);
+    const result = await run();
+    expect(result.code).toBe(0);
+    expect(posted).toHaveLength(1);
+    expect(tagsAt("v1.2.3")).toStartWith(current);
+    expect(result.lines.some((line) => /, 4 ignored,/.test(line))).toBe(true);
+  });
+
   test("--check on the served branch creates nothing", async () => {
     const result = await run(["--check"]);
     expect(result.code).toBe(0);
@@ -251,7 +327,7 @@ describe("tag-release on the served branch", () => {
 
 describe("tag-release off the served branch", () => {
   test("tag mode posts nothing when the tag is free", async () => {
-    const result = await run([], { GITHUB_REF_NAME: "feature" });
+    const result = await run([], { GITHUB_REF: "refs/heads/feature" });
     expect(result.code).toBe(0);
     expect(posted).toHaveLength(0);
     expect(tagsAt("v1.2.3")).toBe("");
@@ -259,8 +335,8 @@ describe("tag-release off the served branch", () => {
 
   test("a version that was not bumped is the same refusal", async () => {
     git(["tag", "v1.2.3", other]);
-    const tagMode = await run([], { GITHUB_REF_NAME: "feature" });
-    const checkMode = await run(["--check"], { GITHUB_REF_NAME: "feature" });
+    const tagMode = await run([], { GITHUB_REF: "refs/heads/feature" });
+    const checkMode = await run(["--check"], { GITHUB_REF: "refs/heads/feature" });
     expect(tagMode.code).toBe(1);
     expect(checkMode.code).toBe(1);
     expect(posted).toHaveLength(0);
@@ -299,7 +375,9 @@ describe("tag-release refusals and usage", () => {
     expect((await run([], { GITHUB_SHA: "HEAD" })).code).toBe(2);
     expect((await run([], { GITHUB_REPOSITORY: "../escape" })).code).toBe(2);
     expect((await run([], { GITHUB_REPOSITORY: "a/../b" })).code).toBe(2);
-    expect((await run([], { GITHUB_REF_NAME: "x\n::error::y" })).code).toBe(2);
+    expect((await run([], { GITHUB_REF: undefined })).code).toBe(2);
+    expect((await run([], { GITHUB_REF: "trunk" })).code).toBe(2);
+    expect((await run([], { GITHUB_REF: "refs/heads/x\n::error::y" })).code).toBe(2);
     expect((await run([], { GITHUB_SERVER_URL: "ssh://host/x" })).code).toBe(2);
     expect((await run([], { GITHUB_API_URL: "http://forge.example/api" })).code).toBe(2);
     expect((await run([], { GITHUB_API_URL: "https://user:pw@example.org/api" })).code).toBe(2);
@@ -310,6 +388,53 @@ describe("tag-release refusals and usage", () => {
     const result = await run([], { GITHUB_REPOSITORY: "fixture-owner/absent" });
     expect(result.code).toBe(3);
     expect(posted).toHaveLength(0);
+  });
+
+  test("a remote with no symbolic HEAD is code 3, never a free tag", async () => {
+    git(["update-ref", "--no-deref", "HEAD", current]);
+    const result = await run();
+    expect(result.code).toBe(3);
+    expect(result.lines).toContain("unreachable: the remote reports no served branch");
+    expect(posted).toHaveLength(0);
+  });
+
+  test("a git that does not answer is stopped and is code 3", async () => {
+    const bin = join(workspace, "bin");
+    await mkdir(bin, { recursive: true });
+    const fake = join(bin, "git");
+    await writeFile(fake, "#!/bin/sh\nexec sleep 30\n", { mode: 0o755 });
+    const path = process.env.PATH;
+    process.env.PATH = `${bin}:${path ?? ""}`;
+    const started = performance.now();
+    let result: TagReleaseResult;
+    try {
+      result = await tagRelease({
+        args: [],
+        environment: environment(),
+        repositoryRoot: checkout,
+        timeoutMs: 500,
+      });
+    } finally {
+      process.env.PATH = path;
+    }
+    expect(result.code).toBe(3);
+    expect(result.lines).toContain("unreachable: git ls-remote did not answer");
+    expect(performance.now() - started).toBeLessThan(10_000);
+    expect(posted).toHaveLength(0);
+  });
+
+  test("an unexpected error is code 3 with the lines gathered, its message unprinted", async () => {
+    const values = environment();
+    const throwing = new Proxy(values, {
+      get(target, property) {
+        if (property === "GITHUB_SHA") throw new TypeError(`leak ${TOKEN}`);
+        return Reflect.get(target, property);
+      },
+    });
+    const result = await tagRelease({ args: [], environment: throwing, repositoryRoot: checkout });
+    expect(result.code).toBe(3);
+    expect(result.lines).toContain("unexpected: TypeError");
+    expect(result.lines.join("\n")).not.toContain(TOKEN);
   });
 
   test("the volume read on the remote is printed", async () => {
