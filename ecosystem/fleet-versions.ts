@@ -229,13 +229,19 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
 
   // Every phase of every card read, by `repository#phase`. A phase identifier
   // written twice in a card is refused below, and the first one is the target.
+  // A phase identifier written twice is ambiguous: neither phase is a target,
+  // so a dependency on it is unresolved rather than resolved on whichever came
+  // first (second review of 2026-11-16, N2).
   const phases = new Map<string, VersionedPhase>();
+  const ambiguous = new Set<string>();
   for (const { repository, card } of cards) {
     for (const phase of card.phases) {
       const key = `${repository}#${phase.id}`;
-      if (!phases.has(key)) phases.set(key, phase);
+      if (phases.has(key)) ambiguous.add(key);
+      else phases.set(key, phase);
     }
   }
+  for (const key of ambiguous) phases.delete(key);
   const onCycle = phasesOnACycle(phases);
 
   const known = (id: string): boolean => catalogue.ok && catalogue.ids.has(id);
@@ -266,6 +272,8 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
     const card = result.card;
     const repository = source.repository;
     const problems: string[] = [];
+    /** Versions of this card that would be ready, if the card holds. */
+    const candidates: string[] = [];
     if (card.repository !== repository) {
       problems.push(
         `the card declares repository ${card.repository}, the index names ${repository}: the card is read as ${repository}`,
@@ -319,7 +327,11 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
         if (targetPhase === undefined) {
           unresolved += 1;
           waiting = true;
-          problems.push(`phase ${phase.id} depends on ${target}, which no card read declares`);
+          problems.push(
+            ambiguous.has(target)
+              ? `phase ${phase.id} depends on ${target}, which its card declares twice`
+              : `phase ${phase.id} depends on ${target}, which no card read declares`,
+          );
         } else {
           resolved += 1;
           if (!isDone(targetPhase)) waiting = true;
@@ -335,11 +347,15 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
       }
       if (isDone(phase)) done += 1;
       else if (waiting) blocked += 1;
-      else {
-        readyCount += 1;
-        ready.push(`${key} (${phase.product})`);
-      }
+      else candidates.push(`${key} (${phase.product})`);
     }
+
+    // A version of a card in violation is not ready: what the card says is
+    // not established (second review of 2026-11-16, N5).
+    if (problems.length === 0) {
+      readyCount += candidates.length;
+      ready.push(...candidates);
+    } else blocked += candidates.length;
 
     report.check(
       repository,
@@ -357,11 +373,15 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
   for (const { repository } of cards) consumers.set(repository, []);
   let consumedEntries = 0;
   let consumedOnACard = 0;
+  let consumedElsewhere = 0;
   for (const { repository, card } of cards) {
     for (const dependency of card.dependencies) {
       consumedEntries += 1;
       const list = consumers.get(dependency.on);
-      if (list === undefined) continue;
+      if (list === undefined) {
+        consumedElsewhere += 1;
+        continue;
+      }
       consumedOnACard += 1;
       if (!list.includes(repository)) list.push(repository);
     }
@@ -394,7 +414,7 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
     index_without_card: input.withoutCard.length,
     consumed_entries: consumedEntries,
     consumed_entries_on_a_card: consumedOnACard,
-    consumed_entries_elsewhere: consumedEntries - consumedOnACard,
+    consumed_entries_elsewhere: consumedElsewhere,
     cards_with_consumer: withConsumer,
     cards_without_consumer: withoutConsumer.length,
   };

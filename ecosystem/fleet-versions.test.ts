@@ -413,6 +413,36 @@ describe("evaluateFleetVersions", () => {
     ]);
   });
 
+  test.each([
+    ["accepted first", ["accepted", "pending"]],
+    ["pending first", ["pending", "accepted"]],
+  ] as const)("duplicate: a dependency on a doubled phase is unresolved (%s)", (_order, statuses) => {
+    const doubled = source(
+      "libre-ai/socle",
+      card("libre-ai/socle", {
+        phases: [phase("base", statuses[0]), phase("base", statuses[1])],
+      }),
+    );
+    const outcome = evaluateFleetVersions(input([notes(), doubled], [notesTree]));
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: phase v1 depends on libre-ai/socle#base, which its card declares twice",
+      ),
+    );
+    expect(outcome.ready).toEqual([]);
+  });
+
+  test("violation: a version of a card in violation is not ready", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ products: [{ id: "P04", code: "src/absent" }] }), socle()], [notesTree]),
+    );
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining("libre-ai/notes: products P04 names src/absent"),
+    ]);
+    expect(outcome.ready).toEqual([]);
+    expect(outcome.compteurs.versions_blocked).toBe(1);
+  });
+
   test("duplicate: a phase identifier written twice in a card is refused", () => {
     const outcome = evaluateFleetVersions(
       input([
