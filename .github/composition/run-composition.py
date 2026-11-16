@@ -43,7 +43,10 @@ def validate_root(root, phase):
 
 def command(argv, cwd, timeout, capture=False, stdin=None):
     """`stdin` bytes switch the call to binary: blob contents are bytes, never text."""
-    env = dict(os.environ)
+    # No inherited GIT_* variable reaches a child: GIT_DIR, GIT_WORK_TREE or
+    # GIT_INDEX_FILE would make git answer about another repository, tree or
+    # index than the directory it is run in.
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
     # GIT_NO_REPLACE_OBJECTS: a `refs/replace/*` entry would let git answer a
     # committed object id with other content.
     env.update(GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
@@ -55,6 +58,27 @@ def command(argv, cwd, timeout, capture=False, stdin=None):
 
 def fingerprint(plan):
     return hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
+
+
+RECEIPT = '.composition-state.json'
+
+
+def receipt_verdict(plan, root):
+    """Verdict of the receipt `prepare` leaves in the root, for this plan; reads, never writes.
+
+    The single reader: `check` admits a root on it and `verify` reports it, so
+    `verify` cannot say READY for a root `check` refuses on its receipt.
+    """
+    receipt = root / RECEIPT
+    if not receipt.exists() and not receipt.is_symlink():
+        return 'absent'
+    try:
+        if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 256:
+            return 'unreadable'
+        recorded = json.loads(receipt.read_text())
+    except (OSError, ValueError):
+        return 'unreadable'
+    return 'concordant' if recorded == {'planSha256': fingerprint(plan)} else 'mismatch'
 
 
 def verify_checkouts(plan, root, run):
@@ -80,31 +104,47 @@ def inspect_checkout(checkout, root, run):
 
     `--git-dir=.git` switches repository discovery off: a directory without
     its own `.git` would otherwise be answered by the repository enclosing it.
+    A `.git` that is a file or a link redirects to another repository: it is
+    not read, the verdict is about the directory the plan names.
+    `--no-optional-locks` keeps `status` from writing its refreshed index.
     """
     path = root / checkout['path']
     if not path.exists() and not path.is_symlink():
         return None, 'absent'
     if path.is_symlink() or path.resolve() != path or not path.is_dir():
         return None, 'unreadable'
+    git_dir = path / '.git'
+    if git_dir.is_symlink() or not git_dir.is_dir():
+        return None, 'unreadable'
+    git = ['git', '--no-optional-locks', '--git-dir=.git']
     try:
-        head = run(['git', '--git-dir=.git', 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'],
-                   path, 15, True).stdout.strip()
+        head = run([*git, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], path, 15, True).stdout.strip()
         composition.revision(head)
     except (*CHILD_FAILURES, ValueError):
         return None, 'unreadable'
     if head != checkout['ref']:
         return head, 'mismatch'
     try:
-        status = run(['git', '--git-dir=.git', 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+        status = run([*git, 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+        # `-v` tags every index entry: `H` is a plain one, `S` is skip-worktree,
+        # a lowercase letter is assume-unchanged. `status` does not look at the
+        # file behind either flag, so its silence says nothing about that file.
+        tags = run([*git, 'ls-files', '-v', '-z'], path, 30, True).stdout
     except CHILD_FAILURES:
         return head, 'unreadable'
-    return head, 'modified' if status.strip() else 'concordant'
+    if status.strip():
+        return head, 'modified'
+    if any(not record.startswith('H ') for record in tags.split('\0') if record):
+        return head, 'masked'
+    return head, 'concordant'
 
 
 def report_checkouts(plan, root, run, emit):
     """One line per planned checkout, then the counters. True when every one is concordant."""
     expected = mounted = concordant = 0
     verdicts = {}
+    if not root.is_dir():
+        emit(f'Composition root is missing: {root}')
     for checkout in plan['checkouts']:
         head, verdict = inspect_checkout(checkout, root, run)
         verdicts[checkout['path']] = verdict
@@ -146,7 +186,9 @@ def report_bun(plan, root, run, verdicts, emit):
         return True
     expected = pinned_bun(root, verdicts)
     try:
-        found = run(['bun', '--revision'], root if root.is_dir() else root.parent, 15, True).stdout.strip() or None
+        # Without a root, the caller's own directory: a working directory that
+        # does not exist fails the call and would report an installed Bun as absent.
+        found = run(['bun', '--revision'], root if root.is_dir() else None, 15, True).stdout.strip() or None
     except CHILD_FAILURES:
         found = None
     if expected is None:
@@ -159,22 +201,33 @@ def report_bun(plan, root, run, verdicts, emit):
     emit(f"Toolchain: 1 expected, {int(verdict == 'concordant')} concordant")
     if verdict in ('absent', 'mismatch'):
         emit(f'Bun {expected} is the pinned toolchain ({"/".join(BUN_PIN)} of the composition): install it as '
-             f'{BUN_GUIDE} section 2 describes and put it first on PATH, then run this phase again.')
+             f'{BUN_GUIDE} section 2.2 describes and put it first on PATH, then run this phase again.')
+    return verdict == 'concordant'
+
+
+def report_receipt(plan, root, emit):
+    """The receipt `--phase check` demands. True when it is the one of this plan."""
+    verdict = receipt_verdict(plan, root)
+    emit(f'receipt {RECEIPT} expected={fingerprint(plan)} {verdict}')
+    if verdict != 'concordant':
+        emit('--phase check refuses this root: only --phase prepare, on a new root and for this target and '
+             'revision, writes the receipt it demands.')
     return verdict == 'concordant'
 
 
 def report(plan, root, run, toolchain, emit=print):
     """Say whether the mounted composition is the planned one.
 
-    READY is only ever said with the toolchain judged (`--phase verify`):
-    without it the sources are mounted, which is not yet a composition a
-    check can run in.
+    READY is only ever said with the receipt and the toolchain judged
+    (`--phase verify`): without them the sources are mounted, which is not yet
+    a composition a check can run in.
     """
     ready, verdicts = report_checkouts(plan, root, run, emit)
     if not toolchain:
         emit(f"Sources of {plan['target']}: {'MOUNTED' if ready else 'NOT MOUNTED'}"
              ' (toolchain not judged by this phase: --phase verify does)')
         return ready
+    ready = report_receipt(plan, root, emit) and ready
     ready = report_bun(plan, root, run, verdicts, emit) and ready
     emit(f"Composition {plan['target']}: {'READY' if ready else 'NOT READY'}")
     return ready
@@ -403,7 +456,7 @@ def execute(plan, root, phase):
             raise TimeoutError('Composition deadline exceeded')
         return command(argv, cwd, min(timeout, remaining), capture, stdin)
 
-    receipt = root / '.composition-state.json'
+    receipt = root / RECEIPT
     if phase in ('prepare', 'all'):
         root.mkdir(parents=True, exist_ok=True)
         for checkout in plan['checkouts']:
@@ -416,10 +469,9 @@ def execute(plan, root, phase):
         verify_checkouts(plan, root, run)
         receipt.write_text(json.dumps({'planSha256': fingerprint(plan)}) + '\n')
     else:
-        if receipt.is_symlink() or receipt.stat().st_size > 256:
-            raise ValueError('Invalid prepared composition receipt')
-        if json.loads(receipt.read_text()) != {'planSha256': fingerprint(plan)}:
-            raise ValueError('Prepared composition belongs to another plan')
+        verdict = receipt_verdict(plan, root)
+        if verdict != 'concordant':
+            raise ValueError(f'Prepared composition receipt is {verdict}')
         verify_checkouts(plan, root, run)
     if phase in ('check', 'all'):
         configure_cargo_sources(plan, root, run)
@@ -447,8 +499,9 @@ def main():
             print(json.dumps(plan, indent=2))
             return 0
         if args.phase == 'verify':
-            # Mounts nothing, installs nothing: the plan against what is on disk,
-            # and the Bun on PATH against the one the composed governance pins.
+            # Mounts nothing, installs nothing, writes nothing: the plan against
+            # what is on disk, the receipt `check` demands, and the Bun on PATH
+            # against the one the composed governance pins.
             return 0 if report(plan, args.root, command, toolchain=True) else 1
     except failures:
         print('Composition refused or failed; no subsequent step executed.', file=sys.stderr)

@@ -5,6 +5,7 @@ Every expected value below is written by the fixture (the revision a checkout
 is committed at, the revision the plan pins), never copied from the report.
 """
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -39,10 +40,31 @@ def commit(path, message):
     return git(path, 'rev-parse', 'HEAD')
 
 
-class Mounted:
-    """Three committed checkouts and the plan that pins each at its own head."""
+RECEIPT = '.composition-state.json'
 
-    def __init__(self, base, bun_step=True):
+
+def snapshot(root):
+    """Every entry under `root`, `.git` included, with the bytes it holds."""
+    entries = {}
+    for path in sorted(root.rglob('*')):
+        name = str(path.relative_to(root))
+        if path.is_symlink():
+            entries[name] = 'link ' + os.readlink(path)
+        elif path.is_file():
+            entries[name] = 'file ' + hashlib.sha256(path.read_bytes()).hexdigest()
+        else:
+            entries[name] = 'directory'
+    return entries
+
+
+class Mounted:
+    """Three committed checkouts, the plan that pins each at its own head, and the receipt of its mount.
+
+    The receipt is what `--phase prepare` leaves and `--phase check` demands:
+    the SHA-256 of the plan serialised with sorted keys, computed here.
+    """
+
+    def __init__(self, base, bun_step=True, receipt=True):
         self.root = base / 'composition'
         self.refs = {}
         for name in NAMES:
@@ -61,6 +83,9 @@ class Mounted:
             'install': [], 'setup': [],
             'checks': [{'cwd': 'execution-sandbox', 'argv': argv}],
         }
+        self.fingerprint = hashlib.sha256(json.dumps(self.plan, sort_keys=True).encode()).hexdigest()
+        if receipt:
+            (self.root / RECEIPT).write_text(json.dumps({'planSha256': self.fingerprint}) + '\n')
 
 
 class ReportTests(unittest.TestCase):
@@ -79,7 +104,8 @@ class ReportTests(unittest.TestCase):
 
         def run(argv, cwd, timeout, capture=False, stdin=None):
             if argv[0] == 'bun':
-                if revision is None:
+                # As subprocess does: a working directory that does not exist fails the call.
+                if revision is None or (cwd is not None and not pathlib.Path(cwd).is_dir()):
                     raise FileNotFoundError('bun')
                 return subprocess.CompletedProcess(argv, 0, revision + '\n')
             return real(argv, cwd, timeout, capture, stdin)
@@ -247,14 +273,128 @@ class ReportTests(unittest.TestCase):
         shutil.rmtree(mounted.root)
         status, lines = self.cli(mounted, '--phase', 'verify')
         self.assertEqual(status, 1)
-        self.assertEqual([line.rsplit(' ', 1)[1] for line in lines[:3]], ['absent'] * 3)
+        self.assertEqual([line.rsplit(' ', 1)[1] for line in lines[1:4]], ['absent'] * 3)
         self.assertIn('Composition execution-sandbox: 3 repositories expected, 0 mounted, 0 concordant', lines)
+
+    def test_missing_root_is_named_and_bun_is_not_reported_missing_for_it(self):
+        # Neither the root nor its parent exists; a Bun is installed.
+        mounted = Mounted(self.base)
+        mounted.root = self.base / 'never' / 'mounted'
+        status, lines = self.cli(mounted, '--phase', 'verify')
+        self.assertEqual(status, 1)
+        self.assertEqual(lines[0], f'Composition root is missing: {mounted.root}')
+        self.assertIn(f'bun found={PINNED_BUN} expected=- unreadable', lines)
+        self.assertFalse((self.base / 'never').exists())
 
     def test_verify_phase_writes_nothing(self):
         mounted = Mounted(self.base)
-        before = sorted(str(path) for path in mounted.root.rglob('*') if '.git' not in path.parts)
-        self.cli(mounted, '--phase', 'verify')
-        self.assertEqual(sorted(str(path) for path in mounted.root.rglob('*') if '.git' not in path.parts), before)
+        # A tracked file whose timestamps moved: `git status` then wants to
+        # refresh the index on disk, which this phase must not let it do.
+        for name in NAMES:
+            os.utime(mounted.root / name / 'README.md', (1, 1))
+        before = snapshot(mounted.root)
+        self.assertEqual(len([name for name in before if name.endswith('.git/index')]), len(NAMES))
+        status, lines = self.cli(mounted, '--phase', 'verify')
+        self.assertEqual(status, 0, lines)
+        self.assertEqual(snapshot(mounted.root), before)
+
+    def test_verify_without_the_receipt_of_prepare_is_not_ready(self):
+        mounted = Mounted(self.base, receipt=False)
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertIn('Composition execution-sandbox: 3 repositories expected, 3 mounted, 3 concordant', lines)
+        self.assertIn(f'receipt {RECEIPT} expected={mounted.fingerprint} absent', lines)
+        self.assertEqual(lines[-1], 'Composition execution-sandbox: NOT READY')
+
+    def damaged_receipts(self):
+        return {
+            'absent': lambda path: path.unlink(),
+            'mismatch': lambda path: path.write_text(json.dumps({'planSha256': 'f' * 64}) + '\n'),
+            'unreadable': lambda path: path.write_text('{'),
+            'unreadable (larger than a receipt)': lambda path: path.write_text(
+                json.dumps({'planSha256': path.read_text() * 8})),
+            'unreadable (a link)': lambda path: (path.rename(path.with_name('kept')), path.symlink_to('kept')),
+        }
+
+    def test_verify_says_ready_only_for_a_composition_the_check_phase_admits(self):
+        # The document chains the two: READY, then `--phase check`. Both must
+        # read the same receipt, or the first promises what the second refuses.
+        cases = {'concordant': lambda path: None, **self.damaged_receipts()}
+        for label, damage in cases.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as d:
+                mounted = Mounted(pathlib.Path(d).resolve())
+                damage(mounted.root / RECEIPT)
+                status, lines = self.cli(mounted, '--phase', 'verify')
+                self.assertIn(f"receipt {RECEIPT} expected={mounted.fingerprint} {label.split(' (')[0]}", lines)
+                self.assertEqual(status == 0, label == 'concordant')
+                self.assertEqual(lines[-1].endswith(': READY'), label == 'concordant')
+                steps = []
+
+                def run(argv, cwd, timeout, capture=False, stdin=None, real=self.m.command):
+                    if argv[0] == 'bun':
+                        steps.append(argv)
+                        return subprocess.CompletedProcess(argv, 0, '')
+                    return real(argv, cwd, timeout, capture, stdin)
+                with patch.object(self.m, 'command', side_effect=run):
+                    try:
+                        self.m.execute(mounted.plan, mounted.root, 'check')
+                        admitted = True
+                    except (OSError, ValueError):
+                        admitted = False
+                self.assertEqual(admitted, label == 'concordant')
+                self.assertEqual(steps, [['bun', 'run', 'check']] if label == 'concordant' else [])
+
+    def test_checkout_whose_git_directory_is_a_redirection_is_not_read(self):
+        # `.git` as a file sends git to another repository: the verdict would
+        # be about that one, not about the directory the plan names.
+        mounted = Mounted(self.base)
+        sibling = mounted.root / 'schemas-and-contracts'
+        elsewhere = self.base / 'elsewhere.git'
+        (sibling / '.git').rename(elsewhere)
+        (sibling / '.git').write_text(f'gitdir: {elsewhere}\n')
+        self.assertEqual(git(sibling, 'rev-parse', 'HEAD'), mounted.refs['schemas-and-contracts'])
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertIn(f"schemas-and-contracts mounted=- expected={mounted.refs['schemas-and-contracts']} unreadable",
+                      lines)
+
+    def test_inherited_git_variables_do_not_move_the_verdict_to_another_tree(self):
+        mounted = Mounted(self.base)
+        sibling = mounted.root / 'schemas-and-contracts'
+        pristine = self.base / 'pristine'
+        shutil.copytree(sibling, pristine)
+        with (sibling / 'README.md').open('a') as stream:
+            stream.write('edited after the mount\n')
+        with patch.dict(os.environ, {'GIT_WORK_TREE': str(pristine)}):
+            status, lines = self.cli(mounted, '--phase', 'verify')
+        self.assertEqual(status, 1)
+        self.assertEqual([line.rsplit(' ', 1)[1] for line in lines[:3]], ['concordant', 'modified', 'concordant'])
+
+    def test_children_inherit_no_git_variable(self):
+        probe = 'import json, os; print(json.dumps(sorted(k for k in os.environ if k.startswith("GIT_"))))'
+        inherited = {'GIT_DIR': '/nowhere', 'GIT_WORK_TREE': '/nowhere', 'GIT_INDEX_FILE': '/nowhere',
+                     'GIT_OBJECT_DIRECTORY': '/nowhere', 'GIT_CONFIG_COUNT': '0'}
+        with patch.dict(os.environ, inherited):
+            seen = json.loads(self.m.command([sys.executable, '-c', probe], self.base, 30, True).stdout)
+        self.assertEqual(seen, ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM', 'GIT_NO_REPLACE_OBJECTS',
+                                'GIT_TERMINAL_PROMPT'])
+
+    def test_tracked_file_hidden_from_status_by_an_index_flag_is_not_concordant(self):
+        for flag in ('--skip-worktree', '--assume-unchanged'):
+            with self.subTest(flag), tempfile.TemporaryDirectory() as d:
+                mounted = Mounted(pathlib.Path(d).resolve())
+                governance = mounted.root / 'project-governance'
+                git(governance, 'update-index', flag, 'toolchains/bun.json')
+                (governance / 'toolchains' / 'bun.json').write_text(json.dumps({'revision': '0.0.0+local'}) + '\n')
+                self.assertEqual(git(governance, 'status', '--porcelain'), '')
+                ready, lines = self.report(mounted, bun='0.0.0+local')
+                self.assertFalse(ready)
+                ref = mounted.refs['project-governance']
+                self.assertEqual(lines[0], f'project-governance mounted={ref} expected={ref} masked')
+                self.assertIn('Composition execution-sandbox: 3 repositories expected, 3 mounted, 2 concordant', lines)
+                # The edited pin is not a source: the Bun it names is not the expected one.
+                self.assertIn('bun found=0.0.0+local expected=- unreadable', lines)
+                self.assertEqual(lines[-1], 'Composition execution-sandbox: NOT READY')
 
     def test_real_cli_verify_on_an_unmounted_root_exits_one_with_its_counters(self):
         # The fixed manifest, no patch: `database-policy-inspector` composes two repositories.
@@ -294,6 +434,37 @@ class ReportTests(unittest.TestCase):
         # Bun is installed after the mount: this phase must not say READY for it.
         self.assertFalse(any(line.startswith('bun ') or line.endswith('READY') for line in lines))
         self.assertTrue(lines[-1].startswith('Sources of execution-sandbox: MOUNTED'))
+
+    def test_failed_prepare_phase_reports_what_it_left_mounted(self):
+        mounted = Mounted(self.base, receipt=False)
+        origins = self.base / 'origins'
+        mounted.root.rename(origins)
+        real = self.m.command
+
+        def run(argv, cwd, timeout, capture=False, stdin=None):
+            # The first fetch is served from the fixture, the second one fails.
+            if argv[0] == 'git' and 'fetch' in argv:
+                if cwd.name != NAMES[0]:
+                    raise subprocess.CalledProcessError(128, argv)
+                argv = [*argv[:-2], str(origins / cwd.name), argv[-1]]
+            return real(argv, cwd, timeout, capture, stdin)
+        stdout, stderr = io.StringIO(), io.StringIO()
+        arguments = [str(P), '--target', 'execution-sandbox', '--revision', mounted.refs['execution-sandbox'],
+                     '--root', str(mounted.root), '--phase', 'prepare']
+        with patch.object(self.m, 'load_plan', return_value=mounted.plan), patch.object(sys, 'argv', arguments), \
+                patch.object(self.m, 'command', side_effect=run), contextlib.redirect_stdout(stdout), \
+                contextlib.redirect_stderr(stderr):
+            status = self.m.main()
+        lines = stdout.getvalue().splitlines()
+        self.assertEqual(status, 1)
+        self.assertEqual(stderr.getvalue(), 'Composition refused or failed; no subsequent step executed.\n')
+        self.assertEqual(lines[:4], [
+            f'{NAMES[0]} mounted={mounted.refs[NAMES[0]]} expected={mounted.refs[NAMES[0]]} concordant',
+            f'{NAMES[1]} mounted=- expected={mounted.refs[NAMES[1]]} unreadable',
+            f'{NAMES[2]} mounted=- expected={mounted.refs[NAMES[2]]} absent',
+            'Composition execution-sandbox: 3 repositories expected, 1 mounted, 1 concordant'])
+        self.assertTrue(lines[-1].startswith('Sources of execution-sandbox: NOT MOUNTED'))
+        self.assertFalse((mounted.root / RECEIPT).exists())
 
     def test_sources_off_their_pin_are_not_mounted_when_the_toolchain_is_not_judged(self):
         mounted = Mounted(self.base)
