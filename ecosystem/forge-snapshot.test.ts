@@ -10,6 +10,7 @@ import {
   mergePages,
   runSnapshot,
   type SnapshotDependencies,
+  type SnapshotOutcome,
 } from "./forge-snapshot";
 
 /**
@@ -243,25 +244,79 @@ describe("runSnapshot", () => {
     expect(forge.calls.some((call) => call.some((arg) => arg.includes("two")))).toBe(false);
   });
 
-  test("a GraphQL error or a truncated workflow interrupts", async () => {
-    for (const workflows of [
-      ok({ data: null, errors: [{ message: "rate limited" }] }),
-      ok({
-        data: {
-          repository: {
-            object: {
-              entries: [{ name: "ci.yml", type: "blob", object: { text: "", isTruncated: true } }],
-            },
-          },
+  /** A workflow listing whose single `ci.yml` blob carries the given object. */
+  function listingWith(blob: Record<string, unknown>): ForgeResult {
+    return ok({
+      data: {
+        repository: {
+          object: { entries: [{ name: "ci.yml", type: "blob", object: blob }] },
         },
-      }),
+      },
+    });
+  }
+
+  async function interrupts(workflows: ForgeResult): Promise<SnapshotOutcome> {
+    const out = await scratch();
+    const forge = fakeForge({ "org/one": { ...healthy("served"), workflows } });
+    const result = await runSnapshot([out, "org/one"], dependencies(forge.run));
+    expect(result.code).toBe(1);
+    expect(await listFiles(out)).toEqual([]);
+    return result;
+  }
+
+  test("a partial GraphQL answer carrying errors interrupts, even with data present", async () => {
+    // The data alone reads as "no workflow directory": only the errors say it was not read.
+    await interrupts(
+      ok({ data: { repository: { object: null } }, errors: [{ message: "partial" }] }),
+    );
+  });
+
+  test("a truncated workflow interrupts, even when its text is otherwise complete", async () => {
+    await interrupts(
+      listingWith({ text: WORKFLOW_WITH_TWO_CRONS, isBinary: false, isTruncated: true }),
+    );
+  });
+
+  test("a binary workflow interrupts", async () => {
+    await interrupts(listingWith({ text: null, isBinary: true, isTruncated: false }));
+  });
+
+  test("a workflow holding a NUL interrupts and names the character", async () => {
+    // Bun.YAML.parse may stop at a NUL without saying so: the cron after it would go uncounted.
+    const text = `on:\n  schedule:\n    - cron: '0 3 * * *'\u0000\n    - cron: '0 4 * * 1'\n`;
+    const result = await interrupts(listingWith({ text, isBinary: false, isTruncated: false }));
+    expect(result.stderr.join("\n")).toContain("U+0000");
+  });
+
+  test("a malformed protected-branch or default-branch answer interrupts", async () => {
+    for (const repository of [
+      { ...healthy("served"), branches: ok([[{ name: "a" }, { protected: true }]]) },
+      { ...healthy("served"), branches: ok([{ message: "x" }]) },
+      { ...healthy("served"), info: ok([{ default_branch: "" }]) },
     ]) {
       const out = await scratch();
-      const forge = fakeForge({ "org/one": { ...healthy("served"), workflows } });
+      const forge = fakeForge({ "org/one": repository });
       const result = await runSnapshot([out, "org/one"], dependencies(forge.run));
       expect(result.code).toBe(1);
       expect(await listFiles(out)).toEqual([]);
     }
+  });
+
+  test("a write failure exits 1 and says how many files were written", async () => {
+    const out = await scratch();
+    // A file where the second repository's owner directory must go: its mkdir fails.
+    await writeFile(join(out, "other"), "occupied");
+    const forge = fakeForge({ "org/one": healthy("served"), "other/two": healthy("served") });
+    const result = await runSnapshot([out, "org/one", "other/two"], {
+      ...dependencies(forge.run),
+      perimeter: new Map([
+        ["org/one", "public"],
+        ["other/two", "public"],
+      ]),
+    });
+    expect(result.code).toBe(1);
+    expect(result.stdout.join("\n")).toContain("requested=2 collected=2 written=1");
+    expect(result.stderr.join("\n")).toContain("other/two");
   });
 
   test("a confirmed absent workflow directory is zero schedules", async () => {
@@ -349,8 +404,13 @@ describe("forge-snapshot as a process", () => {
   });
 
   test("a forge failure on an inventory repository exits 1", async () => {
+    const inventory = buildIndex(
+      await readFile(join(import.meta.dir, "repositories.v1.yaml"), "utf8"),
+    );
+    const publicEntry = inventory.repositories.find((entry) => entry.visibility === "public");
+    expect(publicEntry).toBeDefined();
     const out = await scratch();
-    const result = await runProcess([out, "libre-ai/project-governance"]);
+    const result = await runProcess([out, String(publicEntry?.repository)]);
     expect(result).toEqual({ code: 1, marker: true });
     expect(await listFiles(out)).toEqual([]);
   });

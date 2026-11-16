@@ -21,8 +21,9 @@
  * cross-repository read would either fail or require more authority than the
  * gates hold. Both refusals happen before any network call.
  *
- * Exit codes: 0 written, 1 read failed (nothing written), 2 usage,
- * 3 repository outside the perimeter.
+ * Exit codes: 0 written, 1 read failed (nothing written) or write failed (the
+ * output says how many files were written), 2 usage, 3 repository outside the
+ * perimeter.
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -112,6 +113,17 @@ export function mergePages(text: string): unknown {
  * or a document without `on`, is an unexpected type.
  */
 export function countSchedules(workflowText: string): number {
+  // Only U+0000, not the whole class of tools/quality/yaml-text-guard.ts: that
+  // guard also refuses a tab, which a legitimate `run:` block may carry, and one
+  // such workflow would then interrupt every snapshot. The NUL is the character
+  // at which Bun.YAML.parse may stop without saying so, under-counting the cron
+  // entries after it; no line scan runs before this parse, so the guard's other
+  // reason (a scan and a parser reading two documents) does not arise here.
+  const nul = workflowText.indexOf("\u0000");
+  if (nul !== -1) {
+    const line = workflowText.slice(0, nul).split("\n").length;
+    throw new ForgeReadError(`workflow holds an unreadable character U+0000 on line ${line}`);
+  }
   let document: unknown;
   try {
     document = Bun.YAML.parse(workflowText);
@@ -321,12 +333,29 @@ export async function runSnapshot(
   }
 
   // shortcut: files are written one by one after every read succeeded; a disk
-  // failure in this loop can leave some written. Upgrade trigger: a consumer
-  // that reads the directory while it is being written.
+  // failure in this loop can leave some written, and the outcome then says how
+  // many rather than claiming none. Upgrade trigger: a consumer that reads the
+  // directory while it is being written.
+  let written = 0;
   for (const snapshot of snapshots) {
-    const target = outputPath(outputDir, snapshot.repository);
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, `${JSON.stringify(snapshot, null, 2)}\n`);
+    try {
+      const target = outputPath(outputDir, snapshot.repository);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, `${JSON.stringify(snapshot, null, 2)}\n`);
+    } catch (error) {
+      return {
+        code: 1,
+        stdout: [
+          `forge snapshot: requested=${repositories.length} collected=${snapshots.length} written=${written}`,
+        ],
+        stderr: [
+          `${snapshot.repository}: write failed after ${written} file(s) written: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ],
+      };
+    }
+    written += 1;
   }
   return {
     code: 0,
