@@ -7,6 +7,47 @@ Les dépendances de développement `file:` et Cargo `path` relient plusieurs dé
 
 Cette recette utilise les outils existants de CI. Elle prépare un **nouveau dossier** et refuse de remplacer un checkout existant. Tous les dépôts nécessaires sont présents avant l’installation ; le toolkit construit UI avant que les consommateurs en copient les exports. Les paquets conservent leurs noms, imports et versions indépendants. Rien n’est publié vers npm, Cargo ou un service de déploiement.
 
+## Vérifier un dépôt de la flotte sur clone neuf (agent)
+
+Sur un clone neuf d’un dépôt de la flotte, `bun run check` lancé seul ne mesure pas ce que le pipeline mesure : les dépendances `file:../<dépôt frère>` résolvent ce qui se trouve à côté, à n’importe quelle révision, et le Bun du poste n’est pas forcément celui que la gouvernance épingle. Le pipeline (`.github/workflows/validate-composition.yml`) monte d’abord la composition avec `run-composition.py`. La même commande se lance en local, et sa phase `verify` dit si le résultat est prêt.
+
+```sh
+set -eu
+TARGET=collaborative-data-sync
+TARGET_REVISION="$(git ls-remote "https://github.com/libre-ai/$TARGET.git" HEAD | cut -f1)"
+WORKSPACE="$(mktemp -d)"
+WORKSPACE="$(cd "$WORKSPACE" && pwd -P)"
+git clone --quiet https://github.com/libre-ai/project-governance.git "$WORKSPACE/tooling"
+python3 -B "$WORKSPACE/tooling/.github/composition/run-composition.py" \
+  --target "$TARGET" --revision "$TARGET_REVISION" \
+  --root "$WORKSPACE/sources" --phase prepare
+python3 -B "$WORKSPACE/tooling/.github/composition/run-composition.py" \
+  --target "$TARGET" --revision "$TARGET_REVISION" \
+  --root "$WORKSPACE/sources" --phase verify
+```
+
+`TARGET_REVISION` est ici la tête de la branche servie ; donnez le SHA complet de tout autre commit à vérifier. `--root` doit être un chemin absolu sans lien symbolique (d’où `pwd -P`), et le dossier doit être neuf ou vide pour `prepare`. Aucun jeton n’est requis : les sources sont lues par le protocole Git sur des dépôts publics.
+
+Les deux phases impriment une ligne par dépôt du plan, puis leurs compteurs :
+
+```text
+project-governance mounted=<sha> expected=<sha> concordant
+collaborative-data-sync mounted=<sha> expected=<sha> concordant
+Composition collaborative-data-sync: 2 repositories expected, 2 mounted, 2 concordant
+bun found=<révision> expected=<révision> concordant
+Toolchain: 1 expected, 1 concordant
+Composition collaborative-data-sync: READY
+```
+
+- Verdict d’un dépôt : `concordant`, `mismatch` (une autre révision que celle du plan), `modified` (un fichier suivi a changé), `absent`, `unreadable` (pas un checkout Git lisible à cet endroit).
+- `prepare` monte les sources et ne juge pas l’outillage : sa dernière ligne dit `MOUNTED` ou `NOT MOUNTED`. `verify` ne monte et n’écrit rien ; elle seule dit `READY`.
+- `verify` compare `bun --revision` à la révision de `project-governance/toolchains/bun.json` **dans la composition**, le fichier que le pipeline donne à son installateur. Si elle diffère, la sortie nomme la révision attendue ; elle s’installe par la section 2 ci-dessous, puis `verify` se relance.
+- Le code de sortie est non nul dès qu’un dépôt n’est pas `concordant`, que le plan est vide, ou, pour `verify`, que Bun n’est pas celui attendu.
+
+Quand `verify` dit `READY`, les contrôles de la cible se lancent par `--phase check` (section 3) : cette phase installe dans l’ordre du plan, puis exécute la commande de vérification de la cible.
+
+Les voisins sont montés aux SHA de `manifest.json` **de l’outillage employé**. Le clone ci-dessus prend l’outillage à la tête de la branche servie de `project-governance`. Le pipeline d’un dépôt emploie, lui, la révision `tooling_ref` écrite dans son `.github/workflows/code-validation.yml` : pour reproduire exactement son verdict, placez `$WORKSPACE/tooling` à ce SHA (`git -C "$WORKSPACE/tooling" checkout --detach <tooling_ref>`). Un outillage antérieur à l’ajout de la phase `verify` la refuse.
+
 ## 1. Choisir les révisions et lire le plan
 
 Prérequis : Git, Python 3.11 ou supérieur, Bash, curl, Rustup et un accès aux dépôts GitHub publics. Les commandes suivantes s’exécutent dans le même terminal. L’exemple choisit un commit Notebook qualifié ; pour un autre travail, remplacez `TARGET` et `TARGET_REVISION` par le nom canonique et le SHA complet du commit à vérifier. N’utilisez pas un ancien commit documentaire comme preuve de présence du code.

@@ -34,6 +34,9 @@ def validate_root(root, phase):
     if phase in ('prepare', 'all'):
         if root.exists() and (not root.is_dir() or any(root.iterdir())):
             raise ValueError('Composition root must be new or empty')
+    elif phase == 'verify':
+        # Read-only: a missing root is reported checkout by checkout, not refused.
+        return
     elif not root.is_dir():
         raise ValueError('Prepared composition is missing')
 
@@ -65,6 +68,116 @@ def verify_checkouts(plan, root, run):
         status = run(['git', 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
         if status.strip():
             raise ValueError('Composition tracked inputs changed')
+
+
+CHILD_FAILURES = (OSError, subprocess.SubprocessError)
+BUN_PIN = ('project-governance', 'toolchains/bun.json')
+BUN_GUIDE = 'docs/LOCAL-COMPOSITION.md'
+
+
+def inspect_checkout(checkout, root, run):
+    """(revision read or None, verdict) of one planned checkout; reads, never writes.
+
+    `--git-dir=.git` switches repository discovery off: a directory without
+    its own `.git` would otherwise be answered by the repository enclosing it.
+    """
+    path = root / checkout['path']
+    if not path.exists() and not path.is_symlink():
+        return None, 'absent'
+    if path.is_symlink() or path.resolve() != path or not path.is_dir():
+        return None, 'unreadable'
+    try:
+        head = run(['git', '--git-dir=.git', 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'],
+                   path, 15, True).stdout.strip()
+        composition.revision(head)
+    except (*CHILD_FAILURES, ValueError):
+        return None, 'unreadable'
+    if head != checkout['ref']:
+        return head, 'mismatch'
+    try:
+        status = run(['git', '--git-dir=.git', 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+    except CHILD_FAILURES:
+        return head, 'unreadable'
+    return head, 'modified' if status.strip() else 'concordant'
+
+
+def report_checkouts(plan, root, run, emit):
+    """One line per planned checkout, then the counters. True when every one is concordant."""
+    expected = mounted = concordant = 0
+    verdicts = {}
+    for checkout in plan['checkouts']:
+        head, verdict = inspect_checkout(checkout, root, run)
+        verdicts[checkout['path']] = verdict
+        expected += 1
+        mounted += head is not None
+        concordant += verdict == 'concordant'
+        emit(f"{checkout['path']} mounted={head or '-'} expected={checkout['ref']} {verdict}")
+    emit(f"Composition {plan['target']}: {expected} repositories expected, {mounted} mounted, {concordant} concordant")
+    # An empty plan examined nothing: it cannot be a ready composition.
+    return expected > 0 and concordant == expected, verdicts
+
+
+def pinned_bun(root, verdicts):
+    """The Bun revision the composed governance pins, or None when it cannot be trusted or read.
+
+    The same file the workflow hands to install-toolchains.sh. A governance
+    checkout off its pin is not a source: its file may declare another Bun.
+    """
+    if verdicts.get(BUN_PIN[0]) != 'concordant':
+        return None
+    try:
+        with (root / BUN_PIN[0] / BUN_PIN[1]).open('rb') as stream:
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            return None
+        revision = json.loads(raw, object_pairs_hook=composition.unique_object).get('revision')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(revision, str) or not revision.isprintable() or not 0 < len(revision) <= 64 or ' ' in revision:
+        return None
+    return revision
+
+
+def report_bun(plan, root, run, verdicts, emit):
+    """The Bun on PATH against the pinned one. True when the plan runs no bun step or they match."""
+    steps = [step for group in ('install', 'setup', 'checks') for step in plan[group]]
+    if not any(step['argv'][0] == 'bun' for step in steps):
+        emit('Toolchain: 0 expected, 0 concordant (no step of this plan runs bun)')
+        return True
+    expected = pinned_bun(root, verdicts)
+    try:
+        found = run(['bun', '--revision'], root if root.is_dir() else root.parent, 15, True).stdout.strip() or None
+    except CHILD_FAILURES:
+        found = None
+    if expected is None:
+        verdict = 'unreadable'
+    elif found is None:
+        verdict = 'absent'
+    else:
+        verdict = 'concordant' if found == expected else 'mismatch'
+    emit(f"bun found={found or '-'} expected={expected or '-'} {verdict}")
+    emit(f"Toolchain: 1 expected, {int(verdict == 'concordant')} concordant")
+    if verdict in ('absent', 'mismatch'):
+        emit(f'Bun {expected} is the pinned toolchain ({"/".join(BUN_PIN)} of the composition): install it as '
+             f'{BUN_GUIDE} section 2 describes and put it first on PATH, then run this phase again.')
+    return verdict == 'concordant'
+
+
+def report(plan, root, run, toolchain, emit=print):
+    """Say whether the mounted composition is the planned one.
+
+    READY is only ever said with the toolchain judged (`--phase verify`):
+    without it the sources are mounted, which is not yet a composition a
+    check can run in.
+    """
+    ready, verdicts = report_checkouts(plan, root, run, emit)
+    if not toolchain:
+        emit(f"Sources of {plan['target']}: {'MOUNTED' if ready else 'NOT MOUNTED'}"
+             ' (toolchain not judged by this phase: --phase verify does)')
+        return ready
+    ready = report_bun(plan, root, run, verdicts, emit) and ready
+    emit(f"Composition {plan['target']}: {'READY' if ready else 'NOT READY'}")
+    return ready
 
 
 DEPENDENCY_TABLES = ('dependencies', 'dev-dependencies', 'build-dependencies')
@@ -323,18 +436,38 @@ def main():
     parser.add_argument('--target', required=True)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--phase', choices=('prepare', 'check', 'all'), default='all')
+    parser.add_argument('--phase', choices=('prepare', 'check', 'all', 'verify'), default='all')
     parser.add_argument('--plan', action='store_true')
     args = parser.parse_args()
+    failures = (OSError, ValueError, TypeError, TimeoutError, subprocess.SubprocessError)
     try:
         plan = load_plan(args.target, args.revision)
         validate_root(args.root, args.phase)
         if args.plan:
             print(json.dumps(plan, indent=2))
             return 0
-        return execute(plan, args.root, args.phase)
-    except (OSError, ValueError, TypeError, TimeoutError, subprocess.SubprocessError):
+        if args.phase == 'verify':
+            # Mounts nothing, installs nothing: the plan against what is on disk,
+            # and the Bun on PATH against the one the composed governance pins.
+            return 0 if report(plan, args.root, command, toolchain=True) else 1
+    except failures:
         print('Composition refused or failed; no subsequent step executed.', file=sys.stderr)
+        return 1
+    try:
+        status = execute(plan, args.root, args.phase)
+        if args.phase == 'prepare':
+            # Bun is installed after this phase, from the composition it mounts:
+            # only `verify` judges the toolchain.
+            return status if report(plan, args.root, command, toolchain=False) else 1
+        return status
+    except failures:
+        print('Composition refused or failed; no subsequent step executed.', file=sys.stderr)
+        if args.phase == 'prepare':
+            # A fetch that failed halfway leaves some checkouts: say which.
+            try:
+                report(plan, args.root, command, toolchain=False)
+            except failures:
+                pass
         return 1
 
 
