@@ -2312,6 +2312,7 @@
         "Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.",
         "L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.",
         "Les deux couches croisées sont dérivées des deux relectures : elles n'ont pas de verdict propre, et tout ce qu'elles signalent, l'une des deux relectures le signale déjà. Leur apport au-delà du moins cher n'est pas une mesure : il est déclaré non applicable, jamais nul. Chaque modèle seul a signalé tous les défauts semés, la croisée n'avait donc aucune marge pour en signaler un de plus : ce corpus ne permet pas de dire ce qu'elle vaut comme couche de détection.",
+        "La synthèse versionnée n'est pas celle que le banc a écrite le jour de la mesure, dont l'empreinte figure parmi les fichiers d'origine : elle est le rejeu, sur les mêmes mesures, du filtre synthese.jq corrigé après elle. Deux différences : pour les deux couches croisées, le fichier d'origine portait un apport chiffré, déclaré ici non applicable ; et le champ derivee_de est ajouté à chaque couche.",
         "Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.",
         "Le résultat de la couche d'exécution réelle sur le cas D05 (validation de la commande retirée) a été obtenu avec un scénario qui ne pouvait pas le voir : le scénario S4 du pilote de la mesure lisait tout code de sortie non nul comme un refus, et le script nommé par sa recette n'existait pas dans le dépôt jetable, si bien que la porte se fermait aussi quand la commande avec chemin était acceptée. Ce vert ne dit pas que l'exécution réelle manque ce défaut.",
         "Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.",
@@ -2370,7 +2371,7 @@
         },
         {
           "fichier": "verification/trust-bench/resultats/pi-evidence.provenance.json",
-          "sha256": "2e610ee7e1f77f7060ace3b024bd56e20f88e89788b471820f355ffcc795b49b"
+          "sha256": "79e5a800d701b955f4cfd95f4d06737c749e145df5ff579cf6ef471ad5b3d957"
         },
         {
           "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json",
