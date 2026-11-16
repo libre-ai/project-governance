@@ -278,6 +278,114 @@ describe("a declared repository that cannot be read is red", () => {
     expect(outcome.output).toContain("series: declared=0");
     expect(outcome.exitCode).toBe(1);
   });
+
+  test("a readable series with an empty directory examines nothing: red, no green without volume", () => {
+    const alpha = repository("alpha", []);
+    const path = index(section("grp/alpha", "docs/adr", []));
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("series: declared=1 readable=1 unreadable=0");
+    expect(outcome.output).toContain("adr: examined=0 indexed=0 missing=0");
+    expect(outcome.output).toContain("no ADR examined");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a full declaration whose repository lacks its group is unreadable, not absent", () => {
+    const sibling = readableSibling();
+    const path = index(sibling.section, section("beta", "docs/adr", []));
+    const outcome = gate("--index", path, "--repo", sibling.argument);
+    expect(outcome.output).toContain("series: declared=2 readable=1 unreadable=1");
+    expect(outcome.output).toContain("## beta — Decisions (docs/adr)");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a checkout no declared series consumes is red and named", () => {
+    const sibling = readableSibling();
+    const typo = repository("typo", ["0001-first.md"]);
+    const path = index(sibling.section);
+    const outcome = gate("--index", path, "--repo", sibling.argument, "--repo", `grp/typo=${typo}`);
+    expect(outcome.output).toContain("checkouts: supplied=2 used=1 unused=1");
+    expect(outcome.output).toContain("grp/typo: checkout supplied but no series declares");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("rows of an unreadable series are counted unjudged, not malformed", () => {
+    const sibling = readableSibling();
+    const path = index(
+      sibling.section,
+      section("grp/absent", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
+    );
+    const outcome = gate("--index", path, "--repo", sibling.argument);
+    expect(outcome.output).toContain("rows: read=2 matched=1 stale=0 malformed=0 unjudged=1");
+    expect(outcome.exitCode).toBe(1);
+  });
+});
+
+describe("every entry of a series directory is accounted for", () => {
+  test("a misnamed ADR is red and named, entries sum to the directory", () => {
+    const alpha = repository("alpha", [
+      "0001-first.md",
+      "ADR-0002-second.md",
+      "003-third.md",
+      "0004_fourth.md",
+      "0006-sixth.MD",
+      "00007-seventh.md",
+    ]);
+    const path = index(
+      section("grp/alpha", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
+    );
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("adr: examined=1 indexed=1 missing=0");
+    expect(outcome.output).toContain("entries: listed=6 examined=1 misnamed=5 skipped=0");
+    for (const name of [
+      "ADR-0002-second.md",
+      "003-third.md",
+      "0004_fourth.md",
+      "0006-sixth.MD",
+      "00007-seventh.md",
+    ]) {
+      expect(outcome.output).toContain(`docs/adr/${name} looks like an ADR`);
+    }
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("other entries are counted and named, without failing the series", () => {
+    const alpha = repository("alpha", ["0001-first.md", "README.md", "sub/0005-fifth.md"]);
+    const path = index(
+      section("grp/alpha", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
+    );
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("entries: listed=3 examined=1 misnamed=0 skipped=2");
+    expect(outcome.output).toContain("skipped docs/adr/README.md");
+    expect(outcome.output).toContain("skipped docs/adr/sub/");
+    expect(outcome.exitCode).toBe(0);
+  });
+});
+
+describe("a trailing HTML comment on a row is ignored", () => {
+  test("a row carrying an exemption marker still indexes its ADR", () => {
+    const alpha = repository("alpha", ["0001-first.md"]);
+    const marked = `${row("0001", "First", "docs/adr/0001-first.md").trimEnd()} <!-- isolation: exempt -->\n`;
+    const path = index(section("grp/alpha", "docs/adr", [marked]));
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("rows: read=1 matched=1 stale=0 malformed=0");
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test("a long run of spaces on a row is read in linear time", () => {
+    const alpha = repository("alpha", ["0001-first.md"]);
+    const path = index(
+      section("grp/alpha", "docs/adr", [
+        row("0001", "First", "docs/adr/0001-first.md"),
+        `|${" ".repeat(200_000)}x\n`,
+      ]),
+    );
+    const started = performance.now();
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    const elapsed = performance.now() - started;
+    expect(outcome.output).toContain("rows: read=2 matched=1 stale=0 malformed=1");
+    // The quadratic form took about 30 s on this input; the bound is generous on purpose.
+    expect(elapsed).toBeLessThan(10_000);
+  }, 60_000);
 });
 
 describe("the declared directory never leaves its repository", () => {
@@ -407,6 +515,42 @@ describe("the series is read from the checked-out tree, not the default branch",
   test("an ADR present only in the checkout and indexed is green", () => {
     const alpha = committedWithoutAdrDirectory();
     write(join(alpha, "docs", "adr", "0001-first.md"), "# first\n");
+    const path = index(
+      section("grp/alpha", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
+    );
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("adr: examined=1 indexed=1 missing=0");
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  function committedWithTwoAdrs(): string {
+    const root = join(workspace(), "alpha");
+    write(join(root, "docs", "adr", "0001-first.md"), "# first\n");
+    write(join(root, "docs", "adr", "0002-second.md"), "# second\n");
+    git(root, "init", "-q");
+    git(root, "config", "user.name", "t");
+    git(root, "config", "user.email", "t@t");
+    git(root, "add", "docs");
+    git(root, "commit", "-q", "-m", "base with two decisions");
+    rmSync(join(root, "docs", "adr", "0002-second.md"));
+    return root;
+  }
+
+  test("an ADR committed on the base but deleted in the checkout leaves its row stale", () => {
+    const alpha = committedWithTwoAdrs();
+    const path = index(
+      section("grp/alpha", "docs/adr", [
+        row("0001", "First", "docs/adr/0001-first.md"),
+        row("0002", "Second", "docs/adr/0002-second.md"),
+      ]),
+    );
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("rows: read=2 matched=1 stale=1 malformed=0");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("the same deletion with its row removed is green", () => {
+    const alpha = committedWithTwoAdrs();
     const path = index(
       section("grp/alpha", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
     );

@@ -24,10 +24,24 @@
  * A trailing HTML comment on a row (an exemption marker read by another gate)
  * is ignored here.
  *
+ * Every entry of a readable series directory is accounted for. An entry named
+ * `NNNN-<slug>.md` is an ADR and is examined. A file that looks like an ADR
+ * under another name (`ADR-0002-x.md`, `003-x.md`, `0004_x.md`, `0006-x.MD`,
+ * `00007-x.md`) is misnamed and red: otherwise a wrong name would take a
+ * decision out of the gate with a green verdict. Anything else (a README, a
+ * subdirectory) is skipped, counted and named.
+ *
+ * A checkout supplied on the command line that no declared series consumes is
+ * red: a typo in the caller's repository name must not leave a tree unread
+ * without a trace.
+ *
  * Counters printed on every run, and they sum:
- *   series: declared = readable + unreadable
- *   adr:    examined = indexed + missing
- *   rows:   read     = matched + stale + malformed
+ *   series:    declared = readable + unreadable
+ *   adr:       examined = indexed + missing
+ *   entries:   listed   = examined + misnamed + skipped
+ *   rows:      read     = matched + stale + malformed + unjudged
+ *   checkouts: supplied = used + unused
+ * Rows of an unreadable series are unjudged: there is no tree to judge them by.
  * A run that declares no series, or examines no ADR, is red.
  *
  * Usage:
@@ -45,10 +59,13 @@ const EXIT_USAGE = 2;
 const NAME_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const SERIES_HEADING = /^## (\S+) (?:—|-) (.+) \(([^()]+)\)\s*$/;
 const ADR_FILE = /^(\d{4})-[^/\\]+\.md$/;
+/** An optional `ADR` prefix, a run of digits, a separator, a `.md` in any case. */
+const ADR_LOOKALIKE = /^(?:adr[-_]?)?\d+[-_].*\.md$/i;
 const ROW_NUMBER = /^\d{4}$/;
 const ROW_LINK = /^\[([^\]]+)\]\(([^()\s]+)\)$/;
 const TABLE_SEPARATOR = /^\|(\s*:?-+:?\s*\|)+$/;
-const TRAILING_COMMENT = /\s*<!--.*-->\s*$/;
+const COMMENT_OPEN = "<!--";
+const COMMENT_CLOSE = "-->";
 const URI_SCHEME = /^[A-Za-z][A-Za-z0-9+.-]*:/;
 
 interface SeriesDeclaration {
@@ -65,10 +82,24 @@ interface Counters {
   examined: number;
   indexed: number;
   missing: number;
+  listed: number;
+  misnamed: number;
+  skipped: number;
   rowsRead: number;
   matched: number;
   stale: number;
   malformed: number;
+  unjudged: number;
+  supplied: number;
+  used: number;
+  unused: number;
+}
+
+interface SeriesListing {
+  readonly files: readonly string[];
+  readonly misnamed: readonly string[];
+  /** Skipped entries; a directory carries a trailing `/`. */
+  readonly skipped: readonly string[];
 }
 
 class UsageError extends Error {}
@@ -120,6 +151,19 @@ function parseArguments(argv: readonly string[]): {
   return { index, checkouts };
 }
 
+/**
+ * The line without a trailing `<!-- … -->`, cut at the first opener. A string
+ * search and not a regular expression: an unanchored `\s*<!--.*-->\s*$`
+ * backtracks quadratically on a long run of spaces, and the index is content a
+ * pull request controls.
+ */
+function withoutTrailingComment(line: string): string {
+  const opener = line.indexOf(COMMENT_OPEN);
+  const closes = line.length >= opener + COMMENT_OPEN.length + COMMENT_CLOSE.length;
+  if (opener === -1 || !closes || !line.endsWith(COMMENT_CLOSE)) return line;
+  return line.slice(0, opener);
+}
+
 function parseIndex(text: string): readonly SeriesDeclaration[] {
   const declarations: SeriesDeclaration[] = [];
   let current: { heading: string; repository: string | null; directory: string | null } | null =
@@ -139,15 +183,16 @@ function parseIndex(text: string): readonly SeriesDeclaration[] {
       const match = SERIES_HEADING.exec(line);
       if (match !== null && isRepositoryName(match[1] ?? "")) {
         current = { heading: line, repository: match[1] ?? null, directory: match[3] ?? null };
-      } else if (firstToken.includes("/")) {
-        // Looks like a declaration but does not parse: a typo must not make a
-        // series vanish, so it is kept as a declared, unreadable series.
+      } else if (match !== null || firstToken.includes("/")) {
+        // Has the full shape of a declaration, or a group/name first word, yet
+        // does not parse (a forgotten group, a missing directory): a typo must
+        // not make a series vanish, so it is kept as a declared, unreadable series.
         current = { heading: line, repository: null, directory: null };
       }
       continue;
     }
     if (current === null) continue;
-    const cells = line.replace(TRAILING_COMMENT, "").trim();
+    const cells = withoutTrailingComment(line).trim();
     if (!cells.startsWith("|")) continue;
     if (TABLE_SEPARATOR.test(cells)) {
       rows.pop(); // the header row precedes its separator
@@ -163,7 +208,7 @@ function parseIndex(text: string): readonly SeriesDeclaration[] {
 function listSeries(
   checkout: string,
   directory: string,
-): { readonly files: readonly string[] } | { readonly error: string } {
+): SeriesListing | { readonly error: string } {
   if (!isPlainRelativePath(directory)) {
     return { error: `directory "${directory}" is not a plain path relative to its repository` };
   }
@@ -180,11 +225,16 @@ function listSeries(
   }
   try {
     if (!statSync(resolved).isDirectory()) return { error: `"${directory}" is not a directory` };
-    const files = readdirSync(resolved, { withFileTypes: true })
-      .filter((entry) => !entry.isDirectory() && ADR_FILE.test(entry.name))
-      .map((entry) => entry.name)
-      .sort();
-    return { files };
+    const files: string[] = [];
+    const misnamed: string[] = [];
+    const skipped: string[] = [];
+    for (const entry of readdirSync(resolved, { withFileTypes: true })) {
+      if (entry.isDirectory()) skipped.push(`${entry.name}/`);
+      else if (ADR_FILE.test(entry.name)) files.push(entry.name);
+      else if (ADR_LOOKALIKE.test(entry.name)) misnamed.push(entry.name);
+      else skipped.push(entry.name);
+    }
+    return { files: files.sort(), misnamed: misnamed.sort(), skipped: skipped.sort() };
   } catch (error) {
     return { error: `cannot list "${directory}": ${describe(error)}` };
   }
@@ -230,7 +280,11 @@ function readRow(row: string, directory: string): RowVerdict {
 function check(
   declarations: readonly SeriesDeclaration[],
   checkouts: ReadonlyMap<string, string>,
-): { readonly counters: Counters; readonly violations: readonly string[] } {
+): {
+  readonly counters: Counters;
+  readonly violations: readonly string[];
+  readonly notes: readonly string[];
+} {
   const counters: Counters = {
     declared: declarations.length,
     readable: 0,
@@ -238,13 +292,23 @@ function check(
     examined: 0,
     indexed: 0,
     missing: 0,
+    listed: 0,
+    misnamed: 0,
+    skipped: 0,
     rowsRead: 0,
     matched: 0,
     stale: 0,
     malformed: 0,
+    unjudged: 0,
+    supplied: checkouts.size,
+    used: 0,
+    unused: 0,
   };
   const violations: string[] = [];
+  const notes: string[] = [];
+  const consumed = new Set<string>();
   for (const series of declarations) {
+    if (series.repository !== null) consumed.add(series.repository);
     const label = series.repository ?? series.heading;
     const checkout = series.repository === null ? undefined : checkouts.get(series.repository);
     let listing: ReturnType<typeof listSeries>;
@@ -259,7 +323,7 @@ function check(
     if ("error" in listing) {
       counters.unreadable += 1;
       // Rows of an unreadable series cannot be judged against a tree.
-      counters.malformed += series.rows.length;
+      counters.unjudged += series.rows.length;
       violations.push(`${label}: unreadable series — ${listing.error}`);
       continue;
     }
@@ -289,10 +353,29 @@ function check(
         violations.push(`${label}: ${directory}/${file} has no row in its series table`);
       }
     }
+    counters.listed += listing.files.length + listing.misnamed.length + listing.skipped.length;
+    for (const file of listing.misnamed) {
+      counters.misnamed += 1;
+      violations.push(
+        `${label}: ${directory}/${file} looks like an ADR but is not named NNNN-<slug>.md`,
+      );
+    }
+    for (const entry of listing.skipped) {
+      counters.skipped += 1;
+      notes.push(`${label}: skipped ${directory}/${entry}`);
+    }
+  }
+  for (const name of [...checkouts.keys()].sort()) {
+    if (consumed.has(name)) {
+      counters.used += 1;
+    } else {
+      counters.unused += 1;
+      violations.push(`${name}: checkout supplied but no series declares this repository`);
+    }
   }
   if (counters.declared === 0) violations.push("the index declares no series");
   else if (counters.examined === 0) violations.push("no ADR examined in any declared series");
-  return { counters, violations };
+  return { counters, violations, notes };
 }
 
 function main(argv: readonly string[]): number {
@@ -313,8 +396,9 @@ function main(argv: readonly string[]): number {
     console.error(`cannot read index ${parsed.index}: ${describe(error)}`);
     return EXIT_VIOLATION;
   }
-  const { counters, violations } = check(parseIndex(text), parsed.checkouts);
+  const { counters, violations, notes } = check(parseIndex(text), parsed.checkouts);
   for (const violation of violations) console.error(`  - ${violation}`);
+  for (const note of notes) console.log(`  ~ ${note}`);
   console.log(
     `series: declared=${counters.declared} readable=${counters.readable} unreadable=${counters.unreadable}`,
   );
@@ -322,7 +406,13 @@ function main(argv: readonly string[]): number {
     `adr: examined=${counters.examined} indexed=${counters.indexed} missing=${counters.missing}`,
   );
   console.log(
-    `rows: read=${counters.rowsRead} matched=${counters.matched} stale=${counters.stale} malformed=${counters.malformed}`,
+    `entries: listed=${counters.listed} examined=${counters.examined} misnamed=${counters.misnamed} skipped=${counters.skipped}`,
+  );
+  console.log(
+    `rows: read=${counters.rowsRead} matched=${counters.matched} stale=${counters.stale} malformed=${counters.malformed} unjudged=${counters.unjudged}`,
+  );
+  console.log(
+    `checkouts: supplied=${counters.supplied} used=${counters.used} unused=${counters.unused}`,
   );
   console.log(`violations=${violations.length}`);
   return violations.length === 0 ? EXIT_PASS : EXIT_VIOLATION;
