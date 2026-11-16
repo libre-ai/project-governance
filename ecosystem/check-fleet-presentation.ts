@@ -222,7 +222,8 @@ async function fetchFleetPresentationViaGraphQL(
   return null;
 }
 
-async function fetchFleetPresentationSources(
+/** The card and README of each target at its served branch; shared with `check-fleet-versions.ts`. */
+export async function fetchFleetPresentationSources(
   targets: readonly PresentationTarget[],
 ): Promise<Map<string, PresentationSources>> {
   const viaGraphQL = await fetchFleetPresentationViaGraphQL(targets);

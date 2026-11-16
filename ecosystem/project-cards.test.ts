@@ -578,3 +578,112 @@ describe("summariseDesktopShells — the counters the gate prints", () => {
     });
   });
 });
+
+/**
+ * Products with code and phases as versions (owner's choices of 2026-11-16:
+ * « Produit + chemin vérifié », « Phases = versions »). The fields are
+ * optional: a card written before them stays valid. What needs another source
+ * (the catalogue, the tree of the repository, the other cards) is judged by
+ * `ecosystem/fleet-versions.ts`, not by the schema.
+ */
+describe("validateCard — products and versions", () => {
+  function versionedCard(): Record<string, unknown> {
+    const card = minimalCard();
+    card.products = [{ id: "P04", code: "src/notes" }];
+    // biome-ignore lint/suspicious/noExplicitAny: test mutates raw shapes
+    const phase = (card.phases as any)[0];
+    phase.product = "P04";
+    phase.delivers = "Ouvrir un coffre de notes existant et le retrouver tel quel.";
+    phase.depends_on = ["libre-ai/schemas-and-contracts#envelope-v1"];
+    return card;
+  }
+  // biome-ignore lint/suspicious/noExplicitAny: test mutates raw shapes
+  const phaseOf = (card: Record<string, unknown>): any => (card.phases as any)[0];
+  const errorsOf = (card: Record<string, unknown>): string => validateCard(card).join("\n");
+
+  test("accepts a card that declares a product with code and a phase as its version", () => {
+    expect(validateCard(versionedCard())).toEqual([]);
+  });
+
+  test("a card without the fields stays valid", () => {
+    expect(validateCard(minimalCard())).toEqual([]);
+  });
+
+  test.each([
+    ["an identifier of another form", { id: "P4", code: "src/notes" }, "/products/0/id"],
+    ["an absolute path", { id: "P04", code: "/src/notes" }, "/products/0/code"],
+    ["a path that climbs out", { id: "P04", code: "src/../../secrets" }, "/products/0/code"],
+    ["a path that is only a parent", { id: "P04", code: ".." }, "/products/0/code"],
+    ["a trailing slash", { id: "P04", code: "src/notes/" }, "/products/0/code"],
+    ["a current-directory path", { id: "P04", code: "." }, "/products/0/code"],
+    ["a leading current-directory segment", { id: "P04", code: "./src" }, "/products/0/code"],
+    ["an inner current-directory segment", { id: "P04", code: "src/./notes" }, "/products/0/code"],
+    ["an empty segment", { id: "P04", code: "src//notes" }, "/products/0/code"],
+    [
+      "a line break in the path",
+      { id: "P04", code: "src/notes\nProject cards verified" },
+      "/products/0/code",
+    ],
+    ["a missing path", { id: "P04" }, "/products/0"],
+    [
+      "a key the entry does not declare",
+      { id: "P04", code: "src/notes", status: "done" },
+      "/products/0",
+    ],
+  ])("rejects a product entry with %s", (_name, entry, path) => {
+    const card = versionedCard();
+    card.products = [entry];
+    expect(errorsOf(card)).toContain(path);
+  });
+
+  test("rejects a product declared twice", () => {
+    const card = versionedCard();
+    card.products = [
+      { id: "P04", code: "src/notes" },
+      { id: "P04", code: "src/notes" },
+    ];
+    expect(errorsOf(card)).toContain("uniqueItems");
+  });
+
+  test("rejects an empty list of products: absence is written by leaving the field out", () => {
+    const card = versionedCard();
+    card.products = [];
+    expect(errorsOf(card)).toContain("/products");
+  });
+
+  test("rejects a version without what it delivers", () => {
+    const card = versionedCard();
+    delete phaseOf(card).delivers;
+    expect(errorsOf(card)).toContain("delivers");
+  });
+
+  test("rejects what a version delivers without its product", () => {
+    const card = versionedCard();
+    delete phaseOf(card).product;
+    expect(errorsOf(card)).toContain("product");
+  });
+
+  test("rejects a delivery of a few words", () => {
+    const card = versionedCard();
+    phaseOf(card).delivers = "Des notes.";
+    expect(errorsOf(card)).toContain("/phases/0/delivers");
+  });
+
+  test.each([
+    ["no repository", "#envelope-v1"],
+    ["no phase", "libre-ai/schemas-and-contracts"],
+    ["another organisation", "acme/schemas-and-contracts#envelope-v1"],
+    ["a phase of another form", "libre-ai/schemas-and-contracts#Envelope_V1"],
+  ])("rejects a dependency with %s", (_name, target) => {
+    const card = versionedCard();
+    phaseOf(card).depends_on = [target];
+    expect(errorsOf(card)).toContain("/phases/0/depends_on/0");
+  });
+
+  test("a phase of the foundation, without a product, may depend on another phase", () => {
+    const card = versionedCard();
+    delete phaseOf(card).product;
+    delete phaseOf(card).delivers;
+    expect(validateCard(card)).toEqual([]);
+  });
+});
