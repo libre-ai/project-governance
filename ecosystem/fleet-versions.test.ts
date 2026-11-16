@@ -168,6 +168,21 @@ describe("catalogueFromFiches", () => {
     expect(catalogueFromFiches([{ id: "P04", text: "id: P04\ndepot: [\n", error: null }]).ok).toBe(
       false,
     );
+    expect(
+      catalogueFromFiches([{ id: "P04", text: "id: P04\ndepot: notes\n", error: null }]),
+    ).toEqual({
+      ok: false,
+      reason: "fiche P04 has a depot that is neither libre-ai/<repository> nor null",
+    });
+  });
+
+  test("a depot the produit schema accepts is a carrier, never an unreadable catalogue", () => {
+    expect(
+      catalogueFromFiches([{ id: "P04", text: fiche("P04", "libre-ai/Notes_v2"), error: null }]),
+    ).toEqual({
+      ok: true,
+      carriers: new Map([["P04", "libre-ai/Notes_v2"]]),
+    });
   });
 
   test("a fiche whose id is not its file name is unreadable: the carrier would be attributed to the wrong product", () => {
@@ -242,6 +257,7 @@ describe("evaluateFleetVersions", () => {
     });
     expect(outcome.volume).toContain("2 card(s) declared = 2 read + 0 unreadable");
     expect(outcome.volume).toContain("1 version(s) = 0 done + 1 ready + 0 blocked");
+    expect(outcome.volume).toContain("5 fiche(s) in the catalogue = 4 with a carrier + 1 without");
   });
 
   test("rule catalogue: a product the catalogue does not know is refused", () => {
