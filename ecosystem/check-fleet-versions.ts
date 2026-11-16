@@ -54,7 +54,13 @@ async function readCatalogue(): Promise<FleetVersionsInput["catalogue"]> {
   return catalogueFromFiches(fiches);
 }
 
-if (import.meta.main) {
+/**
+ * Everything the evaluation reads, from the index, the served branch of each
+ * repository and the tracked fiches. Shared with the generator of the list of
+ * products with code (`distribution/build-products-with-code.ts`), so the list
+ * and this gate never read the fleet two different ways.
+ */
+export async function readFleetVersionsInput(): Promise<FleetVersionsInput> {
   const fleet = parseFleet(await Bun.file("ecosystem/repositories.v1.yaml").text());
   const targets: PresentationTarget[] = fleet.flatMap((entry) =>
     entry.card === undefined ? [] : [{ repository: entry.repository, card: entry.card }],
@@ -76,12 +82,11 @@ if (import.meta.main) {
   const withoutCard = fleet.flatMap((entry) =>
     entry.card === undefined ? [entry.repository] : [],
   );
-  const outcome = evaluateFleetVersions({
-    cards,
-    catalogue: await readCatalogue(),
-    trees,
-    withoutCard,
-  });
+  return { cards, catalogue: await readCatalogue(), trees, withoutCard };
+}
+
+if (import.meta.main) {
+  const outcome = evaluateFleetVersions(await readFleetVersionsInput());
   console.log(
     `Fleet versions ready: ${outcome.ready.length === 0 ? "none" : outcome.ready.join(", ")}`,
   );

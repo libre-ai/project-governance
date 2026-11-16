@@ -63,6 +63,9 @@ jobs:
       - name: Regenerate the repository index and fail on drift
         run: |
           bun ecosystem/build-index.ts
+          # Same as brick-map and feeds-freshness: a deleted index is
+          # regenerated untracked, and git diff sees it only once intended.
+          git add --intent-to-add distribution/index/repositories.v1.json
           if ! git diff --exit-code -- distribution/index/repositories.v1.json; then
             echo "::error::distribution/index/repositories.v1.json is stale — run 'bun ecosystem/build-index.ts' and commit the result"
             exit 1
