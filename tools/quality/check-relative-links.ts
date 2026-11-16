@@ -9,6 +9,11 @@
  * `#fragment`), the fragment must match a heading slug or an explicit HTML
  * anchor of the target. Nothing is fetched.
  *
+ * A TARGET MUST BE DELIVERED BY GIT: a tracked file, or a directory holding
+ * one. A file that exists only in the working tree (ignored, build output,
+ * forgotten `git add`) is reported as `not tracked`, because it is missing from
+ * every fresh clone and from the rendered repository.
+ *
  * WHAT IT DOES NOT CHECK, and says so on its output. External links (`http:`,
  * `https:`, `mailto:`, `//host`) are counted as `external`, not verified. Site
  * absolute paths (`/x`), other schemes and empty targets are counted as
@@ -20,7 +25,9 @@
  *
  * WHAT IS NEVER A LINK. Fenced blocks (a closing fence has the same character
  * as the opening one and is at least as long, so a three-backtick line inside a
- * four-backtick fence stays inside), inline code spans, and YAML front matter.
+ * four-backtick fence stays inside), inline code spans, HTML comments (also
+ * multi-line), and YAML front matter. A leading `---` block counts as front
+ * matter only if every line inside looks like YAML; otherwise it is prose.
  *
  * THE FILE LIST IS BUILT HERE, from `git ls-files`: a glob handed to a checker
  * that exits 0 on an empty match would turn a moved directory into a green.
@@ -32,7 +39,7 @@
  *   tracked = examined + excluded + non-regular
  *   total   = ok + errors + external + other
  *
- * Usage: bun tools/quality/check-relative-links.ts <repository>
+ * Usage: bun tools/quality/check-relative-links.ts [check] <repository>
  *          [--exclude <prefix>=<reason>]... [--fallback-ext md,mdx]
  *
  * An exclusion is a path prefix (whole segments) with a mandatory reason; a
@@ -140,6 +147,10 @@ function parseArguments(argv: readonly string[]): Parsed {
       if (fallback === null) return usageError("--fallback-ext needs a value");
     } else if (argument.startsWith("-")) {
       return usageError(`unknown option: ${argument}`);
+    } else if (index === 0 && argument === "check") {
+      // The subcommand word of the brief (`check <repository>`), nothing to record;
+      // a repository literally named `check` is written `./check`.
+      repository = null;
     } else if (repository === null) {
       repository = argument;
     } else {
@@ -162,7 +173,7 @@ function parseArguments(argv: readonly string[]): Parsed {
   }
   if (repository === null)
     return usageError(
-      "usage: check-relative-links <repository> [--exclude <prefix>=<reason>]... [--fallback-ext md,mdx]",
+      "usage: check-relative-links [check] <repository> [--exclude <prefix>=<reason>]... [--fallback-ext md,mdx]",
     );
   return { ok: true, repository, exclusions, fallbackExtensions };
 }
@@ -195,15 +206,58 @@ function maskCodeSpans(line: string): string {
   return masked;
 }
 
-/** The lines outside fenced blocks and front matter, numbered from 1. An unclosed fence runs to the end. */
+/** One line of a YAML mapping or sequence, a comment, a blank, or a continuation. */
+const YAML_LINE = /^(?:\s*|\s*#.*|\s+\S.*|\s*-(?:\s.*)?|[^\s[\](){}<>`"'#][^:]*:(?:\s.*)?)$/;
+
+/** Blank the HTML comments of a line (searched outside code spans), keeping its length. */
+function blankComments(
+  raw: string,
+  masked: string,
+  inComment: boolean,
+): { readonly raw: string; readonly masked: string; readonly inComment: boolean } {
+  let outRaw = raw;
+  let outMasked = masked;
+  let open = inComment;
+  let position = 0;
+  const blank = (text: string, from: number, to: number): string =>
+    text.slice(0, from) + " ".repeat(to - from) + text.slice(to);
+  while (position < masked.length) {
+    if (open) {
+      const close = masked.indexOf("-->", position);
+      const to = close === -1 ? masked.length : close + 3;
+      outRaw = blank(outRaw, position, to);
+      outMasked = blank(outMasked, position, to);
+      position = to;
+      if (close !== -1) open = false;
+    } else {
+      const from = masked.indexOf("<!--", position);
+      if (from === -1) break;
+      // The close is searched after the opener, so `<!-->` does not close itself.
+      const close = masked.indexOf("-->", from + 4);
+      const to = close === -1 ? masked.length : close + 3;
+      outRaw = blank(outRaw, from, to);
+      outMasked = blank(outMasked, from, to);
+      position = to;
+      open = close === -1;
+    }
+  }
+  return { raw: outRaw, masked: outMasked, inComment: open };
+}
+
+/**
+ * The lines outside fenced blocks, front matter and HTML comments, numbered
+ * from 1. An unclosed fence or comment runs to the end. A leading `---` block
+ * is front matter only when every line inside looks like YAML.
+ */
 function proseLines(text: string): ProseLine[] {
   const lines = text.split(/\r?\n/);
   const prose: ProseLine[] = [];
   let start = 0;
   if (lines[0]?.trimEnd() === "---") {
     const end = lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\s*$/.test(line));
-    if (end !== -1) start = end + 1;
+    if (end !== -1 && lines.slice(1, end).every((line) => YAML_LINE.test(line))) start = end + 1;
   }
+  let inComment = false;
   let fence: { readonly char: string; readonly length: number } | null = null;
   for (let index = start; index < lines.length; index += 1) {
     const raw = lines[index] as string;
@@ -220,7 +274,9 @@ function proseLines(text: string): ProseLine[] {
       fence = { char: marker[0] as string, length: marker.length };
       continue;
     }
-    prose.push({ line: index + 1, raw, masked: maskCodeSpans(raw) });
+    const visible = blankComments(raw, maskCodeSpans(raw), inComment);
+    inComment = visible.inComment;
+    prose.push({ line: index + 1, raw: visible.raw, masked: visible.masked });
   }
   return prose;
 }
@@ -284,15 +340,19 @@ export function extractLinks(text: string): Link[] {
 }
 
 function slugOf(heading: string): string {
-  return heading
-    .replace(/\s+#+\s*$/, "")
-    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^>]*>/g, "")
-    .replace(/[`*~]/g, "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "")
-    .replace(/ /g, "-");
+  return (
+    heading
+      .replace(/\s+#+\s*$/, "")
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/<[^>]*>/g, "")
+      .replace(/[`*~]/g, "")
+      // `_word_` and `__word__` are emphasis; an unpaired or intra-word underscore stays.
+      .replace(/(^|[\s(])(_+)([^\s_](?:[^_]*[^\s_])?)\2(?=$|[\s).,!?:;])/g, "$1$3")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{M}\p{N}_ -]/gu, "")
+      .replace(/ /g, "-")
+  );
 }
 
 /** Heading slugs (ATX and setext, duplicates numbered `-1`, `-2`) and explicit `id`/`name` anchors. */
@@ -353,6 +413,40 @@ interface Context {
   readonly realRoot: string;
   readonly fallbackExtensions: readonly string[];
   readonly anchorCache: Map<string, Set<string>>;
+  /** Tracked paths and every directory above them, `/`-separated, the root as `""`. */
+  readonly tracked: ReadonlySet<string>;
+}
+
+/** Every tracked path and each of its parent directories (the root is `""`). */
+function trackedSet(entries: readonly { readonly path: string }[]): Set<string> {
+  const set = new Set<string>([""]);
+  for (const { path } of entries) {
+    set.add(path);
+    for (let slash = path.indexOf("/"); slash !== -1; slash = path.indexOf("/", slash + 1))
+      set.add(path.slice(0, slash));
+  }
+  return set;
+}
+
+export interface Counters {
+  readonly tracked: number;
+  readonly examined: number;
+  readonly excluded: number;
+  readonly nonRegular: number;
+  readonly extracted: number;
+  readonly ok: number;
+  readonly broken: number;
+  readonly anchors: number;
+  readonly external: number;
+  readonly other: number;
+}
+
+/** Both sums of the header; each side is counted by a different step of `run`. */
+export function countersSum(c: Counters): boolean {
+  return (
+    c.tracked === c.examined + c.excluded + c.nonRegular &&
+    c.extracted === c.ok + c.broken + c.anchors + c.external + c.other
+  );
 }
 
 function decode(value: string): string | null {
@@ -363,22 +457,34 @@ function decode(value: string): string | null {
   }
 }
 
-function existingTarget(target: string, extensions: readonly string[]): string | null {
+/**
+ * The candidate that exists AND is delivered by git: a tracked file, or a
+ * directory holding one. A target present only in the working tree (ignored,
+ * never added) is `untracked`, because it is missing from every fresh clone.
+ */
+function existingTarget(
+  context: Context,
+  target: string,
+): { readonly found: string | null; readonly untracked: boolean } {
   const base = target.slice(target.lastIndexOf("/") + 1);
   const candidates = [
     target,
-    ...(base.includes(".") ? [] : extensions.map((extension) => `${target}.${extension}`)),
+    ...(base.includes(".")
+      ? []
+      : context.fallbackExtensions.map((extension) => `${target}.${extension}`)),
   ];
-  return (
-    candidates.find((candidate) => {
-      try {
-        statSync(candidate);
-        return true;
-      } catch {
-        return false;
-      }
-    }) ?? null
-  );
+  let untracked = false;
+  for (const candidate of candidates) {
+    try {
+      statSync(candidate);
+    } catch {
+      continue;
+    }
+    if (context.tracked.has(relative(context.root, candidate).split(sep).join("/")))
+      return { found: candidate, untracked: false };
+    untracked = true;
+  }
+  return { found: null, untracked };
 }
 
 function checkRelative(context: Context, source: string, dest: string): Problem | null {
@@ -394,8 +500,12 @@ function checkRelative(context: Context, source: string, dest: string): Problem 
   const target = path === "" ? sourcePath : resolve(dirname(sourcePath), path);
   if (!isInside(context.root, target))
     return { kind: "broken", reason: "link points outside the repository" };
-  const found = existingTarget(target, context.fallbackExtensions);
-  if (found === null) return { kind: "broken", reason: "link target not found" };
+  const { found, untracked } = existingTarget(context, target);
+  if (found === null)
+    return {
+      kind: "broken",
+      reason: untracked ? "link target not tracked" : "link target not found",
+    };
   let real: string;
   try {
     real = realpathSync(found);
@@ -483,7 +593,7 @@ export function run(argv: readonly string[]): GateResult {
   }
 
   const candidates = markdown.filter((entry) => excludedFor(entry.path) === undefined);
-  const excluded = markdown.length - candidates.length;
+  const excluded = markdown.filter((entry) => excludedFor(entry.path) !== undefined).length;
   const regular = candidates.filter((entry) => entry.mode === "100644" || entry.mode === "100755");
   const nonRegular = candidates.length - regular.length;
 
@@ -492,7 +602,9 @@ export function run(argv: readonly string[]): GateResult {
     realRoot,
     fallbackExtensions: parsed.fallbackExtensions,
     anchorCache: new Map(),
+    tracked: trackedSet(entries),
   };
+  let extracted = 0;
   const counts = { total: 0, ok: 0, broken: 0, anchors: 0, external: 0, other: 0 };
   const failures: string[] = [];
   let examined = 0;
@@ -510,7 +622,9 @@ export function run(argv: readonly string[]): GateResult {
       continue;
     }
     examined += 1;
-    for (const { line, dest } of extractLinks(text)) {
+    const links = extractLinks(text);
+    extracted += links.length;
+    for (const { line, dest } of links) {
       counts.total += 1;
       const kind = classify(dest);
       if (kind === "external") counts.external += 1;
@@ -536,9 +650,18 @@ export function run(argv: readonly string[]): GateResult {
     out.push(`Excluded: ${exclusion.prefix}: ${exclusion.reason}`);
 
   if (failures.length > 0) return { exitCode: EXIT.git, out, err: [...err, ...failures] };
-  const sums =
-    markdown.length === examined + excluded + nonRegular &&
-    counts.total === counts.ok + counts.broken + counts.anchors + counts.external + counts.other;
+  const sums = countersSum({
+    tracked: markdown.length,
+    examined,
+    excluded,
+    nonRegular,
+    extracted,
+    ok: counts.ok,
+    broken: counts.broken,
+    anchors: counts.anchors,
+    external: counts.external,
+    other: counts.other,
+  });
   if (!sums) return { exitCode: EXIT.counters, out, err: [...err, "counters do not sum"] };
   if (examined === 0)
     return { exitCode: EXIT.noFiles, out, err: [...err, "no Markdown file left to examine"] };

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
+  countersSum,
   EXIT,
   extractLinks,
   headingAnchors,
@@ -60,9 +61,17 @@ describe("usage and option refusals", () => {
   });
 
   test("md,,mdx is refused before anything is launched", () => {
-    // The repository does not exist: a refusal that reached git would say 8.
+    // The repository does not exist: a refusal that reached the repository check would say 2
+    // (usage) and git would say 8; only the extension refusal says 9.
     const result = run(["/nonexistent/repository", "--fallback-ext", "md,,mdx"]);
     expect(result.exitCode).toBe(EXIT.extensions);
+  });
+
+  test("the `check` subcommand of the brief is accepted before the repository", () => {
+    const dir = repository({ "a.md": "[b](b.md)\n", "b.md": "# B\n" });
+    expect(run(["check", dir]).exitCode).toBe(EXIT.ok);
+    expect(run(["check", dir, "--fallback-ext", "md,,mdx"]).exitCode).toBe(EXIT.extensions);
+    expect(run(["check"]).exitCode).toBe(EXIT.usage);
   });
 
   test("an empty value, a dotted value and a separator are refused", () => {
@@ -114,6 +123,33 @@ describe("what a link is", () => {
     expect(extractLinks("[a](broken.md and nothing else\n")).toEqual([]);
   });
 
+  test("a link inside an HTML comment is not navigation, one after it on the line is", () => {
+    const text = [
+      "<!-- [x](gone.md) -->",
+      "<!-- start",
+      "[y](gone-two.md)",
+      "end --> [z](after.md)",
+      "`<!--` [w](kept.md)",
+      "",
+    ].join("\n");
+    expect(extractLinks(text)).toEqual([
+      { line: 4, dest: "after.md" },
+      { line: 5, dest: "kept.md" },
+    ]);
+  });
+
+  test("a front matter that is not YAML is prose, so its links are read", () => {
+    const text = ["---", "", "[gone](missing.md)", "---", "[b](b.md)", ""].join("\n");
+    expect(extractLinks(text).map((link) => link.dest)).toEqual(["missing.md", "b.md"]);
+  });
+
+  test("a YAML front matter is still skipped", () => {
+    const text = ["---", "title: T", "tags:", "  - [a](x.md)", "# c", "---", "[b](b.md)", ""].join(
+      "\n",
+    );
+    expect(extractLinks(text).map((link) => link.dest)).toEqual(["b.md"]);
+  });
+
   test("line numbers count the fenced lines", () => {
     const text = ["```", "x", "```", "[a](b.md)"].join("\n");
     expect(extractLinks(text)).toEqual([{ line: 4, dest: "b.md" }]);
@@ -135,6 +171,31 @@ describe("headings and anchors", () => {
     expect(anchors.has("hello-world-1")).toBe(true);
     expect(anchors.has("hello-world-2")).toBe(true);
     expect(anchors.has("code-and-emphasis-link")).toBe(true);
+  });
+
+  test("underscore emphasis is dropped from a slug, a lone underscore is kept", () => {
+    const anchors = headingAnchors(
+      [
+        "# The _word_ here",
+        "# Use __init__ now",
+        "# a _private name",
+        "# snake_case_name",
+        "",
+      ].join("\n"),
+    );
+    expect(anchors.has("the-word-here")).toBe(true);
+    expect(anchors.has("use-init-now")).toBe(true);
+    expect(anchors.has("a-_private-name")).toBe(true);
+    expect(anchors.has("snake_case_name")).toBe(true);
+  });
+
+  test("a heading or an anchor inside an HTML comment is not an anchor", () => {
+    const anchors = headingAnchors(
+      ["<!--", "# Hidden", '<a name="ghost"></a>', "-->", "# Shown", ""].join("\n"),
+    );
+    expect(anchors.has("shown")).toBe(true);
+    expect(anchors.has("hidden")).toBe(false);
+    expect(anchors.has("ghost")).toBe(false);
   });
 
   test("setext headings, explicit html anchors; not headings inside fences or front matter", () => {
@@ -183,6 +244,29 @@ describe("the gate over a repository", () => {
     const result = run([dir]);
     expect(result.exitCode).toBe(EXIT.brokenLink);
     expect(result.err).toContain("docs/a.md:1: link target not found: docs/b.md");
+  });
+
+  test("a target present on disk but ignored by git is not tracked, so the link is broken", () => {
+    const dir = repository({
+      ".gitignore": "build/\n",
+      "a.md": "[o](build/out.md) [d](build/) [t](b.md)\n",
+      "b.md": "# B\n",
+      "build/out.md": "# Out\n",
+    });
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.err).toContain("a.md:1: link target not tracked: build/out.md");
+    expect(result.err).toContain("a.md:1: link target not tracked: build/");
+    expect(result.out.join("\n")).toContain("ok=1");
+  });
+
+  test("a target left untracked (never added) is not tracked either", () => {
+    const dir = repository({ "a.md": "[n](new.md) [dir](sub/) [root](.)\n", "sub/x.txt": "x\n" });
+    writeFileSync(join(dir, "new.md"), "# N\n");
+    mkdirSync(join(dir, "empty"));
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.err).toEqual(["a.md:1: link target not tracked: new.md"]);
   });
 
   test("the same link written relative to its source resolves, with and without ./", () => {
@@ -383,6 +467,31 @@ describe("the gate over a repository", () => {
     const dir = repository({ "a.md": "[b](b.md)\n", "b.md": "# B\n" });
     rmSync(join(dir, "a.md"));
     expect(run([dir]).exitCode).toBe(EXIT.git);
+  });
+});
+
+describe("the counter check", () => {
+  const consistent = {
+    tracked: 5,
+    examined: 3,
+    excluded: 1,
+    nonRegular: 1,
+    extracted: 10,
+    ok: 4,
+    broken: 2,
+    anchors: 1,
+    external: 2,
+    other: 1,
+  };
+
+  test("consistent counters sum", () => {
+    expect(countersSum(consistent)).toBe(true);
+  });
+
+  test("a file counted nowhere, or a link counted nowhere, is a mismatch", () => {
+    expect(countersSum({ ...consistent, examined: 2 })).toBe(false);
+    expect(countersSum({ ...consistent, other: 0 })).toBe(false);
+    expect(countersSum({ ...consistent, ok: 5 })).toBe(false);
   });
 });
 
