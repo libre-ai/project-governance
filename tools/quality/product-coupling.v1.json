@@ -1,0 +1,25 @@
+{
+  "roots": ["packages/classification"],
+  "patterns": [
+    {
+      "name": "product-catalogue-id",
+      "regex": "\\bP[0-9]{2}\\b",
+      "why": "a product identifier of the ADR-0042 catalogue names the consumer the shared code serves"
+    },
+    {
+      "name": "consumer-application-tree",
+      "regex": "\\bapps/[a-z0-9][a-z0-9-]*",
+      "why": "a path into a consumer application tree couples the shared code to that application"
+    },
+    {
+      "name": "product-database",
+      "regex": "\\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*_POSTGRESQL_ADDON_URI\\b",
+      "why": "a prefixed database variable names the database of one product"
+    },
+    {
+      "name": "product-instance-host",
+      "regex": "\\b[a-z0-9][a-z0-9-]*\\.libre-ai\\.fr\\b",
+      "why": "a subdomain names the host of one product instance; the bare domain stays allowed"
+    }
+  ]
+}
