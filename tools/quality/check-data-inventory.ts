@@ -166,6 +166,16 @@ export const NOT_GATED: readonly NotGated[] = [
     because: `a [lints] table here, or \`[lints] workspace = true\` with the workspace table, sets the lint levels clippy applies to the crate; ${AWAITING}`,
     awaitingOwnerArbitration: true,
   },
+  {
+    path: "tools/quality/product-coupling.v1.json",
+    because: `check-product-coupling.ts reads its shared trees and forbidden patterns: removing one narrows the scan; the guard is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
+    awaitingOwnerArbitration: true,
+  },
+  {
+    path: "tools/quality/product-coupling-exemptions.txt",
+    because: `check-product-coupling.ts tolerates the matches of every file it lists; the guard is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
+    awaitingOwnerArbitration: true,
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
