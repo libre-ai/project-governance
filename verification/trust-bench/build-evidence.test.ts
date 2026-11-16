@@ -148,7 +148,8 @@ describe("cross-check of the record against itself", () => {
     const first = record.measures[0];
     if (first === undefined) throw new Error("no measure");
     const extra = [...record.measures, { ...first, couche: "L9-inconnue" }];
-    expect(failed({ measures: extra })).toEqual(["measures against raw lines"]);
+    // Nothing declares the layer of the extra measure either.
+    expect(failed({ measures: extra })).toEqual(["layers", "measures against raw lines"]);
     expect(failed({ measures: record.measures.slice(1) })).toEqual(["measures against raw lines"]);
   });
 
@@ -174,8 +175,106 @@ describe("cross-check of the record against itself", () => {
     expect(failed({ reference })).toEqual(["revision"]);
   });
 
+  test("a raw line read twice does not stand for a raw line that is missing", () => {
+    const label = record.provenance.modeles[0]?.etiquette ?? "";
+    const lines = record.reviews[label] ?? [];
+    const t01 = lines.find((line) => line.cas === "T01");
+    if (t01 === undefined) throw new Error("no review of T01");
+    expect(lines.some((line) => line.cas === "T04")).toBe(true);
+    // As many raw lines as before, and as many confrontations: T04 is gone, T01 is there twice.
+    const duplicated = lines.map((line) => (line.cas === "T04" ? t01 : line));
+    const checks = crossCheckRecord({
+      ...record,
+      reviews: { ...record.reviews, [label]: duplicated },
+    });
+    const check = checks.find((candidate) => candidate.item === "measures against raw lines");
+    expect(check?.ok).toBe(false);
+    expect(check?.note).toContain(
+      `T01 ${record.provenance.modeles[0]?.couche}: more than one raw line`,
+    );
+    expect(check?.note).toContain(`T04 ${record.provenance.modeles[0]?.couche}: no raw line`);
+  });
+
+  test("a launcher line in delay or killed by a signal is never published green", () => {
+    const interrupted = (change: { delai: boolean; signal?: string; code: number | null }) => {
+      const reference = record.reference.map((line) =>
+        line.cas === "D04" && line.couche === "L2-tests" ? { ...line, ...change } : line,
+      );
+      const measures = record.measures.map((measure) =>
+        measure.cas === "D04" && measure.couche === "L2-tests"
+          ? { ...measure, illisible: true }
+          : measure,
+      );
+      const synthesis = {
+        ...record.synthesis,
+        couches: record.synthesis.couches.map((layer) =>
+          layer.couche === "L2-tests" ? { ...layer, illisibles: layer.illisibles + 1 } : layer,
+        ),
+      };
+      return { reference, measures, synthesis, synthesisReplayed: synthesis };
+    };
+    const row = (text: string) => text.split("\n").find((line) => line.startsWith("| D04 |")) ?? "";
+    expect(row(report)).toBe(
+      "| D04 | oui | contrôle de dépôt neutralisé | vert | vert | vert | vert | vert | rouge | rouge | rouge | rouge |",
+    );
+
+    // The measures still say green where the raw line says the layer did not finish: a red.
+    const delayed = interrupted({ delai: true, code: 124 });
+    expect(failed({ reference: delayed.reference })).toEqual(["measures against raw lines"]);
+
+    // The measures agree with the raw line: the cell names the state, and is not a green.
+    const afterDelay = projectTrustBench({ ...record, ...delayed }, report, data);
+    expect(afterDelay.gate.violations.filter((v) => v.includes("raw"))).toEqual([]);
+    if (!afterDelay.ok) throw new Error(afterDelay.gate.violations.join("\n"));
+    expect(row(afterDelay.report)).toBe(
+      "| D04 | oui | contrôle de dépôt neutralisé | vert | vert | délai dépassé | vert | vert | rouge | rouge | rouge | rouge |",
+    );
+
+    const afterSignal = projectTrustBench(
+      { ...record, ...interrupted({ delai: false, signal: "SIGKILL", code: null }) },
+      report,
+      data,
+    );
+    if (!afterSignal.ok) throw new Error(afterSignal.gate.violations.join("\n"));
+    expect(row(afterSignal.report)).toBe(
+      "| D04 | oui | contrôle de dépôt neutralisé | vert | vert | tuée par signal (SIGKILL) | vert | vert | rouge | rouge | rouge | rouge |",
+    );
+  });
+
+  test("a raw launcher line that contradicts itself is a red", () => {
+    const altered = (change: Record<string, unknown>) =>
+      record.reference.map((line, index) => (index === 0 ? { ...line, ...change } : line));
+    // Caught without a non-zero exit, in delay and caught, in delay and killed, no `delai` at all.
+    for (const change of [
+      { attrape: true },
+      { delai: true, attrape: true, code: 124 },
+      { delai: true, signal: "SIGKILL", code: null },
+      { delai: undefined },
+    ]) {
+      expect(failed({ reference: altered(change) }), JSON.stringify(change)).toContain(
+        "raw launcher lines",
+      );
+    }
+  });
+
+  test("an interruption of the second pass is a difference with the reference", () => {
+    const secondPass = record.secondPass.map((line) =>
+      line.cas === "T01" && line.couche === "L1a-lint"
+        ? { ...line, delai: true, code: null }
+        : line,
+    );
+    const projection = projectTrustBench({ ...record, secondPass }, report, data);
+    if (!projection.ok) throw new Error(projection.gate.violations.join("\n"));
+    expect(projection.report).toContain("| T01 | `L1a-lint` | vert | délai dépassé |");
+    expect(projection.report).toContain("| T01 | délai dépassé | vert | vert | vert | vert |");
+  });
+
   test("the second pass is published apart: it changes no figure of the synthesis", () => {
-    const all = record.secondPass.map((line) => ({ ...line, attrape: !line.attrape }));
+    const all = record.secondPass.map((line) => ({
+      ...line,
+      attrape: !line.attrape,
+      code: line.attrape ? 0 : 1,
+    }));
     const projection = projectTrustBench({ ...record, secondPass: all }, report, data);
     expect(projection.ok).toBe(true);
     if (!projection.ok) return;
@@ -185,6 +284,177 @@ describe("cross-check of the record against itself", () => {
     expect(blocks.synthese).toBe(held.synthese as string);
     expect(blocks.cas).toBe(held.cas as string);
     expect(blocks["second-passage"]).not.toBe(held["second-passage"] as string);
+  });
+});
+
+describe("a layer derived from other layers", () => {
+  const derived = record.synthesis.couches.filter((layer) => layer.derivee_de !== null);
+  const reviews = record.provenance.modeles.map((model) => model.couche);
+
+  /** `synthese.jq` on measures of one's own, with the derived layers one declares. */
+  function synthesise(
+    measures: readonly Record<string, unknown>[],
+    couches_derivees: unknown,
+  ): { code: number; layers: Record<string, { apport: unknown; cas: unknown }>; stderr: string } {
+    const directory = mkdtempSync(join(tmpdir(), "trust-bench-synthesis-"));
+    temporary.push(directory);
+    const provenance = join(directory, "provenance.json");
+    writeFileSync(provenance, JSON.stringify({ couches_derivees }));
+    const run = Bun.spawnSync(
+      [
+        "jq",
+        "--slurpfile",
+        "provenance",
+        provenance,
+        "-f",
+        join(root, "verification/trust-bench/synthese.jq"),
+      ],
+      { stdin: Buffer.from(JSON.stringify(measures)), stdout: "pipe", stderr: "pipe" },
+    );
+    const layers: Record<string, { apport: unknown; cas: unknown }> = {};
+    if (run.exitCode === 0) {
+      for (const layer of JSON.parse(run.stdout.toString()).couches) {
+        layers[layer.couche] = {
+          apport: layer.apport_au_dela_du_moins_cher,
+          cas: layer.cas_de_l_apport,
+        };
+      }
+    }
+    return { code: run.exitCode, layers, stderr: run.stderr.toString() };
+  }
+  const measure = (couche: string, cout: number, cas: string, rouge: boolean) => ({
+    cas,
+    couche,
+    cout,
+    attendu: true,
+    rouge,
+    illisible: false,
+    ms: 1,
+  });
+  // Two layers of their own, and a third, dearer, red wherever one of them is.
+  const MEASURES = [
+    measure("A", 1, "D1", true),
+    measure("A", 1, "D2", false),
+    measure("B", 4, "D1", false),
+    measure("B", 4, "D2", true),
+    measure("X", 5, "D1", true),
+    measure("X", 5, "D2", true),
+  ];
+
+  test("the committed synthesis declares the two crossed layers derived, with no contribution", () => {
+    expect(derived.map((layer) => layer.couche)).toEqual([
+      "L6-croisee-accord-des-deux",
+      "L6-croisee-au-moins-un-signale",
+    ]);
+    for (const layer of derived) {
+      expect(layer.derivee_de).toEqual(reviews);
+      expect(layer.apport_au_dela_du_moins_cher).toBeNull();
+      expect(layer.cas_de_l_apport).toBeNull();
+    }
+    const rows = report.split("\n").filter((line) => line.startsWith("| `L6-"));
+    expect(rows.length).toBe(2);
+    for (const row of rows) expect(row.split(" | ")[3]).toBe("non applicable (couche dérivée)");
+  });
+
+  test("the contribution of a derived layer is not applicable, whatever it caught", () => {
+    // Not declared, X is a layer like another: cheaper layers already caught both of its
+    // defects, and its contribution is a computed 0.
+    expect(synthesise(MEASURES, []).layers).toEqual({
+      A: { apport: 1, cas: ["D1"] },
+      B: { apport: 1, cas: ["D2"] },
+      X: { apport: 0, cas: [] },
+    });
+    // Declared derived from A and B, the same 0 is no measure: it could be nothing else.
+    expect(synthesise(MEASURES, [{ couche: "X", derivee_de: ["A", "B"] }]).layers).toEqual({
+      A: { apport: 1, cas: ["D1"] },
+      B: { apport: 1, cas: ["D2"] },
+      X: { apport: null, cas: null },
+    });
+  });
+
+  test("a derived layer does not count as a cheaper layer for the others", () => {
+    const cheapDerived = MEASURES.map((line) =>
+      line.couche === "X" ? { ...line, cout: 2 } : line,
+    );
+    expect(synthesise(cheapDerived, [{ couche: "X", derivee_de: ["A", "B"] }]).layers.B).toEqual({
+      apport: 1,
+      cas: ["D2"],
+    });
+  });
+
+  test("a declaration the measures do not bear, or no declaration, fails the synthesis", () => {
+    const absent = synthesise(MEASURES, [{ couche: "Y", derivee_de: ["A", "B"] }]);
+    expect(absent.code).not.toBe(0);
+    expect(absent.stderr).toContain("Y");
+    const unknownSource = synthesise(MEASURES, [{ couche: "X", derivee_de: ["A", "Z"] }]);
+    expect(unknownSource.code).not.toBe(0);
+    expect(unknownSource.stderr).toContain("Z");
+    expect(synthesise(MEASURES, null).code).not.toBe(0);
+  });
+
+  test("a measured layer that nothing declares, launched, reviewed or derived, is a red", () => {
+    const provenance = { ...record.provenance, couches_derivees: [] };
+    const failures = crossCheckRecord({ ...record, provenance })
+      .filter((check) => !check.ok)
+      .map((check) => `${check.item}: ${check.note}`);
+    expect(failures.join("\n")).toContain(
+      "layers: 9 layer(s) measured, 5 launched, 2 reviewed, 0 derived, 2 declared by nothing (L6-croisee-accord-des-deux, L6-croisee-au-moins-un-signale)",
+    );
+  });
+
+  test("a derived layer declared under a rule the check does not know is a red", () => {
+    const provenance = {
+      ...record.provenance,
+      couches_derivees: record.provenance.couches_derivees.map((layer, index) =>
+        index === 0 ? { ...layer, regle: "majorite" } : layer,
+      ),
+    };
+    const check = crossCheckRecord({ ...record, provenance }).find(
+      (candidate) => candidate.item === "measures against raw lines",
+    );
+    expect(check?.ok).toBe(false);
+    expect(check?.note).toContain("unknown rule majorite");
+  });
+
+  // The prose of the report is outside the generated blocks, and nothing else
+  // reads it: this holds the one sentence the measure cannot bear.
+  test("the report does not state a contribution of the crossed review", () => {
+    expect(report).not.toMatch(/apport[^.\n]*crois[ée]e?s?[^.\n]*(nul|zéro|\b0\b)/i);
+    expect(report).toContain("ce corpus ne permet pas de dire ce qu'elle vaut");
+  });
+});
+
+describe("what the check says it compared", () => {
+  const projection = projectTrustBench(record, report, data);
+  const note = (item: string): string =>
+    projection.gate.checks.find((check) => check.item === item)?.note ?? "";
+
+  test("the blocks are counted in lines and table cells, a fingerprint is one cell", () => {
+    const measure = JSON.parse(data).mesures[0];
+    // Two tables of two columns: a header row each, and one row per file.
+    const cells = 2 * (measure.sources.length + measure.fichiers_d_origine.length + 2);
+    expect(note(`${TRUST_BENCH_REPORT_PATH} block sources`)).toContain(
+      ` line(s) and ${cells} table cell(s) identical to the data`,
+    );
+    expect(projection.gate.volumeSummary).toContain(" table cell(s) compared with the data");
+    expect(projection.gate.volumeSummary).not.toContain("figure");
+  });
+
+  test("the data file is counted in values by kind, not in runs of digits", () => {
+    const counts = { number: 0, boolean: 0, string: 0, null: 0 };
+    const walk = (value: unknown): void => {
+      if (value === null) counts.null += 1;
+      else if (Array.isArray(value)) value.forEach(walk);
+      else if (typeof value === "object") Object.values(value).forEach(walk);
+      else if (typeof value === "number") counts.number += 1;
+      else if (typeof value === "boolean") counts.boolean += 1;
+      else counts.string += 1;
+    };
+    walk(JSON.parse(data));
+    expect(counts.number).toBeGreaterThan(0);
+    expect(note(TRUST_BENCH_DATA_PATH)).toBe(
+      `${counts.number} number(s), ${counts.boolean} boolean(s), ${counts.string} string(s) and ${counts.null} null(s) identical to the projection of the record`,
+    );
   });
 });
 
@@ -241,6 +511,39 @@ describe("trust-bench.v1 schema", () => {
     [
       "a model identified by neither fingerprint nor upstream revision",
       withMeasure({ modeles: [{ ...measure.modeles[0], sha256: null, revision_amont: null }] }),
+    ],
+    [
+      "a derived layer with a contribution, even of 0",
+      withMeasure({
+        couches: measure.couches.map((layer: { derivee_de: unknown }) =>
+          layer.derivee_de === null ? layer : { ...layer, apport_au_dela_du_moins_cher: 0 },
+        ),
+      }),
+    ],
+    [
+      "a layer of its own without a contribution",
+      withMeasure({
+        couches: measure.couches.map((layer: { derivee_de: unknown }) =>
+          layer.derivee_de === null ? { ...layer, apport_au_dela_du_moins_cher: null } : layer,
+        ),
+      }),
+    ],
+    [
+      "a layer derived from a single layer",
+      withMeasure({
+        couches: measure.couches.map((layer: { derivee_de: unknown }) =>
+          layer.derivee_de === null ? layer : { ...layer, derivee_de: ["L5"] },
+        ),
+      }),
+    ],
+    [
+      "a verdict with an interruption that is not named",
+      withMeasure({
+        cas: measure.cas.map((cas: { verdicts: object[] }) => ({
+          ...cas,
+          verdicts: cas.verdicts.map((verdict) => ({ ...verdict, interruption: "autre" })),
+        })),
+      }),
     ],
     [
       "a source file that leaves the repository",

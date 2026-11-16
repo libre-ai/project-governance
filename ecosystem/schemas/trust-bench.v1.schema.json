@@ -32,6 +32,18 @@
       }
     },
     "cases": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "interruption": {
+      "description": "Why a layer of the launcher gave no verdict: `delai` when it outlived its delay and the launcher stopped it, `signal <NAME>` when a signal the launcher did not send killed it. Null when the layer finished by itself, and for a review or derived layer, which the launcher does not run. An interrupted layer is neither green nor red. The raw lines of the passes of 2026-11-16 predate the `signal` field: a death by signal would have been recorded there as a delay.",
+      "anyOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^(delai|signal [A-Za-z0-9]+)$" }
+      ]
+    },
+    "etat_lance": {
+      "description": "The state of one run of a launched layer.",
+      "type": "string",
+      "pattern": "^(vert|rouge|delai|signal [A-Za-z0-9]+)$"
+    },
     "mesure": {
       "type": "object",
       "additionalProperties": false,
@@ -79,6 +91,7 @@
             "required": [
               "couche",
               "cout",
+              "derivee_de",
               "defauts_soumis",
               "defauts_attrapes",
               "apport_au_dela_du_moins_cher",
@@ -97,13 +110,27 @@
                 "type": "integer",
                 "minimum": 1
               },
+              "derivee_de": {
+                "description": "Null for a layer with verdicts of its own. For a derived layer, the layers whose verdicts it combines: everything it reports, one of them reports already.",
+                "anyOf": [
+                  { "type": "null" },
+                  {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": { "type": "string", "minLength": 1 }
+                  }
+                ]
+              },
               "defauts_soumis": { "$ref": "#/$defs/count" },
               "defauts_attrapes": { "$ref": "#/$defs/count" },
               "apport_au_dela_du_moins_cher": {
-                "description": "Defects caught by the layer and by no layer of strictly lower cost.",
-                "$ref": "#/$defs/count"
+                "description": "Defects caught by the layer and by no layer of its own of strictly lower cost. Null, not applicable, for a derived layer: against the layers it is derived from it would be 0 whatever the input, which is not a measure. A consumer never shows it as 0.",
+                "anyOf": [{ "$ref": "#/$defs/count" }, { "type": "null" }]
               },
-              "cas_de_l_apport": { "$ref": "#/$defs/cases" },
+              "cas_de_l_apport": {
+                "description": "Null for a derived layer, like the contribution.",
+                "anyOf": [{ "$ref": "#/$defs/cases" }, { "type": "null" }]
+              },
               "sains_soumis": { "$ref": "#/$defs/count" },
               "faux_positifs": { "$ref": "#/$defs/count" },
               "cas_faux_positifs": { "$ref": "#/$defs/cases" },
@@ -116,6 +143,19 @@
                 "description": "The command of a layer the launcher runs; null for a review or crossed layer.",
                 "type": ["array", "null"],
                 "items": { "type": "string" }
+              }
+            },
+            "if": { "properties": { "derivee_de": { "type": "null" } } },
+            "then": {
+              "properties": {
+                "apport_au_dela_du_moins_cher": { "type": "integer" },
+                "cas_de_l_apport": { "type": "array" }
+              }
+            },
+            "else": {
+              "properties": {
+                "apport_au_dela_du_moins_cher": { "type": "null" },
+                "cas_de_l_apport": { "type": "null" }
               }
             }
           }
@@ -141,11 +181,15 @@
                 "items": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["couche", "rouge", "illisible", "ms"],
+                  "required": ["couche", "rouge", "illisible", "interruption", "ms"],
                   "properties": {
                     "couche": { "type": "string", "minLength": 1 },
                     "rouge": { "type": "boolean" },
-                    "illisible": { "type": "boolean" },
+                    "illisible": {
+                      "description": "Neither a green nor a red: an answer of a model that is not a verdict, or a layer of the launcher that was interrupted.",
+                      "type": "boolean"
+                    },
+                    "interruption": { "$ref": "#/$defs/interruption" },
                     "ms": { "$ref": "#/$defs/count" }
                   }
                 }
@@ -242,18 +286,22 @@
               "items": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["cas", "couche", "attrape", "code", "ms"],
+                "required": ["cas", "couche", "attrape", "code", "interruption", "ms"],
                 "properties": {
                   "cas": { "type": "string", "minLength": 1 },
                   "couche": { "type": "string", "minLength": 1 },
                   "attrape": { "type": "boolean" },
-                  "code": { "type": "integer" },
+                  "code": {
+                    "description": "The exit code of the layer; null when it gave none.",
+                    "type": ["integer", "null"]
+                  },
+                  "interruption": { "$ref": "#/$defs/interruption" },
                   "ms": { "$ref": "#/$defs/count" }
                 }
               }
             },
             "bascules": {
-              "description": "The verdicts that differ from the reference.",
+              "description": "The runs whose state differs from the reference: a verdict that changed, or an interruption on one side only.",
               "type": "array",
               "items": {
                 "type": "object",
@@ -262,8 +310,8 @@
                 "properties": {
                   "cas": { "type": "string", "minLength": 1 },
                   "couche": { "type": "string", "minLength": 1 },
-                  "reference": { "type": "boolean" },
-                  "second_passage": { "type": "boolean" }
+                  "reference": { "$ref": "#/$defs/etat_lance" },
+                  "second_passage": { "$ref": "#/$defs/etat_lance" }
                 }
               }
             }

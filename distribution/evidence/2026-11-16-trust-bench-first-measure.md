@@ -4,13 +4,13 @@ Question posée : quand un défaut entre dans une brique, quelle couche de véri
 
 Ce rapport publie une mesure faite, il ne la refait pas. Le banc ne tourne pas en CI : il lui faut une copie de travail du dépôt mesuré et des modèles locaux. Ce que ce dépôt versionne est l'enregistrement de la mesure — corpus, mesures brutes, synthèse — sous `verification/trust-bench/`, et sa projection lisible par un site : `distribution/index/trust-bench.v1.json` (contrat : `ecosystem/schemas/trust-bench.v1.schema.json`).
 
-Les blocs entre marqueurs `trust-bench:begin` et `trust-bench:end` sont générés depuis cet enregistrement par `verification/trust-bench/build-evidence.ts` et ne s'éditent pas à la main. `bun run check:trust-bench` les compare à une génération fraîche, compare le fichier de données, recoupe chaque ligne des mesures normalisées avec la ligne brute dont elle vient, rejoue `synthese.jq` sur les mesures, et imprime ce qu'il a comparé. Le texte hors des blocs n'est vérifié par aucun contrôle.
+Les blocs entre marqueurs `trust-bench:begin` et `trust-bench:end` sont générés depuis cet enregistrement par `verification/trust-bench/build-evidence.ts` et ne s'éditent pas à la main. `bun run check:trust-bench` les compare à une génération fraîche, compare le fichier de données, recoupe chaque ligne des mesures normalisées avec la ligne brute dont elle vient (une ligne brute lue deux fois ne tient pas lieu d'une ligne absente), rejoue `synthese.jq` sur les mesures, et imprime ce qu'il a comparé. Le texte hors des blocs n'est vérifié par aucun contrôle, à une phrase près : un test refuse que ce rapport énonce un apport de la relecture croisée.
 
 ## Ce qui a été mesuré
 
-Pour chaque cas du corpus, le lanceur (`verification/trust-bench/lanceur.ts`) remet la copie de travail à sa révision, applique une substitution exacte et unique dans son fichier, puis lance la commande de chaque couche. Une couche « attrape » un cas quand sa commande sort en non nul. Les couches lancées sont le lint, les types, les tests, les contrôles propres au dépôt mesuré (marqueurs, licences) et un pilote d'exécution réelle (`verification/trust-bench/pilote-pi-evidence.sh`, six scénarios qui lancent la CLI sur des dépôts jetables).
+Pour chaque cas du corpus, le lanceur (`verification/trust-bench/lanceur.ts`) remet la copie de travail à sa révision, applique une substitution exacte et unique dans son fichier, puis lance la commande de chaque couche. Une couche « attrape » un cas quand sa commande sort d'elle-même en non nul. Les couches lancées sont le lint, les types, les tests, les contrôles propres au dépôt mesuré (marqueurs, licences) et un pilote d'exécution réelle (`verification/trust-bench/pilote-pi-evidence.sh`, six scénarios qui lancent la CLI sur des dépôts jetables). Le pilote versionné a été corrigé après la mesure ; les résultats publiés viennent du pilote d'origine (voir les limites).
 
-La relecture (`verification/trust-bench/relecture.ts`) soumet le diff de chaque cas à un modèle local, à l'aveugle : ni identifiant de cas, ni attendu. Le modèle rend un verdict structuré, défaut ou non. Une réponse qui n'est pas ce verdict est comptée illisible, ni verte ni rouge. Les deux couches croisées ne sont pas des passages de plus : elles combinent les verdicts des deux modèles sur le même diff, l'une quand les deux signalent, l'autre quand au moins un signale.
+La relecture (`verification/trust-bench/relecture.ts`) soumet le diff de chaque cas à un modèle local, à l'aveugle : ni identifiant de cas, ni attendu. Le modèle rend un verdict structuré, défaut ou non. Une réponse qui n'est pas ce verdict est comptée illisible, ni verte ni rouge. Les deux couches croisées ne sont pas des passages de plus : ce sont des couches dérivées, sans verdict propre. Elles combinent les verdicts des deux modèles sur le même diff, l'une quand les deux signalent, l'autre quand au moins un signale.
 
 <!-- trust-bench:begin mesure -->
 
@@ -29,7 +29,7 @@ La relecture (`verification/trust-bench/relecture.ts`) soumet le diff de chaque 
 
 ## Synthèse par couche
 
-« Apport au-delà du moins cher » : défauts attrapés par la couche et par aucune couche de coût strictement inférieur. Le coût est un ordre posé à la main, pas une mesure. Les durées sont la somme des durées de tous les cas soumis à la couche.
+« Apport au-delà du moins cher » : défauts attrapés par la couche et par aucune couche de coût strictement inférieur. Il ne se calcule que pour une couche qui a ses propres verdicts. Une couche dérivée d'autres couches ne signale rien que l'une de ses sources ne signale déjà : contre elles, son apport vaudrait zéro quelle que soit l'entrée, ce qui n'est pas une mesure. Il est donc déclaré « non applicable (couche dérivée) ». Le coût est un ordre posé à la main, pas une mesure. Les durées sont la somme des durées de tous les cas soumis à la couche.
 
 <!-- trust-bench:begin synthese -->
 
@@ -42,10 +42,15 @@ La relecture (`verification/trust-bench/relecture.ts`) soumet le diff de chaque 
 | `L4-execution-reelle` | 3 | 4 / 10 | 2 (D03, D08) | 0 / 9 (—) | 0 | 26765 |
 | `L5-relecture-mistral-small-3.2-24b-q4km` | 4 | 10 / 10 | 1 (D04) | 1 / 8 (T03) | 0 | 143374 |
 | `L5-relecture-qwen3-8b-q4km` | 4 | 10 / 10 | 1 (D04) | 1 / 8 (T08) | 1 | 484860 |
-| `L6-croisee-accord-des-deux` | 5 | 10 / 10 | 0 (—) | 0 / 8 (—) | 1 | 628234 |
-| `L6-croisee-au-moins-un-signale` | 5 | 10 / 10 | 0 (—) | 2 / 8 (T03, T08) | 1 | 628234 |
+| `L6-croisee-accord-des-deux` | 5 | 10 / 10 | non applicable (couche dérivée) | 0 / 8 (—) | 1 | 628234 |
+| `L6-croisee-au-moins-un-signale` | 5 | 10 / 10 | non applicable (couche dérivée) | 2 / 8 (T03, T08) | 1 | 628234 |
 
 Défauts attrapés par aucune couche : —.
+
+Couches dérivées, sans verdict propre :
+
+- `L6-croisee-accord-des-deux`, dérivée de `L5-relecture-mistral-small-3.2-24b-q4km` et `L5-relecture-qwen3-8b-q4km`.
+- `L6-croisee-au-moins-un-signale`, dérivée de `L5-relecture-mistral-small-3.2-24b-q4km` et `L5-relecture-qwen3-8b-q4km`.
 
 <!-- trust-bench:end synthese -->
 
@@ -87,12 +92,16 @@ Niveau inféré : ce qui suit se déduit des deux tableaux, sur ce corpus.
 - Le défaut que seule la relecture attrape est le contrôle de dépôt neutralisé (D04) : ni les tests ni le contrôle lui-même ne rougissent.
 - Chaque modèle signale un cas sain, et pas le même. La réponse illisible est celle d'un modèle sur un cas sain (T02).
 
-## Abandons que cette mesure justifie
+## Abandon que cette mesure justifie
 
 Sur ce corpus, et dans les limites écrites plus bas :
 
-- **La relecture croisée comme couche de détection.** Elle n'attrape rien de plus qu'un seul modèle : l'apport des deux couches croisées est nul, chaque modèle seul attrape déjà tous les défauts semés. Ce que la règle « accord des deux » change est ailleurs : elle ne signale aucun cas sain, là où chaque modèle seul en signale un.
 - **Les contrôles propres au dépôt mesuré comme filet contre ces défauts.** Ils n'attrapent aucun des défauts semés, y compris celui qui neutralise l'un d'eux (D04).
+
+## Ce que cette mesure ne permet pas de dire
+
+- **Ce que vaut la relecture croisée comme couche de détection.** Chaque modèle seul a signalé les 10 défauts semés : la croisée n'avait aucune marge pour en signaler un de plus, et ce corpus ne permet pas de dire ce qu'elle vaut. Aucun abandon ne s'en déduit. Ce qui est mesuré est ailleurs : sur les 8 cas sains relus, la règle « accord des deux » donne 0 fausse alerte, contre 1 sur 8 pour chaque modèle seul ; l'un de ces 8 cas (T02) est illisible pour un modèle, donc pour les deux couches croisées.
+- **Ce que l'exécution réelle voit du cas D05.** Le scénario du pilote de la mesure qui devait le voir ne le pouvait pas (voir les limites) : son vert sur ce cas n'est pas un résultat.
 
 ## Second passage, publié à part
 
@@ -102,7 +111,7 @@ Le corpus a été soumis une seconde fois aux couches lancées, le même jour, s
 
 Fichier : `verification/trust-bench/resultats/pi-evidence.deterministe.passage2.json` (forte charge machine) — publié à part, jamais fusionné à la référence.
 
-Lignes comparées à la référence : 95 ; verdicts différents : 4.
+Lignes comparées à la référence : 95 ; états différents : 4.
 
 | Cas | Couche | Référence | Second passage |
 | --- | --- | --- | --- |
@@ -143,12 +152,14 @@ Lignes comparées à la référence : 95 ; verdicts différents : 4.
 - 18 cas, une seule brique, un seul passage par modèle à température 0 : aucune répétition, aucun intervalle.
 - Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.
 - L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.
+- Les deux couches croisées sont dérivées des deux relectures : elles n'ont pas de verdict propre, et tout ce qu'elles signalent, l'une des deux relectures le signale déjà. Leur apport au-delà du moins cher n'est pas une mesure : il est déclaré non applicable, jamais nul. Chaque modèle seul a signalé tous les défauts semés, la croisée n'avait donc aucune marge pour en signaler un de plus : ce corpus ne permet pas de dire ce qu'elle vaut comme couche de détection.
 - Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.
+- Le résultat de la couche d'exécution réelle sur le cas D05 (validation de la commande retirée) a été obtenu avec un scénario qui ne pouvait pas le voir : le scénario S4 du pilote de la mesure lisait tout code de sortie non nul comme un refus, et le script nommé par sa recette n'existait pas dans le dépôt jetable, si bien que la porte se fermait aussi quand la commande avec chemin était acceptée. Ce vert ne dit pas que l'exécution réelle manque ce défaut.
 - Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.
-- Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu.
+- Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu. Il distingue aussi un délai dépassé d'une mort par signal ; les deux passages publiés ont été produits avant cette distinction : leurs lignes ne portent pas le champ signal, et une mort par signal y aurait été consignée comme un délai.
 - La commande qui a normalisé les mesures brutes en pi-evidence.mesures.json n'a pas été conservée ; le contrôle recoupe ce fichier ligne à ligne avec les mesures brutes.
 - Les diffs soumis aux modèles ne sont pas versionnés : le lanceur les reproduit depuis le corpus et la révision (option --diffs).
-- Le pilote versionné diffère de celui de la mesure sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables ; cette version n'a pas été rejouée.
+- Le pilote versionné n'est pas celui de la mesure. Ses scénarios S1 à S4 et S6 ont été corrigés après elle : ils comparent le code de sortie et le verdict imprimé par la CLI, S4 exige le refus de la recette et son script existe, S6 exige que la vérification ait tourné. Il diffère aussi sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables. Le pilote corrigé n'a pas été rejoué sur le corpus : toutes les mesures publiées de la couche d'exécution réelle viennent du pilote d'origine.
 - Pour Qwen3-8B, ni l'empreinte du fichier ni le propriétaire du dépôt amont ne sont consignés, seulement la révision amont ; pour Mistral Small 3.2, l'empreinte du fichier est consignée, pas la révision amont.
 
 <!-- trust-bench:end limites -->
@@ -156,8 +167,8 @@ Lignes comparées à la référence : 95 ; verdicts différents : 4.
 ## Reproduire
 
 - Vérifier la concordance du rapport, du fichier de données et de l'enregistrement : `bun run check:trust-bench`. Régénérer : `bun run build:trust-bench`.
-- Rejouer le banc : `bun verification/trust-bench/lanceur.ts verification/trust-bench/corpus/pi-evidence.json <copie de travail de pi-evidence à la révision mesurée, dépendances installées> <sortie.jsonl> --diffs <répertoire>`, puis, avec un serveur de modèle lancé sur la machine, `bun verification/trust-bench/relecture.ts <répertoire des diffs> http://127.0.0.1:<port> <étiquette du modèle> <sortie.jsonl>`. Le lanceur s'arrête avant toute mesure si une substitution du corpus est absente ou ambiguë, et sans écrire de résultat si une couche rougit sur la révision d'origine (`verification/trust-bench/lanceur.test.ts`).
-- Synthèse : `jq -f verification/trust-bench/synthese.jq verification/trust-bench/resultats/pi-evidence.mesures.json`.
+- Rejouer le banc : `bun verification/trust-bench/lanceur.ts verification/trust-bench/corpus/pi-evidence.json <copie de travail de pi-evidence à la révision mesurée, dépendances installées> <sortie.jsonl> --diffs <répertoire>`, puis, avec un serveur de modèle lancé sur la machine, `bun verification/trust-bench/relecture.ts <répertoire des diffs> http://127.0.0.1:<port> <étiquette du modèle> <sortie.jsonl>`. Le lanceur s'arrête avant toute mesure si une substitution du corpus est absente ou ambiguë, et sans écrire de résultat si une couche n'est pas verte sur la révision d'origine. Il rejoue un rouge une fois, et consigne à part une couche qui dépasse son délai et une couche tuée par un signal : ni l'une ni l'autre n'est un vert ni un rouge (`verification/trust-bench/lanceur.test.ts`). Les scénarios du pilote sont tenus par `verification/trust-bench/pilote-pi-evidence.test.ts`, contre des doublures de la CLI.
+- Synthèse : `jq --slurpfile provenance verification/trust-bench/resultats/pi-evidence.provenance.json -f verification/trust-bench/synthese.jq verification/trust-bench/resultats/pi-evidence.mesures.json`. La provenance déclare les couches dérivées.
 
 Fichiers lus par la génération, avec leur empreinte :
 
@@ -169,11 +180,11 @@ Fichiers lus par la génération, avec leur empreinte :
 | `verification/trust-bench/resultats/pi-evidence.deterministe.json` | `cacd6e8c1b5572ffbeaeb5870e8109a295292a7b4018e04b66541f641f842ba3` |
 | `verification/trust-bench/resultats/pi-evidence.deterministe.passage2.json` | `8acd59a503d9d3209133b6906a089f29d319c48f0dc2663381937609fcc9fa50` |
 | `verification/trust-bench/resultats/pi-evidence.mesures.json` | `c37ffa634f0a56d9d126d90994c2103da9988c44e9cde6881b3a401e30b2af56` |
-| `verification/trust-bench/resultats/pi-evidence.provenance.json` | `2121c75b2df0db85f65d171b12fda8dce6a2d44d09b19c461a0d91409061e268` |
+| `verification/trust-bench/resultats/pi-evidence.provenance.json` | `2e610ee7e1f77f7060ace3b024bd56e20f88e89788b471820f355ffcc795b49b` |
 | `verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json` | `f9b99118c22657afea3bab5614afa3a376fc50780b49a7cbefe00f4fadb3bab7` |
 | `verification/trust-bench/resultats/pi-evidence.relecture.qwen3-8b.json` | `a356f4bd4ec26ee7ceefbb2e8e49c0751273448b41cf327da69794909884d897` |
-| `verification/trust-bench/resultats/pi-evidence.synthese.json` | `706dcea0cf3ff3dfdccb66eb7bd1789cf6933d1f10e4967225552bf5f5bb4bef` |
-| `verification/trust-bench/synthese.jq` | `e3bf28edbfff4f0dbddd66e4f3516a0b542f633a1bc6bf9660620239e8a7e457` |
+| `verification/trust-bench/resultats/pi-evidence.synthese.json` | `ed7075010e6dafa49dcd10e0ab4d535e50b16b726662b64ec7847b49fd691725` |
+| `verification/trust-bench/synthese.jq` | `084658953b0185c549dd64af9d4140a8f334a09f7992c6c901fecfcef9aa80e5` |
 
 Fichiers tels que le banc les a écrits, non publiés :
 

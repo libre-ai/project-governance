@@ -15,8 +15,13 @@
  * It relays, it does not compute: every figure of the synthesis is copied from
  * `pi-evidence.synthese.json`, every verdict from `pi-evidence.mesures.json`
  * or from a raw line of the launcher. The only things derived here are
- * fingerprints of the source files, the list of verdicts that differ between
- * the two passes, and the counts of what was compared.
+ * fingerprints of the source files, the list of runs whose state differs
+ * between the two passes, and the counts of what was compared.
+ *
+ * Two things it never prints as a result. A layer derived from other layers
+ * (the provenance declares them) has no contribution of its own: the report
+ * says "non applicable", never 0. A launched layer that was interrupted, by
+ * its delay or by a signal, is neither green nor red: the cell names it.
  *
  * The launcher and the review write JSONL. This repository refuses a `.jsonl`
  * file outside named exemptions (personal-data boundary, ADR-0012), so the raw
@@ -26,7 +31,8 @@
  * Before projecting anything it cross-checks the record against itself, and
  * refuses to generate on a mismatch: each line of the normalised measures
  * against the raw line it comes from, and the synthesis against a fresh run of
- * `synthese.jq`. A source that is missing, empty or unparsable is a failure.
+ * `synthese.jq`. A source that is missing, empty or unparsable is a failure,
+ * and so is a measured layer that nothing declares.
  *
  * With `--check` nothing is written: the data file and every block of the
  * report are compared with a fresh projection, and the comparison prints what
@@ -95,8 +101,13 @@ interface LauncherLine {
   readonly nature: string;
   readonly couche: string;
   readonly cout: number;
-  readonly code: number;
+  /** The exit code of the layer; null when it gave none (launcher lines with `signal`). */
+  readonly code: number | null;
   readonly attrape: boolean;
+  /** The layer outlived its delay. Before the `signal` field, also: it died of a signal. */
+  readonly delai: boolean;
+  /** The signal that killed the layer; absent from the lines written before the field. */
+  readonly signal?: string | null;
   readonly ms: number;
 }
 /** One raw line of the blind review. */
@@ -110,10 +121,13 @@ interface ReviewLine {
 interface SynthesisLayer {
   readonly couche: string;
   readonly cout: number;
+  /** The layers a derived layer combines; null for a layer with verdicts of its own. */
+  readonly derivee_de: readonly string[] | null;
   readonly defauts_soumis: number;
   readonly defauts_attrapes: number;
-  readonly apport_au_dela_du_moins_cher: number;
-  readonly cas_de_l_apport: readonly string[];
+  /** Null for a derived layer: not applicable, never 0. */
+  readonly apport_au_dela_du_moins_cher: number | null;
+  readonly cas_de_l_apport: readonly string[] | null;
   readonly sains_soumis: number;
   readonly faux_positifs: number;
   readonly cas_faux_positifs: readonly string[];
@@ -137,6 +151,16 @@ interface Model {
   readonly octets: number | null;
   readonly licence: string | null;
 }
+interface DerivedLayer {
+  readonly couche: string;
+  readonly derivee_de: readonly string[];
+  readonly regle: string;
+}
+/** How a derived layer reads the verdicts of its sources, by the name of its rule. */
+const DERIVATION_RULES: Readonly<Record<string, (reds: readonly boolean[]) => boolean>> = {
+  "accord-de-toutes": (reds) => reds.every((red) => red),
+  "au-moins-une": (reds) => reds.some((red) => red),
+};
 interface Provenance {
   readonly id: string;
   readonly date: string;
@@ -153,6 +177,11 @@ interface Provenance {
   };
   readonly relecture: Readonly<Record<string, string | number>>;
   readonly modeles: readonly Model[];
+  /**
+   * The layers that have no verdict of their own: each combines, under a
+   * rule, the verdicts of the layers it names. `synthese.jq` reads this list.
+   */
+  readonly couches_derivees: readonly DerivedLayer[];
   /** The files as the bench wrote them, before they were laid out for this repository. */
   readonly fichiers_d_origine: readonly { readonly fichier: string; readonly sha256: string }[];
   readonly limites: readonly string[];
@@ -180,14 +209,26 @@ interface CaseVerdict {
   readonly couche: string;
   readonly rouge: boolean;
   readonly illisible: boolean;
+  /** `delai` or `signal <NAME>` for a launched layer that gave no verdict, else null. */
+  readonly interruption: string | null;
   readonly ms: number;
 }
 interface Flip {
   readonly cas: string;
   readonly couche: string;
-  readonly reference: boolean;
-  readonly second_passage: boolean;
+  readonly reference: string;
+  readonly second_passage: string;
 }
+
+/** Why a launcher line is no verdict, in the words of the data file; null when it is one. */
+function interruption(line: LauncherLine): string | null {
+  if (line.delai === true) return "delai";
+  if (typeof line.signal === "string") return `signal ${line.signal}`;
+  return null;
+}
+/** The state of one run of a launched layer: an interruption is neither green nor red. */
+const launchedState = (line: LauncherLine): string =>
+  interruption(line) ?? (line.attrape ? "rouge" : "vert");
 
 function measureDocument(record: TrustBenchRecord) {
   const { provenance, corpus, synthesis } = record;
@@ -198,14 +239,21 @@ function measureDocument(record: TrustBenchRecord) {
     nature: record.reference.find((line) => line.cas === HEALTHY)?.nature ?? "",
     origine: "référence",
   };
-  const referenceVerdicts = new Map(
-    record.reference.map((line) => [`${line.cas} ${line.couche}`, line.attrape]),
+  const referenceLines = new Map(
+    record.reference.map((line) => [`${line.cas} ${line.couche}`, line]),
   );
   const flips: Flip[] = record.secondPass.flatMap((line) => {
-    const reference = referenceVerdicts.get(`${line.cas} ${line.couche}`);
-    return reference === undefined || reference === line.attrape
+    const reference = referenceLines.get(`${line.cas} ${line.couche}`);
+    return reference === undefined || launchedState(reference) === launchedState(line)
       ? []
-      : [{ cas: line.cas, couche: line.couche, reference, second_passage: line.attrape }];
+      : [
+          {
+            cas: line.cas,
+            couche: line.couche,
+            reference: launchedState(reference),
+            second_passage: launchedState(line),
+          },
+        ];
   });
   return {
     id: provenance.id,
@@ -225,7 +273,11 @@ function measureDocument(record: TrustBenchRecord) {
       origine: cas.origine ?? null,
       verdicts: record.measures
         .filter((measure) => measure.cas === cas.id)
-        .map(({ couche, rouge, illisible, ms }): CaseVerdict => ({ couche, rouge, illisible, ms })),
+        .map(({ couche, rouge, illisible, ms }): CaseVerdict => {
+          const line = referenceLines.get(`${cas.id} ${couche}`);
+          const stopped = line === undefined ? null : interruption(line);
+          return { couche, rouge, illisible, interruption: stopped, ms };
+        }),
     })),
     relecture: provenance.relecture,
     modeles: provenance.modeles,
@@ -233,12 +285,13 @@ function measureDocument(record: TrustBenchRecord) {
     second_passage: {
       ...provenance.second_passage,
       lignes_comparees: record.secondPass.length,
-      verdicts: record.secondPass.map(({ cas, couche, attrape, code, ms }) => ({
-        cas,
-        couche,
-        attrape,
-        code,
-        ms,
+      verdicts: record.secondPass.map((line) => ({
+        cas: line.cas,
+        couche: line.couche,
+        attrape: line.attrape,
+        code: line.code,
+        interruption: interruption(line),
+        ms: line.ms,
       })),
       bascules: flips,
     },
@@ -273,8 +326,10 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
 
 /**
  * Every line of the normalised measures is confronted with the raw line it
- * was normalised from. The three counts must sum to the number of measures:
- * a line confronted with nothing is a failure, not a line left out.
+ * was normalised from, or, for a derived layer, with what its rule gives on
+ * the raw lines of its sources. The measures that met a raw line of their
+ * own must be all the measures: a measure confronted with nothing is a
+ * failure, and so is a raw line confronted twice.
  */
 export function crossCheckRecord(record: TrustBenchRecord): CrossCheck[] {
   const { provenance, corpus, measures, reference, secondPass, reviews } = record;
@@ -309,19 +364,89 @@ export function crossCheckRecord(record: TrustBenchRecord): CrossCheck[] {
     note: `${reference.length + secondPass.length} raw line(s) read, ${wrongRevision.length} outside ${provenance.depot}@${provenance.revision}`,
   });
 
-  let confronted = 0;
+  // Every measured layer is declared by something: the corpus launches it, a
+  // model reviews it, or the provenance derives it from others. A layer that
+  // nothing declares would be synthesised as a layer of its own, and a derived
+  // layer read that way has a contribution of 0 that looks like a measure.
+  const launched = corpus.couches.map((layer) => layer.id);
+  const reviewed = provenance.modeles.map((model) => model.couche);
+  const derived = provenance.couches_derivees.map((layer) => layer.couche);
+  const declared = [...launched, ...reviewed, ...derived];
+  const measuredLayers = [...new Set(measures.map((measure) => measure.couche))];
+  const undeclared = measuredLayers.filter((layer) => !declared.includes(layer));
+  const unmeasured = declared.filter((layer) => !measuredLayers.includes(layer));
+  const named = (layers: readonly string[]): string =>
+    layers.length === 0 ? "" : ` (${[...layers].sort().join(", ")})`;
+  checks.push({
+    item: "layers",
+    ok:
+      measuredLayers.length > 0 &&
+      undeclared.length === 0 &&
+      unmeasured.length === 0 &&
+      new Set(declared).size === declared.length,
+    note:
+      `${measuredLayers.length} layer(s) measured, ${launched.length} launched, ${reviewed.length} reviewed, ` +
+      `${derived.length} derived, ${undeclared.length} declared by nothing${named(undeclared)}, ` +
+      `${unmeasured.length} declared and not measured${named(unmeasured)}, ` +
+      `${declared.length - new Set(declared).size} declared more than once`,
+  });
+
+  // A raw line of the launcher says one thing: a verdict by its exit code, or
+  // an interruption, never both. `delai` is read here; a line without it is
+  // not a line of this format.
+  const incoherent: string[] = [];
+  let interrupted = 0;
+  for (const [pass, lines] of [
+    ["reference", reference],
+    ["second pass", secondPass],
+  ] as const) {
+    for (const line of lines) {
+      const key = `${pass} ${line.cas} ${line.couche}`;
+      if (typeof line.delai !== "boolean") {
+        incoherent.push(`${key}: no delai field`);
+        continue;
+      }
+      const killed = typeof line.signal === "string";
+      if (line.delai || killed) {
+        interrupted += 1;
+        if (line.delai && killed) incoherent.push(`${key}: in delay and killed by a signal`);
+        if (line.attrape) incoherent.push(`${key}: interrupted and caught`);
+      } else if (typeof line.code !== "number" || line.attrape !== (line.code !== 0)) {
+        incoherent.push(`${key}: attrape is ${line.attrape} with exit code ${line.code}`);
+      }
+    }
+  }
+  checks.push({
+    item: "raw launcher lines",
+    ok: incoherent.length === 0,
+    note:
+      `${reference.length + secondPass.length} raw launcher line(s) read, ${interrupted} interrupted (delay or signal), ` +
+      `${incoherent.length} that contradict themselves` +
+      (incoherent.length > 0 ? `; ${incoherent.join("; ")}` : ""),
+  });
+
+  // What is counted is the measures that met a raw line of their own, not the
+  // confrontations: a raw line read twice would otherwise stand for one that
+  // is missing.
+  const confronted = new Set<string>();
+  let confrontations = 0;
   const mismatches: string[] = [];
   const confront = (
     key: string,
     expected: Pick<Measure, "rouge" | "illisible" | "ms"> &
       Partial<Pick<Measure, "attendu" | "cout">>,
   ): void => {
+    confrontations += 1;
     const measure = byKey.get(key);
     if (measure === undefined) {
-      mismatches.push(`${key}: no measure`);
+      mismatches.push(`${key}: a raw line and no measure`);
       return;
     }
-    confronted += 1;
+    if (confronted.has(key)) {
+      mismatches.push(`${key}: more than one raw line`);
+      return;
+    }
+    confronted.add(key);
     for (const [field, value] of Object.entries(expected)) {
       const held = measure[field as keyof Measure];
       if (held !== value)
@@ -332,17 +457,20 @@ export function crossCheckRecord(record: TrustBenchRecord): CrossCheck[] {
   for (const line of reference) {
     confront(`${line.cas} ${line.couche}`, {
       rouge: line.attrape,
-      illisible: false,
+      // An interrupted layer is neither green nor red: it cannot be published green.
+      illisible: interruption(line) !== null,
       ms: line.ms,
       attendu: line.attendu,
       cout: line.cout,
     });
   }
-  const afterLauncher = confronted;
+  const afterLauncher = confronted.size;
 
-  const labels = provenance.modeles.map((model) => model.etiquette);
+  const reviewsByLayer = new Map<string, readonly ReviewLine[]>();
   for (const model of provenance.modeles) {
-    for (const line of reviews[model.etiquette] ?? []) {
+    const lines = reviews[model.etiquette] ?? [];
+    reviewsByLayer.set(model.couche, lines);
+    for (const line of lines) {
       if (line.modele !== model.etiquette) mismatches.push(`${line.cas}: review by ${line.modele}`);
       confront(`${line.cas} ${model.couche}`, {
         rouge: line.defaut === true,
@@ -351,32 +479,47 @@ export function crossCheckRecord(record: TrustBenchRecord): CrossCheck[] {
       });
     }
   }
-  const afterReviews = confronted;
+  const afterReviews = confronted.size;
 
-  // The two crossed layers are derived from the two reviews of the same diff.
-  const [first, second] = labels.map((label) => reviews[label] ?? []);
-  for (const a of first ?? []) {
-    const b = (second ?? []).find((line) => line.cas === a.cas);
-    if (b === undefined) {
-      mismatches.push(`${a.cas}: reviewed by one model only`);
+  // A derived layer has no raw line of its own: its measure is confronted
+  // with what its rule gives on the reviews of the same diff.
+  for (const layer of provenance.couches_derivees) {
+    const rule = DERIVATION_RULES[layer.regle];
+    if (rule === undefined) {
+      mismatches.push(`${layer.couche}: unknown rule ${layer.regle}`);
       continue;
     }
-    const crossed = { illisible: a.illisible || b.illisible, ms: a.ms + b.ms };
-    confront(`${a.cas} L6-croisee-accord-des-deux`, {
-      ...crossed,
-      rouge: a.defaut === true && b.defaut === true,
+    const sources = layer.derivee_de.flatMap((source) => {
+      const lines = reviewsByLayer.get(source);
+      return lines === undefined ? [] : [lines];
     });
-    confront(`${a.cas} L6-croisee-au-moins-un-signale`, {
-      ...crossed,
-      rouge: a.defaut === true || b.defaut === true,
-    });
+    if (sources.length < 2 || sources.length !== layer.derivee_de.length) {
+      mismatches.push(`${layer.couche}: not derived from two reviews or more`);
+      continue;
+    }
+    const cases = [...new Set(sources.flatMap((lines) => lines.map((line) => line.cas)))];
+    for (const cas of cases) {
+      const lines = sources.flatMap((source) => source.find((line) => line.cas === cas) ?? []);
+      if (lines.length !== sources.length) {
+        mismatches.push(`${cas} ${layer.couche}: not reviewed by every layer it is derived from`);
+        continue;
+      }
+      confront(`${cas} ${layer.couche}`, {
+        rouge: rule(lines.map((line) => line.defaut === true)),
+        illisible: lines.some((line) => line.illisible),
+        ms: lines.reduce((total, line) => total + line.ms, 0),
+      });
+    }
+  }
+  for (const key of byKey.keys()) {
+    if (!confronted.has(key)) mismatches.push(`${key}: no raw line`);
   }
   checks.push({
     item: "measures against raw lines",
-    ok: mismatches.length === 0 && confronted === measures.length,
+    ok: mismatches.length === 0 && confronted.size === measures.length,
     note:
-      `${confronted} of ${measures.length} measure(s) confronted with a raw line ` +
-      `(${afterLauncher} launcher, ${afterReviews - afterLauncher} review, ${confronted - afterReviews} crossed)` +
+      `${confronted.size} of ${measures.length} measure(s) confronted each with a raw line of its own, in ${confrontations} confrontation(s) ` +
+      `(${afterLauncher} launcher, ${afterReviews - afterLauncher} review, ${confronted.size - afterReviews} derived)` +
       (mismatches.length > 0 ? `; ${mismatches.join("; ")}` : ""),
   });
 
@@ -403,6 +546,13 @@ const yesNo = (value: boolean): string => (value ? "oui" : "non");
 const orUnrecorded = (value: string | number | null): string =>
   value === null ? "non consigné" : `\`${value}\``;
 const list = (values: readonly string[]): string => (values.length === 0 ? "—" : values.join(", "));
+const NOT_APPLICABLE = "non applicable (couche dérivée)";
+/** A state of the data file (`vert`, `rouge`, `delai`, `signal <NAME>`) as the report words it. */
+function stateLabel(state: string): string {
+  if (state === "delai") return "délai dépassé";
+  if (state.startsWith("signal ")) return `tuée par signal (${state.slice("signal ".length)})`;
+  return state;
+}
 
 function table(header: readonly string[], rows: readonly (readonly string[])[]): string {
   const line = (cells: readonly string[]) => `| ${cells.join(" | ")} |`;
@@ -457,7 +607,10 @@ export function renderBlocks(measure: MeasureDocument): Record<string, string> {
           `\`${layer.couche}\``,
           `${layer.cout}`,
           `${layer.defauts_attrapes} / ${layer.defauts_soumis}`,
-          `${layer.apport_au_dela_du_moins_cher} (${list(layer.cas_de_l_apport)})`,
+          // Never a 0 for a derived layer: there is no measure to print.
+          layer.apport_au_dela_du_moins_cher === null || layer.cas_de_l_apport === null
+            ? NOT_APPLICABLE
+            : `${layer.apport_au_dela_du_moins_cher} (${list(layer.cas_de_l_apport)})`,
           `${layer.faux_positifs} / ${layer.sains_soumis} (${list(layer.cas_faux_positifs)})`,
           `${layer.illisibles}`,
           `${layer.duree_totale_ms}`,
@@ -465,6 +618,18 @@ export function renderBlocks(measure: MeasureDocument): Record<string, string> {
       ),
       "",
       `Défauts attrapés par aucune couche : ${list(measure.defauts_attrapes_par_aucune_couche)}.`,
+      "",
+      "Couches dérivées, sans verdict propre :",
+      "",
+      ...(measure.couches.some((layer) => layer.derivee_de !== null)
+        ? measure.couches.flatMap((layer) =>
+            layer.derivee_de === null
+              ? []
+              : [
+                  `- \`${layer.couche}\`, dérivée de ${layer.derivee_de.map((source) => `\`${source}\``).join(" et ")}.`,
+                ],
+          )
+        : ["- aucune."]),
     ].join("\n"),
     cas: table(
       ["Cas", "Défaut attendu", "Nature", ...layers.map((layer) => `\`${layer}\``)],
@@ -475,6 +640,7 @@ export function renderBlocks(measure: MeasureDocument): Record<string, string> {
         ...layers.map((layer) => {
           const verdict = cas.verdicts.find((candidate) => candidate.couche === layer);
           if (verdict === undefined) return "non soumis";
+          if (verdict.interruption !== null) return stateLabel(verdict.interruption);
           if (verdict.illisible) return verdict.rouge ? "rouge, illisible" : "illisible";
           return verdict.rouge ? "rouge" : "vert";
         }),
@@ -483,15 +649,15 @@ export function renderBlocks(measure: MeasureDocument): Record<string, string> {
     "second-passage": [
       `Fichier : \`${measure.second_passage.fichier}\` (${measure.second_passage.condition}) — ${measure.second_passage.statut}.`,
       "",
-      `Lignes comparées à la référence : ${measure.second_passage.lignes_comparees} ; verdicts différents : ${measure.second_passage.bascules.length}.`,
+      `Lignes comparées à la référence : ${measure.second_passage.lignes_comparees} ; états différents : ${measure.second_passage.bascules.length}.`,
       "",
       table(
         ["Cas", "Couche", "Référence", "Second passage"],
         measure.second_passage.bascules.map((flip) => [
           flip.cas,
           `\`${flip.couche}\``,
-          flip.reference ? "rouge" : "vert",
-          flip.second_passage ? "rouge" : "vert",
+          stateLabel(flip.reference),
+          stateLabel(flip.second_passage),
         ]),
       ),
       "",
@@ -504,7 +670,7 @@ export function renderBlocks(measure: MeasureDocument): Record<string, string> {
               (candidate) => candidate.cas === cas.id && candidate.couche === layer,
             );
             if (verdict === undefined) return "non soumis";
-            return verdict.attrape ? "rouge" : "vert";
+            return stateLabel(verdict.interruption ?? (verdict.attrape ? "rouge" : "vert"));
           }),
         ]),
       ),
@@ -575,7 +741,30 @@ function heldBlock(report: string, name: string): string | null {
   return report.slice(start + begin.length, stop).trim();
 }
 
-const figures = (text: string): number => text.match(/\d+/g)?.length ?? 0;
+/**
+ * What a comparison covered, in units that say what they are. A count of
+ * runs of digits did not: most of them were pieces of fingerprints.
+ */
+function valueCounts(value: unknown): string {
+  const counts = { number: 0, boolean: 0, string: 0, null: 0 };
+  const walk = (node: unknown): void => {
+    if (node === null) counts.null += 1;
+    else if (Array.isArray(node)) for (const item of node) walk(item);
+    else if (typeof node === "object") for (const item of Object.values(node)) walk(item);
+    else if (typeof node === "number") counts.number += 1;
+    else if (typeof node === "boolean") counts.boolean += 1;
+    else counts.string += 1;
+  };
+  walk(value);
+  return `${counts.number} number(s), ${counts.boolean} boolean(s), ${counts.string} string(s) and ${counts.null} null(s)`;
+}
+/** The cells of the tables of a block, header rows included, separator rows excluded. */
+function tableCells(block: string): number {
+  return block
+    .split("\n")
+    .filter((line) => line.startsWith("| ") && !/^\|( --- \|)+$/.test(line))
+    .reduce((total, line) => total + line.slice(2, -2).split(" | ").length, 0);
+}
 
 export type TrustBenchProjection =
   | {
@@ -633,7 +822,7 @@ export function projectTrustBench(
   gate.check(
     TRUST_BENCH_DATA_PATH,
     sameData,
-    sameData ? `${figures(json)} figure(s) identical to the projection of the record` : heldNote,
+    sameData ? `${valueCounts(document)} identical to the projection of the record` : heldNote,
   );
 
   const blocks = renderBlocks(measure);
@@ -643,23 +832,23 @@ export function projectTrustBench(
     return { ok: false, gate };
   }
   let lines = 0;
-  let compared = 0;
+  let cells = 0;
   for (const [name, content] of Object.entries(blocks)) {
     const same = heldBlock(heldReport, name) === content;
     lines += content.split("\n").length;
-    compared += figures(content);
+    cells += tableCells(content);
     gate.check(
       `${TRUST_BENCH_REPORT_PATH} block ${name}`,
       same,
       same
-        ? `${content.split("\n").length} line(s) and ${figures(content)} figure(s) identical to the data`
+        ? `${content.split("\n").length} line(s) and ${tableCells(content)} table cell(s) identical to the data`
         : "differs from what the data gives",
     );
   }
   gate.volume(
     `${record.measures.length} measure(s) of ${measure.cas.length} case(s) over ${measure.couches.length} layer(s) cross-checked with ` +
       `${record.reference.length + record.secondPass.length} launcher line(s) and ${Object.values(record.reviews).flat().length} review line(s); ` +
-      `${Object.keys(blocks).length} report block(s), ${lines} line(s) and ${compared} figure(s) compared with the data; ` +
+      `${Object.keys(blocks).length} report block(s), ${lines} line(s) and ${cells} table cell(s) compared with the data; ` +
       `${Object.keys(record.fingerprints).length} source file(s) read`,
   );
   return { ok: true, json, report: applied.text, gate };
@@ -696,11 +885,18 @@ export function readRecord(root: string): TrustBenchRecord {
   const measuresText = read(provenance.mesures);
   // Read for its fingerprint and its emptiness; jq reads the file itself.
   read(SYNTHESIS_FILTER_PATH);
-  const replay = Bun.spawnSync(["jq", "-f", join(root, SYNTHESIS_FILTER_PATH)], {
-    stdin: Buffer.from(measuresText),
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  // The filter reads the derived layers in the provenance: the same command a reader runs.
+  const replay = Bun.spawnSync(
+    [
+      "jq",
+      "--slurpfile",
+      "provenance",
+      join(root, PROVENANCE_PATH),
+      "-f",
+      join(root, SYNTHESIS_FILTER_PATH),
+    ],
+    { stdin: Buffer.from(measuresText), stdout: "pipe", stderr: "pipe" },
+  );
   if (replay.exitCode !== 0) {
     throw new Error(`${SYNTHESIS_FILTER_PATH}: jq exited ${replay.exitCode}: ${replay.stderr}`);
   }

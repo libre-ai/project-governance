@@ -16,6 +16,7 @@
         {
           "couche": "L1a-lint",
           "cout": 1,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 0,
           "apport_au_dela_du_moins_cher": 0,
@@ -30,6 +31,7 @@
         {
           "couche": "L1b-types",
           "cout": 1,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 1,
           "apport_au_dela_du_moins_cher": 1,
@@ -44,6 +46,7 @@
         {
           "couche": "L2-tests",
           "cout": 2,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 7,
           "apport_au_dela_du_moins_cher": 6,
@@ -58,6 +61,7 @@
         {
           "couche": "L3-controles-depot",
           "cout": 2,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 0,
           "apport_au_dela_du_moins_cher": 0,
@@ -72,6 +76,7 @@
         {
           "couche": "L4-execution-reelle",
           "cout": 3,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 4,
           "apport_au_dela_du_moins_cher": 2,
@@ -86,6 +91,7 @@
         {
           "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
           "cout": 4,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 10,
           "apport_au_dela_du_moins_cher": 1,
@@ -100,6 +106,7 @@
         {
           "couche": "L5-relecture-qwen3-8b-q4km",
           "cout": 4,
+          "derivee_de": null,
           "defauts_soumis": 10,
           "defauts_attrapes": 10,
           "apport_au_dela_du_moins_cher": 1,
@@ -114,10 +121,11 @@
         {
           "couche": "L6-croisee-accord-des-deux",
           "cout": 5,
+          "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
           "defauts_soumis": 10,
           "defauts_attrapes": 10,
-          "apport_au_dela_du_moins_cher": 0,
-          "cas_de_l_apport": [],
+          "apport_au_dela_du_moins_cher": null,
+          "cas_de_l_apport": null,
           "sains_soumis": 8,
           "faux_positifs": 0,
           "cas_faux_positifs": [],
@@ -128,10 +136,11 @@
         {
           "couche": "L6-croisee-au-moins-un-signale",
           "cout": 5,
+          "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
           "defauts_soumis": 10,
           "defauts_attrapes": 10,
-          "apport_au_dela_du_moins_cher": 0,
-          "cas_de_l_apport": [],
+          "apport_au_dela_du_moins_cher": null,
+          "cas_de_l_apport": null,
           "sains_soumis": 8,
           "faux_positifs": 2,
           "cas_faux_positifs": ["T03", "T08"],
@@ -152,30 +161,35 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 252
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 695
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 13247
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1125
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1487
             }
           ]
@@ -190,54 +204,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 252
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 606
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12832
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 937
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 1603
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12440
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 25162
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 37602
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 37602
             }
           ]
@@ -252,54 +275,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 217
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 578
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12827
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1198
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1575
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 5652
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 15113
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 20765
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 20765
             }
           ]
@@ -314,54 +346,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 240
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 662
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 12533
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 847
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 1387
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 8793
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 21841
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 30634
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 30634
             }
           ]
@@ -376,54 +417,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 215
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 564
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 12708
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 907
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1313
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 7965
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 16882
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 24847
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 24847
             }
           ]
@@ -438,54 +488,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 263
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 552
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12495
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 800
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1655
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 7897
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 15009
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 22906
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 22906
             }
           ]
@@ -500,54 +559,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 206
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 556
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 11831
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 862
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 1402
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 5368
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 23081
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 28449
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 28449
             }
           ]
@@ -562,54 +630,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 215
             },
             {
               "couche": "L1b-types",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 558
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 11956
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 844
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1333
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 6254
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 13116
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 19370
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 19370
             }
           ]
@@ -624,54 +701,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 242
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 575
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 12702
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 858
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 1738
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 4854
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 15281
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 20135
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 20135
             }
           ]
@@ -686,54 +772,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 250
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 601
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12007
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1015
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1559
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 9473
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 29690
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 39163
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 39163
             }
           ]
@@ -748,54 +843,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 266
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 643
             },
             {
               "couche": "L2-tests",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 12703
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 923
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 2015
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 6942
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 26668
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 33610
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 33610
             }
           ]
@@ -810,54 +914,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 247
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 535
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 12493
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 886
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1433
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9214
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 15908
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 25122
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 25122
             }
           ]
@@ -872,54 +985,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 233
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 679
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 11769
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 937
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1352
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 5830
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": true,
+              "interruption": null,
               "ms": 126183
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": true,
+              "interruption": null,
               "ms": 132013
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": true,
+              "interruption": null,
               "ms": 132013
             }
           ]
@@ -934,54 +1056,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 165
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 608
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 10828
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 727
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1142
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 10005
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 21990
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 31995
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 31995
             }
           ]
@@ -996,54 +1127,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 146
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 512
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9989
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 684
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1144
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 8252
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 12838
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 21090
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 21090
             }
           ]
@@ -1058,54 +1198,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 140
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 484
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9825
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 726
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1137
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 7009
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 25553
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 32562
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 32562
             }
           ]
@@ -1120,54 +1269,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 141
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 502
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9915
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 725
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1186
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 4567
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 38843
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 43410
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 43410
             }
           ]
@@ -1182,54 +1340,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 156
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 491
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9791
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 569
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1137
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 11931
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 15535
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 27466
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 27466
             }
           ]
@@ -1244,54 +1411,63 @@
               "couche": "L1a-lint",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 89
             },
             {
               "couche": "L1b-types",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 432
             },
             {
               "couche": "L2-tests",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 9687
             },
             {
               "couche": "L3-controles-depot",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 568
             },
             {
               "couche": "L4-execution-reelle",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 1167
             },
             {
               "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 10928
             },
             {
               "couche": "L5-relecture-qwen3-8b-q4km",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 26167
             },
             {
               "couche": "L6-croisee-au-moins-un-signale",
               "rouge": true,
               "illisible": false,
+              "interruption": null,
               "ms": 37095
             },
             {
               "couche": "L6-croisee-accord-des-deux",
               "rouge": false,
               "illisible": false,
+              "interruption": null,
               "ms": 37095
             }
           ]
@@ -1347,6 +1523,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 656
           },
           {
@@ -1354,6 +1531,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3611
           },
           {
@@ -1361,6 +1539,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 38488
           },
           {
@@ -1368,6 +1547,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4563
           },
           {
@@ -1375,6 +1555,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4576
           },
           {
@@ -1382,6 +1563,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 612
           },
           {
@@ -1389,6 +1571,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3177
           },
           {
@@ -1396,6 +1579,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 30040
           },
           {
@@ -1403,6 +1587,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3269
           },
           {
@@ -1410,6 +1595,7 @@
             "couche": "L4-execution-reelle",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 4747
           },
           {
@@ -1417,6 +1603,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 493
           },
           {
@@ -1424,6 +1611,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2596
           },
           {
@@ -1431,6 +1619,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 36225
           },
           {
@@ -1438,6 +1627,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4133
           },
           {
@@ -1445,6 +1635,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 5223
           },
           {
@@ -1452,6 +1643,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 565
           },
           {
@@ -1459,6 +1651,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3791
           },
           {
@@ -1466,6 +1659,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 37343
           },
           {
@@ -1473,6 +1667,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4602
           },
           {
@@ -1480,6 +1675,7 @@
             "couche": "L4-execution-reelle",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 5668
           },
           {
@@ -1487,6 +1683,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 593
           },
           {
@@ -1494,6 +1691,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3784
           },
           {
@@ -1501,6 +1699,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 39570
           },
           {
@@ -1508,6 +1707,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4385
           },
           {
@@ -1515,6 +1715,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 5149
           },
           {
@@ -1522,6 +1723,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 470
           },
           {
@@ -1529,6 +1731,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3173
           },
           {
@@ -1536,6 +1739,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 36342
           },
           {
@@ -1543,6 +1747,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4005
           },
           {
@@ -1550,6 +1755,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 5224
           },
           {
@@ -1557,6 +1763,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 483
           },
           {
@@ -1564,6 +1771,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3372
           },
           {
@@ -1571,6 +1779,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 33540
           },
           {
@@ -1578,6 +1787,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4171
           },
           {
@@ -1585,6 +1795,7 @@
             "couche": "L4-execution-reelle",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 4993
           },
           {
@@ -1592,6 +1803,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 635
           },
           {
@@ -1599,6 +1811,7 @@
             "couche": "L1b-types",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 2045
           },
           {
@@ -1606,6 +1819,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 38320
           },
           {
@@ -1613,6 +1827,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2505
           },
           {
@@ -1620,6 +1835,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4454
           },
           {
@@ -1627,6 +1843,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 645
           },
           {
@@ -1634,6 +1851,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2597
           },
           {
@@ -1641,6 +1859,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 29981
           },
           {
@@ -1648,6 +1867,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3078
           },
           {
@@ -1655,6 +1875,7 @@
             "couche": "L4-execution-reelle",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 4522
           },
           {
@@ -1662,6 +1883,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 524
           },
           {
@@ -1669,6 +1891,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2168
           },
           {
@@ -1676,6 +1899,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 28660
           },
           {
@@ -1683,6 +1907,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2720
           },
           {
@@ -1690,6 +1915,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4664
           },
           {
@@ -1697,6 +1923,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 551
           },
           {
@@ -1704,6 +1931,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2054
           },
           {
@@ -1711,6 +1939,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 31802
           },
           {
@@ -1718,6 +1947,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2654
           },
           {
@@ -1725,6 +1955,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3783
           },
           {
@@ -1732,6 +1963,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 417
           },
           {
@@ -1739,6 +1971,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 1435
           },
           {
@@ -1746,6 +1979,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 31245
           },
           {
@@ -1753,6 +1987,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2581
           },
           {
@@ -1760,6 +1995,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3977
           },
           {
@@ -1767,6 +2003,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 398
           },
           {
@@ -1774,6 +2011,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 1430
           },
           {
@@ -1781,6 +2019,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 29597
           },
           {
@@ -1788,6 +2027,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2793
           },
           {
@@ -1795,6 +2035,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3858
           },
           {
@@ -1802,6 +2043,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 338
           },
           {
@@ -1809,6 +2051,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 1527
           },
           {
@@ -1816,6 +2059,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 32001
           },
           {
@@ -1823,6 +2067,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2833
           },
           {
@@ -1830,6 +2075,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4459
           },
           {
@@ -1837,6 +2083,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 362
           },
           {
@@ -1844,6 +2091,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2436
           },
           {
@@ -1851,6 +2099,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 32199
           },
           {
@@ -1858,6 +2107,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2824
           },
           {
@@ -1865,6 +2115,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3991
           },
           {
@@ -1872,6 +2123,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 278
           },
           {
@@ -1879,6 +2131,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 1555
           },
           {
@@ -1886,6 +2139,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 28684
           },
           {
@@ -1893,6 +2147,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3509
           },
           {
@@ -1900,6 +2155,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 5328
           },
           {
@@ -1907,6 +2163,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 720
           },
           {
@@ -1914,6 +2171,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2196
           },
           {
@@ -1921,6 +2179,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 39792
           },
           {
@@ -1928,6 +2187,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4951
           },
           {
@@ -1935,6 +2195,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4557
           },
           {
@@ -1942,6 +2203,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 572
           },
           {
@@ -1949,6 +2211,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2964
           },
           {
@@ -1956,6 +2219,7 @@
             "couche": "L2-tests",
             "attrape": true,
             "code": 1,
+            "interruption": null,
             "ms": 44681
           },
           {
@@ -1963,6 +2227,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3736
           },
           {
@@ -1970,6 +2235,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4509
           },
           {
@@ -1977,6 +2243,7 @@
             "couche": "L1a-lint",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 609
           },
           {
@@ -1984,6 +2251,7 @@
             "couche": "L1b-types",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 3306
           },
           {
@@ -1991,6 +2259,7 @@
             "couche": "L2-tests",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 33353
           },
           {
@@ -1998,6 +2267,7 @@
             "couche": "L3-controles-depot",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 2911
           },
           {
@@ -2005,6 +2275,7 @@
             "couche": "L4-execution-reelle",
             "attrape": false,
             "code": 0,
+            "interruption": null,
             "ms": 4603
           }
         ],
@@ -2012,26 +2283,26 @@
           {
             "cas": "D03",
             "couche": "L2-tests",
-            "reference": false,
-            "second_passage": true
+            "reference": "vert",
+            "second_passage": "rouge"
           },
           {
             "cas": "D04",
             "couche": "L2-tests",
-            "reference": false,
-            "second_passage": true
+            "reference": "vert",
+            "second_passage": "rouge"
           },
           {
             "cas": "T06",
             "couche": "L2-tests",
-            "reference": false,
-            "second_passage": true
+            "reference": "vert",
+            "second_passage": "rouge"
           },
           {
             "cas": "T07",
             "couche": "L2-tests",
-            "reference": false,
-            "second_passage": true
+            "reference": "vert",
+            "second_passage": "rouge"
           }
         ]
       },
@@ -2040,12 +2311,14 @@
         "18 cas, une seule brique, un seul passage par modèle à température 0 : aucune répétition, aucun intervalle.",
         "Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.",
         "L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.",
+        "Les deux couches croisées sont dérivées des deux relectures : elles n'ont pas de verdict propre, et tout ce qu'elles signalent, l'une des deux relectures le signale déjà. Leur apport au-delà du moins cher n'est pas une mesure : il est déclaré non applicable, jamais nul. Chaque modèle seul a signalé tous les défauts semés, la croisée n'avait donc aucune marge pour en signaler un de plus : ce corpus ne permet pas de dire ce qu'elle vaut comme couche de détection.",
         "Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.",
+        "Le résultat de la couche d'exécution réelle sur le cas D05 (validation de la commande retirée) a été obtenu avec un scénario qui ne pouvait pas le voir : le scénario S4 du pilote de la mesure lisait tout code de sortie non nul comme un refus, et le script nommé par sa recette n'existait pas dans le dépôt jetable, si bien que la porte se fermait aussi quand la commande avec chemin était acceptée. Ce vert ne dit pas que l'exécution réelle manque ce défaut.",
         "Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.",
-        "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu.",
+        "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu. Il distingue aussi un délai dépassé d'une mort par signal ; les deux passages publiés ont été produits avant cette distinction : leurs lignes ne portent pas le champ signal, et une mort par signal y aurait été consignée comme un délai.",
         "La commande qui a normalisé les mesures brutes en pi-evidence.mesures.json n'a pas été conservée ; le contrôle recoupe ce fichier ligne à ligne avec les mesures brutes.",
         "Les diffs soumis aux modèles ne sont pas versionnés : le lanceur les reproduit depuis le corpus et la révision (option --diffs).",
-        "Le pilote versionné diffère de celui de la mesure sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables ; cette version n'a pas été rejouée.",
+        "Le pilote versionné n'est pas celui de la mesure. Ses scénarios S1 à S4 et S6 ont été corrigés après elle : ils comparent le code de sortie et le verdict imprimé par la CLI, S4 exige le refus de la recette et son script existe, S6 exige que la vérification ait tourné. Il diffère aussi sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables. Le pilote corrigé n'a pas été rejoué sur le corpus : toutes les mesures publiées de la couche d'exécution réelle viennent du pilote d'origine.",
         "Pour Qwen3-8B, ni l'empreinte du fichier ni le propriétaire du dépôt amont ne sont consignés, seulement la révision amont ; pour Mistral Small 3.2, l'empreinte du fichier est consignée, pas la révision amont."
       ],
       "fichiers_d_origine": [
@@ -2097,7 +2370,7 @@
         },
         {
           "fichier": "verification/trust-bench/resultats/pi-evidence.provenance.json",
-          "sha256": "2121c75b2df0db85f65d171b12fda8dce6a2d44d09b19c461a0d91409061e268"
+          "sha256": "2e610ee7e1f77f7060ace3b024bd56e20f88e89788b471820f355ffcc795b49b"
         },
         {
           "fichier": "verification/trust-bench/resultats/pi-evidence.relecture.mistral-small-3.2.json",
@@ -2109,11 +2382,11 @@
         },
         {
           "fichier": "verification/trust-bench/resultats/pi-evidence.synthese.json",
-          "sha256": "706dcea0cf3ff3dfdccb66eb7bd1789cf6933d1f10e4967225552bf5f5bb4bef"
+          "sha256": "ed7075010e6dafa49dcd10e0ab4d535e50b16b726662b64ec7847b49fd691725"
         },
         {
           "fichier": "verification/trust-bench/synthese.jq",
-          "sha256": "e3bf28edbfff4f0dbddd66e4f3516a0b542f633a1bc6bf9660620239e8a7e457"
+          "sha256": "084658953b0185c549dd64af9d4140a8f334a09f7992c6c901fecfcef9aa80e5"
         }
       ]
     }

@@ -7,6 +7,7 @@
     {
       "couche": "L1a-lint",
       "cout": 1,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 0,
       "apport_au_dela_du_moins_cher": 0,
@@ -20,6 +21,7 @@
     {
       "couche": "L1b-types",
       "cout": 1,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 1,
       "apport_au_dela_du_moins_cher": 1,
@@ -33,6 +35,7 @@
     {
       "couche": "L2-tests",
       "cout": 2,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 7,
       "apport_au_dela_du_moins_cher": 6,
@@ -46,6 +49,7 @@
     {
       "couche": "L3-controles-depot",
       "cout": 2,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 0,
       "apport_au_dela_du_moins_cher": 0,
@@ -59,6 +63,7 @@
     {
       "couche": "L4-execution-reelle",
       "cout": 3,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 4,
       "apport_au_dela_du_moins_cher": 2,
@@ -72,6 +77,7 @@
     {
       "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
       "cout": 4,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 10,
       "apport_au_dela_du_moins_cher": 1,
@@ -85,6 +91,7 @@
     {
       "couche": "L5-relecture-qwen3-8b-q4km",
       "cout": 4,
+      "derivee_de": null,
       "defauts_soumis": 10,
       "defauts_attrapes": 10,
       "apport_au_dela_du_moins_cher": 1,
@@ -98,10 +105,11 @@
     {
       "couche": "L6-croisee-accord-des-deux",
       "cout": 5,
+      "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
       "defauts_soumis": 10,
       "defauts_attrapes": 10,
-      "apport_au_dela_du_moins_cher": 0,
-      "cas_de_l_apport": [],
+      "apport_au_dela_du_moins_cher": null,
+      "cas_de_l_apport": null,
       "sains_soumis": 8,
       "faux_positifs": 0,
       "cas_faux_positifs": [],
@@ -111,10 +119,11 @@
     {
       "couche": "L6-croisee-au-moins-un-signale",
       "cout": 5,
+      "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
       "defauts_soumis": 10,
       "defauts_attrapes": 10,
-      "apport_au_dela_du_moins_cher": 0,
-      "cas_de_l_apport": [],
+      "apport_au_dela_du_moins_cher": null,
+      "cas_de_l_apport": null,
       "sains_soumis": 8,
       "faux_positifs": 2,
       "cas_faux_positifs": ["T03", "T08"],

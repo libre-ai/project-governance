@@ -58,6 +58,7 @@ function bench(): Bench {
 
 interface Outcome {
   readonly code: number;
+  readonly stdout: string;
   readonly stderr: string;
   /** How many times a layer command ran: one line per run. */
   readonly layerRuns: number;
@@ -65,7 +66,12 @@ interface Outcome {
   readonly copyStatus: string;
 }
 
-function launch(b: Bench, layer: string, cas: readonly Record<string, unknown>[]): Outcome {
+function launch(
+  b: Bench,
+  layer: string,
+  cas: readonly Record<string, unknown>[],
+  options: readonly string[] = [],
+): Outcome {
   // The layer leaves one line per run in a file outside the copy, so "no
   // measure was taken" is observed, not inferred from the exit code.
   const commande = ["sh", "-c", `echo run >> '${b.marker}'; ${layer}`];
@@ -73,12 +79,11 @@ function launch(b: Bench, layer: string, cas: readonly Record<string, unknown>[]
     b.corpus,
     JSON.stringify({ depot: "fixture", couches: [{ id: "L", cout: 1, commande }], cas }),
   );
-  const run = Bun.spawnSync([process.execPath, LAUNCHER, b.corpus, b.copy, b.results], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const command = [process.execPath, LAUNCHER, b.corpus, b.copy, b.results, ...options];
+  const run = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe" });
   return {
     code: run.exitCode,
+    stdout: run.stdout.toString(),
     stderr: run.stderr.toString(),
     layerRuns: existsSync(b.marker) ? readFileSync(b.marker, "utf8").trim().split("\n").length : 0,
     resultsWritten: existsSync(b.results),
@@ -86,7 +91,34 @@ function launch(b: Bench, layer: string, cas: readonly Record<string, unknown>[]
   };
 }
 
+/** What a written line says of one run: the fields a reader of the results decides on. */
+interface Line {
+  readonly cas: string;
+  readonly code: number | null;
+  readonly attrape: boolean;
+  readonly delai: boolean;
+  readonly signal: string | null;
+  readonly instable: boolean;
+}
+
+function written(b: Bench): Line[] {
+  return readFileSync(b.results, "utf8")
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as Line)
+    .map(({ cas, code, attrape, delai, signal, instable }) => ({
+      cas,
+      code,
+      attrape,
+      delai,
+      signal,
+      instable,
+    }));
+}
+
+const GREEN = { code: 0, attrape: false, delai: false, signal: null, instable: false };
 const CATCHES_DEFECT = "! grep -q 'x = 2' src/a.ts";
+const ON_DEFECT = "grep -q 'x = 2' src/a.ts";
 const VALID = {
   id: "D01",
   attendu: true,
@@ -102,15 +134,74 @@ describe("lanceur", () => {
     const outcome = launch(b, CATCHES_DEFECT, [VALID]);
     expect(outcome.stderr).toBe("");
     expect(outcome.code).toBe(0);
-    const lines = readFileSync(b.results, "utf8")
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { cas: string; attrape: boolean });
-    expect(lines.map(({ cas, attrape }) => ({ cas, attrape }))).toEqual([
-      { cas: "SAIN", attrape: false },
-      { cas: "D01", attrape: true },
+    expect(written(b)).toEqual([
+      { cas: "SAIN", ...GREEN },
+      { cas: "D01", ...GREEN, code: 1, attrape: true },
     ]);
+    // The healthy revision once, the red of D01 and its replay.
+    expect(outcome.layerRuns).toBe(3);
     expect(outcome.copyStatus).toBe("");
+  }, 60_000);
+
+  test("a red that turns green on its replay is written green, and marked unstable", () => {
+    const b = bench();
+    // Red on the second run of the layer only: the first submission of D01.
+    const outcome = launch(b, `[ "$(grep -c run '${b.marker}')" -ne 2 ]`, [VALID]);
+    expect(outcome.stderr).toBe("");
+    expect(outcome.code).toBe(0);
+    expect(written(b)).toEqual([
+      { cas: "SAIN", ...GREEN },
+      { cas: "D01", ...GREEN, instable: true },
+    ]);
+    expect(outcome.layerRuns).toBe(3);
+  }, 60_000);
+
+  test("a layer that outlives its delay is neither caught nor green: a state of its own", () => {
+    const b = bench();
+    const outcome = launch(
+      b,
+      `if ${ON_DEFECT}; then exec sleep 20; fi`,
+      [VALID],
+      ["--delai-ms", "500"],
+    );
+    expect(written(b)).toEqual([
+      { cas: "SAIN", ...GREEN },
+      { cas: "D01", ...GREEN, code: null, delai: true },
+    ]);
+    // Not a verdict, so not replayed; and the run says it, by its exit and its count.
+    expect(outcome.layerRuns).toBe(2);
+    expect(outcome.stdout).toContain("délais dépassés : 1, couches tuées par signal : 0");
+    expect(outcome.code).toBe(1);
+    expect(outcome.copyStatus).toBe("");
+  }, 60_000);
+
+  test("a layer killed by a signal is neither a delay nor a miss: named apart", () => {
+    const b = bench();
+    const outcome = launch(b, `if ${ON_DEFECT}; then kill -9 $$; fi`, [VALID]);
+    expect(written(b)).toEqual([
+      { cas: "SAIN", ...GREEN },
+      { cas: "D01", ...GREEN, code: null, signal: "SIGKILL" },
+    ]);
+    expect(outcome.layerRuns).toBe(2);
+    expect(outcome.stdout).toContain("délais dépassés : 0, couches tuées par signal : 1");
+    expect(outcome.code).toBe(1);
+  }, 60_000);
+
+  test("a layer killed on the healthy revision stops the bench like a red one", () => {
+    const b = bench();
+    const outcome = launch(b, "kill -9 $$", [VALID]);
+    expect(outcome.code).toBe(3);
+    expect(outcome.stderr).toContain("banc interrompu : la couche L");
+    expect(outcome.stderr).toContain("SIGKILL");
+    expect(outcome.layerRuns).toBe(1);
+    expect(outcome.resultsWritten).toBe(false);
+  }, 60_000);
+
+  test("a delay that is not a positive number of milliseconds is refused", () => {
+    const b = bench();
+    const outcome = launch(b, CATCHES_DEFECT, [VALID], ["--delai-ms", "bientôt"]);
+    expect(outcome.code).toBe(2);
+    expect(outcome.layerRuns).toBe(0);
   }, 60_000);
 
   test("a substitution whose text is absent stops the bench before any measure", () => {

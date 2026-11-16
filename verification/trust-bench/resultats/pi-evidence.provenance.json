@@ -50,6 +50,18 @@
       "licence": null
     }
   ],
+  "couches_derivees": [
+    {
+      "couche": "L6-croisee-accord-des-deux",
+      "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
+      "regle": "accord-de-toutes"
+    },
+    {
+      "couche": "L6-croisee-au-moins-un-signale",
+      "derivee_de": ["L5-relecture-mistral-small-3.2-24b-q4km", "L5-relecture-qwen3-8b-q4km"],
+      "regle": "au-moins-une"
+    }
+  ],
   "fichiers_d_origine": [
     {
       "fichier": "corpus/pi-evidence.json",
@@ -85,12 +97,14 @@
     "18 cas, une seule brique, un seul passage par modèle à température 0 : aucune répétition, aucun intervalle.",
     "Les fichiers versionnés ne sont pas, à l'octet, ceux de la mesure : les lignes brutes du lanceur et de la relecture, écrites en JSONL, sont versionnées en tableaux JSON (mêmes objets, même ordre), parce que le contrôle de frontière des données personnelles de ce dépôt refuse tout fichier .jsonl hors de ses exemptions nommées ; les fichiers JSON ont été remis en forme par le formateur du dépôt. Les empreintes des fichiers d'origine sont consignées, les fichiers d'origine ne sont pas publiés.",
     "L'ordre de coût des couches est posé à la main ; seules les durées sont mesurées.",
+    "Les deux couches croisées sont dérivées des deux relectures : elles n'ont pas de verdict propre, et tout ce qu'elles signalent, l'une des deux relectures le signale déjà. Leur apport au-delà du moins cher n'est pas une mesure : il est déclaré non applicable, jamais nul. Chaque modèle seul a signalé tous les défauts semés, la croisée n'avait donc aucune marge pour en signaler un de plus : ce corpus ne permet pas de dire ce qu'elle vaut comme couche de détection.",
     "Le pilote d'exécution réelle a été écrit par la même session que deux des défauts qu'il attrape (D03, D08) : son apport est en partie construit.",
+    "Le résultat de la couche d'exécution réelle sur le cas D05 (validation de la commande retirée) a été obtenu avec un scénario qui ne pouvait pas le voir : le scénario S4 du pilote de la mesure lisait tout code de sortie non nul comme un refus, et le script nommé par sa recette n'existait pas dans le dépôt jetable, si bien que la porte se fermait aussi quand la commande avec chemin était acceptée. Ce vert ne dit pas que l'exécution réelle manque ce défaut.",
     "Les modèles ont relu en anglais, avec la consigne présente dans verification/trust-bench/relecture.ts.",
-    "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu.",
+    "Le lanceur versionné rejoue un rouge une fois ; les deux passages publiés ont été produits avant cet ajout, sans rejeu. Il distingue aussi un délai dépassé d'une mort par signal ; les deux passages publiés ont été produits avant cette distinction : leurs lignes ne portent pas le champ signal, et une mort par signal y aurait été consignée comme un délai.",
     "La commande qui a normalisé les mesures brutes en pi-evidence.mesures.json n'a pas été conservée ; le contrôle recoupe ce fichier ligne à ligne avec les mesures brutes.",
     "Les diffs soumis aux modèles ne sont pas versionnés : le lanceur les reproduit depuis le corpus et la révision (option --diffs).",
-    "Le pilote versionné diffère de celui de la mesure sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables ; cette version n'a pas été rejouée.",
+    "Le pilote versionné n'est pas celui de la mesure. Ses scénarios S1 à S4 et S6 ont été corrigés après elle : ils comparent le code de sortie et le verdict imprimé par la CLI, S4 exige le refus de la recette et son script existe, S6 exige que la vérification ait tourné. Il diffère aussi sur la gestion de son répertoire temporaire et l'adresse factice de ses dépôts jetables. Le pilote corrigé n'a pas été rejoué sur le corpus : toutes les mesures publiées de la couche d'exécution réelle viennent du pilote d'origine.",
     "Pour Qwen3-8B, ni l'empreinte du fichier ni le propriétaire du dépôt amont ne sont consignés, seulement la révision amont ; pour Mistral Small 3.2, l'empreinte du fichier est consignée, pas la révision amont."
   ]
 }
