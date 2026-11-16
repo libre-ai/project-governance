@@ -10,5 +10,37 @@
       "path": "docs/security/AGENT-RUNTIME-DOCTRINE.md",
       "because": "cites the dogfooding invariant for the runtime doctrine's own tooling"
     }
+  ],
+  "retiredMentions": [
+    {
+      "file": "docs/security/THREAT-MODEL.md",
+      "id": "I-35",
+      "anchor": "human touch; I-35 withdrawn by D103, 2026-11-09",
+      "because": "orchestrator-lock row of the agent-fleet table: the carrier cell names I-18 and I-17 and records that I-35 was withdrawn by D103. This row named I-35 as a carrier until the change that introduced this list; the rewording awaits the owner's validation"
+    },
+    {
+      "file": "docs/security/THREAT-MODEL.md",
+      "id": "I-35",
+      "anchor": "I-35 (ADR-0049) carried the collusion case until 2026-11-09, when D103 withdrew it",
+      "because": "quorum-bypass paragraph: history of the collusion case, stating the withdrawal by D103 and naming I-17 as the present carrier"
+    },
+    {
+      "file": "docs/security/THREAT-MODEL.md",
+      "id": "I-35",
+      "anchor": "I-17 for the collusion case (I-35 withdrawn by D103, 2026-11-09)",
+      "because": "invariant line of the quorum-bypass section: I-17 is cited as the carrier, I-35 only as withdrawn"
+    },
+    {
+      "file": "docs/security/THREAT-MODEL.md",
+      "id": "I-35",
+      "anchor": "I-35 (ADR-0049) withdrawn by D103 on 2026-11-09 as a silent guardrail",
+      "because": "residual risk R7, mitigation cell: records the withdrawal and its reason"
+    },
+    {
+      "file": "docs/security/THREAT-MODEL.md",
+      "id": "I-35",
+      "anchor": "I-17 (I-35 withdrawn, D103)",
+      "because": "residual risk R7, invariant cell: I-17 is cited as the carrier, I-35 only as withdrawn"
+    }
   ]
 }
