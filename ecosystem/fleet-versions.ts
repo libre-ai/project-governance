@@ -13,6 +13,8 @@ import { validateCard } from "./project-cards";
  *   what it `delivers`, and waits for the phases it names in `depends_on`.
  * - « Déduit de dependencies »: no field says who provides or consumes; the
  *   consumers of a repository are read by inverting `dependencies[].on`.
+ * - « Exiger la cohérence »: a product in `products`, or the product of a
+ *   version, must be one whose fiche names this repository in `depot`.
  *
  * WHAT THIS MODULE HOLDS. Everything pure: the rules, the counters and the
  * ready versions. `check-fleet-versions.ts` is the effectful half: it fetches
@@ -32,13 +34,26 @@ export interface CardSource {
   readonly error: string | null;
 }
 
+/**
+ * The fiches of `ecosystem/produits/`, each with the repository its `depot`
+ * names (null: no decision designates a carrier), or why they could not be
+ * read.
+ */
+export type Catalogue =
+  | { readonly ok: true; readonly carriers: ReadonlyMap<string, string | null> }
+  | { readonly ok: false; readonly reason: string };
+
+/** A fiche as read from the tree: its text, or why it could not be read. */
+export interface FicheSource {
+  readonly id: string;
+  readonly text: string | null;
+  readonly error: string | null;
+}
+
 export interface FleetVersionsInput {
   /** One entry per repository of the index that declares a card. */
   readonly cards: readonly CardSource[];
-  /** The identifiers of the fiches of `ecosystem/produits/`, or why they could not be read. */
-  readonly catalogue:
-    | { readonly ok: true; readonly ids: ReadonlySet<string> }
-    | { readonly ok: false; readonly reason: string };
+  readonly catalogue: Catalogue;
   /** The tree of the served branch of each repository `repositoriesToList` names. */
   readonly trees: ReadonlyMap<string, TreeListing>;
   /** The repositories of the index that declare no card: counted, so the cards sum to the index. */
@@ -74,6 +89,12 @@ interface FleetVersionsCounters {
   readonly products_tree_unreadable: number;
   /** Products the catalogue does not know, or not held to it because it is unreadable: their path is not judged. */
   readonly products_unknown: number;
+  /** Products whose fiche names another carrier repository, or none: their path is not judged. */
+  readonly products_other_carrier: number;
+  /** Fiches of the catalogue read, by whether their `depot` names a carrier; 0 when it is unreadable. */
+  readonly catalogue_fiches: number;
+  readonly catalogue_with_carrier: number;
+  readonly catalogue_without_carrier: number;
   readonly phases: number;
   readonly versions: number;
   readonly foundation_phases: number;
@@ -167,6 +188,65 @@ export function parseCatalogueListing(
     : { ok: true, ids };
 }
 
+// The pattern of `depot` in ecosystem/schemas/produit.v1.schema.json: a fiche
+// that schema accepts is never an unreadable catalogue here (review of
+// 2026-11-16, carrier pass, finding 1).
+const CARRIER = /^libre-ai\/[A-Za-z0-9._-]+$/;
+
+/**
+ * The carrier of each fiche, from its `depot` field. Owner's choice of
+ * 2026-11-16, « Exiger la cohérence »: a repository declares a product only
+ * when the fiche of that product names it as its carrier, so the catalogue is
+ * the one source of which repository carries which product.
+ *
+ * Any fiche that cannot be read, or whose `depot` is not a repository or null,
+ * makes the whole catalogue unreadable: a product whose carrier is unknown is
+ * not a product without a carrier. `check-produits.ts` judges the rest of the
+ * fiche; this only needs `id` and `depot`.
+ */
+export function catalogueFromFiches(fiches: readonly FicheSource[]): Catalogue {
+  if (fiches.length === 0) {
+    return { ok: false, reason: "no fiche read: an empty catalogue is not zero products" };
+  }
+  const carriers = new Map<string, string | null>();
+  for (const fiche of fiches) {
+    if (fiche.error !== null || fiche.text === null) {
+      return {
+        ok: false,
+        reason: `fiche ${fiche.id} unreadable (${fiche.error ?? "absent"})`,
+      };
+    }
+    let value: unknown;
+    try {
+      value = Bun.YAML.parse(fiche.text);
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `fiche ${fiche.id} is not YAML (${error instanceof Error ? error.message : String(error)})`,
+      };
+    }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return { ok: false, reason: `fiche ${fiche.id} is not a mapping` };
+    }
+    const record = value as Record<string, unknown>;
+    if (record.id !== fiche.id) {
+      return { ok: false, reason: `fiche ${fiche.id} declares id ${String(record.id)}` };
+    }
+    if (!("depot" in record)) {
+      return { ok: false, reason: `fiche ${fiche.id} has no depot field` };
+    }
+    const depot = record.depot;
+    if (depot !== null && (typeof depot !== "string" || !CARRIER.test(depot))) {
+      return {
+        ok: false,
+        reason: `fiche ${fiche.id} has a depot that is neither libre-ai/<repository> nor null`,
+      };
+    }
+    carriers.set(fiche.id, depot);
+  }
+  return { ok: true, carriers };
+}
+
 /**
  * The phases that wait on themselves through `depends_on` (a dependency on
  * itself, or a cycle), each with the cycle that holds it. Such a phase can
@@ -202,12 +282,12 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
   const catalogue = input.catalogue;
   report.check(
     "catalogue of products",
-    catalogue.ok && catalogue.ids.size > 0,
+    catalogue.ok && catalogue.carriers.size > 0,
     !catalogue.ok
       ? `unreadable (${catalogue.reason}) — no product can be held to the catalogue`
-      : catalogue.ids.size === 0
+      : catalogue.carriers.size === 0
         ? "no fiche read: an empty catalogue is not zero products"
-        : `${catalogue.ids.size} fiche(s) read`,
+        : `${catalogue.carriers.size} fiche(s) read`,
   );
   if (input.cards.length === 0) {
     report.check(
@@ -244,16 +324,28 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
   for (const key of ambiguous) phases.delete(key);
   const onCycle = phasesOnACycle(phases);
 
-  const known = (id: string): boolean => catalogue.ok && catalogue.ids.has(id);
+  const known = (id: string): boolean => catalogue.ok && catalogue.carriers.has(id);
   const unheld = (what: string): string =>
     catalogue.ok
       ? `${what}, which is not a fiche of the catalogue`
       : `${what}, which cannot be held to the catalogue: it is unreadable`;
+  /**
+   * Why a known product is not this repository's to declare, or null when its
+   * fiche names this repository as its carrier.
+   */
+  const carriedElsewhere = (what: string, id: string, repository: string): string | null => {
+    const carrier = catalogue.ok ? catalogue.carriers.get(id) : undefined;
+    if (carrier === repository) return null;
+    return carrier === null || carrier === undefined
+      ? `${what}, whose fiche names no carrier repository (depot: null), not ${repository}`
+      : `${what}, whose fiche names ${carrier} as its carrier, not ${repository}`;
+  };
   let productsDeclared = 0;
   let verified = 0;
   let absent = 0;
   let treeUnreadable = 0;
   let unknown = 0;
+  let otherCarrier = 0;
   let versions = 0;
   let done = 0;
   let readyCount = 0;
@@ -289,9 +381,15 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
     productsDeclared += declared.length;
     const tree = input.trees.get(repository);
     for (const product of declared) {
+      const elsewhere = known(product.id)
+        ? carriedElsewhere(`products ${product.id}`, product.id, repository)
+        : null;
       if (!known(product.id)) {
         unknown += 1;
         problems.push(unheld(`products ${product.id}`));
+      } else if (elsewhere !== null) {
+        otherCarrier += 1;
+        problems.push(elsewhere);
       } else if (tree === undefined) {
         treeUnreadable += 1;
         problems.push(
@@ -344,6 +442,18 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
       if (!known(phase.product)) {
         waiting = true;
         problems.push(unheld(`phase ${phase.id} is a version of ${phase.product}`));
+      } else {
+        // A version of a product another repository carries is not this
+        // repository's to deliver: refused, and never ready.
+        const elsewhere = carriedElsewhere(
+          `phase ${phase.id} is a version of ${phase.product}`,
+          phase.product,
+          repository,
+        );
+        if (elsewhere !== null) {
+          waiting = true;
+          problems.push(elsewhere);
+        }
       }
       if (isDone(phase)) done += 1;
       else if (waiting) blocked += 1;
@@ -401,6 +511,14 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
     products_path_absent: absent,
     products_tree_unreadable: treeUnreadable,
     products_unknown: unknown,
+    products_other_carrier: otherCarrier,
+    catalogue_fiches: catalogue.ok ? catalogue.carriers.size : 0,
+    catalogue_with_carrier: catalogue.ok
+      ? [...catalogue.carriers.values()].filter((carrier) => carrier !== null).length
+      : 0,
+    catalogue_without_carrier: catalogue.ok
+      ? [...catalogue.carriers.values()].filter((carrier) => carrier === null).length
+      : 0,
     phases: phaseCount,
     versions,
     foundation_phases: phaseCount - versions,
@@ -422,7 +540,8 @@ export function evaluateFleetVersions(input: FleetVersionsInput): FleetVersionsO
   const volume =
     `${c.index_repositories} repository(ies) in the index = ${c.cards_declared} declaring a card + ${c.index_without_card} without; ` +
     `${c.cards_declared} card(s) declared = ${c.cards_read} read + ${c.cards_unreadable} unreadable; ` +
-    `${c.products_declared} product(s) with code = ${c.products_verified} verified + ${c.products_path_absent} path absent + ${c.products_tree_unreadable} tree unreadable + ${c.products_unknown} not held to the catalogue; ` +
+    `${c.products_declared} product(s) with code = ${c.products_verified} verified + ${c.products_path_absent} path absent + ${c.products_tree_unreadable} tree unreadable + ${c.products_unknown} not held to the catalogue + ${c.products_other_carrier} carried by another repository or by none; ` +
+    `${c.catalogue_fiches} fiche(s) in the catalogue = ${c.catalogue_with_carrier} with a carrier + ${c.catalogue_without_carrier} without; ` +
     `${c.phases} phase(s) = ${c.versions} version(s) + ${c.foundation_phases} of the foundation; ` +
     `${c.versions} version(s) = ${c.versions_done} done + ${c.versions_ready} ready + ${c.versions_blocked} blocked; ` +
     `${c.dependencies} dependency(ies) between phases = ${c.dependencies_resolved} resolved + ${c.dependencies_unresolved} unresolved; ` +
