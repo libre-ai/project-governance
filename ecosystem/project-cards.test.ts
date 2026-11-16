@@ -615,6 +615,10 @@ describe("validateCard — products and versions", () => {
     ["a path that climbs out", { id: "P04", code: "src/../../secrets" }, "/products/0/code"],
     ["a path that is only a parent", { id: "P04", code: ".." }, "/products/0/code"],
     ["a trailing slash", { id: "P04", code: "src/notes/" }, "/products/0/code"],
+    ["a current-directory path", { id: "P04", code: "." }, "/products/0/code"],
+    ["a leading current-directory segment", { id: "P04", code: "./src" }, "/products/0/code"],
+    ["an inner current-directory segment", { id: "P04", code: "src/./notes" }, "/products/0/code"],
+    ["an empty segment", { id: "P04", code: "src//notes" }, "/products/0/code"],
     [
       "a line break in the path",
       { id: "P04", code: "src/notes\nProject cards verified" },

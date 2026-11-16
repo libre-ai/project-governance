@@ -5,6 +5,7 @@ import {
   type CardSource,
   evaluateFleetVersions,
   type FleetVersionsInput,
+  parseCatalogueListing,
   pathIsTracked,
   repositoriesToList,
 } from "./fleet-versions";
@@ -87,11 +88,34 @@ function input(
   cards: CardSource[],
   trees: [string, TreeListing][] = [],
   catalogue: FleetVersionsInput["catalogue"] = CATALOGUE,
+  withoutCard: string[] = [],
 ): FleetVersionsInput {
-  return { cards, trees: new Map(trees), catalogue };
+  return { cards, trees: new Map(trees), catalogue, withoutCard };
 }
 
 const listed = (...paths: string[]): TreeListing => ({ kind: "listed", paths });
+
+describe("parseCatalogueListing", () => {
+  test("the identifiers of the fiches, and nothing else the directory tracks", () => {
+    const listing = [
+      "ecosystem/produits/P01.v1.yaml",
+      "ecosystem/produits/P41.v1.yaml",
+      "ecosystem/produits/README.md",
+      "ecosystem/produits/P4.v1.yaml",
+      "",
+    ].join("\0");
+    const catalogue = parseCatalogueListing(listing);
+    expect(catalogue.ok && [...catalogue.ids]).toEqual(["P01", "P41"]);
+  });
+
+  test("no fiche is an unreadable catalogue, not an empty one", () => {
+    expect(parseCatalogueListing("ecosystem/produits/README.md\0")).toEqual({
+      ok: false,
+      reason: "no fiche tracked under ecosystem/produits/",
+    });
+    expect(parseCatalogueListing("").ok).toBe(false);
+  });
+});
 
 describe("pathIsTracked", () => {
   test("a tracked file, or a directory that holds one", () => {
@@ -158,7 +182,9 @@ describe("evaluateFleetVersions", () => {
       input([notes({ products: [{ id: "P09", code: "src/notes" }] }), socle()], [notesTree]),
     );
     expect(outcome.report.violations).toEqual([
-      expect.stringContaining("libre-ai/notes: products P09 is not a fiche of the catalogue"),
+      expect.stringContaining(
+        "libre-ai/notes: products P09, which is not a fiche of the catalogue",
+      ),
     ]);
     expect(outcome.compteurs.products_unknown).toBe(1);
   });
@@ -306,9 +332,13 @@ describe("evaluateFleetVersions", () => {
           source("libre-ai/broken", null, "HTTP 502"),
         ],
         [notesTree],
+        CATALOGUE,
+        ["libre-ai/website"],
       ),
     );
     const c = outcome.compteurs;
+    expect(c.cards_declared + c.index_without_card).toBe(c.index_repositories);
+    expect(c.index_repositories).toBe(4);
     expect(c.cards_read + c.cards_unreadable).toBe(c.cards_declared);
     expect(
       c.products_verified +
@@ -318,5 +348,130 @@ describe("evaluateFleetVersions", () => {
     ).toBe(c.products_declared);
     expect(c.versions_done + c.versions_ready + c.versions_blocked).toBe(c.versions);
     expect(c.versions + c.foundation_phases).toBe(c.phases);
+    expect(c.dependencies_resolved + c.dependencies_unresolved).toBe(c.dependencies);
+    expect(c.consumed_entries_on_a_card + c.consumed_entries_elsewhere).toBe(c.consumed_entries);
+    expect(c.cards_with_consumer + c.cards_without_consumer).toBe(c.cards_read);
+  });
+
+  test("source: a card absent at the served branch is unreadable, not a card without versions", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes(), source("libre-ai/socle", null, null)], [notesTree]),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining("libre-ai/socle: card absent at the served branch"),
+    );
+  });
+
+  // Review of 2026-11-16, finding 1: a card is read under the name the index
+  // gives it, whatever repository it declares.
+  test("identity: a card that declares another repository is refused and read under its own name", () => {
+    const evil = source(
+      "libre-ai/evil",
+      card("libre-ai/socle", { phases: [phase("base", "accepted")] }),
+    );
+    // The impostor comes first: read under its declared name, it would be the
+    // phase the version of notes waits on.
+    const outcome = evaluateFleetVersions(input([evil, notes(), socle("pending")], [notesTree]));
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining(
+        "libre-ai/evil: the card declares repository libre-ai/socle, the index names libre-ai/evil",
+      ),
+    ]);
+    // The version of notes still waits on the phase of the real socle.
+    expect(outcome.ready).toEqual([]);
+    expect(outcome.compteurs.versions_blocked).toBe(1);
+  });
+
+  test("cycle: a phase that depends on itself is refused, and never ready", () => {
+    const outcome = evaluateFleetVersions(
+      input(
+        [notes({ phases: [version("v1", "pending", "P04", ["libre-ai/notes#v1"])] }), socle()],
+        [notesTree],
+      ),
+    );
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining(
+        "libre-ai/notes: phase v1 waits on itself through its dependencies (libre-ai/notes#v1 → libre-ai/notes#v1)",
+      ),
+    ]);
+    expect(outcome.compteurs.versions_blocked).toBe(1);
+  });
+
+  test("cycle: two phases that depend on each other are both refused", () => {
+    const a = source(
+      "libre-ai/a",
+      card("libre-ai/a", { phases: [version("v1", "pending", "P01", ["libre-ai/b#v1"])] }),
+    );
+    const b = source(
+      "libre-ai/b",
+      card("libre-ai/b", { phases: [version("v1", "pending", "P02", ["libre-ai/a#v1"])] }),
+    );
+    const outcome = evaluateFleetVersions(input([a, b]));
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining("libre-ai/a: phase v1 waits on itself"),
+      expect.stringContaining("libre-ai/b: phase v1 waits on itself"),
+    ]);
+  });
+
+  test("duplicate: a phase identifier written twice in a card is refused", () => {
+    const outcome = evaluateFleetVersions(
+      input([
+        source(
+          "libre-ai/socle",
+          card("libre-ai/socle", { phases: [phase("base", "accepted"), phase("base", "pending")] }),
+        ),
+      ]),
+    );
+    expect(outcome.report.violations).toEqual([
+      expect.stringContaining("libre-ai/socle: phase base is declared twice"),
+    ]);
+  });
+
+  test("catalogue: a version of a product the catalogue does not know is never ready", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes({ phases: [version("v1", "pending", "P09")] }), socle()], [notesTree]),
+    );
+    expect(outcome.ready).toEqual([]);
+    expect(outcome.compteurs.versions_blocked).toBe(1);
+  });
+
+  test("catalogue: an unreadable catalogue does not say a product is not in it", () => {
+    const outcome = evaluateFleetVersions(
+      input([notes(), socle()], [notesTree], { ok: false, reason: "no fiche tracked" }),
+    );
+    expect(outcome.report.violations).toContainEqual(
+      expect.stringContaining(
+        "libre-ai/notes: products P04, which cannot be held to the catalogue: it is unreadable",
+      ),
+    );
+    expect(outcome.report.violations.join("\n")).not.toContain("is not a fiche of the catalogue");
+    expect(outcome.compteurs.products_unknown).toBe(1);
+  });
+
+  test("consumption: an entry that names no card read is counted elsewhere, never dropped", () => {
+    const outcome = evaluateFleetVersions(
+      input(
+        [
+          notes({
+            dependencies: [
+              { on: "libre-ai/socle", why: "Les briques communes." },
+              { on: "biscuit-auth", why: "Une crate." },
+            ],
+          }),
+          socle(),
+        ],
+        [notesTree],
+      ),
+    );
+    expect(outcome.compteurs).toMatchObject({
+      consumed_entries: 2,
+      consumed_entries_on_a_card: 1,
+      consumed_entries_elsewhere: 1,
+      cards_with_consumer: 1,
+      cards_without_consumer: 1,
+    });
+    expect(outcome.volume).toContain(
+      "2 dependency entry(ies) of the cards read = 1 on a card read + 1 elsewhere",
+    );
   });
 });

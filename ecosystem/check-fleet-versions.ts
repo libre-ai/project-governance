@@ -5,7 +5,13 @@ import {
   parseFleet,
 } from "./check-fleet-presentation";
 import { listTrackedPaths, type TreeListing } from "./fleet-tree";
-import { type CardSource, evaluateFleetVersions, repositoriesToList } from "./fleet-versions";
+import {
+  type CardSource,
+  evaluateFleetVersions,
+  type FleetVersionsInput,
+  parseCatalogueListing,
+  repositoriesToList,
+} from "./fleet-versions";
 
 /**
  * Fleet versions gate (`bun run check:fleet-versions`): the effectful half of
@@ -19,30 +25,16 @@ import { type CardSource, evaluateFleetVersions, repositoriesToList } from "./fl
  * its volume.
  */
 
-const PRODUITS_ROOT = "ecosystem/produits";
-const FICHE = /^ecosystem\/produits\/(P[0-9]{2})\.v1\.yaml$/;
-
 /** The identifiers of the fiches git tracks: an untracked fiche is not part of the catalogue. */
-function readCatalogue(): { ok: true; ids: Set<string> } | { ok: false; reason: string } {
-  const listing = Bun.spawnSync(["git", "ls-files", "-z", "--", PRODUITS_ROOT], {
+function readCatalogue(): FleetVersionsInput["catalogue"] {
+  const listing = Bun.spawnSync(["git", "ls-files", "-z", "--", "ecosystem/produits"], {
     stdout: "pipe",
     stderr: "pipe",
   });
   if (listing.exitCode !== 0) {
     return { ok: false, reason: `git ls-files failed: ${listing.stderr.toString().trim()}` };
   }
-  const ids = new Set(
-    listing.stdout
-      .toString()
-      .split("\0")
-      .flatMap((path) => {
-        const id = FICHE.exec(path)?.[1];
-        return id === undefined ? [] : [id];
-      }),
-  );
-  return ids.size === 0
-    ? { ok: false, reason: `no fiche tracked under ${PRODUITS_ROOT}/` }
-    : { ok: true, ids };
+  return parseCatalogueListing(listing.stdout.toString());
 }
 
 if (import.meta.main) {
@@ -64,7 +56,15 @@ if (import.meta.main) {
     trees.set(repository, await listTrackedPaths(repository));
   }
 
-  const outcome = evaluateFleetVersions({ cards, catalogue: readCatalogue(), trees });
+  const withoutCard = fleet.flatMap((entry) =>
+    entry.card === undefined ? [entry.repository] : [],
+  );
+  const outcome = evaluateFleetVersions({
+    cards,
+    catalogue: readCatalogue(),
+    trees,
+    withoutCard,
+  });
   console.log(
     `Fleet versions ready: ${outcome.ready.length === 0 ? "none" : outcome.ready.join(", ")}`,
   );
