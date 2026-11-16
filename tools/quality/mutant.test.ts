@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 
 import {
   existsSync,
@@ -6,10 +6,13 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  rmdirSync,
+  rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { applyMutant, classify, parseCatalogue, SiteError } from "./mutant";
 
@@ -18,9 +21,14 @@ import { applyMutant, classify, parseCatalogue, SiteError } from "./mutant";
 // totals `mutants = killed + survived + invalid`; a failure before any assertion is invalid.
 
 const TOOL = join(import.meta.dir, "mutant.ts");
-// Fixtures live under the system temporary directory and are left to it: the tests never
-// delete recursively, so a wrong path can never cost anything.
-const scratch = mkdtempSync(join(tmpdir(), "mutant-test-"));
+const SCRATCH_PREFIX = join(tmpdir(), "mutant-test-");
+const scratch = mkdtempSync(SCRATCH_PREFIX);
+
+afterAll(() => {
+  // Only ever the directory mkdtempSync just returned: a recursive delete must never reach
+  // anything else.
+  if (scratch.startsWith(SCRATCH_PREFIX)) rmSync(scratch, { recursive: true, force: true });
+});
 
 describe("applyMutant", () => {
   test("replaces the single occurrence of the anchor", () => {
@@ -163,8 +171,19 @@ const entry = (
   ...extra,
 });
 
+interface FixtureSetup {
+  /** Run before `git add -A`: what it creates is tracked (symbolic links included). */
+  readonly before?: (root: string) => void;
+  /** Run after `git add -A`: what it creates exists on disk but is not tracked. */
+  readonly after?: (root: string) => void;
+}
+
 let fixtures = 0;
-function fixture(mutants: MutantEntry[], files: Record<string, string> = {}): string {
+function fixture(
+  mutants: MutantEntry[],
+  files: Record<string, string> = {},
+  setup: FixtureSetup = {},
+): string {
   fixtures += 1;
   const root = join(scratch, `repo-${fixtures}`);
   mkdirSync(root, { recursive: true });
@@ -174,7 +193,11 @@ function fixture(mutants: MutantEntry[], files: Record<string, string> = {}): st
     "mutants.v1.json": `${JSON.stringify({ schema: "mutants.v1", mutants }, null, 2)}\n`,
     ...files,
   };
-  for (const [path, content] of Object.entries(all)) writeFileSync(join(root, path), content);
+  for (const [path, content] of Object.entries(all)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), content);
+  }
+  setup.before?.(root);
   for (const args of [
     ["init", "-q"],
     ["add", "-A"],
@@ -182,7 +205,17 @@ function fixture(mutants: MutantEntry[], files: Record<string, string> = {}): st
     const result = Bun.spawnSync(["git", "-C", root, ...args]);
     if (result.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed`);
   }
+  setup.after?.(root);
   return root;
+}
+
+/** A file outside every fixture repository, to prove the launcher never writes there. */
+function outsideFile(name: string, content: string): string {
+  const dir = join(scratch, `outside-${fixtures + 1}`);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, name);
+  writeFileSync(path, content);
+  return path;
 }
 
 interface Run {
@@ -317,6 +350,165 @@ describe("mutant run (end to end)", () => {
     expect((await run(root, ["--validate"])).code).toBe(3);
   }, 60_000);
 
+  test("a file on disk but not tracked is refused with exit 3, as file and as oracle", async () => {
+    const asFile = fixture(
+      [entry("untracked-file", "return true;", { file: "loose.ts" })],
+      {},
+      {
+        after: (root) => writeFileSync(join(root, "loose.ts"), GUARD),
+      },
+    );
+    const asOracle = fixture(
+      [entry("untracked-oracle", "return true;", { oracle: { tests: ["loose.test.ts"] } })],
+      {},
+      { after: (root) => writeFileSync(join(root, "loose.test.ts"), GUARD_TEST) },
+    );
+    for (const [root, path] of [
+      [asFile, "loose.ts"],
+      [asOracle, "loose.test.ts"],
+    ] as const) {
+      const validate = await run(root, ["--validate"]);
+      expect(validate.output).toContain(`${path} is not a tracked file`);
+      expect(validate.code).toBe(3);
+      const full = await run(root);
+      expect(full.output).toContain(`${path} is not a tracked file`);
+      expect(full.output).not.toContain("mutant id=");
+      expect(full.code).toBe(3);
+    }
+  }, 60_000);
+
+  test("a tracked symbolic link leaving the repository is refused; the outside file is untouched", async () => {
+    const outside = outsideFile("guard.ts", GUARD);
+    const link = (root: string) => symlinkSync(outside, join(root, "link.ts"));
+    const asFile = fixture(
+      [entry("link-file", "return true;", { file: "link.ts" })],
+      {},
+      {
+        before: link,
+      },
+    );
+    const asOracle = fixture(
+      [entry("link-oracle", "return true;", { oracle: { tests: ["link.ts"] } })],
+      {},
+      { before: link },
+    );
+    for (const root of [asFile, asOracle]) {
+      const validate = await run(root, ["--validate"]);
+      expect(validate.output).toContain("link.ts is not a regular file");
+      expect(validate.code).toBe(3);
+      const full = await run(root);
+      expect(full.output).toContain("link.ts is not a regular file");
+      expect(full.output).not.toContain("mutant id=");
+      expect(full.code).toBe(3);
+    }
+    expect(readFileSync(outside, "utf8")).toBe(GUARD);
+  }, 60_000);
+
+  test("a tracked path under a directory that now leads outside is refused", async () => {
+    const outside = outsideFile("other.ts", "export const other = 1;\n");
+    const root = fixture(
+      [
+        entry("escape-dir", "export const other = 2;", {
+          file: "sub/other.ts",
+          anchor: "export const other = 1;",
+        }),
+      ],
+      { "sub/other.ts": "export const other = 1;\n" },
+      {
+        // The index still lists sub/other.ts; on disk, sub now points outside the repository.
+        after: (dir) => {
+          rmSync(join(dir, "sub", "other.ts"));
+          rmdirSync(join(dir, "sub"));
+          symlinkSync(dirname(outside), join(dir, "sub"));
+        },
+      },
+    );
+    const validate = await run(root, ["--validate"]);
+    expect(validate.output).toContain("sub/other.ts resolves outside the repository");
+    expect(validate.code).toBe(3);
+    expect(readFileSync(outside, "utf8")).toBe("export const other = 1;\n");
+  }, 60_000);
+
+  test("a mutated file turned into a link outside the copy between two mutants is never written", async () => {
+    const outside = outsideFile("other.ts", "export const other = 1;\n");
+    // When guard.ts is mutated, this oracle replaces other.ts in the copy by a link outside.
+    const sabotage = [
+      'import { expect, test } from "bun:test";',
+      'import { rmSync, symlinkSync } from "node:fs";',
+      'import { join } from "node:path";',
+      'import { allow } from "./guard";',
+      'test("refuses a negative value", () => {',
+      "  if (allow(-1)) {",
+      '    rmSync(join(import.meta.dir, "other.ts"));',
+      `    symlinkSync(${JSON.stringify(outside)}, join(import.meta.dir, "other.ts"));`,
+      "  }",
+      "  expect(allow(-1)).toBe(false);",
+      "});",
+      "",
+    ].join("\n");
+    const root = fixture(
+      [
+        entry("guard-open", "return true;", { oracle: { tests: ["sabotage.test.ts"] } }),
+        entry("other", "export const other = 2;", {
+          file: "other.ts",
+          anchor: "export const other = 1;",
+        }),
+      ],
+      { "sabotage.test.ts": sabotage, "other.ts": "export const other = 1;\n" },
+    );
+    const result = await run(root);
+    expect(result.output).toContain("mutant id=guard-open verdict=killed");
+    expect(result.output).toContain("other.ts is not a regular file");
+    expect(result.code).toBe(3);
+    expect(readFileSync(outside, "utf8")).toBe("export const other = 1;\n");
+  }, 60_000);
+
+  test("a restoration that differs is reported and red even when the mutant is killed", async () => {
+    // When guard.ts is mutated, this oracle replaces it in the copy by a link to /dev/null:
+    // the original bytes written back go nowhere, and reading the file back gives nothing.
+    const sabotage = [
+      'import { expect, test } from "bun:test";',
+      'import { rmSync, symlinkSync } from "node:fs";',
+      'import { join } from "node:path";',
+      'import { allow } from "./guard";',
+      'test("refuses a negative value", () => {',
+      "  if (allow(-1)) {",
+      '    rmSync(join(import.meta.dir, "guard.ts"));',
+      '    symlinkSync("/dev/null", join(import.meta.dir, "guard.ts"));',
+      "  }",
+      "  expect(allow(-1)).toBe(false);",
+      "});",
+      "",
+    ].join("\n");
+    const root = fixture(
+      [entry("guard-open", "return true;", { oracle: { tests: ["sabotage.test.ts"] } })],
+      { "sabotage.test.ts": sabotage },
+    );
+    const result = await run(root);
+    expect(result.output).toContain("mutant id=guard-open verdict=killed");
+    expect(result.output).toContain("restored=different");
+    expect(result.output).toContain("mutants=1 killed=1 survived=0 invalid=0 restored_identical=0");
+    expect(result.code).toBe(1);
+    expect(readFileSync(join(root, "guard.ts"), "utf8")).toBe(GUARD);
+  }, 60_000);
+
+  test("a base oracle that fails to load is red: exit 2, no mutant run", async () => {
+    const root = fixture(
+      [entry("guard-open", "return true;", { oracle: { tests: ["broken.test.ts"] } })],
+      { "broken.test.ts": 'import "./does-not-exist";\n' },
+    );
+    const result = await run(root);
+    expect(result.output).toContain("base oracles=1 green=0 red=1");
+    expect(result.output).not.toContain("mutant id=");
+    expect(result.code).toBe(2);
+  }, 60_000);
+
+  test("--validate on an empty catalogue is red", async () => {
+    const result = await run(fixture([]), ["--validate"]);
+    expect(result.output).toContain("sites=0 valid=0 invalid=0");
+    expect(result.code).toBe(1);
+  }, 60_000);
+
   test("interrupt: the child is killed, the copy is removed, the tree is intact, exit 130", async () => {
     const pidFile = join(scratch, `hang-${fixtures + 1}.pid`);
     const hang = [
@@ -339,7 +531,14 @@ describe("mutant run (end to end)", () => {
     const pid = Number(readFileSync(pidFile, "utf8"));
     child.kill("SIGINT");
     expect(await child.exited).toBe(130);
-    expect(() => process.kill(pid, 0)).toThrow();
+    // ESRCH, not any error: EPERM would mean the process is alive but not signalable.
+    let probe: unknown = null;
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      probe = error;
+    }
+    expect((probe as NodeJS.ErrnoException | null)?.code).toBe("ESRCH");
     expect(readdirSync(tmp)).toEqual([]);
     expect(readFileSync(join(root, "guard.ts"), "utf8")).toBe(GUARD);
     // Working tree against the index: nothing the tool did shows up in the repository.

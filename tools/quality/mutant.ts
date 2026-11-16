@@ -27,6 +27,15 @@
  * Green only when the base is green, at least one mutant ran, every mutant is killed and every
  * restoration is identical. Counters are printed and sum: mutants = killed + survived + invalid.
  *
+ * Confinement: every `file` and oracle test must be tracked, a regular file (never a symbolic
+ * link, which a write would follow) and resolve inside the repository; the mutated file is
+ * checked again on the copy right before each write. Otherwise the site is invalid (exit 3).
+ *
+ * Interruption (SIGINT, SIGTERM) kills the oracle the launcher started, not the processes that
+ * oracle started itself: an oracle that spawns children (this repository's own catalogue relaunches
+ * the launcher) can leave them orphaned. shortcut: direct child only, upgrade to a process group
+ * once Bun.spawn can start one (or an oracle is seen leaving orphans behind).
+ *
  * Usage: bun tools/quality/mutant.ts run [--id <id>] [--validate] [--catalogue <path>]
  * Exit:  0 all killed, 1 otherwise, 2 red base, 3 usage, invalid site or missing dependency,
  *        128 + signal number on interruption (130 for SIGINT).
@@ -39,12 +48,13 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, posix, resolve } from "node:path";
+import { dirname, isAbsolute, join, posix, resolve, sep } from "node:path";
 
 import type { Subprocess } from "bun";
 
@@ -149,6 +159,25 @@ export function parseCatalogue(value: unknown): Catalogue {
     };
   });
   return { mutants };
+}
+
+/**
+ * Why `base/path` may be read or written, or null when it may: it must be a regular file (not a
+ * symbolic link, which `writeFileSync` would follow) whose real path stays under `base`'s real
+ * path (a directory on the way could be a link). A repository-relative path is not enough.
+ */
+export function confinementProblem(base: string, path: string): string | null {
+  const full = join(base, path);
+  let stat: ReturnType<typeof lstatSync>;
+  try {
+    stat = lstatSync(full);
+  } catch {
+    return `${path} is unreadable`;
+  }
+  if (!stat.isFile()) return `${path} is not a regular file`;
+  if (!realpathSync(full).startsWith(`${realpathSync(base)}${sep}`))
+    return `${path} resolves outside the repository`;
+  return null;
 }
 
 export function occurrences(source: string, anchor: string): number {
@@ -357,9 +386,12 @@ function validateSites(
   for (const mutant of mutants) {
     let anchors = 0;
     let problem: string | null = null;
-    const missing = [mutant.file, ...mutant.oracle.tests].find((path) => !tracked.has(path));
+    const paths = [mutant.file, ...mutant.oracle.tests];
+    const missing = paths.find((path) => !tracked.has(path));
     if (missing !== undefined) problem = `${missing} is not a tracked file`;
-    else {
+    else
+      problem = paths.map((path) => confinementProblem(root, path)).find((p) => p !== null) ?? null;
+    if (problem === null) {
       const source = readFileSync(join(root, mutant.file), "utf8");
       anchors = occurrences(source, mutant.anchor);
       try {
@@ -423,6 +455,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     let invalid = 0;
     let identical = 0;
     for (const mutant of selected) {
+      // Checked again on the copy, right before writing: an earlier oracle is code that runs in
+      // the copy and may have replaced this file by a link leading out of it.
+      const confinement = confinementProblem(copy.tree, mutant.file);
+      if (confinement !== null) throw new SiteError(confinement);
       const target = join(copy.tree, mutant.file);
       const original = readFileSync(target);
       const mutated = applyMutant(original.toString("utf8"), mutant.anchor, mutant.substitution);

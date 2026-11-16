@@ -56,6 +56,62 @@
       "anchor": "if (active.work !== null) rmSync(active.work",
       "substitution": "if (active.work === \"\") rmSync(active.work",
       "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-restore-verdict",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "return allKilled && identical === selected.length ? 0 : 1;",
+      "substitution": "return allKilled ? 0 : 1;",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-restore-compared",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "const restored = readFileSync(target).equals(original);",
+      "substitution": "const restored = original.equals(original);",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-tracked-membership",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (missing !== undefined) problem =",
+      "substitution": "if (missing === null) problem =",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-regular-file",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (!stat.isFile()) return",
+      "substitution": "if (stat.isDirectory()) return",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-resolves-inside",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (!realpathSync(full).startsWith(",
+      "substitution": "if (false && !realpathSync(full).startsWith(",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-copy-confinement",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (confinement !== null) throw new SiteError(confinement);",
+      "substitution": "if (confinement === \"\") throw new SiteError(confinement);",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-base-needs-tests",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (verdict.verdict === \"survived\") green += 1;",
+      "substitution": "if (verdict.verdict !== \"killed\") green += 1;",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-validate-empty-red",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "if (options.validate) return selected.length === 0 ? 1 : 0;",
+      "substitution": "if (options.validate) return 0;",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
     }
   ]
 }
