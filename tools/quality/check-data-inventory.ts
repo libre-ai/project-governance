@@ -232,6 +232,11 @@ export const NOT_GATED: readonly NotGated[] = [
       "the mutant catalogue of tools/quality/mutant.ts, which refuses an invalid site; the launcher is not a step of `bun run check`, so the file delimits no gate today, and making it one (then gating this file) is the owner's decision",
   },
   {
+    path: "tools/parity/mutants.v1.json",
+    because:
+      "the mutant catalogue of tools/parity/check-parity-audit.ts, run on demand by tools/quality/mutant.ts; tools/parity/mutants.test.ts validates its sites, and no gate reads it as an exemption",
+  },
+  {
     path: "ecosystem/cards/",
     extensions: [".yaml"],
     because:

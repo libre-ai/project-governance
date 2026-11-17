@@ -175,10 +175,12 @@ La **carte des dépôts** (JSON) liste les copies figées des références, chac
 { "format": 1, "copies": { "<copie>": "<40 chiffres hexadécimaux minuscules>" }, "depots": ["<dépôt>", …] }
 ```
 
-Tout jeton `<nom>@<réf>:<suite>` d'une fiche est une citation : elle n'est
-admise que si la carte liste cette copie à cette révision exactement. Une
-branche, une étiquette, une révision abrégée ou en majuscules est comptée et
-refusée.
+Tout jeton `<nom>@<réf>:<suite>` d'une fiche est une citation, quelle que
+soit la suite : elle n'est admise que si la carte liste cette copie à cette
+révision exactement et qu'un chemin nu suit. Une branche, une étiquette, une
+révision abrégée ou en majuscules, une suite vide ou décorée (accent grave,
+guillemet, espace) est comptée et refusée. Une ligne `## ` dans un bloc de code
+délimité n'est pas une section.
 
 La complétude se recopie de la sortie de :
 
@@ -201,7 +203,7 @@ volume examiné, `files` = `ignored` + `misnamed` + `unplaced` +
 | 0    | le compte tient                                                                                                                                 |
 | 1    | écart : fiche manquante, verdict différent de la matrice, source ou dépôt manquant, fiche d'une ligne que la matrice n'a pas                    |
 | 4    | fiche mal formée — champ, ordre, section, citation non admise, nom, fichier vide, deux fiches pour une ligne ; l'emporte sur 1                  |
-| 2    | compte non atteint, rien sur la sortie standard : usage, source absente ou illisible (y compris un lien cassé ou un répertoire nommé comme une fiche), plage inversée ou sans ligne, matrice sans ligne ou à défaut de structure, carte sans copie |
+| 2    | compte non atteint, rien sur la sortie standard : usage, source absente ou illisible (y compris un lien, cassé ou non, ou un répertoire nommé comme une fiche), plage inversée ou sans ligne, matrice sans ligne ou à défaut de structure, carte sans copie |
 
 Elle ne contrôle pas le fond : ni que l'argument tient, ni que le chemin
 cité existe à sa révision, ni le marquage mesuré, inféré, non mesuré.
