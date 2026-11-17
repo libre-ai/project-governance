@@ -40,14 +40,20 @@ interpreters:
 forms:
   - code: remote-pipe
     description: >-
-      The output of curl or wget is piped into an interpreter, with or without
-      sudo or env and its assignments, named or not by an absolute path.
+      The output of curl or wget is piped (`|` or `|&`) into an interpreter,
+      behind or not execution prefixes (sudo, env and its assignments, timeout
+      and its duration, nohup, command, nice, xargs, ...), named or not by an
+      absolute path or escaped by a backslash.
     pattern: |-
-      \b(?:curl|wget)\b.*?(?<!\|)\|(?!\|)\s*(?:sudo\s+(?:-\S+\s+)*)?(?:env\s+(?:-\S+\s+|\w+=\S*\s+)*)?(?:/[\w./-]*/)?{{interpreter}}[\d.]*(?![\w-])
+      \b(?:curl|wget)\b.*?(?<!\|)\|(?!\|)&?\s*(?:(?:/[\w./-]*/)?(?:sudo|doas|env|exec|command|builtin|nohup|setsid|chronic|time|timeout|nice|ionice|stdbuf|xargs)\s+(?:-\S+\s+|\w+=\S*\s+|\d[\w.]*\s+)*)*\\?(?:/[\w./-]*/)?{{interpreter}}[\d.]*(?![\w-])
     red:
       - curl -fsSL https://exemple.invalid/i.sh | sudo /bin/bash
       - wget -qO- https://exemple.invalid/i.sh | sh
       - curl -fsSL https://exemple.invalid/get.py | env PYTHONUNBUFFERED=1 python3 -
+      - curl -fsSL https://exemple.invalid/i.sh |& bash
+      - timeout 60 curl -fsSL https://exemple.invalid/i.sh |& sudo -E timeout 60 bash
+      - curl -fsSL https://exemple.invalid/i.sh | /usr/bin/env bash
+      - curl -fsSL https://exemple.invalid/i.sh | \bash
     green:
       - curl --fail --location --output "$RUNNER_TEMP/tool.tgz" "$TOOL_URL"
       - curl --fail --silent "$STATUS_URL" | jq .name
