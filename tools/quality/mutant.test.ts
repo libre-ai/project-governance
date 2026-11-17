@@ -46,6 +46,12 @@ describe("applyMutant", () => {
     expect(() => applyMutant("f(x);\nf(x);\n", "f(x);", "g(x);")).toThrow("found 2 times");
   });
 
+  test("overlapping occurrences count: `aa` is twice in `aaa`, so the site is ambiguous", () => {
+    expect(() => applyMutant("aaa\n", "aa", "bb")).toThrow("found 2 times");
+    expect(() => applyMutant("abab ab\n", "abab", "cdcd")).not.toThrow();
+    expect(() => applyMutant("ababab\n", "abab", "cdcd")).toThrow("found 2 times");
+  });
+
   test("a substitution identical to the anchor is an error", () => {
     expect(() => applyMutant("f(x);\n", "f(x);", "f(x);")).toThrow("identical");
   });
@@ -99,34 +105,79 @@ describe("parseCatalogue", () => {
   });
 });
 
-const report = (tests: number, failures: string[]): string =>
+// A failing test case: its error type and how many assertions ran before it failed. The two
+// failure shapes are the ones bun writes: 1.4.4 `<failure type=… message=…>…</failure>`, and
+// 1.4.0 a bare `<failure type="AssertionError" />` whatever was thrown.
+interface Failing {
+  readonly type: string;
+  readonly ran: number;
+  readonly bare?: boolean;
+}
+
+const report = (tests: number, failures: Failing[]): string =>
   [
     `<testsuites name="bun test" tests="${tests}" assertions="1" failures="${failures.length}" skipped="0">`,
-    ...failures.map((type) => `<failure type="${type}" message="m">x</failure>`),
+    ...failures.map(({ type, ran, bare }) =>
+      [
+        `<testcase name="a &gt; b" classname="" line="1" assertions="${ran}">`,
+        bare === true
+          ? `<failure type="${type}" />`
+          : `<failure type="${type}" message="m">x</failure>`,
+        "</testcase>",
+      ].join("\n"),
+    ),
+    `<testcase name="green" classname="" line="2" assertions="1" />`,
     "</testsuites>",
   ].join("\n");
 
+const ASSERTED = { type: "AssertionError", ran: 1 } as const;
+
 describe("classify", () => {
   test("a red run with an assertion failure kills the mutant", () => {
-    expect(classify(1, report(3, ["AssertionError"]), "", undefined).verdict).toBe("killed");
+    expect(classify(1, report(3, [ASSERTED]), "", undefined).verdict).toBe("killed");
+    // Bun 1.4.0 shape: a bare failure element after one assertion ran.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 1, bare: true }]), "", undefined),
+    ).toEqual({ verdict: "killed", tests: 3, assertions: 1 });
   });
 
   test("a failure before any assertion is invalid, not killed", () => {
     // Load failure: bun writes no report at all.
     expect(classify(1, null, "error: Cannot find module", undefined).verdict).toBe("invalid");
-    // A thrown error is not an assertion.
-    expect(classify(1, report(3, ["Error"]), "", undefined).verdict).toBe("invalid");
+    // A thrown error is not an assertion (bun 1.4.4 writes its real type).
+    expect(classify(1, report(3, [{ type: "Error", ran: 0 }]), "", undefined).verdict).toBe(
+      "invalid",
+    );
+    // Bun 1.4.0 types every failure `AssertionError`: zero assertions run still means the case
+    // failed before any assertion.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 0, bare: true }]), "", undefined)
+        .verdict,
+    ).toBe("invalid");
+    // An error named `AssertionError` thrown by hand, no assertion run.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 0 }]), "", undefined).verdict,
+    ).toBe("invalid");
+    // A failure element outside any test case is not attributed to an assertion.
+    expect(
+      classify(
+        1,
+        '<testsuites tests="1">\n<failure type="AssertionError" />\n</testsuites>',
+        "",
+        undefined,
+      ).verdict,
+    ).toBe("invalid");
     // An unreadable report proves nothing.
     expect(classify(1, "garbage", "", undefined).verdict).toBe("invalid");
   });
 
   test("a red run without the expected trace is invalid", () => {
-    expect(classify(1, report(3, ["AssertionError"]), "Received: 1", "Received: 999").verdict).toBe(
+    expect(classify(1, report(3, [ASSERTED]), "Received: 1", "Received: 999").verdict).toBe(
       "invalid",
     );
-    expect(
-      classify(1, report(3, ["AssertionError"]), "Received: 999", "Received: 999").verdict,
-    ).toBe("killed");
+    expect(classify(1, report(3, [ASSERTED]), "Received: 999", "Received: 999").verdict).toBe(
+      "killed",
+    );
   });
 
   test("a green run with tests is survived; a green run with no test is invalid", () => {
@@ -490,6 +541,63 @@ describe("mutant run (end to end)", () => {
     expect(result.output).toContain("mutants=1 killed=1 survived=0 invalid=0 restored_identical=0");
     expect(result.code).toBe(1);
     expect(readFileSync(join(root, "guard.ts"), "utf8")).toBe(GUARD);
+  }, 60_000);
+
+  test("restoration never writes through a link the oracle left: a real outside file stays intact", async () => {
+    // The oracle replaces the mutated file (or its directory) by a link to a real file outside
+    // the copy, holding different bytes. Writing the original back through that link would
+    // overwrite the outside file, and reading it back through the same link would say identical.
+    const OUTSIDE = "export const outside = 'must stay';\n";
+    const sabotage = (victim: string, target: string): string =>
+      [
+        'import { expect, test } from "bun:test";',
+        'import { rmSync, symlinkSync } from "node:fs";',
+        'import { join } from "node:path";',
+        `import { allow } from "./${victim}";`,
+        'test("refuses a negative value", () => {',
+        "  if (allow(-1)) {",
+        `    rmSync(join(import.meta.dir, ${JSON.stringify(target)}), { recursive: true });`,
+        `    symlinkSync(LINK, join(import.meta.dir, ${JSON.stringify(target)}));`,
+        "  }",
+        "  expect(allow(-1)).toBe(false);",
+        "});",
+        "",
+      ].join("\n");
+    const asFile = outsideFile("guard.ts", OUTSIDE);
+    const fileRoot = fixture(
+      [entry("guard-open", "return true;", { oracle: { tests: ["sabotage.test.ts"] } })],
+      {
+        "sabotage.test.ts": sabotage("guard", "guard.ts").replace("LINK", JSON.stringify(asFile)),
+      },
+    );
+    const asDir = outsideFile("guard.ts", OUTSIDE);
+    const dirRoot = fixture(
+      [
+        entry("guard-open", "return true;", {
+          file: "sub/guard.ts",
+          oracle: { tests: ["sabotage.test.ts"] },
+        }),
+      ],
+      {
+        "sub/guard.ts": GUARD,
+        "sabotage.test.ts": sabotage("sub/guard", "sub").replace(
+          "LINK",
+          JSON.stringify(dirname(asDir)),
+        ),
+      },
+    );
+    for (const [root, outside, path] of [
+      [fileRoot, asFile, "guard.ts"],
+      [dirRoot, asDir, "sub/guard.ts"],
+    ] as const) {
+      const result = await run(root);
+      expect(readFileSync(outside, "utf8")).toBe(OUTSIDE);
+      expect(result.output).toContain(`restore id=guard-open tampered (${path}`);
+      expect(result.output).toContain("restored=different");
+      expect(result.output).toContain("restored_identical=0");
+      expect(result.code).toBe(1);
+      expect(readFileSync(join(root, path), "utf8")).toBe(GUARD);
+    }
   }, 60_000);
 
   test("a base oracle that fails to load is red: exit 2, no mutant run", async () => {
