@@ -246,6 +246,62 @@ describe("a malformed fiche exits 4", () => {
     const result = check(fixture(replaced("02.md", BETA, "main")));
     expect(result.stdout).toContain(" citations=3 citations_allowed=2 ");
   });
+
+  // The token is `<name>@<ref>:` whatever follows: an empty or decorated
+  // suffix is still a citation, judged like any other (the method: « Tout
+  // jeton `<nom>@<réf>:<suite>` d'une fiche est une citation »).
+  test.each([
+    ["a back-quoted path", "mesuré : alpha@main:`src/x.ts`"],
+    ["a path after a space", "mesuré : alpha@main: src/x.ts"],
+    ["a double-quoted path", 'mesuré : alpha@main:"src/x.ts"'],
+    ["a single-quoted path", "mesuré : alpha@main:'src/x.ts'"],
+    ["a path in parentheses", "mesuré : alpha@main:(src/x.ts)"],
+    ["nothing after the colon", "mesuré : alpha@main:"],
+    ["a back-quoted ref", "mesuré : alpha@`main`:src/x.ts"],
+  ])("a citation at a branch with %s is counted and refused", (_label, line) => {
+    const result = check(fixture({ "02.md": `${FICHES["02.md"]}\n${line}\n` }));
+    expect(result.stdout).toContain(" citations=4 citations_allowed=3 ");
+    expect(result.stderr).toContain("malformed: 02.md: citation not allowed by the map: alpha@");
+    expect(result.code).toBe(4);
+  });
+
+  test("an allowed copy and revision with a decorated path is refused", () => {
+    const line = `mesuré : alpha@${ALPHA}:\`src/io.ts\``;
+    const result = check(fixture({ "02.md": `${FICHES["02.md"]}\n${line}\n` }));
+    expect(result.stdout).toContain(" citations=4 citations_allowed=3 ");
+    expect(result.code).toBe(4);
+  });
+});
+
+describe("a fenced code block is not a section", () => {
+  test.each([
+    ["```", "```"],
+    ["~~~", "~~~"],
+    ["````md", "````"],
+  ])("a `## ` line inside a %s fence", (open, close) => {
+    const body = `\n${open}\n## not a section\n${close}\n`;
+    const changed = (FICHES["02.md"] ?? "").replace(
+      "## Retenu\n\nnon mesuré\n",
+      `## Retenu\n${body}`,
+    );
+    const result = check(fixture({ "02.md": changed }));
+    expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+  });
+
+  test("a section after a closed fence still counts", () => {
+    const changed = `${FICHES["02.md"]}\n\`\`\`\ncode\n\`\`\`\n## Annexe\n`;
+    expect(check(fixture({ "02.md": changed })).code).toBe(4);
+  });
+
+  test("a shorter fence does not close a longer one", () => {
+    const body = "\n````\n```\n## not a section\n```\n````\n";
+    const changed = (FICHES["02.md"] ?? "").replace(
+      "## Retenu\n\nnon mesuré\n",
+      `## Retenu\n${body}`,
+    );
+    expect(check(fixture({ "02.md": changed })).code).toBe(0);
+  });
 });
 
 describe("a count not reached exits 2 with nothing on stdout", () => {
@@ -288,6 +344,18 @@ describe("a count not reached exits 2 with nothing on stdout", () => {
     const audit = fixture({ "02.md": null });
     symlinkSync(join(root, "nowhere.md"), join(audit.fiches, "02.md"));
     unreached(check(audit));
+  });
+
+  // A link is never read: its target lives outside the audited directory, so
+  // the fiche the count would rest on is not the one the directory holds.
+  test("a link to a valid fiche outside the directory", () => {
+    const audit = fixture({ "02.md": null });
+    const outside = join(root, `outside-${fixtures}.md`);
+    writeFileSync(outside, FICHES["02.md"] ?? "");
+    symlinkSync(outside, join(audit.fiches, "02.md"));
+    const result = check(audit);
+    unreached(result);
+    expect(result.stderr).toContain("02.md: named as a fiche, not a regular file");
   });
 
   test("a directory named as a fiche", () => {

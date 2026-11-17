@@ -33,9 +33,12 @@
  *
  *   { "format": 1, "copies": { "<copy>": "<40 lowercase hex>" }, "depots": ["<repo>", ...] }
  *
- * Every `<name>@<ref>:<rest>` token of a fiche is a citation, and is allowed
- * only when the map lists that copy at exactly that revision. Another ref (a
- * branch, a tag, a short or upper-case sha) is counted and refused.
+ * Every `<name>@<ref>:` token of a fiche is a citation, whatever follows the
+ * colon, and is allowed only when the map lists that copy at exactly that
+ * revision and a bare path follows. Another ref (a branch, a tag, a short or
+ * upper-case sha) or a decorated or empty path is counted and refused. A `## `
+ * line inside a fenced code block is not a section. A link named as a fiche is
+ * never followed: like a directory or a pipe, it is an unreadable source.
  *
  * Usage: bun tools/parity/check-parity-audit.ts --matrix <file> --map <file>
  *          --fiches <directory> [--lines N|A-B]
@@ -46,7 +49,7 @@
  * on stdout.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { MatrixCounts } from "./count-parity-matrix";
 import { countMatrix } from "./count-parity-matrix";
@@ -67,10 +70,14 @@ const DECISION_ID = /^(?:D\d+|ADR-\d{4}|I-\d{2})$/;
 const COPY_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const FROZEN_REVISION = /^[0-9a-f]{40}$/;
 const FICHE_NAME = /^(\d{2,})(?:-[A-Za-z0-9._-]+)?\.md$/;
-// Any `<name>@<ref>:<rest>` token: a citation, allowed or not. The ref class
-// stops at `:`, so a branch, a tag or an upper-case sha is still a token.
+// Any `<name>@<ref>:` token is a citation, allowed or not, whatever follows
+// the colon: an empty or decorated rest (a quote, a back quote, a space) is
+// still a citation, and its path is then judged invalid. The ref class stops
+// only at whitespace, `:` and `@`, so a branch, a tag, an upper-case sha or a
+// quoted ref is still a token.
 const CITATION_TOKEN =
-  /(?<![A-Za-z0-9._@-])([A-Za-z0-9][A-Za-z0-9._-]*)@([^\s:@`'"()<>]+):([^\s`'"()<>]+)/g;
+  /(?<![A-Za-z0-9._@-])([A-Za-z0-9][A-Za-z0-9._-]*)@([^\s:@]+):([^\s`'"()<>]*)/g;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const CITED_PATH = /^[^\s:]+(?::(\d+)(?:-(\d+))?)?$/;
 const TRAILING_PUNCTUATION = /[.,;!?]+$/;
 
@@ -189,6 +196,31 @@ function isField(value: string): value is Field {
   return (FIELD_ORDER as readonly string[]).includes(value);
 }
 
+/**
+ * The `## ` titles of a fiche body, outside fenced code blocks: a `## ` line
+ * quoted in a code block is not a section. A fence closes on a line of the same
+ * character, at least as long, and nothing else (CommonMark).
+ */
+export function sectionTitles(body: readonly string[]): string[] {
+  const titles: string[] = [];
+  let open: string | null = null;
+  for (const bodyLine of body) {
+    const fence = FENCE.exec(bodyLine)?.[1] ?? null;
+    if (open === null) {
+      if (fence !== null) open = fence;
+      else if (bodyLine.startsWith("## ")) titles.push(bodyLine.slice(3).trim());
+    } else if (
+      fence !== null &&
+      fence[0] === open[0] &&
+      fence.length >= open.length &&
+      bodyLine.trim() === fence
+    ) {
+      open = null;
+    }
+  }
+  return titles;
+}
+
 interface FicheReading {
   readonly defects: readonly string[];
   readonly verdict: string | null;
@@ -284,10 +316,7 @@ export function readFiche(
     }
   }
 
-  const sections = lines
-    .slice(closing + 1)
-    .filter((bodyLine) => bodyLine.startsWith("## "))
-    .map((bodyLine) => bodyLine.slice(3).trim());
+  const sections = sectionTitles(lines.slice(closing + 1));
   const expected = [
     ...matrix.statusHeaders,
     ...(excluded ? EXCLUDED_SECTIONS : isVerdict(verdict ?? "") ? KEPT_SECTIONS : []),
@@ -556,10 +585,12 @@ function main(args: readonly string[]): never {
   for (const name of names) {
     if (classifyName(name).kind !== "named") continue;
     const path = join(options.fiches, name);
-    // A broken link or a directory named as a fiche is an unreadable source,
-    // never an empty one: reading it as nothing would hide a missing argument.
+    // A link (broken or not), a directory or a pipe named as a fiche is an
+    // unreadable source, never an empty one: reading it as nothing would hide a
+    // missing argument, and following a link would count a fiche the audited
+    // directory does not hold. `lstatSync` does not follow the link.
     try {
-      if (!statSync(path).isFile()) unreached(`${name}: named as a fiche, not a file`);
+      if (!lstatSync(path).isFile()) unreached(`${name}: named as a fiche, not a regular file`);
       texts.set(name, readFileSync(path, "utf8"));
     } catch (error) {
       unreached(`${name}: cannot read the fiche: ${reason(error)}`);
