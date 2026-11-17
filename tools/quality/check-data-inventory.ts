@@ -192,6 +192,11 @@ export const NOT_GATED: readonly NotGated[] = [
     because:
       "the authority documents and foreign repositories check-adr-citations.ts reads; that gate is run by hand and is in no chain, so no aggregate verdict depends on this table yet. Removing a document or adding a repository loosens it: gate this path in check-review-evidence.ts when the gate is activated",
   },
+  {
+    path: "ecosystem/invariant-gates.v1.yaml",
+    because:
+      "the invariant → gate → test correspondence read by ecosystem/render-invariant-matrix.ts; that script is not in `bun run check`, so no aggregate verdict depends on this file yet, and an entry exempts nothing: it only changes what the generated matrix displays. Adding a pair asserts that a gate holds an invariant: whether that belongs in check-review-evidence.ts is an open owner question",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
