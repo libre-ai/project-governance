@@ -3,19 +3,19 @@
     {
       "id": "remote-exec-pipe-to-shell",
       "category": "remote-execution",
-      "regex": "\\b(curl|wget)\\b[^|\\n]*\\|\\s*(sudo\\s+)?(ba|z|da)?sh\\b",
-      "because": "a download piped into a shell runs code nobody has read"
+      "regex": "\\b(curl|wget)\\b.*\\|\\s*(sudo\\b[^|]*?\\s)?((\\S*/)?env\\s+)?(\\S*/)?((ba|z|da|k|fi)?sh|python[0-9.]*|perl|node|ruby|php)\\b",
+      "because": "a download piped into a shell or an interpreter runs code nobody has read"
     },
     {
       "id": "remote-exec-substitution",
       "category": "remote-execution",
-      "regex": "\\b(eval|source|(ba|z|da)?sh(\\s+-c)?)\\s+[\"']?(\\$\\(|<\\()\\s*(curl|wget)\\b",
+      "regex": "(\\b(eval|source|(ba|z|da)?sh(\\s+-c)?)|(^|[\\s;&|(\\x60])\\.)\\s+[\"']?(\\$\\(|<\\()\\s*(curl|wget)\\b",
       "because": "a download evaluated through a substitution runs code nobody has read"
     },
     {
       "id": "secret-read-dotenv",
       "category": "secret-read",
-      "regex": "\\b(cat|less|more|head|tail|source)\\s+[\"']?[^\\s|;&\"']*\\.env(?!\\.example)(\\.[a-z]+)?(?![\\w.])",
+      "regex": "(\\b(cat|less|more|head|tail|source)|(^|[\\s;&|(\\x60])\\.)\\s+((-[^\\s|;&]+|\\d+|[^\\s|;&./-]*[./][^\\s|;&]*)\\s+)*[\"']?[^\\s|;&\"']*\\.env(?!\\.example)(\\.[a-z]+)?(?![\\w.])",
       "because": "displaying or sourcing an environment file puts its values in the agent's context"
     },
     {
@@ -27,7 +27,7 @@
     {
       "id": "environment-dump",
       "category": "environment-export",
-      "regex": "(^|[\\s;&|(\\x60])(printenv|env)\\s*(\\||>)",
+      "regex": "(^|[\\s;&|(\\x60])(printenv|env)\\s*(\\||>)|(^|[\\s;&|(\\x60])printenv\\b(?!\\s+[\\w$])|(^\\s*|[;&|(\\x60]\\s*)env\\s*($|[;&|)\\x60])",
       "because": "a dump of the environment exports every value it holds, secrets included"
     },
     {
@@ -39,8 +39,8 @@
     {
       "id": "gate-bypass-no-verify",
       "category": "gate-bypass",
-      "regex": "--no-verify\\b",
-      "because": "skipping the git hooks removes the checks the repository runs before a commit or a push"
+      "regex": "--no-verify\\b|\\bgit\\s+commit\\b[^|;&]*\\s-[A-Za-z]*n[A-Za-z]*(?![\\w-])",
+      "because": "skipping the git hooks (--no-verify, or -n on git commit) removes the checks the repository runs before a commit or a push"
     },
     {
       "id": "gate-bypass-skip-permissions",
@@ -51,19 +51,19 @@
     {
       "id": "gate-bypass-skip-ci",
       "category": "gate-bypass",
-      "regex": "\\[(skip ci|ci skip)\\]",
-      "because": "a commit marked to skip CI lands without a verdict attached to it"
+      "regex": "\\[(skip ci|ci skip|no ci|skip actions|actions skip)\\]|\\bci\\.skip\\b",
+      "because": "a commit or a push marked to skip CI lands without a verdict attached to it"
     },
     {
       "id": "write-outside-redirect",
       "category": "write-outside-repository",
-      "regex": "(>>?|\\btee\\s+(-a\\s+)?)\\s*[\"']?(~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/",
+      "regex": "(>>?|\\btee\\s+(-a\\s+)?)\\s*[\"']?((~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/|/[^\\s\"']*/\\.\\./)",
       "because": "a redirection into the home directory or a system directory writes outside the repository"
     },
     {
       "id": "write-outside-copy",
       "category": "write-outside-repository",
-      "regex": "\\b(cp|mv|ln|install)\\s+[^|;&\\n]*\\s[\"']?(~|\\$HOME|\\$\\{HOME\\}|/etc|/usr)/",
+      "regex": "\\b(cp|mv|ln|install)\\s+[^|;&\\n]*\\s[\"']?((~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/|/[^\\s\"']*/\\.\\./)",
       "because": "a copy, move or link into the home directory or a system directory writes outside the repository"
     }
   ]

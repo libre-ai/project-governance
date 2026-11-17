@@ -6,20 +6,28 @@
  * refuses every line, in every file under the skills root, that matches a
  * pattern of `skills-security-patterns.v1.json`.
  *
- * Universe: every file entry met while walking the root recursively, whatever
- * its name or extension (SKILL.md, references, eval.json, a script, a hook, a
- * binary). Each entry falls in exactly one of three counts, and the three sum
- * to the entries met:
+ * Universe: every entry met while walking the root recursively, the root
+ * included, whatever its name or extension (SKILL.md, references, eval.json, a
+ * script, a hook, a binary). Each entry falls in exactly one of four counts,
+ * and the four sum to the entries met:
  *
- * - `scanned`: valid UTF-8, read line by line;
- * - `undecodable`: bytes that are not valid UTF-8. A named failure: this is
- *   how a binary is refused, since its instructions cannot be read;
- * - `symlinks`: a symbolic link, never followed. A named failure: the
- *   repository versions the link, not what it points to.
+ * - `scanned`: valid UTF-8 text, read line by line;
+ * - `undecodable`: bytes that are not valid UTF-8, or text holding a NUL
+ *   (UTF-16 without a byte-order mark). A named failure: this is how a binary
+ *   is refused, since its instructions cannot be read;
+ * - `symlinks`: a symbolic link, the root included, never followed. A named
+ *   failure: the repository versions the link, not what it points to;
+ * - `unreadable`: an entry that cannot be read (permission) or is not a
+ *   regular file (FIFO, socket, device; never opened). A named failure.
+ *
+ * The brief named three counts; `unreadable` is a fourth, added so that a
+ * permission or a FIFO is a named failure rather than a crash or a hang.
  *
  * The patterns are data. No detection expression is written in this file, so
  * that reading the data file is reading everything the gate refuses. Each one
- * is compiled case-insensitive and applied to each line.
+ * is compiled case-insensitive and applied to each logical line: a line ending
+ * in a backslash is joined to the next, as a shell joins it (the brief said
+ * "each line"; joining is stricter), and a finding names the line it starts on.
  *
  * There is no exemption mechanism, neither a line marker nor an allowlist: a
  * false positive is fixed by tightening the pattern in the data file or by
@@ -29,7 +37,7 @@
  * instruction, not a command rebuilt through an alias or an encoding.
  */
 
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export const PATTERNS_PATH = "tools/skills/skills-security-patterns.v1.json";
@@ -129,7 +137,42 @@ function linesOf(content: string): string[] {
   return lines;
 }
 
-/** One finding per (line, pattern) that matches. Pure. */
+interface LogicalLine {
+  /** Number of the physical line the logical line starts on. */
+  readonly start: number;
+  readonly text: string;
+}
+
+/**
+ * The lines as a shell reads them: a physical line ending in a backslash
+ * (trailing blanks allowed) is joined to the next one. Without this, a
+ * download split as `curl … \` then `| sh` on the next line would match no
+ * pattern, since each half is harmless on its own.
+ */
+function logicalLines(content: string): LogicalLine[] {
+  const logical: LogicalLine[] = [];
+  let parts: string[] = [];
+  let start = 1;
+  linesOf(content).forEach((line, index) => {
+    if (parts.length === 0) start = index + 1;
+    const trimmed = line.trimEnd();
+    if (trimmed.endsWith("\\")) {
+      parts.push(trimmed.slice(0, -1));
+      return;
+    }
+    parts.push(line);
+    logical.push({ start, text: parts.join(" ") });
+    parts = [];
+  });
+  // A continuation on the last line has nothing to join: it stands alone.
+  if (parts.length > 0) logical.push({ start, text: parts.join(" ") });
+  return logical;
+}
+
+/**
+ * One finding per (logical line, pattern) that matches, reported on the
+ * physical line where the logical line starts. Pure.
+ */
 export function scanForSkillRisks(
   files: readonly ScannedFile[],
   patterns: readonly SecurityPattern[],
@@ -140,66 +183,141 @@ export function scanForSkillRisks(
   }));
   const findings: SecurityFinding[] = [];
   for (const file of files) {
-    linesOf(file.content).forEach((text, index) => {
+    for (const { start, text } of logicalLines(file.content)) {
       for (const { pattern, expression } of compiled) {
         if (expression.test(text)) {
           findings.push({
             path: file.path,
-            line: index + 1,
+            line: start,
             patternId: pattern.id,
             category: pattern.category,
           });
         }
       }
-    });
+    }
   }
   return findings;
 }
 
-export interface SkillTreeRead {
-  readonly scanned: readonly ScannedFile[];
-  /** Paths whose bytes are not valid UTF-8. */
-  readonly undecodable: readonly string[];
-  /** Paths that are symbolic links; their targets are not read. */
-  readonly symlinks: readonly string[];
+/** An entry the walk met but could not read, with the reason it names. */
+export interface UnreadEntry {
+  readonly path: string;
+  readonly reason: string;
 }
 
-/** Every file entry under `root`, each in exactly one of the three lists. */
+export interface SkillTreeRead {
+  readonly scanned: readonly ScannedFile[];
+  /** Paths whose bytes are not valid UTF-8 text (invalid bytes, or a NUL). */
+  readonly undecodable: readonly string[];
+  /** Paths that are symbolic links, the root included; their targets are not read. */
+  readonly symlinks: readonly string[];
+  /** Entries that could not be read: permission, or not a regular file. */
+  readonly unreadable: readonly UnreadEntry[];
+}
+
+function errorCode(error: unknown): string {
+  if (error instanceof Error && "code" in error && typeof error.code === "string") {
+    return error.code;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** The total of the four counts: every entry the walk met. */
+function entriesMet(read: SkillTreeRead): number {
+  return (
+    read.scanned.length + read.undecodable.length + read.symlinks.length + read.unreadable.length
+  );
+}
+
+/**
+ * Every entry under `root`, the root itself included, each in exactly one of
+ * the four lists. A root that is a link is a link like any other: following
+ * it would scan a tree the repository does not version.
+ */
 export function loadSkillTree(root: string): SkillTreeRead {
   const scanned: ScannedFile[] = [];
   const undecodable: string[] = [];
   const symlinks: string[] = [];
-  const walk = (directory: string): void => {
-    for (const entry of readdirSync(directory).sort()) {
-      const path = join(directory, entry);
+  const unreadable: UnreadEntry[] = [];
+  const visit = (path: string): void => {
+    let stats: ReturnType<typeof lstatSync>;
+    try {
       // lstat, not stat: a link is counted as a link, whatever it points to.
-      const stats = lstatSync(path);
-      if (stats.isSymbolicLink()) {
-        symlinks.push(path);
-      } else if (stats.isDirectory()) {
-        walk(path);
-      } else {
-        const bytes = readFileSync(path);
-        try {
-          // Strict decoding: a tolerant one would turn a binary into text
-          // made of replacement characters, and the scan would call it clean.
-          scanned.push({ path, content: new TextDecoder("utf-8", { fatal: true }).decode(bytes) });
-        } catch {
-          undecodable.push(path);
-        }
-      }
+      stats = lstatSync(path);
+    } catch (error) {
+      unreadable.push({ path, reason: `cannot be inspected (${errorCode(error)})` });
+      return;
     }
+    if (stats.isSymbolicLink()) {
+      symlinks.push(path);
+      return;
+    }
+    if (stats.isDirectory()) {
+      let entries: string[];
+      try {
+        entries = readdirSync(path).sort();
+      } catch (error) {
+        unreadable.push({ path, reason: `directory cannot be listed (${errorCode(error)})` });
+        return;
+      }
+      for (const entry of entries) visit(join(path, entry));
+      return;
+    }
+    if (!stats.isFile()) {
+      // Opening a FIFO blocks until a writer comes; a device or a socket has
+      // no content to scan. Never opened, always refused.
+      unreadable.push({
+        path,
+        reason: "not a regular file (FIFO, socket or device), never opened",
+      });
+      return;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = readFileSync(path);
+    } catch (error) {
+      unreadable.push({ path, reason: `cannot be read (${errorCode(error)})` });
+      return;
+    }
+    let content: string;
+    try {
+      // Strict decoding: a tolerant one would turn a binary into text
+      // made of replacement characters, and the scan would call it clean.
+      content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      undecodable.push(path);
+      return;
+    }
+    // NUL is valid UTF-8, so UTF-16 text without a byte-order mark decodes:
+    // one NUL between every letter, and no pattern can match it.
+    if (content.includes("\u{0}")) {
+      undecodable.push(path);
+      return;
+    }
+    scanned.push({ path, content });
   };
-  walk(root);
-  return { scanned, undecodable, symlinks };
+  visit(root);
+  return { scanned, undecodable, symlinks, unreadable };
 }
 
 export function formatSecurityVolume(read: SkillTreeRead, lines: number, patterns: number): string {
-  const entries = read.scanned.length + read.undecodable.length + read.symlinks.length;
   return (
-    `entries=${entries} (scanned=${read.scanned.length} undecodable=${read.undecodable.length} ` +
-    `symlinks=${read.symlinks.length}), lines=${lines}, patterns=${patterns}`
+    `entries=${entriesMet(read)} (scanned=${read.scanned.length} undecodable=${read.undecodable.length} ` +
+    `symlinks=${read.symlinks.length} unreadable=${read.unreadable.length}), ` +
+    `lines=${lines}, patterns=${patterns}`
   );
+}
+
+/** Whether the root entry exists, without following it if it is a link. */
+function rootIsPresent(root: string): boolean {
+  try {
+    lstatSync(root);
+    return true;
+  } catch (error) {
+    // Any other failure (a permission, say) is left to the walk, which
+    // counts it as unreadable instead of declaring the tree empty.
+    return errorCode(error) !== "ENOENT";
+  }
 }
 
 async function main(): Promise<void> {
@@ -223,7 +341,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (!existsSync(root)) {
+  // lstat, not existsSync: existsSync follows a link, so a dangling link as
+  // root would read as "no directory" and pass as declared empty.
+  if (!rootIsPresent(root)) {
     report.allowEmpty(`no ${root}/ directory in this repository`);
     concludeGate(gate, report);
     return;
@@ -231,7 +351,7 @@ async function main(): Promise<void> {
   const read = loadSkillTree(root);
   const lines = read.scanned.reduce((sum, file) => sum + linesOf(file.content).length, 0);
   const volume = formatSecurityVolume(read, lines, patterns.length);
-  if (read.scanned.length + read.undecodable.length + read.symlinks.length === 0) {
+  if (entriesMet(read) === 0) {
     report.allowEmpty(`${root}/ holds no file — nothing to scan`);
     concludeGate(gate, report);
     return;
@@ -250,14 +370,21 @@ async function main(): Promise<void> {
     );
   }
   for (const path of read.undecodable) {
-    report.check(path, false, "not valid UTF-8: its content cannot be read, so it is refused");
+    report.check(
+      path,
+      false,
+      "not valid UTF-8 text (invalid bytes, or a NUL): its content cannot be read, so it is refused",
+    );
   }
   for (const path of read.symlinks) {
     report.check(path, false, "symbolic link, not followed: its target is not part of the tree");
   }
+  for (const { path, reason } of read.unreadable) {
+    report.check(path, false, reason);
+  }
   // A failing run prints no volume line, so the counts ride on a check of
   // their own whenever an entry was left unread.
-  if (read.undecodable.length + read.symlinks.length > 0) {
+  if (read.scanned.length < entriesMet(read)) {
     report.check(root, false, `not every entry was read: ${volume}`);
   }
   report.volume(volume);
