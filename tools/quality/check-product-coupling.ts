@@ -22,11 +22,28 @@ import { parseAllowlist } from "./allowlist";
 //     tolerated warning; an exemption that tolerates nothing is a failure,
 //     because a stale exemption waits silently for the next match.
 //
+// Patterns are compiled case-insensitively (`giu`). The shipped ones bound a
+// name by `(?<![A-Za-z0-9])` / `(?![A-Za-z0-9])` rather than `\b`, because "_"
+// is a word character: `\b` let `P01_DB` and `WIKI_POSTGRESQL_ADDON_URI_RO`
+// through. `tools/quality/check-product-coupling.test.ts` confronts each
+// shipped pattern with vectors, and the repository pattern with every `depot`
+// of `ecosystem/produits/*.v1.yaml`.
+//
+// Known limits, by construction of a line-by-line textual match:
+//
+//   - a name assembled at run time (`"apps/" + name`, `` `${p}.libre-ai.fr` ``,
+//     `["P", "01"].join("")`), split across lines, or encoded (percent, base64,
+//     Unicode escapes) is not seen;
+//   - an exemption covers its whole file, for every pattern: the shared
+//     exemption format (`allowlist.ts`) names a file, not a (file, pattern)
+//     pair, and changing it would change every list it parses.
+//
 // The failures this guard refuses to read as a pass, each one measured on a
 // predecessor that did:
 //
-//   - a declared tree that holds no tracked file (a renamed directory left the
-//     old guard green over nothing);
+//   - a declared tree in which no file was scanned (a renamed directory left
+//     the old guard green over nothing; a tree of test files only examined
+//     nothing either, whatever the other trees held);
 //   - a workspace package of the root manifest outside every declared tree (a
 //     hard-coded list of trees omitted three packages out of nine, one of
 //     which carried a product name);
@@ -48,6 +65,10 @@ export const PRODUCT_COUPLING_CONFIG = "tools/quality/product-coupling.v1.json";
 export const PRODUCT_COUPLING_EXEMPTIONS = "tools/quality/product-coupling-exemptions.txt";
 
 const GATE = "product-coupling";
+// Case-insensitive for every pattern: an identifier, a path, a database
+// variable or a host names the same product in any case (`p01`, `Apps/chat`,
+// `CHAT.LIBRE-AI.FR`), so case carries no meaning a pattern could rely on.
+const PATTERN_FLAGS = "giu";
 const EXCERPT_LIMIT = 200;
 // Source test files only. A specification or a data file whose name merely
 // carries `.spec.` or `.test.` (`api.spec.md`, `openapi.spec.yaml`) is scanned.
@@ -185,12 +206,12 @@ export function parseCouplingConfig(text: string): ConfigResult {
     }
     let compiledRegex: RegExp;
     try {
-      compiledRegex = new RegExp(regex, "gu");
+      compiledRegex = new RegExp(regex, PATTERN_FLAGS);
     } catch {
       return { ok: false, error: `${where}.regex is not a valid regular expression` };
     }
     // A pattern that matches the empty string matches every line.
-    if (new RegExp(`^(?:${regex})$`, "u").test("")) {
+    if (new RegExp(`^(?:${regex})$`, PATTERN_FLAGS.replace("g", "")).test("")) {
       return { ok: false, error: `${where}.regex matches the empty string` };
     }
     compiled.push({ name, regex: compiledRegex });
@@ -262,15 +283,14 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
   let links = 0;
   let lineCount = 0;
 
-  const missingRoots = config.roots.filter(
-    (root) => !input.tracked.some((path) => isUnder(path, root)),
-  );
+  const scannedRoots = new Set<string>();
   const uncoveredWorkspaces = input.workspaces.filter(
     (workspace) => !config.roots.some((root) => isUnder(workspace, root)),
   );
 
   for (const path of [...input.tracked].sort()) {
-    if (!config.roots.some((root) => isUnder(path, root))) continue;
+    const root = config.roots.find((candidate) => isUnder(path, candidate));
+    if (root === undefined) continue;
     underRoots += 1;
     if (TEST_FILE.test(path)) {
       testsExcluded += 1;
@@ -288,6 +308,7 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
       continue;
     }
     scanned += 1;
+    scannedRoots.add(root);
     const lines = text.split(/\r?\n/);
     if (lines.at(-1) === "") lines.pop();
     lineCount += lines.length;
@@ -316,6 +337,10 @@ export function evaluateCoupling(input: CouplingInput): CouplingResult {
       }
     }
   }
+
+  // A tree is judged on what was read in it: one holding only test files,
+  // links or unreadable files examined nothing, whatever the other trees did.
+  const missingRoots = config.roots.filter((root) => !scannedRoots.has(root));
 
   return {
     violations,
@@ -360,7 +385,9 @@ export function renderCoupling(result: CouplingResult): {
   const lines = result.tolerated.map((finding) => `${GATE}: tolerated: ${render(finding)}`);
   const failures = [
     ...result.violations.map((finding) => render(finding)),
-    ...result.missingRoots.map((root) => `declared tree ${safePath(root)} holds no tracked file`),
+    ...result.missingRoots.map(
+      (root) => `declared tree ${safePath(root)} holds no tracked file that was scanned`,
+    ),
     ...result.uncoveredWorkspaces.map(
       (workspace) => `workspace package ${safePath(workspace)} lies outside every declared tree`,
     ),

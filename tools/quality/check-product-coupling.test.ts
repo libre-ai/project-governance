@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   type CouplingConfig,
   type CouplingInput,
   evaluateCoupling,
   expandWorkspaces,
+  PRODUCT_COUPLING_CONFIG,
   parseCouplingConfig,
   parseStagedEntries,
   renderCoupling,
@@ -304,6 +308,21 @@ describe("evaluateCoupling — declared trees", () => {
     expect(result.counts.scanned).toBe(0);
     expect(renderCoupling(result).ok).toBe(false);
   });
+
+  test("a tree that examined nothing fails even when another tree was scanned", () => {
+    const result = evaluateCoupling(
+      input(
+        {
+          "packages/shared/package.json": "{}\n",
+          "packages/other/src/a.test.ts": "x\n",
+        },
+        { config: { ...CONFIG, roots: ["packages/shared", "packages/other"] }, workspaces: [] },
+      ),
+    );
+    expect(result.counts.scanned).toBe(1);
+    expect(result.missingRoots).toEqual(["packages/other"]);
+    expect(renderCoupling(result).ok).toBe(false);
+  });
 });
 
 describe("evaluateCoupling — tolerance", () => {
@@ -384,6 +403,137 @@ describe("parseCouplingConfig", () => {
     ["an unknown key", JSON.stringify({ ...valid, extra: true })],
   ])("refuses %s", (_label, text) => {
     expect(parseCouplingConfig(text).ok).toBe(false);
+  });
+});
+
+// The configuration the guard ships with, read as the guard reads it. Each
+// pattern is confronted with forms a consumer reference really takes (case,
+// escaped dots, "_" after the name) and with neighbours it must leave alone.
+// A pattern without vectors fails: a new pattern is not trusted unread.
+const REPOSITORY_ROOT = join(import.meta.dir, "..", "..");
+const SHIPPED = parseCouplingConfig(
+  readFileSync(join(REPOSITORY_ROOT, PRODUCT_COUPLING_CONFIG), "utf8"),
+);
+
+const VECTORS: Record<string, { readonly match: string[]; readonly pass: string[] }> = {
+  "product-catalogue-id": {
+    match: ["P01", "P01_DB", "p01", "const id = 'P41';", "P07-chat", "x_P12"],
+    pass: ["P1", "P123", "XP01", "HTTP2", "p01x", "P0"],
+  },
+  "consumer-application-tree": {
+    match: [
+      "apps/chat",
+      "Apps/chat",
+      "APPS/CHAT",
+      String.raw`"apps\/chat"`,
+      String.raw`apps\chat`,
+      String.raw`apps\\chat`,
+      "../../apps/web-v2/src",
+    ],
+    pass: ["apps", "apps/", "webapps/chat", "packages/classification"],
+  },
+  "product-database": {
+    match: [
+      "WIKI_POSTGRESQL_ADDON_URI",
+      "WIKI_POSTGRESQL_ADDON_URI_RO",
+      "chat_postgresql_addon_uri",
+      "process.env.P01_POSTGRESQL_ADDON_URI;",
+    ],
+    pass: [
+      "POSTGRESQL_ADDON_URI",
+      "process.env.POSTGRESQL_ADDON_URI",
+      "WIKI_POSTGRESQL_ADDON_URIX",
+    ],
+  },
+  "product-instance-host": {
+    match: [
+      "chat.libre-ai.fr",
+      "https://Chat.libre-ai.fr",
+      "CHAT.LIBRE-AI.FR",
+      String.raw`chat\.libre-ai\.fr`,
+      String.raw`chat\\.libre-ai\\.fr`,
+      "chat[.]libre-ai[.]fr",
+      "x_chat.libre-ai.fr",
+      "chat.libre-ai.fr_x",
+      "wiki-staging.libre-ai.fr/path",
+    ],
+    pass: [
+      "libre-ai.fr",
+      "https://libre-ai.fr/",
+      "contact@libre-ai.fr",
+      "chat.libre-ai.frx",
+      "chat.libre-ai.org",
+    ],
+  },
+  "product-repository": {
+    match: [
+      "libre-ai/square-control",
+      "square-control",
+      "SQUARE_CONTROL",
+      "libre-ai/signalement",
+      "personal-knowledge-workspace",
+      "Libre-AI/Personal-Knowledge-Workspace",
+    ],
+    // `signalement` alone is a common French noun ("report"): only its
+    // qualified repository name is a coupling.
+    pass: [
+      "signalement",
+      "un signalement reçu",
+      "square",
+      "square-controller",
+      "knowledge workspace",
+    ],
+  },
+};
+
+function shippedPatterns() {
+  if (!SHIPPED.ok) throw new Error(SHIPPED.error);
+  return SHIPPED.config.patterns;
+}
+
+function matchesOf(name: string, line: string): string[] {
+  const pattern = shippedPatterns().find((candidate) => candidate.name === name);
+  if (pattern === undefined) throw new Error(`no shipped pattern named ${name}`);
+  return [...line.matchAll(pattern.regex)].map((match) => match[0]);
+}
+
+describe("shipped configuration", () => {
+  test("every shipped pattern has vectors, and every vector names a shipped pattern", () => {
+    expect(
+      shippedPatterns()
+        .map((pattern) => pattern.name)
+        .sort(),
+    ).toEqual(Object.keys(VECTORS).sort());
+  });
+
+  for (const [name, vectors] of Object.entries(VECTORS)) {
+    test.each(vectors.match)(`${name} refuses %s`, (line) => {
+      expect(matchesOf(name, line).length).toBeGreaterThan(0);
+    });
+    test.each(vectors.pass)(`${name} leaves %s alone`, (line) => {
+      expect(matchesOf(name, line)).toEqual([]);
+    });
+  }
+
+  test("every product repository of the catalogue is refused under its qualified name", () => {
+    const directory = join(REPOSITORY_ROOT, "ecosystem", "produits");
+    const files = readdirSync(directory).filter((file) => file.endsWith(".v1.yaml"));
+    const repositories = new Set<string>();
+    for (const file of files) {
+      const record = Bun.YAML.parse(readFileSync(join(directory, file), "utf8")) as {
+        depot?: unknown;
+      };
+      if (typeof record.depot === "string") repositories.add(record.depot);
+    }
+    // An empty catalogue read is a broken test, not a covered one.
+    expect(files.length).toBeGreaterThan(0);
+    expect(repositories.size).toBeGreaterThan(0);
+    for (const repository of repositories) {
+      expect({ repository, matches: matchesOf("product-repository", repository) }).toEqual({
+        repository,
+        matches: [repository],
+      });
+    }
   });
 });
 
