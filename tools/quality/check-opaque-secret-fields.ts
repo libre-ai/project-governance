@@ -90,7 +90,9 @@ const MIN_ENCODED_CREDENTIAL_LENGTH = 24;
 
 const HEXADECIMAL = /^[0-9A-Fa-f]+$/;
 const BASE64_STANDARD = /^[A-Za-z0-9+/]+={0,2}$/;
-const BASE64_URL_SAFE = /^[A-Za-z0-9_-]+$/;
+// Padding is optional in base64url (RFC 4648 §5) but many encoders keep it:
+// refusing it would let a padded token cross both labels.
+const BASE64_URL_SAFE = /^[A-Za-z0-9_-]+={0,2}$/;
 const DIGIT = /[0-9]/;
 const UPPERCASE = /[A-Z]/;
 const LOWERCASE = /[a-z]/;
@@ -112,9 +114,21 @@ interface FieldName {
   readonly quoted: boolean;
 }
 
+/**
+ * A quote is escaped only behind an ODD run of backslashes: `"C:\\"` ends at
+ * its last quote, because `\\` is one escaped backslash. Counting the run is
+ * what keeps every later field of the line readable. Each run is walked once,
+ * since the search only moves forward.
+ */
+function isEscaped(line: string, at: number): boolean {
+  let run = 0;
+  while (at - run - 1 >= 0 && line[at - run - 1] === "\\") run += 1;
+  return run % 2 === 1;
+}
+
 function closingQuote(line: string, quote: string, from: number): number {
   let at = line.indexOf(quote, from);
-  while (at > 0 && line[at - 1] === "\\") at = line.indexOf(quote, at + 1);
+  while (at > 0 && isEscaped(line, at)) at = line.indexOf(quote, at + 1);
   return at;
 }
 
@@ -154,7 +168,8 @@ function skipBlanksBackward(line: string, from: number): number {
 }
 
 /**
- * The name a quoted value is assigned to: `name = "…"` or `name: "…"`, the
+ * The name a quoted value is assigned to: `name = "…"`, `name: "…"`,
+ * `name => "…"` or `name := "…"`, the
  * name quoted or not. `null` when the string is not the right side of a pair.
  * The backward walk stops at the previous quoted string, so the regions walked
  * for two values never overlap.
@@ -166,7 +181,10 @@ function nameBefore(
 ): FieldName | null {
   const value = strings[index];
   if (value === undefined) return null;
-  const separator = skipBlanksBackward(line, value.start - 1);
+  let separator = skipBlanksBackward(line, value.start - 1);
+  // Two-character separators (`=>`, `:=`): step onto their first character.
+  if (line[separator] === ">" && line[separator - 1] === "=") separator -= 1;
+  else if (line[separator] === "=" && line[separator - 1] === ":") separator -= 1;
   if (line[separator] !== ":" && line[separator] !== "=") return null;
   const nameEnd = skipBlanksBackward(line, separator - 1);
   const previous = strings[index - 1];
