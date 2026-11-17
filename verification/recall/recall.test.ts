@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -327,6 +327,193 @@ describe("specification", () => {
   test("a missing specification is an error (exit 1)", async () => {
     const outcome = await score(truth("d1\tU\tx\t-\td"), ["--spec", join(scratch(), "absent.md")]);
     expect(outcome.code).toBe(1);
+  });
+});
+
+// ------------------------------------------------------------------ review findings
+
+/**
+ * Hostile inputs from the independent review of the lot. The expected Markdown
+ * readings were measured against GitHub's GFM renderer (`POST /markdown`, mode
+ * gfm) on 2026-11-17: a Setext title ends a section, a line indented by four
+ * spaces is code, a table needs no leading pipe, an HTML comment block hides
+ * what it holds, and excess cells of a body row are not rendered.
+ */
+
+/** A spec whose Constats section holds one ordinary table, plus `extra` lines. */
+function specWith(...extra: string[]): string {
+  return ["## Constats", "", "| Constat |", "| --- |", "| BASE_NEEDLE |", "", ...extra, ""].join(
+    "\n",
+  );
+}
+
+function foundIn(markdown: string, needle: string): boolean {
+  const defects = parseTruth(truth(`d1\tU\t${needle}\t-\td`));
+  return scoreSpecification(defects, markdown).get("d1") === true;
+}
+
+describe("review: evidence", () => {
+  test("a proof that is a symbolic link out of the state is an error (exit 1), not a find", async () => {
+    const evidence = stateDirectory([ok(REPO, "secrets", 0, [])]);
+    const outside = join(dirname(evidence), "outside.txt");
+    writeFileSync(outside, "NEEDLE\n");
+    const path = proofFile(evidence, "secrets", REPO);
+    rmSync(path);
+    symlinkSync("../../../../outside.txt", path);
+    const outcome = await score(truth("d1\tC\tNEEDLE\tsecrets\td"), ["--evidence", evidence]);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stdout).toEqual([]);
+    expect(outcome.stderr.join("\n")).toContain("resolves outside the state");
+  });
+
+  test("a proof that is not a regular file is an error, not a miss", async () => {
+    const evidence = stateDirectory([ok(REPO, "secrets", 0, [])]);
+    const path = proofFile(evidence, "secrets", REPO);
+    rmSync(path);
+    mkdirSync(path);
+    const outcome = await score(truth("d1\tC\tNEEDLE\tsecrets\td"), ["--evidence", evidence]);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr.join("\n")).toContain("not a regular file");
+  });
+
+  test("a proof directory that is a symbolic link is an error, even when it stays inside", async () => {
+    const evidence = stateDirectory([ok(REPO, "secrets", 0, [])]);
+    const copy = join(evidence, "copy", REPO.split("/")[0] ?? "");
+    mkdirSync(copy, { recursive: true });
+    writeFileSync(join(copy, `${REPO.split("/")[1]}.txt`), "NEEDLE\n");
+    rmSync(join(evidence, "preuves", "secrets"), { recursive: true });
+    symlinkSync("../copy", join(evidence, "preuves", "secrets"));
+    const outcome = await score(truth("d1\tC\tNEEDLE\tsecrets\td"), ["--evidence", evidence]);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr.join("\n")).toContain("symbolic link");
+  });
+
+  test("a parc line that names another repository of the inventory does not count", async () => {
+    const evidence = stateDirectory([
+      ok(REPO, "secrets", 0, []),
+      ok(OTHER, "secrets", 0, []),
+      ok(PARK_REPOSITORY, "fleet-pins", 0, ["acme/other pins NEEDLE", "acme/app pins KEPT"]),
+    ]);
+    const outcome = await score(
+      truth("d1\tC\tNEEDLE\tfleet-pins\td", "d2\tC\tKEPT\tfleet-pins\td"),
+      ["--evidence", evidence],
+    );
+    expect(outcome.code).toBe(0);
+    expect(rowOf(outcome.stdout[0] ?? "", "d1")).toContain("| RATÉ |");
+    expect(rowOf(outcome.stdout[0] ?? "", "d2")).toContain("| trouvé |");
+  });
+
+  test("a repository name that merely extends another one is not that repository", async () => {
+    const evidence = stateDirectory([
+      ok("acme/application", "secrets", 0, []),
+      ok(REPO, "secrets", 0, []),
+      ok(PARK_REPOSITORY, "fleet-pins", 0, ["acme/application pins NEEDLE"]),
+    ]);
+    const forLong = await runRecall([
+      file("t.tsv", truth("d1\tC\tNEEDLE\tfleet-pins\td")),
+      "acme/application",
+      "--evidence",
+      evidence,
+    ]);
+    expect(forLong.stdout[0]).toContain("détecteurs 1/1");
+    const forShort = await score(truth("d1\tC\tNEEDLE\tfleet-pins\td"), ["--evidence", evidence]);
+    expect(forShort.stdout[0]).toContain("détecteurs 0/1");
+  });
+
+  test("a repository name that ends another one is not that repository", async () => {
+    const evidence = stateDirectory([
+      ok("bigacme/app", "secrets", 0, []),
+      ok(REPO, "secrets", 0, []),
+      ok(PARK_REPOSITORY, "fleet-pins", 0, ["bigacme/app pins NEEDLE"]),
+    ]);
+    const outcome = await runRecall([
+      file("t.tsv", truth("d1\tC\tNEEDLE\tfleet-pins\td")),
+      "bigacme/app",
+      "--evidence",
+      evidence,
+    ]);
+    expect(outcome.stdout[0]).toContain("détecteurs 1/1");
+  });
+});
+
+describe("review: truth", () => {
+  test("a needle, an identifier or a detector made of spaces is refused", () => {
+    expect(() => parseTruth(truth("d1\tC\t   \t-\td"))).toThrow("empty needle");
+    expect(() => parseTruth(truth(" \tC\tx\t-\td"))).toThrow("empty identifier");
+    expect(() => parseTruth(truth("d1\tC\tx\t \td"))).toThrow("empty detector");
+  });
+});
+
+describe("review: specification", () => {
+  test("a Setext title closes the Constats section", () => {
+    for (const underline of ["---", "===", "  ----  "]) {
+      const markdown = specWith("Annexe", underline, "", "| Autre |", "| --- |", "| SETEXT |");
+      expect(foundIn(markdown, "SETEXT")).toBe(false);
+      expect(foundIn(markdown, "BASE_NEEDLE")).toBe(true);
+    }
+  });
+
+  test("a Setext title Constats opens the section", () => {
+    const markdown = ["Constats", "--------", "", "| h |", "| - |", "| SETEXT_IN |", ""].join("\n");
+    expect(foundIn(markdown, "SETEXT_IN")).toBe(true);
+  });
+
+  test("a table indented by four spaces or a tab is code, not a table", () => {
+    for (const indent of ["    ", "\t", "  \t"]) {
+      const markdown = specWith(`${indent}| h |`, `${indent}| - |`, `${indent}| INDENTED |`);
+      expect(foundIn(markdown, "INDENTED")).toBe(false);
+    }
+    expect(foundIn(specWith("   | h |", "   | - |", "   | THREE |"), "THREE")).toBe(true);
+  });
+
+  test("a row indented by four spaces ends the table", () => {
+    const markdown = specWith("| h |", "| - |", "| x |", "    | AFTER |");
+    expect(foundIn(markdown, "AFTER")).toBe(false);
+  });
+
+  test("a table without a leading pipe is read, and so are its pipeless rows", () => {
+    const markdown = specWith("h | i", "--- | ---", "PIPELESS | y", "LAZY ROW");
+    expect(foundIn(markdown, "PIPELESS")).toBe(true);
+    expect(foundIn(markdown, "LAZY ROW")).toBe(true);
+  });
+
+  test("a Constats section without any table is an error, not a list of misses", () => {
+    expect(() => findingCells("## Constats\n\nOnly prose: NEEDLE.\n")).toThrow("no table");
+    expect(() => findingCells("## Constats\n\n| a |\n| b |\n")).toThrow("no table");
+  });
+
+  test("rows inside an HTML block do not count", () => {
+    const comment = specWith("<!--", "| h |", "| - |", "| COMMENTED |", "-->");
+    expect(foundIn(comment, "COMMENTED")).toBe(false);
+    const details = specWith("<details>", "| h |", "| - |", "| DETAILS |", "");
+    expect(foundIn(details, "DETAILS")).toBe(false);
+    const ending = specWith("| h |", "| - |", "| x |", "<!-- ENDED -->");
+    expect(foundIn(ending, "ENDED")).toBe(false);
+  });
+
+  test("an excess cell of a body row is not rendered, hence does not count", () => {
+    expect(foundIn(specWith("| h | i |", "| - | - |", "| x | y | EXCESS |"), "EXCESS")).toBe(false);
+  });
+
+  test("a Constats section under an out-of-scope title does not count", () => {
+    const nested = ["## Hors périmètre", "", "### Constats", "", "| h |", "| - |", "| NESTED |"];
+    expect(() => findingCells(`${nested.join("\n")}\n`)).toThrow("no « Constats »");
+    expect(foundIn(specWith(...nested), "NESTED")).toBe(false);
+    expect(foundIn(specWith(...nested), "BASE_NEEDLE")).toBe(true);
+  });
+
+  test("an out-of-scope subsection inside Constats does not count", () => {
+    const markdown = specWith(
+      "### Hors périmètre :",
+      "",
+      "| h |",
+      "| - |",
+      "| SUB_OUT |",
+      "",
+      "## Suite",
+    );
+    expect(foundIn(markdown, "SUB_OUT")).toBe(false);
+    expect(foundIn(markdown, "BASE_NEEDLE")).toBe(true);
   });
 });
 

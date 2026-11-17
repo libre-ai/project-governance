@@ -17,9 +17,17 @@
  *
  * AGENT (`--spec`): a Markdown specification written by an agent. A defect is
  * found when its needle occurs in a cell of a body row of a table inside the
- * single section titled « Constats ». Prose, another section (out of scope
- * included), a fenced code block and the header row of a table do not count. A
- * pipe inside inline code, or escaped as `\|`, stays in its cell.
+ * single section titled « Constats » (ATX or Setext title), the Markdown read
+ * as GitHub renders it (GFM: a table needs no leading pipe). Prose, another
+ * section, a « Hors périmètre » section above or inside it, fenced or indented
+ * code, an HTML block, the header row of a table and the cells a body row
+ * holds beyond the header's count do not count. A pipe inside inline code, or
+ * escaped as `\|`, stays in its cell.
+ *
+ * In the proof of a `parc` measure, only a line that names no other
+ * repository of the state counts: such a line speaks for that repository. A
+ * proof reached through a symbolic link, or that is not a regular file, is an
+ * error.
  *
  * The score is deterministic: a needle is a literal substring, no judgement of
  * whether two texts mean the same thing is ever made.
@@ -28,12 +36,14 @@
  * class (C covered by a detector, U without one), needle (the string that
  * identifies the defect), expected detector or `-`, description. An unexpected
  * header, a wrong column count, an empty or repeated identifier, an unknown
- * class, an empty needle or a truth without any defect is refused.
+ * class, an empty needle or a truth without any defect is refused; a field of
+ * spaces only is empty.
  *
  * NOTHING IS A SILENT ZERO. An instrument not requested is absent from the
  * summary, never reported as 0/y. A missing evidence directory, a measure the
  * score needs that is in error, exempt or absent, or a specification without
- * its section is an error (exit 1), not a missed defect: a defect is RATÉ only
+ * its section or whose section holds no table is an error (exit 1), not a
+ * missed defect: a defect is RATÉ only
  * when the instrument did run and its output does not hold the needle.
  *
  * Output: one table row per defect (trouvé / RATÉ / — for an instrument not
@@ -41,6 +51,9 @@
  * and by class. Exit codes: 0 scored (missed defects included), 1 truth,
  * evidence or specification unreadable, 2 usage.
  */
+
+import { lstat, realpath } from "node:fs/promises";
+import { join, relative, resolve, sep } from "node:path";
 
 import { printable } from "../../ecosystem/fleet-gates";
 import {
@@ -94,15 +107,17 @@ export function parseTruth(text: string): Defect[] {
       );
     }
     const [id = "", defectClass = "", needle = "", detector = "", description = ""] = fields;
-    if (id === "") throw new RecallReadError(`${where}: empty identifier`);
+    // A field of spaces only is empty: a needle of spaces would be found in almost any text.
+    if (id.trim() === "") throw new RecallReadError(`${where}: empty identifier`);
     if (seen.has(id))
       throw new RecallReadError(`${where}: identifier « ${printable(id)} » repeated`);
     seen.add(id);
     if (!(CLASSES as readonly string[]).includes(defectClass)) {
       throw new RecallReadError(`${where}: unknown class « ${printable(defectClass)} »`);
     }
-    if (needle === "") throw new RecallReadError(`${where}: empty needle`);
-    if (detector === "") throw new RecallReadError(`${where}: empty detector (write - for none)`);
+    if (needle.trim() === "") throw new RecallReadError(`${where}: empty needle`);
+    if (detector.trim() === "")
+      throw new RecallReadError(`${where}: empty detector (write - for none)`);
     return {
       id,
       defectClass: defectClass as DefectClass,
@@ -118,9 +133,44 @@ export function parseTruth(text: string): Defect[] {
 /** Reads a proof file of the state; an unreadable proof is an error, not a miss. */
 export type ProofReader = (row: StateRow) => Promise<string>;
 
+/**
+ * The real path of a measure's proof, verified: its real path lies under the
+ * real state directory, no segment below the state directory is a symbolic
+ * link (lstat), even one that stays inside, and the proof is a regular file (a
+ * FIFO would block the read). A proof that leads elsewhere is not evidence
+ * about this state, whatever it holds.
+ */
+async function verifiedProofPath(stateDirectory: string, row: StateRow): Promise<string> {
+  const what = `proof of ${printable(row.detector)} ${printable(row.repository)}`;
+  const root = resolve(stateDirectory);
+  const path = proofFile(root, row.detector, row.repository);
+  let current = root;
+  try {
+    const realRoot = await realpath(root);
+    const real = await realpath(path);
+    if (!real.startsWith(`${realRoot}${sep}`)) {
+      throw new RecallReadError(`${what}: resolves outside the state`);
+    }
+    for (const segment of relative(root, path).split(sep)) {
+      current = join(current, segment);
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) {
+        throw new RecallReadError(`${what}: ${printable(segment)} is a symbolic link`);
+      }
+      if (current === path && !stat.isFile()) {
+        throw new RecallReadError(`${what}: not a regular file`);
+      }
+    }
+    return real;
+  } catch (error) {
+    if (error instanceof RecallReadError) throw error;
+    throw new RecallReadError(`${what} unreadable`);
+  }
+}
+
 export function stateProofReader(stateDirectory: string): ProofReader {
   return async (row) => {
-    const path = proofFile(stateDirectory, row.detector, row.repository);
+    const path = await verifiedProofPath(stateDirectory, row);
     try {
       return await Bun.file(path).text();
     } catch {
@@ -136,6 +186,28 @@ function rowsFor(state: FleetState, repository: string): StateRow[] {
   return state.rows.filter(
     (row) => row.repository === repository || row.repository === PARK_REPOSITORY,
   );
+}
+
+/**
+ * Matches `name` as a whole repository name, not as part of a longer one: no
+ * character of the REPOSITORY_NAME alphabet (or `/`) right before it, none
+ * right after it. A dot right after it continues the name only when a name
+ * character follows; otherwise it ends a sentence.
+ */
+function wholeName(name: string): RegExp {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\/-]/g, "\\$&");
+  return new RegExp(`(?<![A-Za-z0-9._/-])${escaped}(?![A-Za-z0-9_/-]|\\.[A-Za-z0-9._-])`);
+}
+
+/**
+ * Whether a parc proof holds the needle for `repository`. A parc measure
+ * covers the whole fleet, so a line that names another repository of the
+ * inventory speaks for that repository, not this one: it does not count.
+ */
+function parkProofHolds(proof: string, needle: string, others: readonly RegExp[]): boolean {
+  return proof
+    .split("\n")
+    .some((line) => line.includes(needle) && !others.some((other) => other.test(line)));
 }
 
 function notMeasured(row: StateRow): string {
@@ -164,6 +236,10 @@ export async function scoreDetectors(
     };
   }
   const relevant = rowsFor(state, repository);
+  const inventory = new Set([...state.rows.map((row) => row.repository), ...state.heads.keys()]);
+  const others = [...inventory]
+    .filter((name) => name !== repository && name !== PARK_REPOSITORY)
+    .map(wholeName);
   const proofs = new Map<string, Promise<string>>();
   const proof = (row: StateRow): Promise<string> => {
     const key = `${row.detector}\t${row.repository}`;
@@ -197,7 +273,12 @@ export async function scoreDetectors(
       for (const row of candidates) {
         // An informative detector lists things to look at: never a detection.
         if (row.target === null) continue;
-        if ((await proof(row)).includes(defect.needle)) {
+        const text = await proof(row);
+        const holds =
+          row.repository === PARK_REPOSITORY
+            ? parkProofHolds(text, defect.needle, others)
+            : text.includes(defect.needle);
+        if (holds) {
           hit = true;
           break;
         }
@@ -216,6 +297,46 @@ export async function scoreDetectors(
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/;
 const DELIMITER_CELL = /^:?-+:?$/;
+/** A Setext underline: `=` makes a level 1 title, `-` a level 2 one. */
+const SETEXT_UNDERLINE = /^ {0,3}(=+|-+)[ \t]*$/;
+const THEMATIC_BREAK = /^ {0,3}(?:(?:\*[ \t]*){3,}|(?:-[ \t]*){3,}|(?:_[ \t]*){3,})$/;
+const BLOCK_QUOTE = /^ {0,3}>/;
+const LIST_ITEM = /^ {0,3}(?:[-+*]|\d{1,9}[.)])(?:[ \t]|$)/;
+
+/** A CommonMark HTML block kind: the line that opens it and the one that closes it. */
+interface HtmlBlockKind {
+  readonly start: RegExp;
+  /** A pattern found on the closing line, or `blank` when a blank line ends the block. */
+  readonly end: RegExp | "blank";
+  readonly interruptsParagraph: boolean;
+}
+
+const HTML_BLOCK_TAGS =
+  "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul";
+
+/** The seven HTML block kinds of CommonMark, in its order. */
+const HTML_BLOCKS: readonly HtmlBlockKind[] = [
+  {
+    start: /^ {0,3}<(?:script|pre|style|textarea)(?:[ \t>]|$)/i,
+    end: /<\/(?:script|pre|style|textarea)>/i,
+    interruptsParagraph: true,
+  },
+  { start: /^ {0,3}<!--/, end: /-->/, interruptsParagraph: true },
+  { start: /^ {0,3}<\?/, end: /\?>/, interruptsParagraph: true },
+  { start: /^ {0,3}<![A-Za-z]/, end: />/, interruptsParagraph: true },
+  { start: /^ {0,3}<!\[CDATA\[/, end: /\]\]>/, interruptsParagraph: true },
+  {
+    start: new RegExp(`^ {0,3}</?(?:${HTML_BLOCK_TAGS})(?:[ \\t>]|/>|$)`, "i"),
+    end: "blank",
+    interruptsParagraph: true,
+  },
+  {
+    start:
+      /^ {0,3}(?:<[A-Za-z][A-Za-z0-9-]*(?:[ \t]+[A-Za-z_:][A-Za-z0-9_.:-]*(?:[ \t]*=[ \t]*(?:[^ \t"'=<>`]+|'[^']*'|"[^"]*"))?)*[ \t]*\/?>|<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>)[ \t]*$/,
+    end: "blank",
+    interruptsParagraph: false,
+  },
+];
 
 /**
  * The cells of a table row. An unescaped pipe outside inline code separates
@@ -263,35 +384,92 @@ function isDelimiterRow(line: string): boolean {
   return cells.length > 0 && cells.every((cell) => DELIMITER_CELL.test(cell));
 }
 
-function isSectionTitle(title: string): boolean {
-  return title.trim().replace(/:$/, "").trim().toLowerCase() === "constats";
+type SectionKind = "constats" | "out-of-scope" | "other";
+
+/** A title, case, accents and a final colon aside. */
+function sectionKind(title: string): SectionKind {
+  const plain = title
+    .trim()
+    .replace(/:$/, "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (plain === "constats") return "constats";
+  if (/^hors[ -]perimetre(?![a-z])/.test(plain)) return "out-of-scope";
+  return "other";
+}
+
+/** Leading indentation in columns, a tab advancing to the next multiple of 4. */
+function indentWidth(line: string): number {
+  let width = 0;
+  for (const character of line) {
+    if (character === " ") width += 1;
+    else if (character === "\t") width += 4 - (width % 4);
+    else break;
+  }
+  return width;
+}
+
+/** The HTML block kind `line` opens, if any (kind 7 cannot interrupt a paragraph). */
+function htmlBlockStart(line: string, inParagraph: boolean): HtmlBlockKind | undefined {
+  return HTML_BLOCKS.find(
+    (kind) => kind.start.test(line) && (!inParagraph || kind.interruptsParagraph),
+  );
+}
+
+/** Whether `line` opens another block, which ends a table. */
+function opensBlock(line: string): boolean {
+  return (
+    FENCE.test(line) ||
+    HEADING.test(line) ||
+    THEMATIC_BREAK.test(line) ||
+    BLOCK_QUOTE.test(line) ||
+    LIST_ITEM.test(line) ||
+    htmlBlockStart(line, false) !== undefined
+  );
 }
 
 /**
  * The cells of every body row of every table in the single « Constats »
- * section, fenced code excluded. A specification without that section, or
- * with more than one, is refused.
+ * section, read as GitHub renders the Markdown (GFM). A table is a header row
+ * followed by a delimiter row with as many cells, leading pipe or not; it ends
+ * at a blank line or at the start of another block. Fenced code, indented code
+ * (4 columns or more), HTML blocks, prose, header rows and the cells a body row
+ * holds beyond the header's count (GFM does not render them) do not count. A
+ * section is opened by an ATX or a Setext title and closed by a title of the
+ * same or a higher level; a « Hors périmètre » title, above or inside the
+ * section, puts what it covers out of the count.
+ *
+ * A specification without that section, with more than one, or whose section
+ * holds no table is refused: no table is no measure, not a list of misses.
  */
 export function findingCells(markdown: string): string[] {
   const lines = markdown.split("\n").map((line) => line.replace(/\r$/, ""));
-  let fence: string | null = null;
+  const titles: { readonly level: number; readonly kind: SectionKind }[] = [];
   let sections = 0;
-  let sectionLevel: number | null = null;
-  let block: string[] = [];
+  let tables = 0;
+  let fence: string | null = null;
+  let html: HtmlBlockKind | null = null;
+  let paragraph: string[] = [];
+  let table: { readonly columns: number; readonly counted: boolean } | null = null;
   const cells: string[] = [];
 
-  const flush = (): void => {
-    // A table is a header row followed by a delimiter row; anything else is prose.
-    if (block.length >= 2 && isDelimiterRow(block[1] ?? "")) {
-      for (const row of block.slice(2)) cells.push(...splitRow(row));
-    }
-    block = [];
+  const counting = (): boolean =>
+    titles.some((title) => title.kind === "constats") &&
+    !titles.some((title) => title.kind === "out-of-scope");
+
+  const openTitle = (level: number, text: string): void => {
+    while ((titles.at(-1)?.level ?? 0) >= level) titles.pop();
+    const kind = sectionKind(text);
+    const outOfScope = titles.some((title) => title.kind === "out-of-scope");
+    if (kind === "constats" && !outOfScope) sections += 1;
+    titles.push({ level, kind });
   };
 
   for (const line of lines) {
-    const fenceMatch = FENCE.exec(line);
     if (fence !== null) {
-      const closing = fenceMatch?.[1];
+      const closing = FENCE.exec(line)?.[1];
       if (
         closing !== undefined &&
         closing[0] === fence[0] &&
@@ -302,33 +480,74 @@ export function findingCells(markdown: string): string[] {
       }
       continue;
     }
-    if (fenceMatch?.[1] !== undefined) {
-      flush();
-      fence = fenceMatch[1];
+    if (html !== null) {
+      if (html.end === "blank" ? line.trim() === "" : html.end.test(line)) html = null;
+      continue;
+    }
+    const blank = line.trim() === "";
+    const indented = indentWidth(line) >= 4;
+    if (table !== null) {
+      if (!blank && !indented && !opensBlock(line)) {
+        if (table.counted) cells.push(...splitRow(line).slice(0, table.columns));
+        continue;
+      }
+      table = null;
+    }
+    if (blank) {
+      paragraph = [];
+      continue;
+    }
+    if (indented) {
+      // Indented code cannot interrupt a paragraph: there the line continues it.
+      if (paragraph.length > 0) paragraph.push(line);
+      continue;
+    }
+    const underline = SETEXT_UNDERLINE.exec(line)?.[1];
+    if (paragraph.length > 0 && underline !== undefined) {
+      openTitle(underline.startsWith("=") ? 1 : 2, paragraph.join(" "));
+      paragraph = [];
+      continue;
+    }
+    const opening = FENCE.exec(line)?.[1];
+    if (opening !== undefined) {
+      paragraph = [];
+      fence = opening;
       continue;
     }
     const heading = HEADING.exec(line);
     if (heading !== null) {
-      flush();
-      const level = heading[1]?.length ?? 1;
-      if (sectionLevel !== null && level <= sectionLevel) sectionLevel = null;
-      if (isSectionTitle(heading[2] ?? "")) {
-        sections += 1;
-        sectionLevel = level;
+      paragraph = [];
+      openTitle(heading[1]?.length ?? 1, heading[2] ?? "");
+      continue;
+    }
+    const htmlKind = htmlBlockStart(line, paragraph.length > 0);
+    if (htmlKind !== undefined) {
+      paragraph = [];
+      html = htmlKind.end !== "blank" && htmlKind.end.test(line) ? null : htmlKind;
+      continue;
+    }
+    if (THEMATIC_BREAK.test(line) || BLOCK_QUOTE.test(line) || LIST_ITEM.test(line)) {
+      paragraph = [];
+      continue;
+    }
+    const header = paragraph.at(-1);
+    if (header !== undefined && isDelimiterRow(line)) {
+      const columns = splitRow(line).length;
+      if (splitRow(header).length === columns) {
+        const counted = counting();
+        if (counted) tables += 1;
+        table = { columns, counted };
+        paragraph = [];
+        continue;
       }
-      continue;
     }
-    if (sectionLevel !== null && line.trim().startsWith("|")) {
-      block.push(line);
-      continue;
-    }
-    flush();
+    paragraph.push(line);
   }
-  flush();
   if (sections === 0) throw new RecallReadError("specification: no « Constats » section");
   if (sections > 1) {
     throw new RecallReadError(`specification: ${sections} « Constats » sections, one expected`);
   }
+  if (tables === 0) throw new RecallReadError("specification: « Constats » holds no table");
   return cells;
 }
 

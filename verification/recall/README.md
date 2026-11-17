@@ -25,8 +25,8 @@ A TSV table, header exactly `id	classe	aiguille	détecteur	description`:
 | `description` | free text |
 
 A truth with an unexpected header, a wrong column count, an empty or repeated
-identifier, an unknown class, an empty needle, or no defect at all, is refused
-(exit 1).
+identifier, an unknown class, an empty needle (spaces only included), or no
+defect at all, is refused (exit 1).
 
 ## Instruments
 
@@ -36,12 +36,18 @@ identifier, an unknown class, an empty needle, or no defect at all, is refused
   repository, or for the whole fleet (a `parc` measure). With `-`, the proof of
   any detector with an integer target counts. The proof of an informative
   detector (target `info`) never counts — a list of things to look at is not a
-  detection — and neither does the proof of another repository.
-- **Agent** (`--spec`): a Markdown specification. A defect is found when its
-  needle occurs in a cell of a body row of a table in the single section titled
-  `Constats`. Prose, other sections (out of scope included), fenced code blocks
-  and header rows do not count; a pipe inside inline code, or written `\|`,
-  stays in its cell.
+  detection — and neither does the proof of another repository. In a `parc`
+  proof, a line that names another repository of the state (as a whole
+  `owner/name`) speaks for that repository and does not count. A proof reached
+  through a symbolic link, or that is not a regular file, is an error.
+- **Agent** (`--spec`): a Markdown specification, read as GitHub renders it
+  (GFM). A defect is found when its needle occurs in a cell of a body row of a
+  table in the single section titled `Constats` (ATX `## Constats` or Setext
+  title); a table needs no leading pipe. Prose, other sections, a
+  `Hors périmètre` section above or inside `Constats`, fenced or indented code
+  blocks, HTML blocks (comments included), header rows and the cells a row holds
+  beyond the header's count do not count; a pipe inside inline code, or written
+  `\|`, stays in its cell. A `Constats` section without any table is an error.
 
 ## Output and exit codes
 
@@ -53,5 +59,5 @@ as zero.
 | Code | Meaning |
 | --- | --- |
 | 0 | scored (missed defects included) |
-| 1 | truth, evidence or specification unreadable — including an evidence directory that is absent, a measure the score needs that is in error, exempt or missing, or a specification without its `Constats` section: none of these is a missed defect |
+| 1 | truth, evidence or specification unreadable — including an evidence directory that is absent, a measure the score needs that is in error, exempt or missing, a proof through a symbolic link, or a specification without its `Constats` section or without a table in it: none of these is a missed defect |
 | 2 | usage: no `--evidence` nor `--spec`, unknown option, repository not `owner/name` |
