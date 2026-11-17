@@ -10,11 +10,19 @@
 # One tool, one threshold, no parameter: an error-severity finding is red; a
 # warning, an info or a style note is not. There is no exclusion list.
 #
+# The threshold is set here and nowhere else: shellcheck runs with `--norc`, so
+# a `.shellcheckrc` of the repository under check (or of its parents, or of the
+# home directory) cannot disable checks for the whole tree, and SHELLCHECK_OPTS
+# is removed from the environment of the launcher for the same reason. An
+# in-line `# shellcheck disable=SCxxxx` directive in a script stays possible:
+# it is visible in the reviewed diff, next to the line it silences.
+#
 # Environment:
 #   SHELLCHECK_IMAGE  required. `<repository>@sha256:<64 hex>`. A tag is
 #                     refused: the verdict of a tagged image changes with time.
 #   SHELLCHECK_BIN    optional. One executable run in place of the container,
-#                     with the same arguments (`--severity=error -- <files>`).
+#                     with the same arguments
+#                     (`--norc --severity=error -- <files>`).
 #                     It exists for the tests; the image is validated anyway.
 #
 # Exit codes:
@@ -74,10 +82,11 @@ lint_tracked() {
   fi
 
   if [ -n "${SHELLCHECK_BIN:-}" ]; then
-    "$SHELLCHECK_BIN" --severity=error -- "${files[@]}" || rc=$?
+    env -u SHELLCHECK_OPTS "$SHELLCHECK_BIN" --norc --severity=error -- "${files[@]}" || rc=$?
   else
+    # The container gets no environment from here, so no SHELLCHECK_OPTS.
     docker run --rm --network none --volume "${root}:/mnt:ro" --workdir /mnt \
-      "$image" --severity=error -- "${files[@]}" || rc=$?
+      "$image" --norc --severity=error -- "${files[@]}" || rc=$?
   fi
 
   case "$rc" in
