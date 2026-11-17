@@ -2,6 +2,7 @@ import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
   createCipheriv,
+  createDecipheriv,
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
@@ -63,17 +64,66 @@ const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
 const PASSPHRASE = "test-only passphrase, forty characters!!";
 const OTHER_PASSPHRASE = "another test-only passphrase, also long enough";
 
-// Bun's node:crypto is built on BoringSSL, which has no chacha20-poly1305;
-// the sealing cases can only run where the cipher exists, and the reverse
-// case asserts the tool fails closed where it does not.
-const AEAD_AVAILABLE = getCiphers().includes("chacha20-poly1305");
+// Sealing is AES-256-GCM, present in every runtime this repository uses, so
+// every sealing case runs. ChaCha20-Poly1305 only serves reading an envelope
+// of the first, unversioned format; Bun's node:crypto (BoringSSL) lacks it, so
+// that one case runs only where the cipher exists, and its reverse case
+// asserts the named refusal where it does not.
+const LEGACY_CIPHER_AVAILABLE = getCiphers().includes("chacha20-poly1305");
+const LEGACY_SKIP_NOTICE =
+  "legacy envelope read skipped: 1, cipher chacha20-poly1305 unavailable in this runtime";
 
-// bun test reports skips as a bare count; the sealing cases go through this
-// helper so the file can say by name how many of them did not run, and why.
-let sealingTestCount = 0;
-function sealingTest(title: string, body: () => void | Promise<void>): void {
-  sealingTestCount += 1;
-  test.skipIf(!AEAD_AVAILABLE)(title, body);
+// Envelope format, from the runbook (docs/security/KEY-CEREMONY-RUNBOOK.md,
+// "Format de l'enveloppe"), written here independently of the tool:
+// version(1) = 0x01 || salt(16) || nonce(12) || ciphertext || tag(16),
+// AES-256-GCM under scrypt(N=16384, r=8, p=1, 32 bytes), header as AAD.
+const SPEC_VERSION = 0x01;
+const SPEC_HEADER_LENGTH = 1 + 16 + 12;
+
+function specSeal(privateKeyPem: string, passphrase: string, withAad = true): Buffer {
+  const salt = randomBytes(16);
+  const nonce = randomBytes(12);
+  const header = Buffer.concat([Buffer.from([SPEC_VERSION]), salt, nonce]);
+  const key = scryptSync(passphrase, salt, 32, {
+    N: 16384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  const cipher = createCipheriv("aes-256-gcm", key, nonce, { authTagLength: 16 });
+  if (withAad) cipher.setAAD(header);
+  const ciphertext = Buffer.concat([cipher.update(privateKeyPem, "utf8"), cipher.final()]);
+  return Buffer.concat([header, ciphertext, cipher.getAuthTag()]);
+}
+
+function specUnseal(envelope: Uint8Array, passphrase: string): string {
+  const bytes = Buffer.from(envelope);
+  const header = bytes.subarray(0, SPEC_HEADER_LENGTH);
+  const key = scryptSync(passphrase, bytes.subarray(1, 17), 32, {
+    N: 16384,
+    r: 8,
+    p: 1,
+    maxmem: 64 * 1024 * 1024,
+  });
+  const decipher = createDecipheriv("aes-256-gcm", key, bytes.subarray(17, 29), {
+    authTagLength: 16,
+  });
+  decipher.setAAD(header);
+  decipher.setAuthTag(bytes.subarray(bytes.length - 16));
+  return Buffer.concat([
+    decipher.update(bytes.subarray(SPEC_HEADER_LENGTH, bytes.length - 16)),
+    decipher.final(),
+  ]).toString("utf8");
+}
+
+/** The `code` of the error `body` throws, or null when it does not throw. */
+function thrownCode(body: () => unknown): string | null {
+  try {
+    body();
+  } catch (error) {
+    return error instanceof Error && "code" in error ? String(error.code) : "no code";
+  }
+  return null;
 }
 
 const CI_VARIABLES = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE"];
@@ -404,7 +454,7 @@ describe("refusals: exact code, nothing left in --out", () => {
     await refused(() => ["--passphrase-fd", "3"], EXIT_USAGE);
   });
 
-  sealingTest("(11) the envelope write fails: 1, no public file", async () => {
+  test("(11) the envelope write fails: 1, no public file", async () => {
     await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_FAILURE, {
       wrapFs: (base) => ({
         ...base,
@@ -416,23 +466,20 @@ describe("refusals: exact code, nothing left in --out", () => {
     });
   });
 
-  sealingTest(
-    "(12) the envelope read back does not unseal: 1, temporary file removed",
-    async () => {
-      const { h } = await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_FAILURE, {
-        wrapFs: (base) => ({
-          ...base,
-          async writeExclusive(path, data, mode) {
-            const copy = Buffer.from(data);
-            if (path.endsWith(".partial")) copy[copy.length - 1] = (copy.at(-1) ?? 0) ^ 0x01;
-            await base.writeExclusive(path, copy, mode);
-          },
-        }),
-      });
-      expect(h.calls).toContain(`remove ${RFC8032_TEST1_KEY_ID}.partial`);
-      expect(h.calls.some((call) => call.includes(".pub.pem"))).toBe(false);
-    },
-  );
+  test("(12) the envelope read back does not unseal: 1, temporary file removed", async () => {
+    const { h } = await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_FAILURE, {
+      wrapFs: (base) => ({
+        ...base,
+        async writeExclusive(path, data, mode) {
+          const copy = Buffer.from(data);
+          if (path.endsWith(".partial")) copy[copy.length - 1] = (copy.at(-1) ?? 0) ^ 0x01;
+          await base.writeExclusive(path, copy, mode);
+        },
+      }),
+    });
+    expect(h.calls).toContain(`remove ${RFC8032_TEST1_KEY_ID}.partial`);
+    expect(h.calls.some((call) => call.includes(".pub.pem"))).toBe(false);
+  });
 });
 
 describe("passphrase intake through the real process", () => {
@@ -449,20 +496,7 @@ describe("passphrase intake through the real process", () => {
     expect(readdirSync(out)).toEqual([]);
   });
 
-  test.skipIf(AEAD_AVAILABLE)(
-    "without chacha20-poly1305 in the runtime, generation fails closed",
-    () => {
-      const out = freshDir();
-      const passphraseFile = join(freshDir(), "passphrase");
-      writeFileSync(passphraseFile, `${PASSPHRASE}\n`);
-      const result = runTool(["--out", out, "--passphrase-fd", "3"], passphraseFile, {});
-      expect(result.status).toBe(EXIT_FAILURE);
-      expect(result.stdout).toBe("");
-      expect(readdirSync(out)).toEqual([]);
-    },
-  );
-
-  sealingTest("the envelope unseals with the descriptor phrase, not the environment one", () => {
+  test("the envelope unseals with the descriptor phrase, not the environment one", () => {
     const out = freshDir();
     const passphraseFile = join(freshDir(), "passphrase");
     writeFileSync(passphraseFile, `${OTHER_PASSPHRASE}\n`);
@@ -482,57 +516,51 @@ describe("passphrase intake through the real process", () => {
   });
 });
 
-describe("sealing (needs chacha20-poly1305)", () => {
-  sealingTest("seal then unseal returns the key; another passphrase throws", () => {
+describe("sealing", () => {
+  test("seal then unseal returns the key; another passphrase throws", () => {
     const { privateKeyPem } = randomKeyPair();
     const sealed = sealPrivateKey(privateKeyPem, PASSPHRASE);
     expect(unsealPrivateKey(sealed, PASSPHRASE)).toBe(privateKeyPem);
     expect(() => unsealPrivateKey(sealed, OTHER_PASSPHRASE)).toThrow();
   });
 
-  sealingTest(
-    "nominal run: envelope checked and named before the public file, no secret printed",
-    async () => {
-      const out = freshDir();
-      const h = harness({ fd: `${PASSPHRASE}\n` });
-      expect(await main(["--out", out, "--passphrase-fd", "3"], h.io)).toBe(EXIT_OK);
-      const id = RFC8032_TEST1_KEY_ID;
-      expect(h.calls).toEqual([
-        `write ${id}.partial`,
-        `read ${id}.partial`,
-        `rename ${id}.partial ${id}.sealed`,
-        `write ${id}.pub.pem`,
-      ]);
-      expect(readdirSync(out).sort()).toEqual([`${id}.pub.pem`, `${id}.sealed`]);
-      expect(statSync(join(out, `${id}.sealed`)).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(h.stdout()).id).toBe(id);
-      assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
-    },
-  );
+  test("nominal run: envelope checked and named before the public file, no secret printed", async () => {
+    const out = freshDir();
+    const h = harness({ fd: `${PASSPHRASE}\n` });
+    expect(await main(["--out", out, "--passphrase-fd", "3"], h.io)).toBe(EXIT_OK);
+    const id = RFC8032_TEST1_KEY_ID;
+    expect(h.calls).toEqual([
+      `write ${id}.partial`,
+      `read ${id}.partial`,
+      `rename ${id}.partial ${id}.sealed`,
+      `write ${id}.pub.pem`,
+    ]);
+    expect(readdirSync(out).sort()).toEqual([`${id}.pub.pem`, `${id}.sealed`]);
+    expect(statSync(join(out, `${id}.sealed`)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(h.stdout()).id).toBe(id);
+    assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
+  });
 
-  sealingTest(
-    "--verify-sealed: 0 on the right public key, 1 on another or a wrong phrase",
-    async () => {
-      const out = freshDir();
-      expect(
-        await main(["--out", out, "--passphrase-fd", "3"], harness({ fd: PASSPHRASE }).io),
-      ).toBe(EXIT_OK);
-      const sealed = join(out, `${RFC8032_TEST1_KEY_ID}.sealed`);
-      const right = join(out, `${RFC8032_TEST1_KEY_ID}.pub.pem`);
-      const other = join(freshDir(), "other.pub.pem");
-      writeFileSync(other, randomKeyPair().publicKeyPem);
-      const verify = (pem: string, phrase: string) =>
-        main(
-          ["--verify-sealed", sealed, "--public-key", pem, "--passphrase-fd", "3"],
-          harness({ fd: phrase }).io,
-        );
-      expect(await verify(right, PASSPHRASE)).toBe(EXIT_OK);
-      expect(await verify(other, PASSPHRASE)).toBe(EXIT_FAILURE);
-      expect(await verify(right, OTHER_PASSPHRASE)).toBe(EXIT_FAILURE);
-    },
-  );
+  test("--verify-sealed: 0 on the right public key, 1 on another or a wrong phrase", async () => {
+    const out = freshDir();
+    expect(await main(["--out", out, "--passphrase-fd", "3"], harness({ fd: PASSPHRASE }).io)).toBe(
+      EXIT_OK,
+    );
+    const sealed = join(out, `${RFC8032_TEST1_KEY_ID}.sealed`);
+    const right = join(out, `${RFC8032_TEST1_KEY_ID}.pub.pem`);
+    const other = join(freshDir(), "other.pub.pem");
+    writeFileSync(other, randomKeyPair().publicKeyPem);
+    const verify = (pem: string, phrase: string) =>
+      main(
+        ["--verify-sealed", sealed, "--public-key", pem, "--passphrase-fd", "3"],
+        harness({ fd: phrase }).io,
+      );
+    expect(await verify(right, PASSPHRASE)).toBe(EXIT_OK);
+    expect(await verify(other, PASSPHRASE)).toBe(EXIT_FAILURE);
+    expect(await verify(right, OTHER_PASSPHRASE)).toBe(EXIT_FAILURE);
+  });
 
-  sealingTest(
+  test.skipIf(!LEGACY_CIPHER_AVAILABLE)(
     "an envelope sealed the way the first version of the tool did still verifies",
     async () => {
       // Verbatim sealing routine of the tool before this lot, renamed only
@@ -582,6 +610,128 @@ describe("sealing (needs chacha20-poly1305)", () => {
       expect(code).toBe(EXIT_OK);
     },
   );
+
+  test.skipIf(LEGACY_CIPHER_AVAILABLE)(
+    "without chacha20-poly1305, an unversioned envelope is refused by name",
+    async () => {
+      // 163 bytes is the only size the first version produced (16 + 12 +
+      // 119-byte Ed25519 PKCS#8 PEM + 16); the content is never decrypted.
+      const legacyShaped = randomBytes(16 + 12 + 119 + 16);
+      expect(thrownCode(() => unsealPrivateKey(legacyShaped, PASSPHRASE))).toBe(
+        "SEAL_LEGACY_CIPHER_UNAVAILABLE",
+      );
+      const dir = freshDir();
+      writeFileSync(join(dir, "legacy.bin"), legacyShaped);
+      writeFileSync(join(dir, "key.pub.pem"), rfcKeyPair().publicKeyPem);
+      const h = harness({ fd: PASSPHRASE });
+      const code = await main(
+        [
+          "--verify-sealed",
+          join(dir, "legacy.bin"),
+          "--public-key",
+          join(dir, "key.pub.pem"),
+          "--passphrase-fd",
+          "3",
+        ],
+        h.io,
+      );
+      expect(code).toBe(EXIT_FAILURE);
+      expect(h.stderr()).toContain("SEAL_LEGACY_CIPHER_UNAVAILABLE");
+    },
+  );
+});
+
+describe("envelope format: version 0x01, AES-256-GCM, header authenticated", () => {
+  test("the tool's envelope follows the documented layout, read by an independent decoder", () => {
+    const { privateKeyPem } = randomKeyPair();
+    const sealed = Buffer.from(sealPrivateKey(privateKeyPem, PASSPHRASE));
+    expect(sealed[0]).toBe(SPEC_VERSION);
+    expect(sealed.length).toBe(SPEC_HEADER_LENGTH + Buffer.byteLength(privateKeyPem) + 16);
+    expect(specUnseal(sealed, PASSPHRASE)).toBe(privateKeyPem);
+  });
+
+  test("an envelope built from the documented format unseals; without the header as AAD it does not", () => {
+    const { privateKeyPem } = randomKeyPair();
+    expect(unsealPrivateKey(specSeal(privateKeyPem, PASSPHRASE), PASSPHRASE)).toBe(privateKeyPem);
+    expect(
+      thrownCode(() => unsealPrivateKey(specSeal(privateKeyPem, PASSPHRASE, false), PASSPHRASE)),
+    ).toBe("SEAL_AUTH_FAILED");
+  });
+
+  test("altering one header byte (version, salt, nonce) is refused", () => {
+    const sealed = Buffer.from(sealPrivateKey(randomKeyPair().privateKeyPem, PASSPHRASE));
+    const cases: [string, number, string][] = [
+      ["version", 0, "SEAL_UNKNOWN_VERSION"],
+      ["salt, first byte", 1, "SEAL_AUTH_FAILED"],
+      ["salt, last byte", 16, "SEAL_AUTH_FAILED"],
+      ["nonce, first byte", 17, "SEAL_AUTH_FAILED"],
+      ["nonce, last byte", 28, "SEAL_AUTH_FAILED"],
+    ];
+    for (const [where, offset, expected] of cases) {
+      const altered = Buffer.from(sealed);
+      altered[offset] = (altered[offset] ?? 0) ^ 0x01;
+      expect([where, thrownCode(() => unsealPrivateKey(altered, PASSPHRASE))]).toEqual([
+        where,
+        expected,
+      ]);
+    }
+  });
+
+  test("an unknown version byte is refused by name, by the function and by --verify-sealed", async () => {
+    const pair = rfcKeyPair();
+    const sealed = Buffer.from(sealPrivateKey(pair.privateKeyPem, PASSPHRASE));
+    for (const version of [0x00, 0x02, 0xff]) {
+      const other = Buffer.from(sealed);
+      other[0] = version;
+      expect([version, thrownCode(() => unsealPrivateKey(other, PASSPHRASE))]).toEqual([
+        version,
+        "SEAL_UNKNOWN_VERSION",
+      ]);
+    }
+    const dir = freshDir();
+    const unknown = Buffer.from(sealed);
+    unknown[0] = 0x02;
+    writeFileSync(join(dir, "unknown.sealed"), unknown);
+    writeFileSync(join(dir, "key.pub.pem"), pair.publicKeyPem);
+    const h = harness({ fd: PASSPHRASE });
+    const code = await main(
+      [
+        "--verify-sealed",
+        join(dir, "unknown.sealed"),
+        "--public-key",
+        join(dir, "key.pub.pem"),
+        "--passphrase-fd",
+        "3",
+      ],
+      h.io,
+    );
+    expect(code).toBe(EXIT_FAILURE);
+    expect(h.stderr()).toContain("SEAL_UNKNOWN_VERSION");
+  });
+
+  test("two sealings of the same key under the same phrase draw distinct nonces and salts", () => {
+    const { privateKeyPem } = randomKeyPair();
+    const first = Buffer.from(sealPrivateKey(privateKeyPem, PASSPHRASE));
+    const second = Buffer.from(sealPrivateKey(privateKeyPem, PASSPHRASE));
+    expect(first.subarray(17, 29).equals(second.subarray(17, 29))).toBe(false);
+    expect(first.subarray(1, 17).equals(second.subarray(1, 17))).toBe(false);
+  });
+
+  test("an envelope shorter than header and tag is refused by name", () => {
+    expect(
+      thrownCode(() => unsealPrivateKey(new Uint8Array(SPEC_HEADER_LENGTH + 16), PASSPHRASE)),
+    ).toBe("SEAL_TOO_SHORT");
+  });
+
+  test("only an Ed25519 PKCS#8 PEM in its canonical form is sealed", () => {
+    const { privateKeyPem } = randomKeyPair();
+    const x25519 = generateKeyPairSync("x25519", {
+      publicKeyEncoding: { format: "pem", type: "spki" },
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+    }).privateKey;
+    expect(() => sealPrivateKey(x25519, PASSPHRASE)).toThrow();
+    expect(() => sealPrivateKey(privateKeyPem.trimEnd(), PASSPHRASE)).toThrow();
+  });
 });
 
 describe("usage errors never echo an argument", () => {
@@ -656,19 +806,12 @@ describe("terminal handling", () => {
   });
 });
 
-test(
-  AEAD_AVAILABLE
-    ? `sealing tests run: ${sealingTestCount}`
-    : `sealing tests skipped: ${sealingTestCount}, cipher chacha20-poly1305 unavailable in this runtime`,
-  () => {
-    expect(sealingTestCount).toBeGreaterThan(0);
-  },
-);
+// bun test reports skips as a bare count: the one case that depends on the
+// runtime says by name whether it ran, in a test title and on stderr.
+test(LEGACY_CIPHER_AVAILABLE ? "legacy envelope read: ran" : LEGACY_SKIP_NOTICE, () => {
+  expect(typeof LEGACY_CIPHER_AVAILABLE).toBe("boolean");
+});
 
 afterAll(() => {
-  if (!AEAD_AVAILABLE) {
-    console.warn(
-      `sealing tests skipped: ${sealingTestCount}, cipher chacha20-poly1305 unavailable in this runtime`,
-    );
-  }
+  if (!LEGACY_CIPHER_AVAILABLE) console.warn(LEGACY_SKIP_NOTICE);
 });

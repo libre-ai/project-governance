@@ -53,10 +53,10 @@ Ce runbook vous guide pas-à-pas pour générer, sceller et enregistrer une clé
 
    Le support de sortie (`--out`) ne doit pas se trouver dans ce clone ni dans aucun dépôt git : l'outil remonte les parents du répertoire de sortie et refuse (code 4) s'il y trouve une entrée `.git`.
 
-2. Vérifiez la présence du script `tools/security/keygen-ceremony.ts` et du runtime Bun.
+2. Vérifiez la présence du script `tools/security/keygen-ceremony.ts` et du Bun épinglé (voir Dépannage, « Quel runtime pour la cérémonie ? »).
    ```bash
    ls tools/security/keygen-ceremony.ts
-   which bun || echo "Bun non trouvé: installer https://bun.sh"
+   bun --revision   # doit être égal à : jq -r .revision toolchains/bun.json
    ```
 
 ### Étape 2 : Vérifier l'isolation réseau avant chaque étape
@@ -115,7 +115,31 @@ Un échec à n'importe quelle étape supprime ce que l'outil a écrit et sort en
 
 ### Étape 5 : Saisir la phrase de passe maître
 
-L'enveloppe est scellée par scrypt (N=16384, r=8, p=1) puis ChaCha20-Poly1305, sous la phrase de passe maître que vous saisissez pendant l'étape 3.
+L'enveloppe est scellée par scrypt (N=16384, r=8, p=1) puis AES-256-GCM, sous la phrase de passe maître que vous saisissez pendant l'étape 3.
+
+#### Format de l'enveloppe
+
+Version `0x01`, la seule que l'outil écrit :
+
+```
+version (1 octet, 0x01) || sel (16) || nonce (12) || chiffré || étiquette (16)
+```
+
+- clé de 32 octets dérivée par scrypt (N=16384, r=8, p=1) de la phrase de passe et du sel ;
+- AES-256-GCM, nonce aléatoire de 12 octets tiré à chaque scellement, étiquette de 16 octets ;
+- les 29 octets d'en-tête (version, sel, nonce) sont authentifiés comme données associées ;
+- le clair est la clé privée Ed25519 en PEM PKCS#8 (119 octets) : une enveloppe fait 164 octets.
+
+À la lecture (`--verify-sealed`, et le contrôle que fait l'outil avant de nommer l'enveloppe), un refus porte un code nommé sur la sortie d'erreur, toujours en code de sortie 1 :
+
+| Code | Cause |
+| --- | --- |
+| `SEAL_UNKNOWN_VERSION` | premier octet autre que `0x01` |
+| `SEAL_AUTH_FAILED` | mauvaise phrase de passe, ou octet altéré (en-tête, chiffré ou étiquette) |
+| `SEAL_TOO_SHORT` | fichier plus court que l'en-tête et l'étiquette |
+| `SEAL_LEGACY_CIPHER_UNAVAILABLE` | ancienne enveloppe, chiffrement indisponible dans ce runtime (voir Dépannage) |
+
+**Ancienne enveloppe.** La première version de l'outil écrivait `sel (16) || nonce (12) || chiffré || étiquette (16)` en ChaCha20-Poly1305, sans octet de version. Elle se reconnaît à sa longueur, 163 octets (le même PEM de 119 octets, sans l'octet de version). L'outil n'en produit plus ; il la lit encore là où le runtime fournit `chacha20-poly1305`, et la refuse ailleurs avec `SEAL_LEGACY_CIPHER_UNAVAILABLE`.
 
 1. **Choisir une phrase de passe maître** (minimum 32 caractères, mélange alphanumériques + symboles) :
 
@@ -312,15 +336,27 @@ Une fois le manifest enregistré et le workflow de cérémonial approuvé :
 
 **R :** Vérifiez que vous n'êtes pas en environment CI (GitHub Actions, GitLab CI, etc.). Le script détecte `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `TRAVIS`, `BUILDKITE` et sort en code 4. Exécutez localement sur votre machine air-gappée.
 
-### Q : Le scellement échoue (code 1, chiffrement inconnu)
+### Q : Quel runtime pour la cérémonie ?
 
-**R :** Le scellement exige `chacha20-poly1305` dans `node:crypto`. Mesure du 2026-11-17 : Bun 1.4.4 et 1.3.14 (BoringSSL) ne l'ont pas, Node 26 (OpenSSL) l'a. L'outil sort alors en code 1 sans rien écrire. Vérifier avant la cérémonie : `bun -e 'console.log(require("node:crypto").getCiphers().includes("chacha20-poly1305"))'` doit afficher `true`.
+**R :** Le Bun épinglé par ce dépôt suffit (`toolchains/bun.json`, champs `version` et `revision`). Le scellement n'emploie que scrypt et AES-256-GCM de `node:crypto`, présents dans ce Bun (décision du propriétaire du 2026-11-17). Vérification avant la cérémonie, qui doit afficher `true` :
 
-**La cérémonie ne tourne pas sous le Bun épinglé par ce dépôt** (`jq -r .packageManager package.json`) tant que le propriétaire n'a pas choisi le schéma de scellement : ce Bun n'a pas `chacha20-poly1305`. Le changement de schéma ou de runtime est une décision en attente, pas un réglage à faire pendant la cérémonie. Pour la même raison, les tests de scellement de `tools/security/keygen-ceremony.test.ts` sont sautés sous Bun et ne tournent dans aucune CI ; `bun test` l'imprime nommément (`sealing tests skipped: <n>, cipher chacha20-poly1305 unavailable in this runtime`).
+```bash
+bun -e 'console.log(require("node:crypto").getCiphers().includes("aes-256-gcm"))'
+```
+
+Les tests de scellement de `tools/security/keygen-ceremony.test.ts` tournent sous ce Bun. Un seul cas dépend du runtime : la lecture d'une ancienne enveloppe ChaCha20-Poly1305, sautée là où ce chiffrement manque, ce que `bun test` imprime nommément (`legacy envelope read skipped: 1, cipher chacha20-poly1305 unavailable in this runtime`) ; le cas inverse, le refus nommé, tourne alors à sa place.
+
+### Q : `--verify-sealed` refuse avec `SEAL_LEGACY_CIPHER_UNAVAILABLE`
+
+**R :** Le fichier est une ancienne enveloppe (163 octets, sans octet de version), scellée en ChaCha20-Poly1305, et le runtime n'a pas ce chiffrement. Mesure du 2026-11-17 : Bun 1.4.0 (épinglé) et 1.4.4 (BoringSSL) ne l'ont pas, Node 26 (OpenSSL) l'a. Aucune clé n'a été enregistrée avec ce format ; s'il en existe une, la vérifier sous un runtime qui fournit `chacha20-poly1305`, puis refaire la cérémonie pour obtenir une enveloppe de version `0x01`.
+
+### Q : `--verify-sealed` refuse avec `SEAL_UNKNOWN_VERSION`
+
+**R :** Le premier octet du fichier n'est pas `0x01` : fichier d'un autre outil, d'une version plus récente, ou altéré. Ne pas réessayer avec une autre phrase de passe ; comparer l'empreinte SHA-256 du fichier à celle notée à l'étape 7.
 
 ### Q : Je n'ai pas de Bun installé
 
-**R :** Téléchargez Bun via `https://bun.sh` sur une autre machine, transférez le binaire sur USB, puis copiez-le sur votre machine air-gappée avant la cérémonial.
+**R :** Sur une machine connectée, téléchargez l'archive du Bun épinglé depuis la release durable nommée dans `toolchains/bun.json` (`durableRelease.tag`), vérifiez son SHA-256 contre `assets.<plateforme>.sha256` du même fichier, transférez-la sur USB, puis contrôlez `bun --revision` contre le champ `revision` sur la machine air-gappée avant la cérémonie.
 
 ### Q : J'ai perdu le mot de passe maître
 

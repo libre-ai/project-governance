@@ -6,6 +6,7 @@ import {
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
+  getCiphers,
   randomBytes,
   scryptSync,
 } from "node:crypto";
@@ -34,9 +35,13 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
  *   bun tools/security/keygen-ceremony.ts --verify-sealed <file> --public-key <pem> [--passphrase-fd <n>]
  *
  * Exit codes: 0 success, 1 tool failure (write, unseal, mismatch, public key
- * shape, sealing cipher missing from the runtime), 2 usage, 4 refusal (CI
- * detected outside --dev-key, output under git, existing target, passphrase
- * refused).
+ * shape), 2 usage, 4 refusal (CI detected outside --dev-key, output under
+ * git, existing target, passphrase refused). An envelope that does not unseal
+ * names its reason with a SealError code on standard error (exit 1).
+ *
+ * Sealing: envelope version 0x01, scrypt then AES-256-GCM (layout below),
+ * which the pinned Bun provides; an envelope of the first, unversioned
+ * ChaCha20-Poly1305 format is still read where the runtime has that cipher.
  *
  * The passphrase is read from the controlling terminal without echo (twice,
  * both entries equal) or from an inherited descriptor (--passphrase-fd). It is
@@ -107,14 +112,45 @@ const DEFAULT_PURPOSE = "AgentContributorLineage v1, Proof v1 origin signatures"
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
 const ED25519_SPKI_LENGTH = 44;
 
-// Envelope layout, unchanged since the first version of this tool so an
-// earlier envelope still unseals: salt(16) || nonce(12) || ciphertext || tag(16).
-const SEAL_CIPHER = "chacha20-poly1305";
+// Envelope, version 0x01 (the only one this tool writes):
+//   version(1) = 0x01 || salt(16) || nonce(12) || ciphertext || tag(16)
+// AES-256-GCM under scrypt(passphrase, salt), the 29-byte header as AAD.
+// AES-256-GCM because the pinned Bun (BoringSSL) has no ChaCha20-Poly1305.
+//
+// The first version of the tool wrote no version byte:
+//   salt(16) || nonce(12) || ciphertext || tag(16), ChaCha20-Poly1305.
+// It only ever sealed an Ed25519 PKCS#8 PEM (119 bytes), so its envelopes are
+// exactly 163 bytes, and that length is how one is recognised. A version 0x01
+// envelope of the same key is 164 bytes, and sealPrivateKey seals nothing but
+// that canonical PEM, so the two lengths never meet.
+const SEAL_VERSION_AES_256_GCM = 0x01;
+const SEAL_CIPHER = "aes-256-gcm";
+const LEGACY_SEAL_CIPHER = "chacha20-poly1305";
+const VERSION_LENGTH = 1;
 const SALT_LENGTH = 16;
 const NONCE_LENGTH = 12;
 const TAG_LENGTH = 16;
+const HEADER_LENGTH = VERSION_LENGTH + SALT_LENGTH + NONCE_LENGTH;
+const ED25519_PKCS8_PEM_LENGTH = 119;
+const LEGACY_ENVELOPE_LENGTH = SALT_LENGTH + NONCE_LENGTH + ED25519_PKCS8_PEM_LENGTH + TAG_LENGTH;
 const SCRYPT_KEY_LENGTH = 32;
 const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
+
+export type SealErrorCode =
+  | "SEAL_TOO_SHORT"
+  | "SEAL_UNKNOWN_VERSION"
+  | "SEAL_LEGACY_CIPHER_UNAVAILABLE"
+  | "SEAL_AUTH_FAILED";
+
+/** Why an envelope does not unseal; `code` is stable, the message is for humans. */
+export class SealError extends Error {
+  readonly code: SealErrorCode;
+  constructor(code: SealErrorCode, message: string) {
+    super(`${code}: ${message}`);
+    this.name = "SealError";
+    this.code = code;
+  }
+}
 
 /** Key identifier: lowercase hex SHA-256 of the 32 raw public-key bytes. */
 export function deriveKeyId(rawPublicKey: Uint8Array): string {
@@ -169,37 +205,95 @@ function deriveSealingKey(passphrase: string, salt: Uint8Array): Buffer {
   return scryptSync(passphrase, salt, SCRYPT_KEY_LENGTH, SCRYPT_OPTIONS);
 }
 
-/** scrypt (N=16384, r=8, p=1) then ChaCha20-Poly1305: salt || nonce || ciphertext || tag. */
+/** Throws unless `pkcs8Pem` is an Ed25519 key in the PEM form generateKeyPairSync writes. */
+function assertCanonicalEd25519Pem(pkcs8Pem: string): void {
+  const privateKey = createPrivateKey({ key: pkcs8Pem, format: "pem" });
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("only an Ed25519 private key is sealed");
+  }
+  const canonical = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+  if (canonical !== pkcs8Pem || Buffer.byteLength(pkcs8Pem) !== ED25519_PKCS8_PEM_LENGTH) {
+    throw new Error("the private key PEM is not in its canonical PKCS#8 form");
+  }
+}
+
+/** Envelope version 0x01: scrypt (N=16384, r=8, p=1) then AES-256-GCM, header as AAD. */
 export function sealPrivateKey(pkcs8Pem: string, passphrase: string): Uint8Array {
+  assertCanonicalEd25519Pem(pkcs8Pem);
   const salt = randomBytes(SALT_LENGTH);
   const nonce = randomBytes(NONCE_LENGTH);
+  const header = Buffer.concat([Buffer.from([SEAL_VERSION_AES_256_GCM]), salt, nonce]);
   const key = deriveSealingKey(passphrase, salt);
   try {
     const cipher = createCipheriv(SEAL_CIPHER, key, nonce, { authTagLength: TAG_LENGTH });
+    cipher.setAAD(header);
     const ciphertext = Buffer.concat([cipher.update(pkcs8Pem, "utf8"), cipher.final()]);
-    return Buffer.concat([salt, nonce, ciphertext, cipher.getAuthTag()]);
+    return Buffer.concat([header, ciphertext, cipher.getAuthTag()]);
   } finally {
     key.fill(0);
   }
 }
 
-/** Inverse of sealPrivateKey; throws on a wrong passphrase or an altered envelope. */
-export function unsealPrivateKey(sealed: Uint8Array, passphrase: string): string {
-  if (sealed.length <= SALT_LENGTH + NONCE_LENGTH + TAG_LENGTH) {
-    throw new Error("sealed envelope is too short");
-  }
-  const salt = sealed.subarray(0, SALT_LENGTH);
-  const nonce = sealed.subarray(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH);
-  const ciphertext = sealed.subarray(SALT_LENGTH + NONCE_LENGTH, sealed.length - TAG_LENGTH);
-  const tag = sealed.subarray(sealed.length - TAG_LENGTH);
-  const key = deriveSealingKey(passphrase, salt);
+function openEnvelope(
+  cipherName: typeof SEAL_CIPHER | typeof LEGACY_SEAL_CIPHER,
+  passphrase: string,
+  parts: { salt: Uint8Array; nonce: Uint8Array; aad: Uint8Array | null; body: Uint8Array },
+): string {
+  const ciphertext = parts.body.subarray(0, parts.body.length - TAG_LENGTH);
+  const tag = parts.body.subarray(parts.body.length - TAG_LENGTH);
+  const key = deriveSealingKey(passphrase, parts.salt);
   try {
-    const decipher = createDecipheriv(SEAL_CIPHER, key, nonce, { authTagLength: TAG_LENGTH });
+    const options = { authTagLength: TAG_LENGTH };
+    // One call per literal: node's typings pick the AEAD overload by the
+    // algorithm's literal type, and a union matches none of them.
+    const decipher =
+      cipherName === SEAL_CIPHER
+        ? createDecipheriv(SEAL_CIPHER, key, parts.nonce, options)
+        : createDecipheriv(LEGACY_SEAL_CIPHER, key, parts.nonce, options);
+    if (parts.aad !== null) decipher.setAAD(parts.aad);
     decipher.setAuthTag(tag);
-    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+    try {
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+    } catch {
+      throw new SealError("SEAL_AUTH_FAILED", "wrong passphrase or altered envelope");
+    }
   } finally {
     key.fill(0);
   }
+}
+
+/** Inverse of sealPrivateKey; throws a SealError on anything that does not unseal. */
+export function unsealPrivateKey(sealed: Uint8Array, passphrase: string): string {
+  if (sealed.length === LEGACY_ENVELOPE_LENGTH) {
+    if (!getCiphers().includes(LEGACY_SEAL_CIPHER)) {
+      throw new SealError(
+        "SEAL_LEGACY_CIPHER_UNAVAILABLE",
+        `legacy envelope (no version byte, ${LEGACY_SEAL_CIPHER}): cipher unavailable in this runtime`,
+      );
+    }
+    return openEnvelope(LEGACY_SEAL_CIPHER, passphrase, {
+      salt: sealed.subarray(0, SALT_LENGTH),
+      nonce: sealed.subarray(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH),
+      aad: null,
+      body: sealed.subarray(SALT_LENGTH + NONCE_LENGTH),
+    });
+  }
+  if (sealed.length <= HEADER_LENGTH + TAG_LENGTH) {
+    throw new SealError("SEAL_TOO_SHORT", "the envelope is shorter than its header and tag");
+  }
+  const version = sealed[0];
+  if (version !== SEAL_VERSION_AES_256_GCM) {
+    throw new SealError(
+      "SEAL_UNKNOWN_VERSION",
+      `envelope version ${String(version)} is not one this tool reads`,
+    );
+  }
+  return openEnvelope(SEAL_CIPHER, passphrase, {
+    salt: sealed.subarray(VERSION_LENGTH, VERSION_LENGTH + SALT_LENGTH),
+    nonce: sealed.subarray(VERSION_LENGTH + SALT_LENGTH, HEADER_LENGTH),
+    aad: sealed.subarray(0, HEADER_LENGTH),
+    body: sealed.subarray(HEADER_LENGTH),
+  });
 }
 
 export function registryEntry(input: {
@@ -517,9 +611,7 @@ async function runVerify(mode: Extract<Mode, { kind: "verify" }>, io: CeremonyIo
     const envelope = await io.fs.readFile(resolve(mode.sealed));
     unsealed = rawPublicKeyFromPrivatePem(unsealPrivateKey(envelope, passphrase.value));
   } catch (error) {
-    io.stderr(
-      `cannot unseal (wrong passphrase, altered envelope or missing cipher): ${describe(error)}\n`,
-    );
+    io.stderr(`cannot unseal: ${describe(error)}\n`);
     return EXIT_FAILURE;
   }
   if (!Buffer.from(unsealed).equals(Buffer.from(expected))) {
