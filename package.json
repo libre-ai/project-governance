@@ -60,6 +60,7 @@
     "check:pr-door": "bun run check:bun:runtime && bun tools/quality/check-pr-door.ts",
     "check:pr-negatives": "bun run check:bun:runtime && bun tools/quality/check-pr-negatives.ts",
     "check:work-package-link": "bun run check:bun:runtime && bun tools/quality/check-work-package-link.ts",
+    "check:prd-decomposition": "bun run check:bun:runtime && bun tools/quality/check-prd-decomposition.ts",
     "check:doctrine": "bun run check:bun:runtime && bash tools/quality/check-doctrine-governance.sh",
     "check:context-hygiene": "bun run check:bun:runtime && bash tools/quality/check-context-hygiene.sh",
     "check:reuse": "bun run check:bun:runtime && uv run --no-project --with-requirements tools/licensing/requirements.txt reuse lint",
