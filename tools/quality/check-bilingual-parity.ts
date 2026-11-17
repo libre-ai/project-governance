@@ -24,11 +24,19 @@
 //                  « 1.5 » diffèrent (« 1.10 » et « 1.1 » sont deux versions).
 //                  Écrire « 1 500 » ne dépend d'aucune langue.
 //   exigences      les mots-clés RFC 2119, multi-ensemble de CLASSES : MUST, SHALL
-//                  et DOIT sont une même classe ; MUST NOT et NE DOIT PAS une autre
+//                  et DOIT sont une même classe ; MUST NOT et NE DOIT PAS une autre.
+//                  Cherchés sur un paragraphe entier, lignes jointes et blancs
+//                  Unicode réduits : « MUST⏎NOT » et « MUST NOT » sont des MUST NOT
+//
+// Code en ligne, nombres et exigences se comparent SECTION PAR SECTION (une section
+// va d'un titre au suivant) quand les titres sont alignés : un seuil ou un mot-clé
+// échangé entre deux sections se voit. Titres désalignés : comparaison globale.
 //
 // Les blocs de code ne contribuent ni aux nombres ni aux mots-clés : leur octet
-// compte déjà dans `blocs`. Une fin de ligne CRLF est lue comme LF : ce n'est pas
-// du contenu traduit.
+// compte déjà dans `blocs`. Une clôture est reconnue à toute indentation et derrière
+// « > » ou une puce. Une fin de ligne CRLF est lue comme LF : ce n'est pas du contenu
+// traduit. Un texte portant un contrôle C0 autre que tabulation, LF, CR (UTF-16 lu
+// comme UTF-8, par exemple) sort en 2.
 //
 // CE QU'ELLE IMPRIME. Un compte a/b par catégorie, le nombre de violations, et une
 // ligne par catégorie en défaut (première différence localisée par ligne). Deux
@@ -43,8 +51,7 @@
 // Usage : bun tools/quality/check-bilingual-parity.ts <a> <b> [--lang-a=en|fr] [--lang-b=en|fr]
 // (codes 0, 1, 2 ; une option ou une langue inconnue sort en 2)
 
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, stat } from "node:fs/promises";
 
 type Category =
   | "version"
@@ -83,6 +90,8 @@ interface ParityResult {
 interface Occurrence {
   readonly value: string;
   readonly line: number;
+  /** 0 avant le premier titre, sinon le rang (1, 2…) du titre qui ouvre la section. */
+  readonly section: number;
 }
 
 interface Heading {
@@ -113,8 +122,21 @@ interface ParsedText {
   readonly requirements: readonly Occurrence[];
 }
 
-const OPENING_FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
-const CLOSING_FENCE = /^ {0,3}(`{3,}|~{3,})\s*$/;
+// Une clôture est reconnue quelle que soit son indentation et derrière un préfixe de
+// conteneur (citation « > », puce de liste) : un bloc dans une liste ou une citation
+// porte autant de commandes qu'un bloc de premier niveau, et un bloc non reconnu
+// verrait son contenu échapper à toute comparaison. Plus strict que CommonMark (qui
+// lit un bloc indenté de 4 espaces hors liste comme code indenté) : une clôture lue
+// à tort se compare à l'octet des deux côtés, elle ne fait rien passer.
+// Chaque répétition commence par un caractère non blanc : coût linéaire.
+const CONTAINER_PREFIX = /^[ \t]*(?:(?:>|[-*+]|\d{1,9}[.)])[ \t]*)*/;
+const OPENING_FENCE = /^(`{3,}|~{3,})(.*)$/;
+const CLOSING_FENCE = /^(`{3,}|~{3,})[ \t]*$/;
+
+/** La ligne sans son préfixe de conteneur (indentation, « > », puce). */
+function withoutContainer(raw: string): string {
+  return raw.slice(CONTAINER_PREFIX.exec(raw)?.[0].length ?? 0);
+}
 // Le titre est capturé en bloc ; la séquence de fermeture est retirée par
 // headingTitle(). Un seul quantificateur sur les blancs et aucun `.*?` : un texte
 // soumis en MR est une entrée externe, la ligne ne doit coûter que linéairement.
@@ -182,7 +204,6 @@ const REQUIREMENT_BY_TOKEN = new Map<string, string>(
 const REQUIREMENT_TOKENS = new RegExp(
   `(?<![\\p{L}\\p{N}_])(${[...REQUIREMENT_BY_TOKEN.keys()]
     .sort((x, y) => y.length - x.length)
-    .map((token) => token.replace(/ /g, " +"))
     .join("|")})(?![\\p{L}\\p{N}_])`,
   "gu",
 );
@@ -240,6 +261,43 @@ function parseText(text: string, lang: Language): ParsedText {
   // Ligne précédente hors bloc de code : l'en-tête d'un tableau sans barre initiale
   // ne se reconnaît qu'à la ligne de délimitation qui le suit.
   let previous = "";
+  let section = 0;
+
+  // Les mots-clés se cherchent sur un paragraphe entier, lignes jointes : « MUST » en
+  // fin de ligne suivi de « NOT » en tête de la suivante est une interdiction. Chaque
+  // ligne y entre sans son code en ligne ni son préfixe de citation, ses blancs
+  // Unicode (insécable, fine insécable, tabulation) réduits à une espace.
+  let paragraph: { text: string; starts: number[]; lines: number[] } | null = null;
+  const flushParagraph = () => {
+    if (paragraph === null) return;
+    const { text, starts, lines: origins } = paragraph;
+    paragraph = null;
+    // Les correspondances arrivent dans l'ordre : l'index de ligne ne fait qu'avancer.
+    let part = 0;
+    for (const match of text.matchAll(REQUIREMENT_TOKENS)) {
+      const klass = REQUIREMENT_BY_TOKEN.get(match[1] ?? "");
+      if (klass === undefined) continue;
+      const at = match.index ?? 0;
+      while (part + 1 < starts.length && (starts[part + 1] ?? Infinity) <= at) part += 1;
+      requirements.push({ value: klass, line: origins[part] ?? 0, section });
+    }
+  };
+  const addToParagraph = (raw: string, line: number) => {
+    const cleaned = raw
+      .replace(INLINE_CODE, " ")
+      .normalize("NFC")
+      .replace(/^(?:\s*>)+/u, "")
+      .replace(/\s+/gu, " ")
+      .trim();
+    if (cleaned === "") return;
+    if (paragraph === null) {
+      paragraph = { text: cleaned, starts: [0], lines: [line] };
+    } else {
+      paragraph.starts.push(paragraph.text.length + 1);
+      paragraph.lines.push(line);
+      paragraph.text = `${paragraph.text} ${cleaned}`;
+    }
+  };
 
   lines.forEach((raw, index) => {
     const line = index + 1;
@@ -248,7 +306,7 @@ function parseText(text: string, lang: Language): ParsedText {
 
     if (fence !== null) {
       previous = "";
-      const closing = CLOSING_FENCE.exec(raw)?.[1];
+      const closing = CLOSING_FENCE.exec(withoutContainer(raw))?.[1];
       if (closing !== undefined && closing[0] === fence.char && closing.length >= fence.length) {
         blocks.push({
           line: fence.line,
@@ -261,10 +319,16 @@ function parseText(text: string, lang: Language): ParsedText {
       return;
     }
 
-    const opening = OPENING_FENCE.exec(raw);
-    if (opening?.[1] !== undefined) {
+    const opening = OPENING_FENCE.exec(withoutContainer(raw));
+    // CommonMark : l'info-string d'une clôture à backticks n'en contient aucun, sinon
+    // « ```x``` » serait du code en ligne lu comme un bloc.
+    if (
+      opening?.[1] !== undefined &&
+      !(opening[1].startsWith("`") && (opening[2] ?? "").includes("`"))
+    ) {
       previous = "";
       closeTable();
+      flushParagraph();
       fence = {
         char: opening[1][0] ?? "`",
         length: opening[1].length,
@@ -291,7 +355,12 @@ function parseText(text: string, lang: Language): ParsedText {
     }
 
     const heading = HEADING.exec(raw);
+    // Un titre, une ligne de tableau ou une ligne blanche termine le paragraphe ; un
+    // titre et une ligne de tableau forment chacun leur propre unité.
+    const standalone = heading?.[1] !== undefined || table !== null;
+    if (standalone || trimmed === "") flushParagraph();
     if (heading?.[1] !== undefined) {
+      section += 1;
       const title = headingTitle(heading[2] ?? "");
       const numbering = HEADING_NUMBER.exec(title);
       headings.push({
@@ -303,26 +372,22 @@ function parseText(text: string, lang: Language): ParsedText {
       if (heading[1].length === 1 && !titleSeen) {
         titleSeen = true;
         const found = TITLE_VERSION.exec(title)?.[1];
-        if (found !== undefined) version = { value: found, line };
+        if (found !== undefined) version = { value: found, line, section };
       }
     }
 
     for (const match of raw.matchAll(INLINE_CODE)) {
-      inlineCode.push({ value: match[2] ?? "", line });
+      inlineCode.push({ value: match[2] ?? "", line, section });
     }
     const prose = normalizeNumbers(raw.replace(INLINE_CODE, " "), lang);
     for (const match of prose.matchAll(NUMBER)) {
-      numbers.push({ value: match[0].replace("−", "-"), line });
+      numbers.push({ value: match[0].replace("−", "-"), line, section });
     }
-    // NFC seulement ici : les blocs de code se comparent à l'octet, sans normalisation.
-    for (const match of raw
-      .replace(INLINE_CODE, " ")
-      .normalize("NFC")
-      .matchAll(REQUIREMENT_TOKENS)) {
-      const klass = REQUIREMENT_BY_TOKEN.get((match[1] ?? "").replace(/ +/g, " "));
-      if (klass !== undefined) requirements.push({ value: klass, line });
-    }
+    // NFC seulement dans le paragraphe : les blocs de code se comparent à l'octet.
+    addToParagraph(raw, line);
+    if (standalone) flushParagraph();
   });
+  flushParagraph();
   closeTable();
 
   const open = fence as { line: number } | null;
@@ -399,6 +464,43 @@ function multisetViolation(
   return { category, message };
 }
 
+/** Multi-ensemble comparé section par section ; une seule violation par catégorie. */
+function sectionedViolation(
+  category: Category,
+  a: readonly Occurrence[],
+  b: readonly Occurrence[],
+  headings: readonly Heading[],
+): Violation | null {
+  // Regroupement en une passe : un filtre par section coûterait sections × occurrences.
+  const bySection = (all: readonly Occurrence[]) => {
+    const groups = new Map<number, Occurrence[]>();
+    for (const occurrence of all) {
+      const group = groups.get(occurrence.section);
+      if (group === undefined) groups.set(occurrence.section, [occurrence]);
+      else group.push(occurrence);
+    }
+    return groups;
+  };
+  const groupsA = bySection(a);
+  const groupsB = bySection(b);
+  const failing: string[] = [];
+  for (let section = 0; section <= headings.length; section += 1) {
+    const violation = multisetViolation(
+      category,
+      groupsA.get(section) ?? [],
+      groupsB.get(section) ?? [],
+    );
+    if (violation === null) continue;
+    const heading = headings[section - 1];
+    const label =
+      heading === undefined ? "avant le premier titre" : `section « ${clip(heading.raw, 40)} »`;
+    failing.push(`${label} : ${violation.message}`);
+  }
+  if (failing.length === 0) return null;
+  const rest = failing.length > 3 ? ` ; et ${failing.length - 3} autre(s) section(s)` : "";
+  return { category, message: `${failing.slice(0, 3).join(" ; ")}${rest}` };
+}
+
 export function compareParity(a: string, b: string, options: ParityOptions = {}): ParityResult {
   const pa = parseText(a, options.langA ?? "en");
   const pb = parseText(b, options.langB ?? "fr");
@@ -472,12 +574,18 @@ export function compareParity(a: string, b: string, options: ParityOptions = {})
     });
   }
 
+  // Titres alignés : chaque section se compare à sa jumelle, un seuil ou un mot-clé
+  // déplacé d'une section à l'autre se voit. Titres désalignés (déjà une violation) :
+  // les sections ne se correspondent plus, la comparaison reste globale.
+  const aligned = headingAt < 0;
   for (const [category, left, right] of [
     ["code-en-ligne", pa.inlineCode, pb.inlineCode],
     ["nombres", pa.numbers, pb.numbers],
     ["exigences", pa.requirements, pb.requirements],
   ] as const) {
-    const violation = multisetViolation(category, left, right);
+    const violation = aligned
+      ? sectionedViolation(category, left, right, pa.headings)
+      : multisetViolation(category, left, right);
     if (violation !== null) violations.push(violation);
   }
 
@@ -518,9 +626,49 @@ interface Outcome {
   readonly lines: string[];
 }
 
+// Un texte UTF-16 sans BOM est de l'UTF-8 valide (un octet NUL après chaque caractère
+// ASCII) : décodé, il perd ses titres et ses mots-clés, et deux textes ainsi vidés
+// seraient « en parité ». Un contrôle C0 autre que tabulation, LF et CR n'a pas sa
+// place dans un texte de spécification : il signale un mauvais encodage.
+const TAB = 0x09;
+const LF = 0x0a;
+const CR = 0x0d;
+
+class ControlCharacterError extends Error {}
+
+/** Index du premier contrôle C0 interdit, ou -1. */
+function forbiddenControlAt(text: string): number {
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code < 0x20 && code !== TAB && code !== LF && code !== CR) return i;
+  }
+  return -1;
+}
+
 async function readUtf8(path: string): Promise<string> {
   const bytes = await readFile(path);
-  return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  const at = forbiddenControlAt(text);
+  if (at >= 0) {
+    const code = text.charCodeAt(at).toString(16).padStart(4, "0").toUpperCase();
+    const line = text.slice(0, at).split("\n").length;
+    throw new ControlCharacterError(
+      `caractère de contrôle U+${code} ligne ${line} (encodage autre que UTF-8, UTF-16 ?)`,
+    );
+  }
+  return text;
+}
+
+/** Vrai quand a et b sont le même fichier, par lien symbolique ou physique compris. */
+async function sameFile(pathA: string, pathB: string): Promise<boolean> {
+  try {
+    const [sa, sb] = await Promise.all([stat(pathA), stat(pathB)]);
+    return sa.dev === sb.dev && sa.ino === sb.ino;
+  } catch {
+    // Un chemin illisible n'est pas tranché ici : la lecture qui suit sort en 2 et
+    // nomme la cause.
+    return false;
+  }
 }
 
 export async function runParity(args: readonly string[]): Promise<Outcome> {
@@ -545,7 +693,7 @@ export async function runParity(args: readonly string[]): Promise<Outcome> {
   if (pathA === undefined || pathB === undefined || rest.length > 0) {
     return { code: 2, lines: [usage] };
   }
-  if (resolve(pathA) === resolve(pathB)) {
+  if (await sameFile(pathA, pathB)) {
     return {
       code: 2,
       lines: ["erreur : a et b désignent le même fichier, la comparaison ne prouverait rien"],
@@ -561,9 +709,11 @@ export async function runParity(args: readonly string[]): Promise<Outcome> {
       texts.push(await readUtf8(path));
     } catch (error) {
       const reason =
-        error instanceof TypeError
-          ? "UTF-8 invalide"
-          : ((error as NodeJS.ErrnoException).code ?? "illisible");
+        error instanceof ControlCharacterError
+          ? error.message
+          : error instanceof TypeError
+            ? "UTF-8 invalide"
+            : ((error as NodeJS.ErrnoException).code ?? "illisible");
       return {
         code: 2,
         lines: [`erreur : ${side} (${path}) illisible : ${reason}`],
