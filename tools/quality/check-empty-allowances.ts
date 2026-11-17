@@ -77,6 +77,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     because:
       "the guard reads the tracked root documents (README.md, README.<lang>.md, AGENTS.md, CLAUDE.md); a repository tracking none of them has no line to read, and the empty run says so with the count of tracked files it listed. A tracked root document that cannot be read exits 2 instead of reading as empty",
   },
+  {
+    file: "ecosystem/check-off-code-zones.ts",
+    because:
+      "an empty off-code zones register is the owner's statement that no part of the infrastructure stays outside the code — zero zones is that truth, printed with its counters; an unreadable or unparseable register still fails instead of reading as empty",
+  },
 ];
 
 const SCANNED_DIRECTORIES = ["tools", "ecosystem"];
