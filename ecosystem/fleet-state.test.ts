@@ -4,9 +4,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -518,7 +520,20 @@ describe("state table", () => {
 
   test("repository names: owner/name from a closed alphabet, no . or .. segment", () => {
     expect(repositoryNameError("libre-ai/project.governance_2")).toBeNull();
-    for (const name of ["o/..", "../o", "o/.", "o/a/b", "o", "o/a\tb", "o/a\nb", "/o/a", "o/"]) {
+    // A leading "-" would read as an option where the name is an argument (a replay command).
+    for (const name of [
+      "o/..",
+      "../o",
+      "o/.",
+      "o/a/b",
+      "o",
+      "o/a\tb",
+      "o/a\nb",
+      "/o/a",
+      "o/",
+      "-o/a",
+      "--label/a",
+    ]) {
       expect([name, repositoryNameError(name) === null]).toEqual([name, false]);
     }
   });
@@ -745,6 +760,23 @@ describe("local reader (worktrees and detector scripts, no network)", () => {
         "o/alpha: the working tree differs from HEAD (modified or untracked files)",
       ]);
     }
+  });
+
+  test("reading HEAD never rewrites the measured index, even when its stat data is stale", async () => {
+    const root = worktreeRoot();
+    const repo = join(root, "o", "alpha");
+    // Same content, new mtime: `git status` would refresh and rewrite the index.
+    const later = new Date(Date.now() + 60_000);
+    utimesSync(join(repo, "file.txt"), later, later);
+    const index = join(repo, ".git", "index");
+    const before = readFileSync(index);
+    const head = await localFleetReader({
+      worktrees: root,
+      snapshot: root,
+      environment: { PATH: process.env.PATH },
+    }).head("o/alpha");
+    expect(head.ok).toBe(true);
+    expect(readFileSync(index).equals(before)).toBe(true);
   });
 
   test("a detector past its (injected) timeout is an error", async () => {

@@ -25,7 +25,8 @@
  * real path is that very path, it is the root of its own git repository, and
  * `git status --porcelain --untracked-files=all` is empty (a detector reads the
  * working tree, so a modified or untracked file would be measured as if it were
- * HEAD). Otherwise every measure of it is an error, and the detector runs in
+ * HEAD); git runs with GIT_OPTIONAL_LOCKS=0, so this read never rewrites the
+ * worktree's index. Otherwise every measure of it is an error, and the detector runs in
  * the verified real path, never in a path re-joined later.
  *
  * A detector runs in its own process group. At the timeout, at an output over
@@ -161,9 +162,10 @@ export function verdictOf(status: "ok" | "erreur", target: number | null, count:
  * A repository name the tool accepts: `owner/name`, each segment from a
  * closed alphabet. The name becomes a path (`<worktrees>/<owner>/<name>`, a
  * proof file) and a TSV cell, so a separator, a tab or a line break is refused
- * here, once, rather than escaped downstream.
+ * here, once, rather than escaped downstream. The name also leads an argument
+ * (`--repos <name>` in a replay command), so it never starts with `-`.
  */
-export const REPOSITORY_NAME = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+export const REPOSITORY_NAME = /^[A-Za-z0-9._][A-Za-z0-9._-]*\/[A-Za-z0-9._-]+$/;
 
 /** Why a repository name is refused, or null. */
 export function repositoryNameError(name: string): string | null {
@@ -707,7 +709,8 @@ export function findingLines(stdout: string): string[] {
 }
 
 /** The caller's variables a detector may need to run; no token is among them. */
-const PASSED_VARIABLES = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"] as const;
+/** The only variables of the caller a child process receives; never a GIT_* one. */
+export const PASSED_VARIABLES = ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"] as const;
 
 export interface LocalSources {
   /** Absolute worktrees root: `<root>/<owner>/<name>` per repository. */
@@ -808,7 +811,12 @@ export function localFleetReader(sources: LocalSources): FleetReader {
   const git = async (cwd: string, args: readonly string[]): Promise<ProcessResult | string> => {
     let result: ProcessResult;
     try {
-      result = await spawn(["git", "-C", cwd, ...args], { cwd, env: base });
+      // GIT_OPTIONAL_LOCKS=0: `git status` would otherwise refresh and rewrite
+      // the index of the worktree it only reads.
+      result = await spawn(["git", "-C", cwd, ...args], {
+        cwd,
+        env: { ...base, GIT_OPTIONAL_LOCKS: "0" },
+      });
     } catch (error) {
       return `git could not be run: ${errorText(error)}`;
     }
