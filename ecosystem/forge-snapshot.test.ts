@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildIndex } from "./build-index";
@@ -170,6 +170,36 @@ describe("countSchedules", () => {
     expect(() => countSchedules("- just\n- a list\n")).toThrow();
     expect(() => countSchedules("on: [unclosed\n")).toThrow();
   });
+
+  test("a duplicated `on` or `on.schedule` key is an error, not the last one read", () => {
+    // Bun.YAML.parse keeps the last of two equal keys: the crons of the first would go uncounted.
+    const twice = [
+      "on:\n  schedule:\n    - cron: '0 1 * * *'\n  schedule:\n    - cron: '0 2 * * *'\njobs: {}\n",
+      "on:\n  schedule:\n    - cron: '0 1 * * *'\n  'schedule':\n    - cron: '0 2 * * *'\n",
+      "on:\n    \"schedule\":\n      - cron: '0 1 * * *'\n    schedule: []\n",
+      "on:\n  schedule:\n    - cron: '0 1 * * *'\njobs: {}\non: push\n",
+      "on: push\n\"on\":\n  schedule:\n    - cron: '0 1 * * *'\n",
+    ];
+    for (const text of twice) {
+      expect(() => countSchedules(text)).toThrow(/duplicated/);
+    }
+  });
+
+  test("a `schedule` key outside `on` is not a duplicate", () => {
+    const text = [
+      "on:",
+      "  schedule:",
+      "    - cron: '0 1 * * *'",
+      "  workflow_dispatch:",
+      "    inputs:",
+      "      schedule:",
+      "        description: x",
+      "jobs:",
+      "  schedule:",
+      "    runs-on: x",
+    ].join("\n");
+    expect(countSchedules(text)).toBe(1);
+  });
 });
 
 describe("runSnapshot", () => {
@@ -302,21 +332,103 @@ describe("runSnapshot", () => {
     }
   });
 
-  test("a write failure exits 1 and says how many files were written", async () => {
-    const out = await scratch();
-    // A file where the second repository's owner directory must go: its mkdir fails.
-    await writeFile(join(out, "other"), "occupied");
-    const forge = fakeForge({ "org/one": healthy("served"), "other/two": healthy("served") });
-    const result = await runSnapshot([out, "org/one", "other/two"], {
+  /**
+   * A write that fails after the first file: a name longer than any file
+   * system accepts (ENAMETOOLONG), requested after one that writes fine.
+   */
+  async function failingMidWrite(out: string): Promise<SnapshotOutcome> {
+    const tooLong = `org/${"a".repeat(300)}`;
+    const forge = fakeForge({ "org/one": healthy("served"), [tooLong]: healthy("served") });
+    return runSnapshot([out, "org/one", tooLong], {
       ...dependencies(forge.run),
       perimeter: new Map([
         ["org/one", "public"],
-        ["other/two", "public"],
+        [tooLong, "public"],
       ]),
     });
+  }
+
+  test("a write failure mid-way leaves a previous snapshot exactly as it was", async () => {
+    const parent = await scratch();
+    const out = join(parent, "snapshot");
+    await mkdir(join(out, "org"), { recursive: true });
+    await writeFile(join(out, "org", "old.json"), "previous\n");
+    const result = await failingMidWrite(out);
     expect(result.code).toBe(1);
-    expect(result.stdout.join("\n")).toContain("requested=2 collected=2 written=1");
-    expect(result.stderr.join("\n")).toContain("other/two");
+    expect(result.stdout.join("\n")).toContain("requested=2 collected=2 written=0");
+    expect(await listFiles(out)).toEqual(["old.json"]);
+    expect(await readFile(join(out, "org", "old.json"), "utf8")).toBe("previous\n");
+    // No staging directory is left beside the output either.
+    expect(await readdir(parent)).toEqual(["snapshot"]);
+  });
+
+  test("a write failure mid-way leaves an absent output absent", async () => {
+    const parent = await scratch();
+    const result = await failingMidWrite(join(parent, "snapshot"));
+    expect(result.code).toBe(1);
+    expect(await readdir(parent)).toEqual([]);
+  });
+
+  test("a new snapshot replaces the previous one whole", async () => {
+    const parent = await scratch();
+    const out = join(parent, "snapshot");
+    await mkdir(join(out, "gone"), { recursive: true });
+    await writeFile(join(out, "gone", "old.json"), "previous\n");
+    const forge = fakeForge({ "org/one": healthy("served") });
+    const result = await runSnapshot([out, "org/one"], dependencies(forge.run));
+    expect(result.code).toBe(0);
+    expect(await listFiles(out)).toEqual(["one.json"]);
+    expect(await readdir(parent)).toEqual(["snapshot"]);
+  });
+
+  test("a link at or below the output directory is refused with 2 before any network call", async () => {
+    const cases: Array<(out: string, outside: string) => Promise<void>> = [
+      // The output directory itself is a link.
+      async (out, outside) => symlink(outside, out),
+      // An owner directory is a link.
+      async (out, outside) => {
+        await mkdir(out);
+        await symlink(outside, join(out, "org"));
+      },
+      // A previous snapshot file is a link.
+      async (out, outside) => {
+        await mkdir(join(out, "org"), { recursive: true });
+        await symlink(join(outside, "victim"), join(out, "org", "one.json"));
+      },
+    ];
+    for (const plant of cases) {
+      const parent = await scratch();
+      const outside = await scratch();
+      await writeFile(join(outside, "victim"), "untouched\n");
+      const out = join(parent, "snapshot");
+      await plant(out, outside);
+      const forge = fakeForge({ "org/one": healthy("served") });
+      const result = await runSnapshot([out, "org/one"], dependencies(forge.run));
+      expect(result.code).toBe(2);
+      expect(result.stderr.join("\n")).toContain("symbolic link");
+      expect(forge.calls).toEqual([]);
+      expect(await readdir(outside)).toEqual(["victim"]);
+      expect(await readFile(join(outside, "victim"), "utf8")).toBe("untouched\n");
+    }
+  });
+
+  test("an output directory holding anything but a previous snapshot is refused with 2", async () => {
+    for (const plant of [
+      (out: string) => writeFile(join(out, "notes.txt"), "mine\n"),
+      async (out: string) => {
+        await mkdir(join(out, "org"));
+        await writeFile(join(out, "org", "notes.txt"), "mine\n");
+      },
+    ]) {
+      const out = await scratch();
+      await plant(out);
+      const before = await listFiles(out);
+      const forge = fakeForge({ "org/one": healthy("served") });
+      const result = await runSnapshot([out, "org/one"], dependencies(forge.run));
+      expect(result.code).toBe(2);
+      expect(forge.calls).toEqual([]);
+      expect(await listFiles(out)).toEqual(before);
+    }
   });
 
   test("a confirmed absent workflow directory is zero schedules", async () => {
