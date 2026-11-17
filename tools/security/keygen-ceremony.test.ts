@@ -1,157 +1,559 @@
-import { describe, expect, test } from "bun:test";
-import { createHash, generateKeyPairSync } from "node:crypto";
+import { afterEach, describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
+import {
+  createCipheriv,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  getCiphers,
+  randomBytes,
+  scryptSync,
+} from "node:crypto";
+import {
+  closeSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+
+import {
+  type CeremonyFs,
+  type CeremonyIo,
+  createNodeIo,
+  deriveKeyId,
+  EXIT_FAILURE,
+  EXIT_OK,
+  EXIT_REFUSED,
+  EXIT_USAGE,
+  findGitAncestor,
+  type GeneratedKeyPair,
+  main,
+  rawPublicKeyFromSpkiPem,
+  registryEntry,
+  sealPrivateKey,
+  unsealPrivateKey,
+} from "./keygen-ceremony";
 
 /**
- * Unit tests for keygen-ceremony pure helpers.
+ * Every key below is a throwaway test key built in memory; nothing here is,
+ * or may become, a production key.
  *
- * Tests ONLY pure functions (keyId derivation, public key format validation).
- * NO test generates or persists real keys (all ephemeral, in-memory).
- * NO test seals or unseals private keys (that's an integration concern, owner-only).
- *
- * The actual key generation ceremony is owner-run on an air-gapped machine —
- * these tests validate the helpers, not the ceremony itself.
+ * Expected values come from outside the code under test:
+ * - RFC 8032 §7.1 TEST 1 gives the seed and the public key;
+ * - the expected identifier is the SHA-256 of those 32 public bytes computed
+ *   by an independent tool:
+ *   printf d75a9801…511a | xxd -r -p | shasum -a 256
+ * - the Ed25519 SPKI prefix is RFC 8410 §4.
  */
+const RFC8032_TEST1_SEED = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+const RFC8032_TEST1_PUBLIC = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+const RFC8032_TEST1_KEY_ID = "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9";
+const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
 
-// ===== Helper: Derive KeyID =====
-function deriveKeyId(publicKeyPem: string): string {
-  // Extract base64 body from PEM (skip header/footer lines).
-  const base64Body = publicKeyPem
-    .split("\n")
-    .filter((line) => !line.startsWith("-----") && line.trim().length > 0)
-    .join("");
+const PASSPHRASE = "test-only passphrase, forty characters!!";
+const OTHER_PASSPHRASE = "another test-only passphrase, also long enough";
 
-  const hash = createHash("sha256").update(base64Body).digest("hex").slice(0, 8);
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  return `prod_key_${date}_${hash}`;
+// Bun's node:crypto is built on BoringSSL, which has no chacha20-poly1305;
+// the sealing cases can only run where the cipher exists, and the reverse
+// case asserts the tool fails closed where it does not.
+const AEAD_AVAILABLE = getCiphers().includes("chacha20-poly1305");
+
+const CI_VARIABLES = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE"];
+const TOOL = join(import.meta.dir, "keygen-ceremony.ts");
+
+function rfcKeyPair(): GeneratedKeyPair {
+  const privateKey = createPrivateKey({
+    key: Buffer.from(PKCS8_ED25519_PREFIX + RFC8032_TEST1_SEED, "hex"),
+    format: "der",
+    type: "pkcs8",
+  });
+  const privateKeyPem = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+  return {
+    privateKeyPem,
+    publicKeyPem: createPublicKey({ key: privateKeyPem, format: "pem" })
+      .export({ format: "pem", type: "spki" })
+      .toString(),
+  };
 }
 
-// ===== Helper: Validate PEM format =====
-function isValidSpkiPem(pem: string): boolean {
-  const lines = pem.split("\n").filter((line) => line.length > 0);
-  if (lines.length < 3) return false;
-  if (lines[0] !== "-----BEGIN PUBLIC KEY-----") return false;
-  if (lines[lines.length - 1] !== "-----END PUBLIC KEY-----") return false;
-  // Check base64 body (all lines between header/footer should be valid base64)
-  for (let i = 1; i < lines.length - 1; i++) {
-    const line = lines[i] ?? "";
-    if (line && !/^[A-Za-z0-9+/=]*$/.test(line)) return false;
+function randomKeyPair(): GeneratedKeyPair {
+  const { privateKey, publicKey } = generateKeyPairSync("ed25519", {
+    privateKeyEncoding: { format: "pem", type: "pkcs8" },
+    publicKeyEncoding: { format: "pem", type: "spki" },
+  });
+  return { privateKeyPem: privateKey, publicKeyPem: publicKey };
+}
+
+function pemOf(der: Uint8Array): string {
+  const body = Buffer.from(der).toString("base64");
+  return `-----BEGIN PUBLIC KEY-----\n${body}\n-----END PUBLIC KEY-----\n`;
+}
+
+const temporary: string[] = [];
+function freshDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "keygen-ceremony-test-"));
+  temporary.push(dir);
+  return dir;
+}
+afterEach(() => {
+  for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+interface Harness {
+  io: CeremonyIo;
+  stdout(): string;
+  stderr(): string;
+  calls: string[];
+}
+
+function harness(
+  options: {
+    env?: Record<string, string>;
+    fd?: string;
+    terminal?: string[];
+    now?: Date;
+    keyPair?: GeneratedKeyPair;
+    wrapFs?: (base: CeremonyFs) => CeremonyFs;
+  } = {},
+): Harness {
+  let out = "";
+  let err = "";
+  const calls: string[] = [];
+  const base = createNodeIo().fs;
+  const recorded: CeremonyFs = {
+    isDirectory: (path) => base.isDirectory(path),
+    exists: (path) => base.exists(path),
+    async writeExclusive(path, data, mode) {
+      calls.push(`write ${basename(path)}`);
+      await base.writeExclusive(path, data, mode);
+    },
+    async readFile(path) {
+      calls.push(`read ${basename(path)}`);
+      return base.readFile(path);
+    },
+    async renameNoClobber(from, to) {
+      calls.push(`rename ${basename(from)} ${basename(to)}`);
+      await base.renameNoClobber(from, to);
+    },
+    async remove(path) {
+      calls.push(`remove ${basename(path)}`);
+      await base.remove(path);
+    },
+  };
+  const terminal = [...(options.terminal ?? [])];
+  const io: CeremonyIo = {
+    env: options.env ?? {},
+    now: () => options.now ?? new Date("2026-11-17T10:00:00.000Z"),
+    stdout: (text) => {
+      out += text;
+    },
+    stderr: (text) => {
+      err += text;
+    },
+    readPassphraseFromFd: async () => {
+      if (options.fd === undefined) throw new Error("no descriptor in this test");
+      return options.fd;
+    },
+    readPassphraseFromTerminal: async () => {
+      const next = terminal.shift();
+      if (next === undefined) throw new Error("no terminal entry left");
+      return next;
+    },
+    generateKeyPair: () => options.keyPair ?? rfcKeyPair(),
+    fs: options.wrapFs ? options.wrapFs(recorded) : recorded,
+  };
+  return { io, stdout: () => out, stderr: () => err, calls };
+}
+
+function cleanEnv(extra: Record<string, string> = {}): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && !CI_VARIABLES.includes(name)) env[name] = value;
   }
-  return true;
+  return { ...env, ...extra };
 }
 
-describe("keygen-ceremony helpers", () => {
-  test("deriveKeyId produces a deterministic, formatted keyId", () => {
-    // Generate ephemeral keypair (in-memory only, not persisted).
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+function runTool(args: string[], passphraseFile: string, extraEnv: Record<string, string>) {
+  const fd = openSync(passphraseFile, "r");
+  try {
+    return spawnSync(process.execPath, [TOOL, ...args], {
+      stdio: ["ignore", "pipe", "pipe", fd],
+      env: cleanEnv(extraEnv),
+      encoding: "utf8",
     });
+  } finally {
+    closeSync(fd);
+  }
+}
 
-    const keyId = deriveKeyId(publicKey as string);
+function assertNoSecret(text: string, passphrase: string, seedHex: string): void {
+  const seed = Buffer.from(seedHex, "hex");
+  expect(text).not.toContain("PRIVATE KEY");
+  expect(text).not.toContain(passphrase);
+  expect(text.toLowerCase()).not.toContain(seedHex.toLowerCase());
+  expect(text).not.toContain(seed.toString("base64"));
+  expect(text).not.toContain(seed.toString("base64url"));
+}
 
-    // Check format: prod_key_YYYYMMDD_<8-char hash>
-    expect(keyId).toMatch(/^prod_key_\d{8}_[a-f0-9]{8}$/);
+describe("module surface", () => {
+  test("importing the module prints nothing and writes nothing", () => {
+    const cwd = freshDir();
+    const before = readdirSync(cwd);
+    const result = spawnSync(process.execPath, ["-e", `await import(${JSON.stringify(TOOL)});`], {
+      cwd,
+      env: cleanEnv(),
+      encoding: "utf8",
+    });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("");
+    expect(readdirSync(cwd)).toEqual(before);
   });
 
-  test("deriveKeyId is deterministic for the same public key", () => {
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
-
-    const id1 = deriveKeyId(publicKey as string);
-    const id2 = deriveKeyId(publicKey as string);
-
-    expect(id1).toBe(id2);
+  test("deriveKeyId is the SHA-256 of the RFC 8032 TEST 1 public key", () => {
+    expect(deriveKeyId(Buffer.from(RFC8032_TEST1_PUBLIC, "hex"))).toBe(RFC8032_TEST1_KEY_ID);
+    expect(() => deriveKeyId(new Uint8Array(31))).toThrow();
   });
 
-  test("different public keys produce different keyIds", () => {
-    const { publicKey: key1 } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
-    const { publicKey: key2 } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
-
-    const id1 = deriveKeyId(key1 as string);
-    const id2 = deriveKeyId(key2 as string);
-
-    expect(id1).not.toBe(id2);
+  test("the printed identifier does not depend on the clock", async () => {
+    const ids: string[] = [];
+    for (const now of [new Date("2026-01-01T00:00:00Z"), new Date("2027-06-15T23:59:59Z")]) {
+      const h = harness({ now });
+      expect(await main(["--dev-key"], h.io)).toBe(EXIT_OK);
+      ids.push(JSON.parse(h.stdout()).id);
+    }
+    expect(ids).toEqual([RFC8032_TEST1_KEY_ID, RFC8032_TEST1_KEY_ID]);
   });
 
-  test("public key is valid SPKI PEM format", () => {
-    const { publicKey } = generateKeyPairSync("ed25519", {
+  test("rawPublicKeyFromSpkiPem accepts the Ed25519 SPKI form and nothing else", () => {
+    const { publicKeyPem, privateKeyPem } = randomKeyPair();
+    const raw = rawPublicKeyFromSpkiPem(publicKeyPem);
+    expect(raw.length).toBe(32);
+    expect(Buffer.from(rawPublicKeyFromSpkiPem(rfcKeyPair().publicKeyPem)).toString("hex")).toBe(
+      RFC8032_TEST1_PUBLIC,
+    );
+
+    const x25519 = generateKeyPairSync("x25519", {
       publicKeyEncoding: { format: "pem", type: "spki" },
       privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
+    }).publicKey;
+    const der = Buffer.from("302a300506032b6570032100", "hex");
+    const valid = Buffer.concat([der, raw]);
+    const tooLong = Buffer.concat([valid, Buffer.from([0])]);
+    const alteredPrefix = Buffer.from(valid);
+    alteredPrefix[7] = 0x71;
 
-    const pem = publicKey as string;
-    expect(isValidSpkiPem(pem)).toBe(true);
-    expect(pem).toContain("-----BEGIN PUBLIC KEY-----");
-    expect(pem).toContain("-----END PUBLIC KEY-----");
+    expect(() => rawPublicKeyFromSpkiPem(pemOf(valid))).not.toThrow();
+    expect(() => rawPublicKeyFromSpkiPem(x25519)).toThrow();
+    expect(() => rawPublicKeyFromSpkiPem(pemOf(tooLong))).toThrow();
+    expect(() => rawPublicKeyFromSpkiPem(pemOf(alteredPrefix))).toThrow();
+    expect(() => rawPublicKeyFromSpkiPem(privateKeyPem)).toThrow();
   });
 
-  test("public key PEM is at least 80 chars (minimum base64 payload)", () => {
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+  test("registryEntry carries exactly the six registry keys", () => {
+    const entry = registryEntry({
+      keyId: RFC8032_TEST1_KEY_ID,
+      publicKeyPem: rfcKeyPair().publicKeyPem,
+      purpose: "test",
+      activatedAt: "2026-11-17T10:00:00.000Z",
     });
-
-    const pem = publicKey as string;
-    expect(pem.length).toBeGreaterThan(80);
+    expect(Object.keys(entry).sort()).toEqual(
+      ["activatedAt", "algorithm", "id", "publicKey", "purpose", "revokedAt"].sort(),
+    );
+    expect(entry.algorithm).toBe("Ed25519");
+    expect(entry.revokedAt).toBeNull();
   });
 
-  test("ephemeral keys are never persisted to disk", () => {
-    // This test documents the contract: no file I/O for key generation.
-    // The actual ceremony writes sealed envelopes only.
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
-
-    // Verify we can derive the keyId from the ephemeral key.
-    const keyId = deriveKeyId(publicKey as string);
-    expect(keyId).toBeTruthy();
-
-    // The key object is garbage-collected after this test.
-    // No disk writes occurred during this test.
+  test("the printed entry is JSON with exactly the six registry keys, and no secret", async () => {
+    const h = harness();
+    expect(await main(["--dev-key", "--purpose", "test"], h.io)).toBe(EXIT_OK);
+    const printed = JSON.parse(h.stdout());
+    expect(Object.keys(printed).sort()).toEqual(
+      ["activatedAt", "algorithm", "id", "publicKey", "purpose", "revokedAt"].sort(),
+    );
+    expect(printed.revokedAt).toBeNull();
+    assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
   });
 
-  test("keyId changes if public key encoding changes", () => {
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+  test("findGitAncestor finds nothing above a plain temporary directory", async () => {
+    expect(await findGitAncestor(freshDir())).toBeNull();
+  });
+});
+
+describe("refusals: exact code, nothing left in --out", () => {
+  function gitInit(dir: string): void {
+    const result = spawnSync("git", ["init", "-q", dir], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+  }
+
+  async function refused(
+    args: (out: string) => string[],
+    expected: number,
+    options: Parameters<typeof harness>[0] = {},
+    prepare: (out: string) => string = (out) => out,
+  ): Promise<{ out: string; h: Harness }> {
+    const out = prepare(freshDir());
+    const before = readdirSync(out);
+    const h = harness({ fd: PASSPHRASE, ...options });
+    expect(await main(args(out), h.io)).toBe(expected);
+    expect(readdirSync(out)).toEqual(before);
+    expect(h.stdout()).toBe("");
+    return { out, h };
+  }
+
+  test("(1) CI=true without --dev-key", async () => {
+    await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_REFUSED, {
+      env: { CI: "true" },
     });
-
-    const pem = publicKey as string;
-    const id1 = deriveKeyId(pem);
-
-    // Modify the PEM (cosmetic: change spacing)
-    const modifiedPem = pem.replace(/\n/g, "\r\n");
-    const id2 = deriveKeyId(modifiedPem);
-
-    // Should differ because the hash input changed (whitespace)
-    expect(id1).not.toBe(id2);
   });
 
-  test("isValidSpkiPem rejects malformed PEM", () => {
-    expect(isValidSpkiPem("not a pem")).toBe(false);
-    expect(
-      isValidSpkiPem("-----BEGIN PUBLIC KEY-----\ninvalid base64!\n-----END PUBLIC KEY-----"),
-    ).toBe(false);
-    // Reject wrong PEM type (header mismatch)
-    const wrongType = `-----BEGIN RSA PUBLIC KEY-----\nbase64\n-----END RSA PUBLIC KEY-----`;
-    expect(isValidSpkiPem(wrongType)).toBe(false);
+  test("(2) --out is a repository root", async () => {
+    await refused(
+      (out) => ["--out", out, "--passphrase-fd", "3"],
+      EXIT_REFUSED,
+      {},
+      (dir) => {
+        gitInit(dir);
+        return dir;
+      },
+    );
   });
 
-  test("isValidSpkiPem accepts valid Ed25519 SPKI PEM", () => {
-    const { publicKey } = generateKeyPairSync("ed25519", {
-      publicKeyEncoding: { format: "pem", type: "spki" },
-      privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    });
+  test("(3) --out is a subdirectory of a repository", async () => {
+    await refused(
+      (out) => ["--out", out, "--passphrase-fd", "3"],
+      EXIT_REFUSED,
+      {},
+      (dir) => {
+        gitInit(dir);
+        const sub = join(dir, "a", "b");
+        mkdirSync(sub, { recursive: true });
+        return sub;
+      },
+    );
+  });
 
-    expect(isValidSpkiPem(publicKey as string)).toBe(true);
+  test("(4) --out under a parent holding a .git file (gitdir)", async () => {
+    await refused(
+      (out) => ["--out", out, "--passphrase-fd", "3"],
+      EXIT_REFUSED,
+      {},
+      (dir) => {
+        writeFileSync(join(dir, ".git"), "gitdir: ./elsewhere\n");
+        const sub = join(dir, "keys");
+        mkdirSync(sub);
+        return sub;
+      },
+    );
+  });
+
+  test("(5) the <id>.sealed target exists: refused, content unchanged", async () => {
+    const { out } = await refused(
+      (dir) => ["--out", dir, "--passphrase-fd", "3"],
+      EXIT_REFUSED,
+      {},
+      (dir) => {
+        writeFileSync(join(dir, `${RFC8032_TEST1_KEY_ID}.sealed`), "earlier envelope");
+        return dir;
+      },
+    );
+    expect(readFileSync(join(out, `${RFC8032_TEST1_KEY_ID}.sealed`), "utf8")).toBe(
+      "earlier envelope",
+    );
+  });
+
+  test("(6) a 31-character passphrase", async () => {
+    await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_REFUSED, {
+      fd: "a".repeat(31),
+    });
+  });
+
+  test("(7) two different terminal entries", async () => {
+    await refused((out) => ["--out", out], EXIT_REFUSED, {
+      terminal: [PASSPHRASE, OTHER_PASSPHRASE],
+    });
+  });
+
+  test("(8) --passphrase x", async () => {
+    await refused((out) => ["--out", out, "--passphrase", "x"], EXIT_USAGE);
+  });
+
+  test("(9) --passphrase=x", async () => {
+    await refused((out) => ["--out", out, "--passphrase=x"], EXIT_USAGE);
+  });
+
+  test("(10) --out missing outside --dev-key", async () => {
+    await refused(() => ["--passphrase-fd", "3"], EXIT_USAGE);
+  });
+
+  test.skipIf(!AEAD_AVAILABLE)("(11) the envelope write fails: 1, no public file", async () => {
+    await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_FAILURE, {
+      wrapFs: (base) => ({
+        ...base,
+        async writeExclusive(path, data, mode) {
+          if (path.endsWith(".partial")) throw new Error("injected write failure");
+          await base.writeExclusive(path, data, mode);
+        },
+      }),
+    });
+  });
+
+  test.skipIf(!AEAD_AVAILABLE)(
+    "(12) the envelope read back does not unseal: 1, temporary file removed",
+    async () => {
+      const { h } = await refused((out) => ["--out", out, "--passphrase-fd", "3"], EXIT_FAILURE, {
+        wrapFs: (base) => ({
+          ...base,
+          async writeExclusive(path, data, mode) {
+            const copy = Buffer.from(data);
+            if (path.endsWith(".partial")) copy[copy.length - 1] = (copy.at(-1) ?? 0) ^ 0x01;
+            await base.writeExclusive(path, copy, mode);
+          },
+        }),
+      });
+      expect(h.calls).toContain(`remove ${RFC8032_TEST1_KEY_ID}.partial`);
+      expect(h.calls.some((call) => call.includes(".pub.pem"))).toBe(false);
+    },
+  );
+});
+
+describe("passphrase intake through the real process", () => {
+  test("the descriptor is read and the environment is not", () => {
+    const out = freshDir();
+    const passphraseFile = join(freshDir(), "passphrase");
+    writeFileSync(passphraseFile, `${"b".repeat(31)}\n`);
+    // A valid passphrase in the environment must not rescue a short one on the descriptor.
+    const result = runTool(["--out", out, "--passphrase-fd", "3"], passphraseFile, {
+      KEYGEN_TEST_PASSPHRASE: PASSPHRASE,
+    });
+    expect(result.status).toBe(EXIT_REFUSED);
+    expect(result.stderr).toContain("at least 32 characters");
+    expect(readdirSync(out)).toEqual([]);
+  });
+
+  test.skipIf(AEAD_AVAILABLE)(
+    "without chacha20-poly1305 in the runtime, generation fails closed",
+    () => {
+      const out = freshDir();
+      const passphraseFile = join(freshDir(), "passphrase");
+      writeFileSync(passphraseFile, `${PASSPHRASE}\n`);
+      const result = runTool(["--out", out, "--passphrase-fd", "3"], passphraseFile, {});
+      expect(result.status).toBe(EXIT_FAILURE);
+      expect(result.stdout).toBe("");
+      expect(readdirSync(out)).toEqual([]);
+    },
+  );
+
+  test.skipIf(!AEAD_AVAILABLE)(
+    "the envelope unseals with the descriptor phrase, not the environment one",
+    () => {
+      const out = freshDir();
+      const passphraseFile = join(freshDir(), "passphrase");
+      writeFileSync(passphraseFile, `${OTHER_PASSPHRASE}\n`);
+      const result = runTool(["--out", out, "--passphrase-fd", "3"], passphraseFile, {
+        KEYGEN_TEST_PASSPHRASE: PASSPHRASE,
+      });
+      expect(result.status).toBe(EXIT_OK);
+      const entry = JSON.parse(result.stdout);
+      const sealed = readFileSync(join(out, `${entry.id}.sealed`));
+      const privatePem = unsealPrivateKey(sealed, OTHER_PASSPHRASE);
+      expect(() => unsealPrivateKey(sealed, PASSPHRASE)).toThrow();
+      const seed = createPrivateKey(privatePem)
+        .export({ format: "der", type: "pkcs8" })
+        .subarray(-32)
+        .toString("hex");
+      assertNoSecret(result.stdout + result.stderr, OTHER_PASSPHRASE, seed);
+    },
+  );
+});
+
+describe.skipIf(!AEAD_AVAILABLE)("sealing (needs chacha20-poly1305)", () => {
+  test("seal then unseal returns the key; another passphrase throws", () => {
+    const { privateKeyPem } = randomKeyPair();
+    const sealed = sealPrivateKey(privateKeyPem, PASSPHRASE);
+    expect(unsealPrivateKey(sealed, PASSPHRASE)).toBe(privateKeyPem);
+    expect(() => unsealPrivateKey(sealed, OTHER_PASSPHRASE)).toThrow();
+  });
+
+  test("nominal run: envelope checked and named before the public file, no secret printed", async () => {
+    const out = freshDir();
+    const h = harness({ fd: `${PASSPHRASE}\n` });
+    expect(await main(["--out", out, "--passphrase-fd", "3"], h.io)).toBe(EXIT_OK);
+    const id = RFC8032_TEST1_KEY_ID;
+    expect(h.calls).toEqual([
+      `write ${id}.partial`,
+      `read ${id}.partial`,
+      `rename ${id}.partial ${id}.sealed`,
+      `write ${id}.pub.pem`,
+    ]);
+    expect(readdirSync(out).sort()).toEqual([`${id}.pub.pem`, `${id}.sealed`]);
+    expect(statSync(join(out, `${id}.sealed`)).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(h.stdout()).id).toBe(id);
+    assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
+  });
+
+  test("--verify-sealed: 0 on the right public key, 1 on another or a wrong phrase", async () => {
+    const out = freshDir();
+    expect(await main(["--out", out, "--passphrase-fd", "3"], harness({ fd: PASSPHRASE }).io)).toBe(
+      EXIT_OK,
+    );
+    const sealed = join(out, `${RFC8032_TEST1_KEY_ID}.sealed`);
+    const right = join(out, `${RFC8032_TEST1_KEY_ID}.pub.pem`);
+    const other = join(freshDir(), "other.pub.pem");
+    writeFileSync(other, randomKeyPair().publicKeyPem);
+    const verify = (pem: string, phrase: string) =>
+      main(
+        ["--verify-sealed", sealed, "--public-key", pem, "--passphrase-fd", "3"],
+        harness({ fd: phrase }).io,
+      );
+    expect(await verify(right, PASSPHRASE)).toBe(EXIT_OK);
+    expect(await verify(other, PASSPHRASE)).toBe(EXIT_FAILURE);
+    expect(await verify(right, OTHER_PASSPHRASE)).toBe(EXIT_FAILURE);
+  });
+
+  test("an envelope sealed the way the first version of the tool did still verifies", async () => {
+    // Verbatim sealing routine of the tool before this change
+    // (keygen-ceremony.ts at 67ca6d1, lines 67-88): the reference format.
+    function legacySeal(privateKeyPem: string, passphrase: string): Buffer {
+      const salt = randomBytes(16);
+      const iv = randomBytes(12);
+      const derivedKey = scryptSync(passphrase, salt, 32, {
+        N: 16384,
+        r: 8,
+        p: 1,
+        maxmem: 64 * 1024 * 1024,
+      });
+      const cipher = createCipheriv("chacha20-poly1305", derivedKey, iv, { authTagLength: 16 });
+      const ciphertext = cipher.update(privateKeyPem, "utf8");
+      const finalCiphertext = Buffer.concat([ciphertext, cipher.final()]);
+      const authTag = cipher.getAuthTag();
+      return Buffer.concat([salt, iv, finalCiphertext, authTag]);
+    }
+    const dir = freshDir();
+    const pair = randomKeyPair();
+    // The first version sealed under a short environment phrase: verifying
+    // must not apply the 32-character rule meant for choosing one.
+    const legacyPhrase = "short legacy phrase";
+    writeFileSync(join(dir, "legacy.bin"), legacySeal(pair.privateKeyPem, legacyPhrase));
+    writeFileSync(join(dir, "legacy.pub.pem"), pair.publicKeyPem);
+    const code = await main(
+      [
+        "--verify-sealed",
+        join(dir, "legacy.bin"),
+        "--public-key",
+        join(dir, "legacy.pub.pem"),
+        "--passphrase-fd",
+        "3",
+      ],
+      harness({ fd: legacyPhrase }).io,
+    );
+    expect(code).toBe(EXIT_OK);
   });
 });
