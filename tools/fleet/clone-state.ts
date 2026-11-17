@@ -61,14 +61,19 @@ function shellWord(text: string): string {
 
 const isCount = (value: number): boolean => Number.isInteger(value) && value >= 0;
 
+/** C0, DEL and C1 (U+009B is a one-byte CSI): quoting does not keep them off a terminal. */
+const CONTROL = /\p{Cc}/u;
+
 export function classifyClone(state: CloneState, path: string): CloneVerdict {
   const git = `git -C ${shellWord(path)}`;
   // A state the table cannot read is row 1, not a guess: a branch head without
-  // a name, or a count that is not a whole number, would otherwise fall through
-  // to a row that prints a command.
+  // a name, a name holding a control character, or a count that is not a whole
+  // number, would otherwise fall through to a row that prints a command. A
+  // command is refused rather than rewritten: a rewritten name is another branch.
   if (
     state.head === "unreadable" ||
-    (state.head === "branch" && (state.branch === null || state.branch === "")) ||
+    (state.head === "branch" &&
+      (state.branch === null || state.branch === "" || CONTROL.test(state.branch))) ||
     !isCount(state.behind) ||
     !isCount(state.ahead)
   ) {
