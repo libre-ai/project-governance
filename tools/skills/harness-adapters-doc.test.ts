@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { basename, join } from "node:path";
 
 // Structure check of docs/method/HARNESS-ADAPTERS.md. The document is method,
 // held by review; what a machine can hold is its shape: sections, the adapter
@@ -32,10 +33,20 @@ const ADAPTERS = [
 const ADAPTER_SECTION = "Ordre des adaptateurs";
 const INSTALL_SECTION = "Commande d'installation rejouée";
 const INSTALL_INVARIANT = "I-38";
-// The only place where the word "brique" may name something: the map of ADR-0064.
-const BRICK_MAP_DECISION = "ADR-0064";
+// The only place where the word "brique" may name something: the map, named
+// together with its decision. The decision elsewhere in the paragraph exempts nothing.
+const BRICK_MAP_REFERENCE = /carte\s+des\s+briques\s*\(ADR-0064\)/gi;
+const BRICK_WORD = /\bbriques?\b/i;
 
-const COUNT_WORDS = "deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze";
+// French numerals are compositional: the word closest to the noun is enough to
+// recognise a count ("vingt-deux", "quatre-vingts", "vingt et un", "cent").
+// "un"/"une" alone is an article, and "et une" a conjunction: they count only
+// after a tens word ("vingt et un").
+const COUNT_WORDS = [
+  "deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|treize|quatorze|quinze|seize",
+  "vingts?|trente|quarante|cinquante|soixante|cents?|milles?",
+  "(?:vingt|trente|quarante|cinquante|soixante)[-\\s]+et[-\\s]+une?",
+].join("|");
 const COUNTED_COLLECTION = new RegExp(`\\b(?:\\d+|${COUNT_WORDS})\\s+(?:skills?|plugins?)\\b`, "i");
 const CALENDAR_DURATION = new RegExp(
   `\\b(?:\\d+|une?|${COUNT_WORDS}|quelques|plusieurs)\\s+(?:secondes?|minutes?|heures?|jours?|semaines?|mois|trimestres?|ans?|années?)\\b`,
@@ -162,7 +173,9 @@ function evaluateDocument(markdown: string, sources: Sources): Finding[] {
     if (!registered) add("invariant", `${id} is not a row of ${INVARIANTS_PATH}`);
   }
 
-  for (const line of proseLines(markdown)) {
+  // The brief's wording criteria cover the whole document, fenced blocks
+  // included: a command in a block asserts a version or a branch as much as prose.
+  for (const line of markdown.split("\n")) {
     const bare = line.replace(RANK_CELL, "|").replace(IDENTIFIER, "");
     if (/\d/.test(bare)) add("volatile", `digit outside an identifier: ${line.trim()}`);
     if (COUNTED_COLLECTION.test(line)) add("volatile", `counted collection: ${line.trim()}`);
@@ -171,14 +184,10 @@ function evaluateDocument(markdown: string, sources: Sources): Finding[] {
     if (THIRD_PARTY.test(line)) add("third-party", line.trim());
   }
 
-  const paragraphs = proseLines(markdown)
-    .join("\n")
-    .split(/\n\s*\n/);
-  for (const paragraph of paragraphs) {
-    const prose = paragraph.replace(/`[^`\n]+`/g, "");
-    if (/briques?/i.test(prose) && !prose.includes(BRICK_MAP_DECISION)) {
-      add("brique", paragraph.trim().slice(0, 80));
-    }
+  // Paths in code spans are names, not wording; the map reference may wrap a line.
+  const wording = markdown.replace(/`[^`\n]+`/g, "").replace(BRICK_MAP_REFERENCE, "");
+  for (const line of wording.split("\n")) {
+    if (BRICK_WORD.test(line)) add("brique", line.trim().slice(0, 80));
   }
 
   return findings;
@@ -187,9 +196,20 @@ function evaluateDocument(markdown: string, sources: Sources): Finding[] {
 // A missing document or registry throws here and fails the file: an unreadable
 // source is never an empty one.
 const DOCUMENT = readFileSync(join(REPO_ROOT, DOC_PATH), "utf8");
+// A repository path is one git tracks: the disk also answers for "../…" and for
+// ignored files. A failing or empty listing throws, never reads as "nothing exists".
+const TRACKED = execFileSync("git", ["-C", REPO_ROOT, "ls-files", "-z"], { encoding: "utf8" })
+  .split("\0")
+  .filter((path) => path !== "");
+if (TRACKED.length === 0) throw new Error("git listed no tracked file");
+const TRACKED_SET = new Set(TRACKED);
 const SOURCES: Sources = {
   invariants: readFileSync(join(REPO_ROOT, INVARIANTS_PATH), "utf8"),
-  pathExists: (path) => existsSync(join(REPO_ROOT, path)),
+  pathExists: (path) => {
+    if (TRACKED_SET.has(path)) return true;
+    const directory = path.endsWith("/") ? path : `${path}/`;
+    return TRACKED.some((tracked) => tracked.startsWith(directory));
+  },
 };
 
 function codes(markdown: string): FindingCode[] {
@@ -295,6 +315,20 @@ describe("citations", () => {
     expect(refused.map((f) => f.detail).sort()).toEqual([...new Set(citedPaths(DOCUMENT))].sort());
   });
 
+  // The repository is what git tracks: a path that only resolves on this disk
+  // (outside the root, or ignored) is not a repository path.
+  test.each([
+    ["a path climbing out of the root", `../${basename(REPO_ROOT)}/package.json`],
+    ["a path climbing back into the root", "tools/../package.json"],
+    ["an ignored path present on disk", "node_modules/typescript/package.json"],
+  ])("%s", (_name, path) => {
+    // The worktree's own name may carry digits: only the path finding is asked here.
+    const cited = evaluateDocument(`${DOCUMENT}\nVoir \`${path}\`.\n`, SOURCES)
+      .filter((finding) => finding.code === "cited-path")
+      .map((finding) => finding.detail);
+    expect(cited).toEqual([path]);
+  });
+
   test("a command is not a path", () => {
     expect(citedPaths("`bun run check:skills-manifest` et `a/b c`")).toEqual([]);
   });
@@ -324,8 +358,36 @@ describe("volatile facts and wording", () => {
     ["a calendar duration", "Le rejeu vaut trois semaines.", "duration"],
     ["a third-party organisation", "Le harnais de Anthropic.", "third-party"],
     ["the document's object named a brique", "Cette brique s'installe ainsi.", "brique"],
+    ["a count past twelve", "La collection porte vingt skills.", "volatile"],
+    ["a compound count", "Le catalogue liste vingt-deux plugins.", "volatile"],
+    ["a count in hundreds", "La collection porte cent skills.", "volatile"],
+    ["a count joined by et", "Le catalogue liste vingt et un plugins.", "volatile"],
   ] as const)("%s", (_name, sentence, code) => {
     expect(codes(`${DOCUMENT}\n${sentence}\n`)).toEqual([code]);
+  });
+
+  // The brief's criteria cover the whole document: a fenced block is still
+  // something the document asserts.
+  test.each([
+    ["a version in a fenced block", "```sh\nbun add pkg@1.4.0\n```", "volatile"],
+    ["a branch in a fenced block", "```sh\ngit push origin main\n```", "volatile"],
+    ["a count in a fenced block", "```\nhuit skills\n```", "volatile"],
+    ["a duration in a fenced block", "```\nrejeu en trois semaines\n```", "duration"],
+    ["a third party in a fenced block", "```\ncompte GitHub requis\n```", "third-party"],
+    ["a brique in a fenced block", "```\ncette brique\n```", "brique"],
+  ] as const)("%s", (_name, block, code) => {
+    expect(codes(`${DOCUMENT}\n${block}\n`)).toEqual([code]);
+  });
+
+  test("a decision cited in the same paragraph does not exempt another brique", () => {
+    const paragraph =
+      "La carte des briques (ADR-0064) décrit l'unité ; cette brique s'installe ainsi.";
+    expect(codes(`${DOCUMENT}\n${paragraph}\n`)).toEqual(["brique"]);
+    expect(codes(`${DOCUMENT}\nCette brique relève de ADR-0064.\n`)).toEqual(["brique"]);
+  });
+
+  test("a word that is not a count does not read as one", () => {
+    expect(codes(`${DOCUMENT}\nLa liste des skills et une skill de plus.\n`)).toEqual([]);
   });
 
   test("identifiers and table ranks are not counts", () => {

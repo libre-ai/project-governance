@@ -31,7 +31,7 @@ l'autre :
 - **Règle avec son pourquoi mesuré** — la règle que la capacité sert,
   accompagnée de la mesure qui l'a fait écrire.
 
-La fiche d'une unité de la carte ADR-0064 reste celle de la carte des briques
+La fiche d'une unité de la carte des briques (ADR-0064) reste la sienne
 (`ecosystem/briques/README.md`, sections imposées par `ecosystem/briques.ts`) :
 une capacité qui y figure y est décrite, pas ici.
 
