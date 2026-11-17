@@ -14,6 +14,7 @@ import { join } from "node:path";
 import {
   checkPitfalls,
   checkPitfallsFile,
+  countPitfalls,
   parsePitfalls,
   readRepositoryNames,
 } from "./toolchain-pitfalls";
@@ -111,16 +112,16 @@ describe("the catalogue as written", () => {
     for (const entry of entries) expect(tracked.has(entry.testPath)).toBe(true);
   });
 
-  test("names the osv cases, and each of them exists in the cited file", () => {
+  test("names the osv cases, and every case it cites exists in the cited file", () => {
     const suite = readFileSync(join(ROOT, OSV_TESTS), "utf8");
-    for (const name of [
+    const cited = [...real.matchAll(/`(test_\w+)`/g)].map((match) => match[1] ?? "");
+    expect(cited).toEqual([
       "test_scanner_that_writes_nothing_is_not_a_green_even_with_a_stale_file",
       "test_empty_database_file_is_refused",
+      "test_file_not_written_by_this_run_is_refused",
       "test_scanner_failure_fails_closed",
-    ]) {
-      expect(real).toContain(`\`${name}\``);
-      expect(suite).toContain(`def ${name}(self)`);
-    }
+    ]);
+    for (const name of cited) expect(suite).toContain(`def ${name}(self)`);
   });
 
   test("holds against the tracked tree and the repository index: 9 entries, no violation", () => {
@@ -132,6 +133,7 @@ describe("the catalogue as written", () => {
     const pass = run([process.execPath, "tools/quality/toolchain-pitfalls.ts"]);
     expect(pass.out).toContain(`9 entr(ies) examined in ${DOCUMENT}`);
     expect(pass.out).toContain("0 violation(s)");
+    expect(pass.out).toContain("(tables=3 rows=9 entries=9 rejected=0)");
     expect(pass.code).toBe(0);
 
     const absent = run([process.execPath, "tools/quality/toolchain-pitfalls.ts", "docs/ABSENT.md"]);
@@ -158,6 +160,11 @@ describe("the catalogue as written", () => {
 });
 
 describe("mutations of the catalogue", () => {
+  // A line appended after a blank line: the document ends on a table row, and
+  // a line directly under it would be read as a table line out of form.
+  const appended = (line: string): string => `${real}\n${line}\n`;
+  const lastLine = real.split("\n").length + 1;
+
   test("a renamed test path is not tracked", () => {
     const mutated = real.replaceAll(OSV_TESTS, ".github/composition/test_renamed.py");
     expect(mutated).not.toBe(real);
@@ -199,26 +206,28 @@ describe("mutations of the catalogue", () => {
     const [qualified = "", bare = ""] = names;
     expect(qualified).toContain("/");
     expect(qualified.endsWith(`/${bare}`)).toBe(true);
-    const lines = real.split("\n").length;
-    expect(checkPitfalls(`${real}Voir ${qualified}.\n`, tracked, names).violations).toEqual([
-      `line ${lines}: names the repository ${qualified}`,
-    ]);
-    expect(checkPitfalls(`${real}Voir ${bare}.\n`, tracked, names).violations).toEqual([
-      `line ${lines}: names the repository ${bare}`,
+    // A qualified name also carries its bare name after the slash.
+    expect(checkPitfalls(appended(`Voir ${qualified}.`), tracked, names).violations).toContain(
+      `line ${lastLine}: names the repository ${qualified}`,
+    );
+    expect(checkPitfalls(appended(`Voir ${qualified}.`), tracked, names).violations).toContain(
+      `line ${lastLine}: names the repository ${bare}`,
+    );
+    expect(checkPitfalls(appended(`Voir ${bare}.`), tracked, names).violations).toEqual([
+      `line ${lastLine}: names the repository ${bare}`,
     ]);
   });
 
   test("a host name, an address, a URL and a machine-local path are refused", () => {
-    const lines = real.split("\n").length;
-    const host = `line ${lines}: carries a host name, an address or a URL`;
+    const host = `line ${lastLine}: carries a host name, an address or a URL`;
     for (const intruder of ["forge.example.com", "192.0.2.7", "ssh://runner"]) {
-      expect(checkPitfalls(`${real}Joindre ${intruder}\n`, tracked, names).violations).toEqual([
+      expect(checkPitfalls(appended(`Joindre ${intruder}`), tracked, names).violations).toEqual([
         host,
       ]);
     }
     const local = ["", "Users", "someone", "work"].join("/");
-    expect(checkPitfalls(`${real}Dans ${local}\n`, tracked, names).violations).toEqual([
-      `line ${lines}: carries a machine-local path`,
+    expect(checkPitfalls(appended(`Dans ${local}`), tracked, names).violations).toEqual([
+      `line ${lastLine}: carries a machine-local path`,
     ]);
   });
 });
@@ -325,16 +334,18 @@ describe("structure of a table", () => {
 
   test("a comparison against nothing is a violation", () => {
     const text = sample([`| It breaks. | Because. | Do this. ${WITNESS} |`]);
+    // With no tracked extension, every dotted name reads as a host.
     expect(checkPitfalls(text, new Set<string>(), ["acme/widget-factory"]).violations).toEqual([
       "document: the set of tracked paths is empty",
       `line 7: test path ${SELF} is not tracked by git`,
+      "line 7: carries a host name, an address or a URL",
     ]);
     expect(checkPitfalls(text, tracked, []).violations).toEqual([
       "document: no repository name to refuse",
     ]);
   });
 
-  test("a bare repository name is refused as a word, not as a path segment", () => {
+  test("a bare repository name is refused as a word, and a tracked path that holds it is not", () => {
     const row = `| It breaks. | Because. | Do this. ${WITNESS} |`;
     const only = (text: string) => checkPitfalls(text, tracked, ["acme/tools", "tools"]).violations;
     expect(only(sample([row]))).toEqual([]);
@@ -343,9 +354,117 @@ describe("structure of a table", () => {
     ]);
     expect(only(sample([row, "", "See acme/tools."]))).toEqual([
       "line 9: names the repository acme/tools",
+      "line 9: names the repository tools",
     ]);
     expect(only(sample([row, "", "See acme/tools/README."]))).toEqual([
       "line 9: names the repository acme/tools",
+      "line 9: names the repository tools",
+    ]);
+  });
+});
+
+describe("lines a renderer reads as a table", () => {
+  const row = `| It breaks. | Because. | Do this. ${WITNESS} |`;
+  const outOfForm = (at: number) => `line ${at}: table line out of form`;
+
+  test("a line under a table, without a blank line, is a table line out of form", () => {
+    expect(check(sample([row, "A failure | no cause | no witness"]))).toEqual({
+      entries: 1,
+      violations: [outOfForm(8)],
+    });
+    expect(check(sample([row, "  | It breaks. | Because. | Do this. |"]))).toEqual({
+      entries: 1,
+      violations: [outOfForm(8)],
+    });
+    // A renderer keeps the table open until a blank line: a bar is not needed.
+    expect(check(sample([row, "Trailing prose", row]))).toEqual({
+      entries: 2,
+      violations: [outOfForm(8)],
+    });
+  });
+
+  test("an indented table and a table without outer bars are out of form", () => {
+    const indented = ["## shell", "", `  ${HEADER}`, `  ${RULE}`, `  ${row}`, ""].join("\n");
+    expect(check(indented).violations).toEqual([
+      outOfForm(3),
+      outOfForm(4),
+      outOfForm(5),
+      "document: no pitfall table",
+    ]);
+    const bare = ["## shell", "", "Symptôme | Cause | Parade", "--- | --- | ---", "a | b | c", ""];
+    expect(check(bare.join("\n")).violations).toEqual([outOfForm(4), "document: no pitfall table"]);
+  });
+
+  test("a table under a heading that is not a family of the catalogue is refused", () => {
+    expect(check(sample([row]).replace("## shell", "## docker"))).toEqual({
+      entries: 0,
+      violations: ["line 5: family 'docker' is not one of shell, osv-scanner, bun"],
+    });
+  });
+
+  test("counts tables, rows, entries and rejected rows, and the counts sum", () => {
+    const counts = countPitfalls(sample([row, "| a | b |", "x | y"]));
+    expect(counts).toEqual({ tables: 1, rows: 3, entries: 1, rejected: 2 });
+    expect(countPitfalls(real)).toEqual({ tables: 3, rows: 9, entries: 9, rejected: 0 });
+  });
+});
+
+describe("host forms beyond a closed list of suffixes", () => {
+  test("every host form is refused with the tracked tree of this repository", () => {
+    const lines = real.split("\n").length + 1;
+    for (const intruder of [
+      "forge.example.de",
+      "host.ch",
+      "git.example.co.uk",
+      "runner.corp",
+      "localhost",
+      "localhost:8080",
+      "runner:8443",
+    ]) {
+      expect(checkPitfalls(`${real}\nJoindre ${intruder}\n`, tracked, names).violations).toEqual([
+        `line ${lines}: carries a host name, an address or a URL`,
+      ]);
+    }
+  });
+
+  test("a file name whose suffix is a tracked extension is not a host", () => {
+    const lines = ["", "See `bunfig.toml`, `a/b.test.ts`, -i.bak, 1.4.0 and 12:30."];
+    expect(check(sample([`| It breaks. | Because. | Do this. ${WITNESS} |`, ...lines]))).toEqual({
+      entries: 1,
+      violations: [],
+    });
+  });
+});
+
+describe("bare repository names next to a slash or a dot", () => {
+  const only = (text: string) =>
+    checkPitfalls(text, tracked, ["acme/tools", "tools", "acme/.github", ".github"]).violations;
+  const row = `| It breaks. | Because. | Do this. ${WITNESS} |`;
+
+  test("a bare name before a slash or after a slash or a dot is counted", () => {
+    expect(only(sample([row, "", "Clone tools/ first."]))).toEqual([
+      "line 9: names the repository tools",
+    ]);
+    expect(only(sample([row, "", "See fork/tools here."]))).toEqual([
+      "line 9: names the repository tools",
+    ]);
+    expect(only(sample([row, "", "See .tools here."]))).toEqual([
+      "line 9: names the repository tools",
+    ]);
+    expect(only(sample([row, "", "See .github/ here."]))).toEqual([
+      "line 9: names the repository .github",
+    ]);
+  });
+
+  test("a name that prefixes a tracked path cited in a code span is not counted", () => {
+    const context = `Context: \`${OSV_TESTS}\`, \`tools/quality\` and \`tools/quality/new.ts\`.`;
+    expect(only(sample([row, "", context]))).toEqual([]);
+    expect(only(sample([row, "", "Elsewhere: `fork/tools/run.sh`."]))).toEqual([
+      "line 9: names the repository tools",
+    ]);
+    expect(only(sample([row, "", "Elsewhere: `tools`."]))).toEqual([]);
+    expect(only(sample([row, "", "Elsewhere: `tools` and tools."]))).toEqual([
+      "line 9: names the repository tools",
     ]);
   });
 });
@@ -463,7 +582,8 @@ describe("witnesses of the shell family", () => {
       expect(readFileSync(file, "utf8")).toBe("value=new\n");
       expect(readdirSync(scratch)).toEqual(["settings.txt"]);
 
-      // The pitfall itself: no host accepts both spellings of the in-place form.
+      // The pitfall itself: no host accepts both spellings of the in-place form
+      // that leave no backup file behind.
       const edited = (name: string, flags: string[]): boolean => {
         const copy = join(scratch, name);
         writeFileSync(copy, "value=old\n");
@@ -473,6 +593,16 @@ describe("witnesses of the shell family", () => {
       const separate = edited("separate.txt", ["-i", ""]);
       const attached = edited("attached.txt", ["-i"]);
       expect(separate && attached).toBe(false);
+
+      // The form with an attached suffix holds on both, at the cost of a
+      // backup file that has to be removed afterwards.
+      expect(edited("suffixed.txt", ["-i.bak"])).toBe(true);
+      expect(readFileSync(join(scratch, "suffixed.txt.bak"), "utf8")).toBe("value=old\n");
+
+      // The catalogue offers the form this witness shows to hold.
+      const row = parsePitfalls(real).find((entry) => entry.symptom.includes("`sed -i`"));
+      expect(row?.remedy).toContain("`sed -i.bak");
+      expect(row?.cause).not.toContain("BSD exige");
     });
   });
 });
