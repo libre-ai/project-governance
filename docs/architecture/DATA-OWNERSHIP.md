@@ -1,6 +1,6 @@
 # Data ownership
 
-Normative lifecycle: [`docs/specifications/DATA-LIFECYCLE.md`](../specifications/DATA-LIFECYCLE.md). Machine retention authority: [`contracts/data/retention.v1.json`](../../contracts/data/retention.v1.json).
+Normative lifecycle: [`docs/specifications/DATA-LIFECYCLE.md`](../specifications/DATA-LIFECYCLE.md). Machine retention authority: `contracts/data/retention.v1.json`.
 
 | Data | Owner | Authority |
 | --- | --- | --- |
