@@ -9,9 +9,19 @@ import {
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { closeSync, openSync, readFileSync, readSync, writeSync } from "node:fs";
-import { lstat, open, readFile, realpath, rename, rm, stat } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { existsSync, readFileSync, writeSync } from "node:fs";
+import {
+  type FileHandle,
+  lstat,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { constants as osConstants } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 /**
  * Key generation ceremony for the Ed25519 origin-signature key (WP-G2-Z01).
@@ -279,7 +289,10 @@ function parseArguments(argv: readonly string[]): Mode | { error: string } {
       index += 1;
       continue;
     }
-    return { error: `unknown argument: ${argument}` };
+    // Never echo the argument: an operator who types a secret where an option
+    // belongs (`--PASSPHRASE=…`, `--token=…`, a bare word) must not see it
+    // copied to standard error, which ends up in terminal scrollback and logs.
+    return { error: `unknown argument at position ${index + 1} (its text is not shown)` };
   }
 
   let passphraseFd: number | null = null;
@@ -551,37 +564,107 @@ export async function main(argv: readonly string[], io: CeremonyIo): Promise<num
   return EXIT_OK;
 }
 
-function readTerminalLine(fd: number): string {
+const STTY_CANDIDATES = ["/bin/stty", "/usr/bin/stty"];
+
+/**
+ * Absolute path of stty, never a PATH lookup: the ceremony does not trust a
+ * binary the environment chooses (same reason findGitAncestor does not run git).
+ */
+export function resolveStty(
+  candidates: readonly string[] = STTY_CANDIDATES,
+  isFile: (path: string) => boolean = (path) => existsSync(path),
+): string {
+  const found = candidates.find((path) => isAbsolute(path) && isFile(path));
+  if (found === undefined) throw new Error(`no stty at ${candidates.join(" or ")}`);
+  return found;
+}
+
+const RESTORE_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+type RestoreSignal = (typeof RESTORE_SIGNALS)[number];
+
+export interface SignalSource {
+  once(event: RestoreSignal, listener: () => void): unknown;
+  removeListener(event: RestoreSignal, listener: () => void): unknown;
+}
+
+function exitOnSignal(signal: RestoreSignal): void {
+  process.exit(128 + osConstants.signals[signal]);
+}
+
+/**
+ * Runs `body` with the terminal altered, and calls `restore` exactly once:
+ * when `body` settles, or on SIGINT/SIGTERM/SIGHUP before that. Without the
+ * signal path, Ctrl-C at the passphrase prompt leaves the shell without echo.
+ */
+export async function withTerminalRestored<T>(
+  restore: () => void,
+  body: () => Promise<T>,
+  source: SignalSource = process,
+  onSignal: (signal: RestoreSignal) => void = exitOnSignal,
+): Promise<T> {
+  let restored = false;
+  const restoreOnce = () => {
+    if (restored) return;
+    restored = true;
+    restore();
+  };
+  const listeners = RESTORE_SIGNALS.map((signal) => {
+    const listener = () => {
+      restoreOnce();
+      onSignal(signal);
+    };
+    source.once(signal, listener);
+    return { signal, listener };
+  });
+  try {
+    return await body();
+  } finally {
+    for (const { signal, listener } of listeners) source.removeListener(signal, listener);
+    restoreOnce();
+  }
+}
+
+async function readTerminalLine(handle: FileHandle): Promise<string> {
   const chunks: Buffer[] = [];
   const buffer = Buffer.alloc(256);
   let total = 0;
   for (;;) {
-    const count = readSync(fd, buffer, 0, buffer.length, null);
-    if (count === 0) break;
-    chunks.push(Buffer.from(buffer.subarray(0, count)));
-    total += count;
-    if (buffer.subarray(0, count).includes(0x0a) || total > 4096) break;
+    // Asynchronous on purpose: a blocking read would keep the signal
+    // listeners of withTerminalRestored from ever running.
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+    if (bytesRead === 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    total += bytesRead;
+    if (buffer.subarray(0, bytesRead).includes(0x0a) || total > 4096) break;
   }
   buffer.fill(0);
   return stripOneLineEnding(Buffer.concat(chunks).toString("utf8"));
 }
 
-function readHiddenFromTerminal(prompt: string): string {
-  const fd = openSync("/dev/tty", "r+");
+async function readHiddenFromTerminal(prompt: string): Promise<string> {
+  const stty = resolveStty();
+  const handle = await open("/dev/tty", "r+");
   try {
-    writeSync(fd, prompt);
+    const fd = handle.fd;
     // stty acts on its standard input: handing it the terminal descriptor
-    // turns echo off on the controlling terminal, without a dependency.
-    const silenced = spawnSync("stty", ["-echo"], { stdio: [fd, "ignore", "ignore"] });
-    if (silenced.status !== 0) throw new Error("cannot turn terminal echo off");
-    try {
-      return readTerminalLine(fd);
-    } finally {
-      spawnSync("stty", ["echo"], { stdio: [fd, "ignore", "ignore"] });
-      writeSync(fd, "\n");
-    }
+    // reads and sets the controlling terminal, without a dependency.
+    const saved = spawnSync(stty, ["-g"], { stdio: [fd, "pipe", "ignore"], encoding: "utf8" });
+    const state = saved.status === 0 ? saved.stdout.trim() : "";
+    if (state === "") throw new Error("cannot read the terminal settings");
+    await handle.write(prompt);
+    return await withTerminalRestored(
+      () => {
+        spawnSync(stty, [state], { stdio: [fd, "ignore", "ignore"] });
+        writeSync(fd, "\n");
+      },
+      async () => {
+        const silenced = spawnSync(stty, ["-echo"], { stdio: [fd, "ignore", "ignore"] });
+        if (silenced.status !== 0) throw new Error("cannot turn terminal echo off");
+        return readTerminalLine(handle);
+      },
+    );
   } finally {
-    closeSync(fd);
+    await handle.close();
   }
 }
 
@@ -642,7 +725,7 @@ export function createNodeIo(): CeremonyIo {
       process.stderr.write(text);
     },
     readPassphraseFromFd: async (fd) => readFileSync(fd, "utf8"),
-    readPassphraseFromTerminal: async (prompt) => readHiddenFromTerminal(prompt),
+    readPassphraseFromTerminal: (prompt) => readHiddenFromTerminal(prompt),
     generateKeyPair: () => {
       const { privateKey, publicKey } = generateKeyPairSync("ed25519", {
         privateKeyEncoding: { format: "pem", type: "pkcs8" },

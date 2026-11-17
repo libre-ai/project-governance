@@ -72,21 +72,26 @@ netstat -an 2>/dev/null | grep -E 'ESTABLISHED|LISTEN' && echo "ERREUR: connexio
 L'outil génère une paire Ed25519, dérive l'identifiant de clé, lit la phrase de passe, scelle la clé privée et écrit deux fichiers dans le répertoire `--out`, qui est obligatoire. Lancez-le depuis la racine du clone, avec `--out` sur le support amovible :
 
 ```bash
-bun tools/security/keygen-ceremony.ts --out /mnt/usb/offline-keys > /mnt/usb/offline-keys/registry-entry.json
+entry="$(bun tools/security/keygen-ceremony.ts --out /mnt/usb/offline-keys)" \
+  && printf '%s\n' "$entry" > /mnt/usb/offline-keys/registry-entry.json
 ```
+
+La sortie standard est capturée dans une variable et n'est écrite qu'en cas de succès : une redirection directe (`> …/registry-entry.json`) créerait ce fichier, vide, dans `--out` même quand l'outil refuse. Les invites de saisie passent par le terminal, pas par la sortie standard : la capture ne les masque pas.
 
 **Refus attendus de l'outil (code 4, rien d'écrit) :**
 
 - une variable de CI posée (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `TRAVIS`, `BUILDKITE`) ;
 - un répertoire `--out` situé dans un dépôt git (entrée `.git` dans lui ou l'un de ses parents) ;
-- un fichier `<identifiant>.sealed` ou `<identifiant>.pub.pem` déjà présent dans `--out` ;
+- un fichier `<identifiant>.sealed`, `<identifiant>.pub.pem` ou `<identifiant>.partial` déjà présent dans `--out` ;
 - une phrase de passe de moins de 32 caractères, ou deux saisies différentes.
+
+Un `<identifiant>.partial` ne subsiste qu'après une interruption brutale (coupure de courant, arrêt forcé) entre l'écriture de l'enveloppe et son contrôle : l'outil le supprime lui-même sur tout échec qu'il traite. Ce fichier n'a pas été vérifié : supprimez-le. Il ne bloque pas une nouvelle cérémonie, dont la clé et donc le nom sont neufs ; le refus ne vise que la même clé, rejouée.
 
 Une phrase de passe en argument (`--passphrase …`) est refusée en usage (code 2) : elle serait visible dans la liste des processus et l'historique du shell.
 
 ### Étape 4 : Examiner les sorties de l'outil
 
-Les messages pour l'opérateur vont sur la sortie d'erreur. La sortie standard ne porte que l'entrée de registre, en JSON, redirigée ci-dessus dans `registry-entry.json` :
+Les messages pour l'opérateur vont sur la sortie d'erreur. La sortie standard ne porte que l'entrée de registre, en JSON, capturée ci-dessus puis écrite dans `registry-entry.json` :
 
 ```json
 {
@@ -103,7 +108,7 @@ L'identifiant est le SHA-256, en hexadécimal minuscule, des 32 octets bruts de 
 
 Fichiers écrits dans `--out`, dans cet ordre :
 
-1. `<identifiant>.sealed`, mode 0600 : l'enveloppe scellée. L'outil l'écrit d'abord sous un nom temporaire, la relit, la descelle en mémoire et compare la clé publique qu'elle contient à celle générée ; il ne lui donne son nom final qu'après ce contrôle.
+1. `<identifiant>.sealed`, créé avec le mode 0600 (sur un système de fichiers qui conserve les permissions Unix ; FAT32 ne les conserve pas et affiche celles des options de montage, la confidentialité de l'enveloppe y repose sur son scellement et sur la garde physique du support) : l'enveloppe scellée. L'outil l'écrit d'abord sous un nom temporaire, la relit, la descelle en mémoire et compare la clé publique qu'elle contient à celle générée ; il ne lui donne son nom final qu'après ce contrôle.
 2. `<identifiant>.pub.pem` : la clé publique, écrite seulement après l'enveloppe.
 
 Un échec à n'importe quelle étape supprime ce que l'outil a écrit et sort en code 1, sans fichier public.
@@ -310,6 +315,8 @@ Une fois le manifest enregistré et le workflow de cérémonial approuvé :
 ### Q : Le scellement échoue (code 1, chiffrement inconnu)
 
 **R :** Le scellement exige `chacha20-poly1305` dans `node:crypto`. Mesure du 2026-11-17 : Bun 1.4.4 et 1.3.14 (BoringSSL) ne l'ont pas, Node 26 (OpenSSL) l'a. L'outil sort alors en code 1 sans rien écrire. Vérifier avant la cérémonie : `bun -e 'console.log(require("node:crypto").getCiphers().includes("chacha20-poly1305"))'` doit afficher `true`.
+
+**La cérémonie ne tourne pas sous le Bun épinglé par ce dépôt** (`jq -r .packageManager package.json`) tant que le propriétaire n'a pas choisi le schéma de scellement : ce Bun n'a pas `chacha20-poly1305`. Le changement de schéma ou de runtime est une décision en attente, pas un réglage à faire pendant la cérémonie. Pour la même raison, les tests de scellement de `tools/security/keygen-ceremony.test.ts` sont sautés sous Bun et ne tournent dans aucune CI ; `bun test` l'imprime nommément (`sealing tests skipped: <n>, cipher chacha20-poly1305 unavailable in this runtime`).
 
 ### Q : Je n'ai pas de Bun installé
 
