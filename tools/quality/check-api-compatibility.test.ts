@@ -132,6 +132,24 @@ const ZERO_CHECKS: ToolRun = {
   stdout: "",
   stderr: "     Checked [   0.000s] 0 checks: 0 pass, 0 skip\n",
 };
+/**
+ * What cargo-semver-checks 0.51.0 printed (2026-11-17, measured) when the two
+ * versions are in different compatibility classes: 1.0.0 -> 2.0.0, 0.1.0 ->
+ * 0.2.0, 0.0.1 -> 0.0.2, 1.0.0 -> 2.0.0-alpha.1, and also 1.0.0 -> 0.9.9. It
+ * infers a major change, skips every check, and exits 0 even with a public
+ * function removed.
+ */
+function allSkipped(from: string, to: string): ToolRun {
+  return {
+    exitCode: 0,
+    stdout: "",
+    stderr:
+      `    Checking libre-ai-engine v${from} -> v${to} (major change)\n` +
+      "     Checked [   0.000s] 0 checks: 0 pass, 260 skip\n" +
+      "     Summary no semver update required\n" +
+      "    Finished [   0.559s] libre-ai-engine\n",
+  };
+}
 const TOOL_ERROR: ToolRun = {
   exitCode: 101,
   stdout: "",
@@ -455,25 +473,60 @@ describe("verdicts read from the tool", () => {
     expect(last(outcome)).toContain("version not incremented");
   });
 
-  test("a break below the version of the baseline: 16", async () => {
+  // Below the baseline, the real tool infers a major change and skips every
+  // check: a removed function is not reported, and the version went down.
+  test("a version below the baseline, every check skipped by the tool: 16", async () => {
     const repository = taggedThenMoved("libre-ai-engine-v1.0.0");
     const outcome = await gate({
       repository,
-      tool: BREAK,
+      tool: allSkipped("1.0.0", "0.9.9"),
       packages: packagesOf(repository, "0.9.9"),
     });
     expect(outcome.code).toBe(16);
+    expect(outcome.lines).toContain("checks=0 passed=0 skipped=260 breaks=0");
+    expect(last(outcome)).toContain("version not incremented");
   });
 
-  test("a break with a higher major version than the baseline: 14", async () => {
+  // The real tool reports breaks only within a compatibility class (a minor
+  // or patch increment): 1.0.0 -> 1.1.0 with a function removed.
+  test("a break with a minor increment over the baseline: 14", async () => {
     const repository = taggedThenMoved("libre-ai-engine-v1.0.0");
     const outcome = await gate({
       repository,
       tool: BREAK,
-      packages: packagesOf(repository, "2.0.0"),
+      packages: packagesOf(repository, "1.1.0"),
     });
     expect(outcome.code).toBe(14);
     expect(last(outcome)).toContain("API break");
+  });
+
+  test.each([
+    ["1.0.0", "2.0.0"],
+    ["0.1.0", "0.2.0"],
+    ["0.0.1", "0.0.2"],
+    ["1.0.0", "2.0.0-alpha.1"],
+  ])("a major release %s -> %s, every check skipped by the tool: 0, and why", async (from, to) => {
+    const repository = taggedThenMoved(`libre-ai-engine-v${from}`, from);
+    const outcome = await gate({
+      repository,
+      tool: allSkipped(from, to),
+      packages: packagesOf(repository, to),
+    });
+    expect(outcome.code).toBe(0);
+    expect(outcome.lines).toContain("checks=0 passed=0 skipped=260 breaks=0");
+    expect(outcome.lines.at(-2)).toBe(
+      `major release: ${from} -> ${to} changes the compatibility class; the tool skips every check across it, no API compatibility was verified`,
+    );
+    expect(last(outcome)).toBe("OK");
+  });
+
+  test.each([
+    ["every check skipped within a compatibility class", allSkipped("1.0.0", "1.1.0"), "1.1.0"],
+    ["a major release with no check skipped either", ZERO_CHECKS, "2.0.0"],
+  ])("zero check run, %s: 15", async (_name, tool, version) => {
+    const repository = taggedThenMoved("libre-ai-engine-v1.0.0");
+    const outcome = await gate({ repository, tool, packages: packagesOf(repository, version) });
+    expect(outcome.code).toBe(15);
   });
 
   test("the version of the baseline is read on its tree, not in its tag name", async () => {
@@ -550,6 +603,67 @@ describe("what is printed", () => {
     expect(outcome.lines[1]).toBe("tags: candidates=1 exact=1 suffix=0 discarded=0");
   });
 
+  const HEADER_KEYS = ["tool", "crate", "path", "version", "baseline", "baseline-sha"];
+
+  test("an exit before the tool runs still opens on the header, unknown keys as -", async () => {
+    const tagged = taggedThenMoved("libre-ai-engine-v1.0.0");
+    const untagged = repositoryAt("header-untagged");
+    commit(untagged, twoCrates());
+    const absent = repositoryAt("header-absent");
+    const empty = commit(absent, { "README.md": "nothing yet\n" });
+    commit(absent, twoCrates());
+    const cases: readonly [number, Scenario, Record<string, string>][] = [
+      [2, { repository: SUITE_ROOT, argv: ["--crate"] }, {}],
+      [19, { repository: fresh("header-not-a-repository") }, { crate: CRATE }],
+      [10, { repository: tagged, environment: { PATH: "" } }, { crate: CRATE }],
+      [11, { repository: tagged, crate: "unlisted" }, { crate: "unlisted" }],
+      [12, { repository: untagged }, { crate: CRATE, path: "crates/a", version: "1.0.0" }],
+      [
+        13,
+        {
+          repository: tagged,
+          argv: ["--repository", tagged, "--crate", CRATE, "--baseline-rev", "no-such-rev"],
+        },
+        { crate: CRATE, path: "crates/a", version: "1.0.0" },
+      ],
+      [
+        18,
+        {
+          repository: absent,
+          argv: ["--repository", absent, "--crate", CRATE, "--baseline-rev", empty],
+        },
+        {
+          crate: CRATE,
+          path: "crates/a",
+          version: "1.0.0",
+          baseline: empty,
+          "baseline-sha": empty,
+        },
+      ],
+    ];
+    for (const [code, scenario, known] of cases) {
+      const outcome = await gate(scenario);
+      expect(outcome.code).toBe(code);
+      expect(outcome.lines[0]?.startsWith("api-compat ")).toBe(true);
+      expect(Object.keys(header(outcome))).toEqual(HEADER_KEYS);
+      const expected = Object.fromEntries(HEADER_KEYS.map((key) => [key, known[key] ?? "-"]));
+      expect(header(outcome)).toEqual(expected);
+      expect(outcome.lines.filter((line) => line.startsWith("api-compat ")).length).toBe(1);
+    }
+  });
+
+  test("an exception raised by the tool still prints the header first", async () => {
+    const outcome = await gate({
+      repository: taggedThenMoved("libre-ai-engine-v1.0.0"),
+      tool: (): ToolRun => {
+        throw new Error("the tool could not be started");
+      },
+    });
+    expect(outcome.code).toBe(17);
+    expect(header(outcome).tool).toBe("cargo-semver-checks@0.51.0");
+    expect(Object.keys(header(outcome))).toEqual(HEADER_KEYS);
+  });
+
   const RETURN_TYPE = /^limit: a changed return type \(u32 to u64\)/;
   const TRIVIAL = /^limit: the head is the baseline commit/;
   const limits = (outcome: Outcome): string[] =>
@@ -602,7 +716,7 @@ describe("the baseline extraction", () => {
     ],
   ])("the temporary directory is gone after %s", async (_name, tool, code) => {
     const repository = taggedThenMoved("libre-ai-engine-v1.0.0");
-    const outcome = await gate({ repository, tool, packages: packagesOf(repository, "2.0.0") });
+    const outcome = await gate({ repository, tool, packages: packagesOf(repository, "1.1.0") });
     expect(outcome.code).toBe(code);
     expect(outcome.baselineSeen).toEqual([true]);
     expect(readdirSync(outcome.temporaryRoot)).toEqual([]);

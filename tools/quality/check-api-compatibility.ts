@@ -22,7 +22,16 @@
  *   `--baseline-root`. The tool's own `--baseline-rev` is never used: it
  *   resolves the revision a second time, in a clone this gate does not see.
  * - **No green without a baseline, and none without a check.** No baseline is
- *   exit 12; a run that executed zero checks is exit 15.
+ *   exit 12; a run that executed zero checks is exit 15, with two exceptions
+ *   the tool itself creates. It infers the release type from the two
+ *   versions and, across compatibility classes (measured on 0.51.0: 1.0.0 ->
+ *   2.0.0, 0.1.0 -> 0.2.0, 0.0.1 -> 0.0.2, and 1.0.0 -> 0.9.9), skips every
+ *   check and exits 0 even with a public item removed. A current version
+ *   below the baseline's is then exit 16; a major release in the semver sense,
+ *   0.x -> 0.(x+1) included, every check skipped and no break, is exit 0
+ *   after a `major release:` line saying that nothing was verified.
+ * - **The header opens every output.** When the gate stops before a key is
+ *   known, the key reads `-`.
  *
  * The summary line it reads was measured on cargo-semver-checks 0.51.0
  * (stderr): `Checked [   0.004s] 229 checks: 226 pass, 3 fail, 0 warn, 31 skip`
@@ -61,6 +70,9 @@ export const EXIT = {
 export const PROVIDED_BINARY_ENV = "LIBRE_AI_CARGO_SEMVER_CHECKS";
 
 const TOOL_NAME = "cargo-semver-checks";
+
+/** A header value not known when the gate stopped. */
+const UNKNOWN = "-";
 
 export interface ToolRun {
   readonly exitCode: number;
@@ -287,7 +299,40 @@ function highestFirst(left: TagCandidate, right: TagCandidate): number {
 
 type Baseline =
   | { readonly ok: true; readonly label: string; readonly sha: string }
-  | { readonly ok: false; readonly code: number; readonly cause: string };
+  | {
+      readonly ok: false;
+      readonly code: number;
+      readonly cause: string;
+      /** The baseline that resolved before it was refused, for the header. */
+      readonly resolved?: { readonly label: string; readonly sha: string };
+    };
+
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:[-+].*)?$/;
+
+/**
+ * The compatibility class of a version as cargo reads it: its leftmost
+ * non-zero component (`2`, `0.3`, `0.0.4`). `null` when it is not x.y.z.
+ */
+function compatibilityClass(version: string): string | null {
+  const match = version.match(VERSION);
+  if (match === null) return null;
+  const [, major = "", minor = "", patch = ""] = match;
+  if (major !== "0") return major;
+  if (minor !== "0") return `0.${minor}`;
+  return `0.0.${patch}`;
+}
+
+/**
+ * True when `current` is above `previous` in another compatibility class: a
+ * major release in the semver sense, 0.x -> 0.(x+1) included.
+ */
+function isMajorRelease(previous: string, current: string): boolean {
+  const before = compatibilityClass(previous);
+  const after = compatibilityClass(current);
+  return (
+    before !== null && after !== null && before !== after && Bun.semver.order(current, previous) > 0
+  );
+}
 
 const FORTY_HEX = /^[0-9a-f]{40}$/;
 
@@ -321,10 +366,11 @@ function selectBaseline(
   suffix: readonly TagCandidate[],
   counts: TagCounts,
 ): Baseline {
-  const absent = (label: string): Baseline => ({
+  const absent = (label: string, sha: string): Baseline => ({
     ok: false,
     code: EXIT.crateAbsentFromBaseline,
     cause: `crate ${args.crate} is absent from baseline ${label}: its tree has no ${manifestInTree(cratePath)} naming it`,
+    resolved: { label, sha },
   });
   const unresolved = (label: string): Baseline => ({
     ok: false,
@@ -339,7 +385,7 @@ function selectBaseline(
     if (/[\s\p{Cc}]/u.test(rev) || rev.startsWith("-")) return unresolved(rev);
     const sha = commitOf(repository, rev);
     if (sha === null) return unresolved(rev);
-    if (!treeCarriesCrate(repository, sha, cratePath, args.crate)) return absent(rev);
+    if (!treeCarriesCrate(repository, sha, cratePath, args.crate)) return absent(rev, sha);
     return { ok: true, label: rev, sha };
   }
 
@@ -347,7 +393,9 @@ function selectBaseline(
   if (highestExact !== undefined) {
     const sha = commitOf(repository, `refs/tags/${highestExact.tag}`);
     if (sha === null) return unresolved(highestExact.tag);
-    if (!treeCarriesCrate(repository, sha, cratePath, args.crate)) return absent(highestExact.tag);
+    if (!treeCarriesCrate(repository, sha, cratePath, args.crate)) {
+      return absent(highestExact.tag, sha);
+    }
     return { ok: true, label: highestExact.tag, sha };
   }
 
@@ -435,13 +483,33 @@ const LIMIT_TRIVIAL = "limit: the head is the baseline commit; the gate passes t
 export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): Promise<number> {
   const write = deps.write ?? ((line: string): void => console.log(line));
   const environment = deps.environment ?? process.env;
+  // Every exit opens on the header, with the six keys in order: what is not
+  // known yet when the gate stops reads `-`, a value no key can hold.
+  const header = {
+    tool: UNKNOWN,
+    crate: UNKNOWN,
+    path: UNKNOWN,
+    version: UNKNOWN,
+    baseline: UNKNOWN,
+    baselineSha: UNKNOWN,
+  };
+  let headerWritten = false;
+  const writeHeader = (): void => {
+    if (headerWritten) return;
+    headerWritten = true;
+    write(
+      `api-compat tool=${header.tool} crate=${header.crate} path=${header.path} version=${header.version} baseline=${header.baseline} baseline-sha=${header.baselineSha}`,
+    );
+  };
   const conclude = (code: number, cause: string): number => {
+    writeHeader();
     write(cause);
     return code;
   };
 
   const args = parseArguments(argv, process.cwd());
   if (typeof args === "string") return conclude(EXIT.usage, `usage: ${args}`);
+  header.crate = args.crate;
 
   // Tags live in the history: without all of it, a missing tag and a tag that
   // was never fetched are the same empty list.
@@ -493,6 +561,8 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
     return conclude(EXIT.unknownCrate, `unknown crate: ${args.crate} lives outside the repository`);
   }
   const cratePath = relativePath === "" ? "." : relativePath.split(sep).join("/");
+  header.path = cratePath;
+  header.version = crate.version;
 
   const tagList = runGit([
     "-C",
@@ -522,9 +592,16 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
   const baseline = selectBaseline(repository, args, cratePath, exact, suffix, counts);
   const tagsLine = `tags: candidates=${counts.candidates} exact=${counts.exact} suffix=${counts.suffix} discarded=${counts.discarded}`;
   if (!baseline.ok) {
+    if (baseline.resolved !== undefined) {
+      header.baseline = baseline.resolved.label;
+      header.baselineSha = baseline.resolved.sha;
+    }
+    writeHeader();
     write(tagsLine);
     return conclude(baseline.code, baseline.cause);
   }
+  header.baseline = baseline.label;
+  header.baselineSha = baseline.sha;
 
   mkdirSync(deps.temporaryRoot ?? tmpdir(), { recursive: true });
   const scratch = mkdtempSync(join(deps.temporaryRoot ?? tmpdir(), "api-compat-"));
@@ -542,6 +619,7 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
     ]);
     const untar = Bun.spawnSync(["tar", "-xf", archive, "-C", extracted], { stderr: "pipe" });
     if (archived.exitCode !== 0 || untar.exitCode !== 0) {
+      writeHeader();
       write(tagsLine);
       return conclude(
         EXIT.unreadableRepository,
@@ -550,6 +628,7 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
     }
     const previous = baselineVersion(extracted, cratePath);
     if (previous === null) {
+      writeHeader();
       write(tagsLine);
       return conclude(
         EXIT.crateAbsentFromBaseline,
@@ -559,41 +638,55 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
 
     const versionRun = await runTool([tools.semverChecks, "semver-checks", "--version"]);
     const toolVersion = versionRun.stdout.trim().match(/^cargo-semver-checks (\d+\.\d+\.\d+)$/);
-    const run =
-      toolVersion === null
-        ? null
-        : await runTool([
-            tools.semverChecks,
-            "semver-checks",
-            "--manifest-path",
-            crate.manifestPath,
-            "--package",
-            args.crate,
-            "--baseline-root",
-            extracted,
-            "--color",
-            "never",
-          ]);
-
-    write(
-      `api-compat tool=${TOOL_NAME}@${toolVersion?.[1] ?? "unknown"} crate=${args.crate} path=${cratePath} version=${crate.version} baseline=${baseline.label} baseline-sha=${baseline.sha}`,
-    );
+    header.tool = `${TOOL_NAME}@${toolVersion?.[1] ?? "unknown"}`;
+    // Written before the tool runs, so that an exception it raises still
+    // leaves the header, the tags and the limits on the record.
+    writeHeader();
     write(tagsLine);
     write(LIMIT_RETURN_TYPE);
     if (head === baseline.sha) write(LIMIT_TRIVIAL);
-    if (run === null) {
+    if (toolVersion === null) {
       return conclude(
         EXIT.toolError,
         `tool error: the tool does not state its version (exit ${versionRun.exitCode})`,
       );
     }
+    const run = await runTool([
+      tools.semverChecks,
+      "semver-checks",
+      "--manifest-path",
+      crate.manifestPath,
+      "--package",
+      args.crate,
+      "--baseline-root",
+      extracted,
+      "--color",
+      "never",
+    ]);
     const verdict = readToolOutput(run);
     if (!verdict.ok) return conclude(EXIT.toolError, `tool error: ${verdict.reason}`);
     write(
       `checks=${verdict.checks} passed=${verdict.passed} skipped=${verdict.skipped} breaks=${verdict.breaks}`,
     );
     for (const line of verdict.breakLines) write(`break: ${line}`);
-    if (verdict.checks === 0) return conclude(EXIT.noCheckRun, "no check was run");
+    if (verdict.checks === 0) {
+      // cargo-semver-checks infers the release type from the two versions:
+      // across compatibility classes (a major release, or a version that went
+      // down) it skips every check and exits 0, a removed item included.
+      if (Bun.semver.order(crate.version, previous) < 0) {
+        return conclude(
+          EXIT.versionNotIncremented,
+          `version not incremented: ${crate.version} is below the baseline at ${previous}, and the tool skips every check across it`,
+        );
+      }
+      if (verdict.skipped > 0 && isMajorRelease(previous, crate.version)) {
+        write(
+          `major release: ${previous} -> ${crate.version} changes the compatibility class; the tool skips every check across it, no API compatibility was verified`,
+        );
+        return conclude(EXIT.compatible, "OK");
+      }
+      return conclude(EXIT.noCheckRun, "no check was run");
+    }
     if (verdict.breaks > 0) {
       return Bun.semver.order(crate.version, previous) <= 0
         ? conclude(
