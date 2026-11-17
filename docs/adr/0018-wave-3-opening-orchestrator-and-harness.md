@@ -1,6 +1,7 @@
 # ADR-0018 — Ouverture de la vague 3 : réalisation de l'orchestrateur et du harness
 
 - **Statut :** accepted — la ratification est le merge propriétaire de cette pull request
+- **Supersédé en partie par :** ADR-0020 (cadre de vagues ; D3, foyer de spécification `docs/apps`, détail en ADR-0020 §2.2). **Amendé par :** ADR-0030 (D2 : `harness-profile.v2` est le candidat qui remplace `harness-profile-v1`, par successeur majeur, jamais en place).
 - **Date :** 2026-07-25
 - **Arbitrage :** propriétaire, session du 2026-07-25 (cinq choix de réalisation posés et tranchés après constat que les contrats de la couche 2 étaient déjà verrouillés mais sans spécification produit ni work-package).
 - **Portée :** réalisation — langage et emplacement, première capacité ouverte, foyer de spécification, worker, et découpage en work-packages de la couche 2.

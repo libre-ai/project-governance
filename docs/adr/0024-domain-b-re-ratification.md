@@ -2,6 +2,7 @@
 
 - **Statut :** accepted — la ratification est le merge propriétaire de cette
   pull request.
+- **Amendé par :** ADR-0041 (§2.2, clause « aucune fusion »).
 - **Arbitrage :** propriétaire le 2026-08-18, par questions structurées
   (ADR-0022/I-24) — remise à plat de l'écosystème libre-ai, domaine B.
 - **Date :** 2026-08-18

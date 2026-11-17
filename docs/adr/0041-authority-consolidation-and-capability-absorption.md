@@ -1,6 +1,7 @@
 # ADR-0041 — Consolidation de l'autorité et absorption des capacités sans destination
 
 - **Statut :** accepted — fusionné (#4) ; statut clos le 2026-11-09. Owner-arbitration: 2026-11-09 — clôture du statut par question structurée en chat (ADR-0022/I-24) ; tri `docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md`
+- **Amendé par :** ADR-0042 (dans le préambule « N'autorise pas », le seul interdit « aucun transfert d'autorité au-delà des transferts tracés », pour le seul domaine Connaissance ; détail en ADR-0042 §7).
 - **Arbitrage :** décisions propriétaires du 2026-10-07, prises sur les quatre axes de décision (sécurité, qualité, performance, complétude) après mesure, le coût d'outillage ayant été écarté comme critère ; §8 ajouté sur arbitrage du 2026-10-08. Owner-arbitration: 2026-10-08
 - **Étend :** la direction propriétaire du 2026-09-29 (`docs/adr/2026-09-29-portfolio-consolidation.md`), à laquelle il donne sa numérotation et ses entrées de registre
 - **Amende :** ADR-0024 §2.2 (clause « aucune fusion ») et I-28 (réalisations de référence du gate de `rev` orphelin)

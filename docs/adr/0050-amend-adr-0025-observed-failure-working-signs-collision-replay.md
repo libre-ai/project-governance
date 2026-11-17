@@ -2,6 +2,7 @@
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; D1 à
   D8 et l'amendement d'I-25 sont en vigueur à la fusion.
+- **Amendé par :** ADR-0059 (D1 : une seule dérogation nommée, (g)).
 - **Arbitrage :** le propriétaire a validé le texte proposé le 2026-10-13 et
   tranché les deux options qu'il laissait ouvertes : D7 option A, conforme à la
   recommandation de la rédaction, et D8 option C. Les arbitrages du 2026-10-13

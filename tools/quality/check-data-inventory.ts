@@ -88,6 +88,9 @@ import { readGit } from "./git-diff";
  *      IGNORED_SUBSTRINGS, IGNORED_FILES, LINE_EXEMPTION_FILES;
  *    - check-source-policy.ts: ignoredPrefixes;
  *    - tools/skills/lint-skill.ts: ALLOWED_STATUS, ALLOWED_TOP_LEVEL_KEYS.
+ *    Added on 2026-11-17, when the command gives 42 hits:
+ *    - check-adr-supersession.ts: EXEMPT_NOT_AMENDMENTS,
+ *      EXEMPT_NON_ADR_FIELDS.
  *    The command finds only the bindings named with one of its stems, so the
  *    list is a floor, not a census. A second read on 2026-10-26, of every
  *    top-level array, Set or Map literal by name (fourth review of #159),
