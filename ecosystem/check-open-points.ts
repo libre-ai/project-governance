@@ -25,7 +25,12 @@ import { concludeGate } from "../tools/quality/gate-report";
 import { parseRegisterDecisions } from "./briques";
 import { gitEnvironment } from "./check-briques";
 import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
-import { evaluateOpenPoints, openPointsExitCode, REGISTER_PATH } from "./open-points";
+import {
+  evaluateOpenPoints,
+  type OpenPointsInput,
+  openPointsExitCode,
+  REGISTER_PATH,
+} from "./open-points";
 
 const GATE = "Open points";
 const DECISION_REGISTER = "docs/decisions/DECISION-REGISTER.md";
@@ -94,15 +99,18 @@ async function pullRequestMerged(repository: string, number: number): Promise<bo
   return null;
 }
 
-if (import.meta.main) {
-  if (process.argv.length > 2) {
-    console.error(
-      `usage: bun ecosystem/check-open-points.ts (no argument; reads ${REGISTER_PATH})`,
-    );
-    process.exit(2);
-  }
-  const root = process.cwd();
-  // Unreadable sources become empty collections, which the evaluation fails by name.
+/**
+ * Read the sources of the repository at `root`: the register, the decision
+ * register, the tracked paths and the decision record numbers. The date and
+ * the pull request reader are handed in, so that a test reads the shipped
+ * register without the clock or the network. Unreadable sources become empty
+ * collections, which the evaluation fails by name.
+ */
+export function readOpenPointsInput(
+  root: string,
+  today: string,
+  readPullRequest: OpenPointsInput["pullRequestMerged"],
+): OpenPointsInput {
   const tracked = trackedPaths(root) ?? new Set<string>();
   const adrNumbers = new Set(
     [...tracked]
@@ -110,14 +118,26 @@ if (import.meta.main) {
       .filter((name) => !name.includes("/"))
       .flatMap((name) => /^([0-9]{4})-.+\.md$/.exec(name)?.[1] ?? []),
   );
-  const outcome = await evaluateOpenPoints({
+  return {
     text: readOrNull(join(root, REGISTER_PATH)),
     registerDecisions: parseRegisterDecisions(readOrNull(join(root, DECISION_REGISTER)) ?? ""),
     adrNumbers,
     isTracked: (path) => tracked.has(path),
-    today: localToday(),
-    pullRequestMerged,
-  });
+    today,
+    pullRequestMerged: readPullRequest,
+  };
+}
+
+if (import.meta.main) {
+  if (process.argv.length > 2) {
+    console.error(
+      `usage: bun ecosystem/check-open-points.ts (no argument; reads ${REGISTER_PATH})`,
+    );
+    process.exit(2);
+  }
+  const outcome = await evaluateOpenPoints(
+    readOpenPointsInput(process.cwd(), localToday(), pullRequestMerged),
+  );
   // A red run prints only its violations: say the volume they were found in.
   if (outcome.report.violations.length > 0 && outcome.volume !== "") {
     console.error(`${GATE} volume: ${outcome.volume}`);

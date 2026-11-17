@@ -43,11 +43,16 @@
  * reader of a pull request. Files, the index, the clock and the network are
  * read by `check-open-points.ts` only.
  *
- * What this module does NOT assert: that a key is written once. `Bun.YAML.parse`
- * keeps the last of two identical keys in silence, and the line reading that
- * catches it in the refusals gate (`scanBlockLayout`) is bound to that
- * register's root key. A point whose `etat` is written twice is read at its
- * last value.
+ * Two readings that must agree (R1). `Bun.YAML.parse` keeps the last of two
+ * identical keys in silence: a second root `points:` would erase every point
+ * before it, a second `condition:` would mask a due one, `etat: ouvert` then
+ * `etat: clos` would close a point. The register is therefore also read line
+ * by line in its block style (`scanPointsLayout`, the method of the refusals
+ * gate's `scanBlockLayout`, which is bound to that register's root key), and
+ * the two readings must see the same root keys, the same number of points and
+ * the same keys per point, none written twice. A line of another form, or a
+ * root outside the block style, fails R1 too: a duplicate written quoted, in
+ * flow or as `? key` would escape the line reading otherwise.
  */
 
 import { isIsoDate } from "../tools/quality/check-refusals";
@@ -157,6 +162,89 @@ export function parseCondition(text: string): Condition | null {
   return null;
 }
 
+/** The keys the register writes, read line by line in its block style. */
+interface PointsLayout {
+  readonly rootKeys: readonly string[];
+  readonly pointKeys: readonly (readonly string[])[];
+  /** 1-based lines that are none of the admitted forms. */
+  readonly unreadLines: readonly number[];
+  /** First line putting the root outside a block mapping in column 0, or null. */
+  readonly rootStyleLine: number | null;
+}
+
+const POINTS_KEY = "points";
+const ROOT_KEY_LINE = /^([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+/** `points:` alone on its line; `[]` is the one inline value, the empty register. */
+const POINTS_OPENER = /^points:\s*(?:\[\]\s*)?(?:#.*)?$/;
+const FLOW_ROOT = /^[[{]/;
+const POINT_START = /^ {2}- ([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+const POINT_KEY = /^ {4}([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+const NESTED_CONTENT = /^ {5,}\S/;
+
+/**
+ * Independent reading of the keys, compared with the parser's. A whitelist,
+ * not a key detector: every line is blank, a comment, a bare root key in
+ * column 0, or, under `points`, a point opened by `  - <key>:`, a bare point
+ * key in column 4, or nested content indented five spaces or more (folded
+ * scalars). Any other line is unread. Local copy of the refusals gate's method
+ * (`scanBlockLayout`, bound to its own root key and left unchanged).
+ */
+function scanPointsLayout(text: string): PointsLayout {
+  const rootKeys: string[] = [];
+  const pointKeys: string[][] = [];
+  const unreadLines: number[] = [];
+  let rootStyleLine: number | null = null;
+  let currentRoot: string | null = null;
+  text
+    .replaceAll("\r\n", "\n")
+    .split("\n")
+    .forEach((line, index) => {
+      const number = index + 1;
+      if (line.trim() === "" || line.trimStart().startsWith("#")) return;
+      if (!line.startsWith(" ")) {
+        const root = ROOT_KEY_LINE.exec(line);
+        if (root?.[1] === undefined) {
+          if (FLOW_ROOT.test(line)) rootStyleLine ??= number;
+          else unreadLines.push(number);
+          return;
+        }
+        currentRoot = root[1];
+        rootKeys.push(root[1]);
+        if (root[1] === POINTS_KEY && !POINTS_OPENER.test(line)) rootStyleLine ??= number;
+        return;
+      }
+      if (currentRoot === null) {
+        rootStyleLine ??= number;
+        return;
+      }
+      // The value of another root key is not read: that key fails as unknown.
+      if (currentRoot !== POINTS_KEY) return;
+      const start = POINT_START.exec(line);
+      if (start?.[1] !== undefined) {
+        pointKeys.push([start[1]]);
+        return;
+      }
+      const key = POINT_KEY.exec(line);
+      const open = pointKeys.at(-1);
+      if (key?.[1] !== undefined && open !== undefined) {
+        open.push(key[1]);
+        return;
+      }
+      if (NESTED_CONTENT.test(line) && open !== undefined) return;
+      unreadLines.push(number);
+    });
+  return { rootKeys, pointKeys, unreadLines, rootStyleLine };
+}
+
+function duplicatesOf(keys: readonly string[]): string[] {
+  return [...new Set(keys.filter((key, index) => keys.indexOf(key) !== index))];
+}
+
+/** Distinct keys, sorted, as one comparable and printable string. */
+function keySet(keys: readonly string[]): string {
+  return [...new Set(keys)].sort().join(", ");
+}
+
 /** Whether the condition has come due, against the injected date, index and forge. */
 async function conditionVerdict(
   condition: Condition,
@@ -228,6 +316,14 @@ export async function evaluateOpenPoints(input: OpenPointsInput): Promise<OpenPo
     return refuse(`YAML illisible : ${error instanceof Error ? error.message : String(error)}`);
   }
   if (!isRecord(parsed)) return refuse("la racine du registre n'est pas une table");
+  const layout = scanPointsLayout(input.text);
+  if (layout.rootStyleLine !== null) {
+    return refuse(
+      `racine hors du style bloc en colonne 0 (ligne ${layout.rootStyleLine}) : le registre ` +
+        "s'écrit en clés nues `schema_version:` et `points:` en colonne 0, `points:` sans " +
+        "valeur sur sa ligne et suivi de ses points `  - <clé>:`",
+    );
+  }
   const points = parsed.points;
   if (!Array.isArray(points)) return refuse("`points` doit être une liste");
   if (points.length === 0) {
@@ -247,6 +343,41 @@ export async function evaluateOpenPoints(input: OpenPointsInput): Promise<OpenPo
   const unknownRoot = Object.keys(parsed).filter((key) => !ROOT_KEYS.includes(key));
   if (unknownRoot.length > 0) {
     fail("R1", REGISTER_PATH, `clé(s) racine inconnue(s) : ${unknownRoot.join(", ")}`);
+  }
+  const rootTwice = duplicatesOf(layout.rootKeys);
+  if (rootTwice.length > 0) {
+    fail(
+      "R1",
+      REGISTER_PATH,
+      `clé(s) racine écrite(s) deux fois, le parseur ne garde que la dernière : ${rootTwice.join(", ")}`,
+    );
+  } else if (keySet(layout.rootKeys) !== keySet(Object.keys(parsed))) {
+    fail(
+      "R1",
+      REGISTER_PATH,
+      `clés racine lues ligne à ligne (${keySet(layout.rootKeys)}) et par le parseur ` +
+        `(${keySet(Object.keys(parsed))}) différentes`,
+    );
+  }
+  if (layout.unreadLines.length > 0) {
+    fail(
+      "R1",
+      REGISTER_PATH,
+      `ligne(s) ${layout.unreadLines.join(", ")} hors du style bloc relu ligne à ligne (clé nue ` +
+        "en colonne 0 ou 4, point ouvert par `  - <clé>:`, contenu imbriqué à cinq espaces ou " +
+        "plus) : une clé écrite deux fois sous une autre forme y échapperait",
+    );
+  }
+  // Point keys are compared index by index only when both readings see the
+  // same points; otherwise an index names a different point in each.
+  const samePoints = layout.pointKeys.length === points.length;
+  if (!samePoints) {
+    fail(
+      "R1",
+      REGISTER_PATH,
+      `${layout.pointKeys.length} point(s) lu(s) ligne à ligne, ${points.length} par le ` +
+        "parseur : chaque point s'ouvre par `  - <clé>:` en colonne 2",
+    );
   }
   if (parsed.schema_version !== SCHEMA_VERSION) {
     fail("R1", REGISTER_PATH, `schema_version doit valoir exactement ${SCHEMA_VERSION}`);
@@ -297,6 +428,24 @@ export async function evaluateOpenPoints(input: OpenPointsInput): Promise<OpenPo
     const known = [...REQUIRED_KEYS, CLOSED_BY_KEY, ...EXTERNAL_KEYS];
     const unknown = Object.keys(point).filter((key) => !known.includes(key));
     if (unknown.length > 0) fail("R1", name, `clé(s) inconnue(s) : ${unknown.join(", ")}`);
+    const written = samePoints ? layout.pointKeys[index] : undefined;
+    if (written !== undefined) {
+      const twice = duplicatesOf(written);
+      if (twice.length > 0) {
+        fail(
+          "R1",
+          name,
+          `clé(s) écrite(s) deux fois, le parseur ne garde que la dernière : ${twice.join(", ")}`,
+        );
+      } else if (keySet(written) !== keySet(Object.keys(point))) {
+        fail(
+          "R1",
+          name,
+          `clés lues ligne à ligne (${keySet(written)}) et par le parseur ` +
+            `(${keySet(Object.keys(point))}) différentes`,
+        );
+      }
+    }
     const missing = REQUIRED_KEYS.filter((key) => !has(key));
     if (missing.length > 0) fail("R1", name, `champ(s) requis absent(s) : ${missing.join(", ")}`);
     if (has("question") && !isNonEmptyString(point.question)) {

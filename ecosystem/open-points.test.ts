@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
+import { readOpenPointsInput } from "./check-open-points";
 import {
   evaluateOpenPoints,
   type OpenPointsInput,
@@ -248,26 +249,108 @@ describe("evaluateOpenPoints", () => {
   });
 });
 
-describe("check-open-points.ts", () => {
-  test("the shipped register passes (exit 0 or 3) and cites a tracked source", async () => {
-    const run = Bun.spawnSync(["bun", "ecosystem/check-open-points.ts"], {
-      cwd: ROOT,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    expect([0, 3]).toContain(run.exitCode);
-    expect(run.stdout.toString()).toContain("Open points verified:");
-    const text = await Bun.file(join(ROOT, REGISTER_PATH)).text();
-    const parsed = Bun.YAML.parse(text) as { points: { source: string }[] };
-    const tracked = Bun.spawnSync(
-      ["git", "ls-files", "--error-unmatch", parsed.points[0]?.source ?? ""],
-      {
-        cwd: ROOT,
-      },
-    );
-    expect(tracked.exitCode).toBe(0);
+describe("a key written twice, which Bun.YAML.parse reads at its last value", () => {
+  const POINT_LINES = [
+    "  - id: point.sample",
+    "    question: Is it decided?",
+    "    type: decision",
+    "    proprietaire: proprietaire",
+    "    condition: until=2026-12-31",
+    "    etat: ouvert",
+    "    source: docs/a.md",
+  ];
+  const DUE_POINT_LINES = [
+    "  - id: point.overdue",
+    "    question: Was it decided?",
+    "    type: decision",
+    "    proprietaire: proprietaire",
+    "    condition: until=2026-01-01",
+    "    etat: ouvert",
+    "    source: docs/a.md",
+  ];
+  const text = (...lines: string[]): string =>
+    [`schema_version: ${SCHEMA_VERSION}`, ...lines, ""].join("\n");
+
+  test("the raw-text fixture passes once written once", async () => {
+    const outcome = await evaluateOpenPoints(input(text("points:", ...POINT_LINES)));
+    expect(outcome.report.outcome).toBe("pass");
   });
 
+  test("a second root `points:` that would erase an overdue point is R1", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(text("points:", ...DUE_POINT_LINES, "points:", ...POINT_LINES)),
+    );
+    expect(new Set(failedRules(outcome))).toEqual(new Set([`R1 ${REGISTER_PATH}`]));
+    const notes = outcome.report.checks.filter((check) => !check.ok).map((check) => check.note);
+    expect(notes.some((note) => note.includes("deux fois") && note.includes("points"))).toBe(true);
+  });
+
+  test("`condition:` written twice, masking a due one, is R1 on the point", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(text("points:", ...DUE_POINT_LINES, "    condition: until=2026-12-31")),
+    );
+    expect(failedRules(outcome)).toContain("R1 point.overdue");
+  });
+
+  test("`etat: ouvert` then `etat: clos` is R1 on the point", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(text("points:", ...DUE_POINT_LINES, "    etat: clos", "    clos_par: D1")),
+    );
+    expect(failedRules(outcome)).toContain("R1 point.overdue");
+  });
+
+  test("a duplicate written in another form (quoted key) is R1", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(text("points:", ...DUE_POINT_LINES, '    "condition": until=2026-12-31')),
+    );
+    expect(failedRules(outcome)).toContain(`R1 ${REGISTER_PATH}`);
+  });
+
+  test("a root `schema_version` written twice is R1", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(text(`schema_version: ${SCHEMA_VERSION}`, "points:", ...POINT_LINES)),
+    );
+    expect(failedRules(outcome)).toEqual([`R1 ${REGISTER_PATH}`]);
+  });
+
+  test("`points` written in flow on its own line is R1", async () => {
+    const outcome = await evaluateOpenPoints(
+      input(
+        text(
+          'points: [{id: point.sample, question: q, type: decision, proprietaire: proprietaire, condition: "until=2026-12-31", etat: ouvert, source: docs/a.md}]',
+        ),
+      ),
+    );
+    expect(failedRules(outcome)).toEqual([`R1 ${REGISTER_PATH}`]);
+    // Refused by name before the readings are compared: the line reading sees nothing inside.
+    expect(outcome.report.checks[0]?.note).toContain("racine hors du style bloc");
+  });
+});
+
+describe("the shipped register", () => {
+  // The gate itself reads the clock and the network, so it is run by hand
+  // (`bun run check:open-points`), never by `bun test`: the sources are read
+  // as the entry point reads them, the date and the forge are injected.
+  test("passes on a fixed date with a stubbed forge, and cites a tracked source", async () => {
+    const read = readOpenPointsInput(ROOT, "2026-11-17", async () => false);
+    expect(read.text).not.toBeNull();
+    const outcome = await evaluateOpenPoints(read);
+    expect(failedRules(outcome)).toEqual([]);
+    expect(openPointsExitCode(outcome)).toBe(0);
+    const parsed = Bun.YAML.parse(read.text ?? "") as { points: { source: string }[] };
+    expect(parsed.points.length).toBeGreaterThan(0);
+    expect(parsed.points.some((point) => read.isTracked(point.source))).toBe(true);
+  });
+
+  test("its points come due on the day after their date", async () => {
+    const outcome = await evaluateOpenPoints(
+      readOpenPointsInput(ROOT, "2099-01-01", async () => false),
+    );
+    expect(openPointsExitCode(outcome)).toBe(1);
+  });
+});
+
+describe("check-open-points.ts", () => {
   test("an argument is a usage error: exit 2", () => {
     const run = Bun.spawnSync(["bun", "ecosystem/check-open-points.ts", "extra"], {
       cwd: ROOT,
