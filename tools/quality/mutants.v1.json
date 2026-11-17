@@ -46,8 +46,22 @@
     {
       "id": "mutant-restore-original",
       "file": "tools/quality/mutant.ts",
-      "anchor": "writeFileSync(target, original);",
-      "substitution": "writeFileSync(target, mutated);",
+      "anchor": "restoration = restore(copy.tree, mutant.file, original, mode);",
+      "substitution": "restoration = restore(copy.tree, mutant.file, Buffer.from(mutated), mode);",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-restore-rechecks-confinement",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "const tampered = confinementProblem(tree, path);",
+      "substitution": "const tampered = null as string | null;",
+      "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
+    },
+    {
+      "id": "mutant-occurrences-overlap",
+      "file": "tools/quality/mutant.ts",
+      "anchor": "at = source.indexOf(anchor, at + 1)) count += 1;",
+      "substitution": "at = source.indexOf(anchor, at + anchor.length)) count += 1;",
       "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
     },
     {
@@ -67,8 +81,8 @@
     {
       "id": "mutant-restore-compared",
       "file": "tools/quality/mutant.ts",
-      "anchor": "const restored = readFileSync(target).equals(original);",
-      "substitution": "const restored = original.equals(original);",
+      "anchor": "    return { identical: false, tampered };\n  } catch (error) {",
+      "substitution": "    return { identical: true, tampered };\n  } catch (error) {",
       "oracle": { "tests": ["tools/quality/mutant.test.ts"] }
     },
     {

@@ -46,6 +46,12 @@ describe("applyMutant", () => {
     expect(() => applyMutant("f(x);\nf(x);\n", "f(x);", "g(x);")).toThrow("found 2 times");
   });
 
+  test("overlapping occurrences count: `aa` is twice in `aaa`, so the site is ambiguous", () => {
+    expect(() => applyMutant("aaa\n", "aa", "bb")).toThrow("found 2 times");
+    expect(() => applyMutant("abab ab\n", "abab", "cdcd")).not.toThrow();
+    expect(() => applyMutant("ababab\n", "abab", "cdcd")).toThrow("found 2 times");
+  });
+
   test("a substitution identical to the anchor is an error", () => {
     expect(() => applyMutant("f(x);\n", "f(x);", "f(x);")).toThrow("identical");
   });
@@ -490,6 +496,63 @@ describe("mutant run (end to end)", () => {
     expect(result.output).toContain("mutants=1 killed=1 survived=0 invalid=0 restored_identical=0");
     expect(result.code).toBe(1);
     expect(readFileSync(join(root, "guard.ts"), "utf8")).toBe(GUARD);
+  }, 60_000);
+
+  test("restoration never writes through a link the oracle left: a real outside file stays intact", async () => {
+    // The oracle replaces the mutated file (or its directory) by a link to a real file outside
+    // the copy, holding different bytes. Writing the original back through that link would
+    // overwrite the outside file, and reading it back through the same link would say identical.
+    const OUTSIDE = "export const outside = 'must stay';\n";
+    const sabotage = (victim: string, target: string): string =>
+      [
+        'import { expect, test } from "bun:test";',
+        'import { rmSync, symlinkSync } from "node:fs";',
+        'import { join } from "node:path";',
+        `import { allow } from "./${victim}";`,
+        'test("refuses a negative value", () => {',
+        "  if (allow(-1)) {",
+        `    rmSync(join(import.meta.dir, ${JSON.stringify(target)}), { recursive: true });`,
+        `    symlinkSync(LINK, join(import.meta.dir, ${JSON.stringify(target)}));`,
+        "  }",
+        "  expect(allow(-1)).toBe(false);",
+        "});",
+        "",
+      ].join("\n");
+    const asFile = outsideFile("guard.ts", OUTSIDE);
+    const fileRoot = fixture(
+      [entry("guard-open", "return true;", { oracle: { tests: ["sabotage.test.ts"] } })],
+      {
+        "sabotage.test.ts": sabotage("guard", "guard.ts").replace("LINK", JSON.stringify(asFile)),
+      },
+    );
+    const asDir = outsideFile("guard.ts", OUTSIDE);
+    const dirRoot = fixture(
+      [
+        entry("guard-open", "return true;", {
+          file: "sub/guard.ts",
+          oracle: { tests: ["sabotage.test.ts"] },
+        }),
+      ],
+      {
+        "sub/guard.ts": GUARD,
+        "sabotage.test.ts": sabotage("sub/guard", "sub").replace(
+          "LINK",
+          JSON.stringify(dirname(asDir)),
+        ),
+      },
+    );
+    for (const [root, outside, path] of [
+      [fileRoot, asFile, "guard.ts"],
+      [dirRoot, asDir, "sub/guard.ts"],
+    ] as const) {
+      const result = await run(root);
+      expect(readFileSync(outside, "utf8")).toBe(OUTSIDE);
+      expect(result.output).toContain(`restore id=guard-open tampered (${path}`);
+      expect(result.output).toContain("restored=different");
+      expect(result.output).toContain("restored_identical=0");
+      expect(result.code).toBe(1);
+      expect(readFileSync(join(root, path), "utf8")).toBe(GUARD);
+    }
   }, 60_000);
 
   test("a base oracle that fails to load is red: exit 2, no mutant run", async () => {
