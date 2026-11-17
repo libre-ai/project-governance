@@ -16,14 +16,32 @@
  * measured repository; a `parc` detector runs once, from the worktrees root.
  * Each non-empty line of its standard output is one finding: the count is the
  * number of such lines, and the lines are the proof. Exit 0 is a measure; any
- * other exit, a signal, a timeout, an output that is not UTF-8, a worktree
- * that is not the root of a git repository: an error, never a count of zero.
+ * other exit, a signal, a timeout, an output over DETECTOR_MAX_STDOUT_BYTES or
+ * that is not UTF-8: an error, never a count of zero.
  *
- * Its environment is built, not inherited, so no token of the caller reaches
- * a detector: PATH, HOME, TMPDIR, LANG and LC_ALL when set, plus
- * FLEET_WORKTREES, FLEET_SNAPSHOT (both absolute), FLEET_REPOSITORY and
- * FLEET_WORKTREE for a `repo` run, FLEET_REPOSITORIES (one per line) for a
- * `parc` run. The snapshot holds `<owner>/<name>.json` per repository.
+ * A worktree is measured only when it is safe to call it "HEAD": the
+ * repository name is a plain `owner/name` (REPOSITORY_NAME, no `.` or `..`
+ * segment), neither segment under the worktrees root is a symbolic link, its
+ * real path is that very path, it is the root of its own git repository, and
+ * `git status --porcelain --untracked-files=all` is empty (a detector reads the
+ * working tree, so a modified or untracked file would be measured as if it were
+ * HEAD). Otherwise every measure of it is an error, and the detector runs in
+ * the verified real path, never in a path re-joined later.
+ *
+ * A detector runs in its own process group. At the timeout, at an output over
+ * the bound and as soon as the detector itself exits, the whole group is
+ * killed: a background process it left cannot outlive the measure, and output
+ * written after the pipes are drained (or a pipe still held open by a process
+ * that escaped the group, OUTPUT_DRAIN_MS after the exit) is never counted.
+ *
+ * Its environment is built, not inherited: PATH, HOME, TMPDIR, LANG and LC_ALL
+ * when set, plus FLEET_WORKTREES, FLEET_SNAPSHOT (both absolute),
+ * FLEET_REPOSITORY and FLEET_WORKTREE for a `repo` run, FLEET_REPOSITORIES (one
+ * per line) for a `parc` run. The snapshot holds `<owner>/<name>.json` per
+ * repository. This confinement is of the environment only, not a sandbox: no
+ * token variable of the caller is passed, but a detector runs as the caller's
+ * user, with HOME, and can read whatever that user can (a credential helper, a
+ * keychain, a token file). Detectors are trusted code of the registry.
  *
  * WHAT IS WRITTEN. `<out>/<label>/` holds `state.tsv` (one line per measure:
  * dépôt, détecteur, compte, cible, verdict, statut, détail), `heads.tsv` (the
@@ -41,16 +59,22 @@
  * detector is not run), écart (the rest). A finding does not fail the tool; a
  * measure in error does, and is printed as one `ERREUR` line on stderr.
  *
+ * Ticket statuses: conforme, à corriger, informatif, ERREUR, EXEMPTÉ (every
+ * line of the detector is exempt: nothing was measured, nothing is wrong) and
+ * ABSENT (the detector has no line in the state).
+ *
  * Exit codes of `state`: 0 measured (findings or not), 1 a measure in error,
  * an inconsistent sum, an invalid configuration (discovery refused, including
  * zero detectors) or a failed write, 2 usage, 4 an input absent or unreadable
- * (inventory, worktrees root, snapshot directory). Exit codes of `tickets`:
+ * (inventory, including a repository name that is not a plain `owner/name`,
+ * worktrees root, snapshot directory). Exit codes of `tickets`:
  * 0, 1 invalid detector configuration, 2 usage, 4 state absent, unreadable or
  * empty.
  */
 
+import { type ChildProcess, spawn as spawnChild } from "node:child_process";
 import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { parseRegistry as parseInventory, type RegistryEntry } from "./check-context-conformance";
 import {
   type DetectorDescriptor,
@@ -133,10 +157,48 @@ export function verdictOf(status: "ok" | "erreur", target: number | null, count:
   return count === target ? "conforme" : "écart";
 }
 
+/**
+ * A repository name the tool accepts: `owner/name`, each segment from a
+ * closed alphabet. The name becomes a path (`<worktrees>/<owner>/<name>`, a
+ * proof file) and a TSV cell, so a separator, a tab or a line break is refused
+ * here, once, rather than escaped downstream.
+ */
+export const REPOSITORY_NAME = /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/;
+
+/** Why a repository name is refused, or null. */
+export function repositoryNameError(name: string): string | null {
+  if (!REPOSITORY_NAME.test(name)) {
+    return `« ${printable(name)} » is not a plain owner/name repository`;
+  }
+  if (name.split("/").some((segment) => segment === "." || segment === "..")) {
+    return `« ${printable(name)} » has a . or .. segment`;
+  }
+  return null;
+}
+
 /** Path of a measure's proof, relative to the state directory. */
 export function proofPath(detector: string, repository: string): string {
   const leaf = repository === PARK_REPOSITORY ? PARK_PROOF : repository;
   return `preuves/${detector}/${leaf}.txt`;
+}
+
+/** True when `path`, resolved, lies strictly under the directory `root`. */
+function isUnder(root: string, path: string): boolean {
+  return resolve(path).startsWith(`${resolve(root)}${sep}`);
+}
+
+/**
+ * The absolute proof file of a measure inside `stateDirectory`; throws when it
+ * would resolve outside it, whatever the repository or detector name holds.
+ */
+export function proofFile(stateDirectory: string, detector: string, repository: string): string {
+  const path = resolve(stateDirectory, proofPath(detector, repository));
+  if (!isUnder(stateDirectory, path)) {
+    throw new Error(
+      `proof of ${printable(detector)} ${printable(repository)} resolves outside the state`,
+    );
+  }
+  return path;
 }
 
 function ran(detector: DetectorDescriptor, repository: string, run: DetectorRun): Measure {
@@ -405,11 +467,18 @@ export async function readState(directory: string): Promise<FleetState> {
 
 // ------------------------------------------------------------------ tickets
 
-export type TicketStatus = "conforme" | "à corriger" | "informatif" | "ERREUR" | "ABSENT";
+export type TicketStatus =
+  | "conforme"
+  | "à corriger"
+  | "informatif"
+  | "ERREUR"
+  | "EXEMPTÉ"
+  | "ABSENT";
 
 /**
  * The status of one detector over its lines of the state. Lines that are all
- * exempt measured nothing: the detector is ABSENT, never conforme.
+ * exempt measured nothing: EXEMPTÉ, never conforme, and distinct from ABSENT,
+ * which the brief keeps for a detector without any line in the state.
  */
 export function ticketStatus(rows: readonly StateRow[]): TicketStatus {
   const verdicts = new Set(rows.map((row) => row.verdict));
@@ -417,6 +486,7 @@ export function ticketStatus(rows: readonly StateRow[]): TicketStatus {
   if (verdicts.has("écart")) return "à corriger";
   if (verdicts.has("info")) return "informatif";
   if (verdicts.has("conforme")) return "conforme";
+  if (verdicts.has("exempté")) return "EXEMPTÉ";
   return "ABSENT";
 }
 
@@ -429,6 +499,7 @@ const TICKET_STATUSES: readonly TicketStatus[] = [
   "à corriger",
   "informatif",
   "ERREUR",
+  "EXEMPTÉ",
   "ABSENT",
 ];
 
@@ -486,12 +557,29 @@ export function renderTickets(state: FleetState, detectors: readonly DetectorDes
 
 /** Bound on one detector run; a detector that hangs is an error, not a wait. */
 export const DETECTOR_TIMEOUT_MS = 300_000;
+/** Bound on a detector's standard output; more is an error, never a truncation. */
+export const DETECTOR_MAX_STDOUT_BYTES = 16 * 1024 * 1024;
+/** Standard error is only read for its first line: the rest is dropped, not an error. */
+const STDERR_KEPT_BYTES = 64 * 1024;
+/**
+ * Once the detector has exited and its group is killed, the pipes close at
+ * once. Still open after this delay, they are held by a process that left the
+ * group: an error, and nothing more is read.
+ */
+export const OUTPUT_DRAIN_MS = 1_000;
 
 export interface ProcessResult {
   readonly exitCode: number | null;
   readonly signal: string | null;
   readonly stdout: Uint8Array;
   readonly stderr: string;
+  /** Why the run was cut (timeout, output bound, pipe held open), or null. */
+  readonly failure: string | null;
+}
+
+export interface ProcessLimits {
+  readonly timeoutMs: number;
+  readonly maxStdoutBytes: number;
 }
 
 /** Runs an argument vector — never a shell string. */
@@ -500,27 +588,105 @@ export type ProcessRunner = (
   options: { readonly cwd: string; readonly env: Readonly<Record<string, string>> },
 ) => Promise<ProcessResult>;
 
-const spawnProcess: ProcessRunner = async (argv, options) => {
-  const proc = Bun.spawn([...argv], {
-    cwd: options.cwd,
-    env: { ...options.env },
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "pipe",
-    timeout: DETECTOR_TIMEOUT_MS,
-  });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).bytes(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
-  return {
-    exitCode: proc.signalCode === null ? exitCode : null,
-    signal: proc.signalCode,
-    stdout,
-    stderr,
-  };
-};
+function killGroup(child: ChildProcess): void {
+  if (child.pid === undefined) return;
+  try {
+    // A negative pid addresses the process group the child leads (detached).
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    // ESRCH: the group is already gone, which is the state wanted.
+  }
+}
+
+/**
+ * The process runner of detectors and of git: the child leads its own process
+ * group, which is killed at the timeout, at the output bound and as soon as the
+ * child exits. Rejects only when the program cannot be started.
+ */
+export function groupProcessRunner(limits: ProcessLimits): ProcessRunner {
+  return (argv, options) =>
+    new Promise<ProcessResult>((resolveRun, rejectRun) => {
+      const [program, ...args] = argv;
+      if (program === undefined) {
+        rejectRun(new Error("empty argument vector"));
+        return;
+      }
+      const child = spawnChild(program, args, {
+        cwd: options.cwd,
+        env: { ...options.env },
+        detached: true,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      const stdoutChunks: Uint8Array[] = [];
+      let stdoutBytes = 0;
+      const stderrChunks: Uint8Array[] = [];
+      let stderrBytes = 0;
+      let exit: { code: number | null; signal: string | null } | null = null;
+      let failure: string | null = null;
+      let settled = false;
+      let drainTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(drainTimer);
+        // Whatever arrives from now on is ignored: the streams are dropped.
+        child.stdout?.destroy();
+        child.stderr?.destroy();
+        resolveRun({
+          exitCode: exit?.code ?? null,
+          signal: exit?.signal ?? null,
+          stdout: Buffer.concat(stdoutChunks),
+          stderr: Buffer.concat(stderrChunks).toString("utf8"),
+          failure,
+        });
+      };
+      const cut = (reason: string): void => {
+        if (settled) return;
+        failure = reason;
+        killGroup(child);
+        finish();
+      };
+
+      const timer = setTimeout(() => cut(`timeout after ${limits.timeoutMs} ms`), limits.timeoutMs);
+      child.stdout?.on("data", (chunk: Buffer) => {
+        if (settled) return;
+        stdoutBytes += chunk.length;
+        if (stdoutBytes > limits.maxStdoutBytes) {
+          cut(`output exceeds ${limits.maxStdoutBytes} bytes`);
+          return;
+        }
+        stdoutChunks.push(chunk);
+      });
+      child.stderr?.on("data", (chunk: Buffer) => {
+        if (settled || stderrBytes >= STDERR_KEPT_BYTES) return;
+        stderrBytes += chunk.length;
+        stderrChunks.push(chunk);
+      });
+      child.on("error", (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(drainTimer);
+        killGroup(child);
+        rejectRun(error);
+      });
+      child.on("exit", (code, signal) => {
+        if (settled) return;
+        exit = { code, signal };
+        // The child is done: whatever it left behind in its group goes with it.
+        killGroup(child);
+        drainTimer = setTimeout(
+          () => cut(`a process left by the program kept its output open after it exited`),
+          OUTPUT_DRAIN_MS,
+        );
+      });
+      // Exit seen and both pipes closed: everything written before the kill is read.
+      child.on("close", finish);
+    });
+}
 
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -549,17 +715,66 @@ export interface LocalSources {
   /** Absolute forge snapshot directory (`forge-snapshot.ts` output). */
   readonly snapshot: string;
   readonly environment: Readonly<Record<string, string | undefined>>;
+  /** Replaces the process runner; when set, the two limits below are not used. */
   readonly spawn?: ProcessRunner;
+  /** Defaults to DETECTOR_TIMEOUT_MS. */
+  readonly timeoutMs?: number;
+  /** Defaults to DETECTOR_MAX_STDOUT_BYTES. */
+  readonly maxStdoutBytes?: number;
+}
+
+type Verified =
+  | { readonly ok: true; readonly path: string }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * The real path of `<worktrees>/<owner>/<name>`, verified: a plain name, no
+ * symbolic link on either segment (lstat), a directory, and a real path equal
+ * to the path itself, hence under the real worktrees root.
+ */
+async function verifyWorktree(root: string, repository: string): Promise<Verified> {
+  const refused = repositoryNameError(repository);
+  if (refused !== null) return { ok: false, reason: refused };
+  let path = root;
+  for (const segment of repository.split("/")) {
+    path = join(path, segment);
+    try {
+      const stat = await lstat(path);
+      if (stat.isSymbolicLink()) {
+        return { ok: false, reason: `${repository}: ${segment} is a symbolic link` };
+      }
+      if (!stat.isDirectory()) {
+        return { ok: false, reason: `${repository}: ${segment} is not a directory` };
+      }
+    } catch (error) {
+      return { ok: false, reason: `${repository}: ${errorText(error)}` };
+    }
+  }
+  let real: string;
+  try {
+    real = await realpath(path);
+  } catch (error) {
+    return { ok: false, reason: `${repository}: ${errorText(error)}` };
+  }
+  if (real !== path || !isUnder(root, real)) {
+    return { ok: false, reason: `${repository}: resolves outside the worktrees root` };
+  }
+  return { ok: true, path: real };
 }
 
 /**
- * The reader of local sources: HEAD by `git rev-parse` in the worktree, which
- * must be the root of its own repository (a missing worktree inside a parent
- * repository would otherwise read the parent), and detectors run as described
- * in the header. No network call is made here.
+ * The reader of local sources: HEAD by `git rev-parse` in the verified
+ * worktree, which must be the root of its own repository (a missing worktree
+ * inside a parent repository would otherwise read the parent) and clean, and
+ * detectors run as described in the header. No network call is made here.
  */
 export function localFleetReader(sources: LocalSources): FleetReader {
-  const spawn = sources.spawn ?? spawnProcess;
+  const spawn =
+    sources.spawn ??
+    groupProcessRunner({
+      timeoutMs: sources.timeoutMs ?? DETECTOR_TIMEOUT_MS,
+      maxStdoutBytes: sources.maxStdoutBytes ?? DETECTOR_MAX_STDOUT_BYTES,
+    });
   const base: Record<string, string> = {};
   for (const name of PASSED_VARIABLES) {
     const value = sources.environment[name];
@@ -567,42 +782,80 @@ export function localFleetReader(sources: LocalSources): FleetReader {
   }
   base.FLEET_WORKTREES = sources.worktrees;
   base.FLEET_SNAPSHOT = sources.snapshot;
-  const worktree = (repository: string): string => join(sources.worktrees, repository);
+
+  let rootRead: Promise<string> | undefined;
+  const root = (): Promise<string> => {
+    rootRead ??= realpath(sources.worktrees);
+    return rootRead;
+  };
+  // One verification per repository: `run` executes in the path `head` checked.
+  const verified = new Map<string, Promise<Verified>>();
+  const worktree = (repository: string): Promise<Verified> => {
+    let found = verified.get(repository);
+    if (found === undefined) {
+      found = root().then(
+        (real) => verifyWorktree(real, repository),
+        (error: unknown): Verified => ({
+          ok: false,
+          reason: `worktrees root: ${errorText(error)}`,
+        }),
+      );
+      verified.set(repository, found);
+    }
+    return found;
+  };
+
+  const git = async (cwd: string, args: readonly string[]): Promise<ProcessResult | string> => {
+    let result: ProcessResult;
+    try {
+      result = await spawn(["git", "-C", cwd, ...args], { cwd, env: base });
+    } catch (error) {
+      return `git could not be run: ${errorText(error)}`;
+    }
+    if (result.failure !== null) return `git ${args[0] ?? ""}: ${result.failure}`;
+    if (result.exitCode !== 0) {
+      return `git ${args[0] ?? ""} exit ${result.exitCode}: ${diagnostic(result.stderr)}`;
+    }
+    return result;
+  };
 
   return {
     async head(repository) {
-      const path = worktree(repository);
-      let real: string;
-      try {
-        real = await realpath(path);
-      } catch (error) {
-        return { ok: false, reason: `${repository}: ${errorText(error)}` };
-      }
-      let result: ProcessResult;
-      try {
-        result = await spawn(["git", "-C", real, "rev-parse", "--show-toplevel", "HEAD"], {
-          cwd: real,
-          env: base,
-        });
-      } catch (error) {
-        return { ok: false, reason: `git could not be run: ${errorText(error)}` };
-      }
-      if (result.exitCode !== 0) {
-        return {
-          ok: false,
-          reason: `git rev-parse exit ${result.exitCode}: ${diagnostic(result.stderr)}`,
-        };
-      }
-      const [toplevel = "", sha = ""] = new TextDecoder().decode(result.stdout).trim().split("\n");
+      const checked = await worktree(repository);
+      if (!checked.ok) return { ok: false, reason: checked.reason };
+      const real = checked.path;
+      const parsed = await git(real, ["rev-parse", "--show-toplevel", "HEAD"]);
+      if (typeof parsed === "string") return { ok: false, reason: parsed };
+      const [toplevel = "", sha = ""] = new TextDecoder().decode(parsed.stdout).trim().split("\n");
       if (toplevel !== real) {
         return { ok: false, reason: `${repository} is not the root of a git repository` };
       }
       if (!SHA.test(sha)) return { ok: false, reason: `${repository}: HEAD is not a sha` };
+      // A detector reads the working tree: it is HEAD only when nothing differs.
+      const status = await git(real, ["status", "--porcelain", "--untracked-files=all"]);
+      if (typeof status === "string") return { ok: false, reason: status };
+      if (status.stdout.length > 0) {
+        return {
+          ok: false,
+          reason: `${repository}: the working tree differs from HEAD (modified or untracked files)`,
+        };
+      }
       return { ok: true, sha };
     },
 
     async run(detector, target) {
-      const cwd = target.scope === "repo" ? worktree(target.repository) : sources.worktrees;
+      let cwd: string;
+      if (target.scope === "repo") {
+        const checked = await worktree(target.repository);
+        if (!checked.ok) return { ok: false, reason: `worktree unreadable: ${checked.reason}` };
+        cwd = checked.path;
+      } else {
+        try {
+          cwd = await root();
+        } catch (error) {
+          return { ok: false, reason: `worktrees root: ${errorText(error)}` };
+        }
+      }
       const env =
         target.scope === "repo"
           ? { ...base, FLEET_REPOSITORY: target.repository, FLEET_WORKTREE: cwd }
@@ -613,6 +866,7 @@ export function localFleetReader(sources: LocalSources): FleetReader {
       } catch (error) {
         return { ok: false, reason: `detector could not be run: ${errorText(error)}` };
       }
+      if (result.failure !== null) return { ok: false, reason: `detector ${result.failure}` };
       if (result.signal !== null) {
         return { ok: false, reason: `detector killed by ${result.signal}` };
       }
@@ -732,6 +986,18 @@ export async function runState(
       stderr: [`inventory ${printable(inventoryPath)}: unreadable: ${printable(errorText(error))}`],
     };
   }
+  // A name is a path and a TSV cell: one that is not a plain owner/name makes
+  // the whole inventory unusable, before anything is run or written.
+  const refusedNames = inventory
+    .map((entry) => repositoryNameError(entry.repository))
+    .filter((reason): reason is string => reason !== null);
+  if (refusedNames.length > 0) {
+    return {
+      code: 4,
+      stdout: [],
+      stderr: refusedNames.map((reason) => `inventory ${printable(inventoryPath)}: ${reason}`),
+    };
+  }
 
   let entries = inventory;
   const requested = options.get("repos");
@@ -837,7 +1103,7 @@ async function writeState(
     await writeFile(join(staging, "measured-at.txt"), `${now.toISOString()}\n`);
     for (const m of measurement.measures) {
       if (m.status !== "ok") continue;
-      const path = join(staging, proofPath(m.detector, m.repository));
+      const path = proofFile(staging, m.detector, m.repository);
       await mkdir(dirname(path), { recursive: true });
       const body = m.lines.length === 0 ? "" : `${m.lines.join("\n")}\n`;
       await writeFile(path, body, { flag: "wx" });

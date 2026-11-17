@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,9 +24,11 @@ import {
   measure,
   PARK_REPOSITORY,
   parseStateTsv,
+  proofFile,
   proofPath,
   readState,
   renderStateTsv,
+  repositoryNameError,
   runState,
   runTickets,
   type StateDependencies,
@@ -401,6 +404,52 @@ describe("state command", () => {
     expect(malformed.code).toBe(4);
   });
 
+  test("a label that is not a plain name exits 2", async () => {
+    const b = bench();
+    for (const label of ["../x", "a/b", ".hidden"]) {
+      const args = b.args();
+      args[args.indexOf("--label") + 1] = label;
+      const outcome = await runState(args, deps([detector("a", 0)], fakeReader({})));
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr[0]).toContain("is not a plain name");
+    }
+    expect(existsSync(join(b.root, "x"))).toBe(false);
+  });
+
+  test("an inventory name that is not a plain owner/name exits 4, nothing read or written", async () => {
+    for (const name of ["o/../../../../pwn", "o/a\\tb", "o/..", "./x", "o/b/c", "o/a b"]) {
+      const b = bench();
+      writeFileSync(
+        join(b.root, "inventory.yaml"),
+        `schema_version: libre-ai.repositories.v2\nupdated_on: 2026-11-17\nrepositories:\n  - repository: "${name}"\n    role: satellite\n    layer: product\n    visibility: public\n    lifecycle: active\n`,
+      );
+      const spy = fakeReader({});
+      const outcome = await runState(b.args(), deps([detector("a", 0)], spy));
+      expect([name, outcome.code]).toEqual([name, 4]);
+      expect(spy.calls).toEqual([]);
+      expect(existsSync(b.out)).toBe(false);
+    }
+  });
+
+  test("a state directory created between the measure and the rename is refused, never replaced", async () => {
+    const b = bench();
+    const reader: FleetReader = {
+      head: async () => ({ ok: true, sha: SHA }),
+      run: async () => {
+        // An empty directory: a bare rename would silently replace it.
+        mkdirSync(join(b.out, "l1"), { recursive: true });
+        return { ok: true, lines: [] };
+      },
+    };
+    const outcome = await runState(
+      b.args(["--repos", "o/alpha"]),
+      deps([detector("a", 0)], reader),
+    );
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr.at(-1)).toContain("l1 appeared meanwhile");
+    expect(existsSync(join(b.out, "l1", "state.tsv"))).toBe(false);
+  });
+
   test("an absent worktrees root or snapshot directory exits 4", async () => {
     const b = bench();
     rmSync(join(b.root, "snapshot"), { recursive: true });
@@ -459,6 +508,21 @@ describe("state table", () => {
     expect(() => parseStateTsv(text.replace("\t-\t", "\t-\textra\t"))).toThrow(StateReadError);
   });
 
+  test("a proof path that would resolve outside the state is refused", () => {
+    const dir = scratch("proof");
+    expect(proofFile(dir, "d", "o/a")).toBe(join(dir, "preuves", "d", "o", "a.txt"));
+    expect(proofFile(dir, "d", PARK_REPOSITORY)).toBe(join(dir, "preuves", "d", "parc.txt"));
+    expect(() => proofFile(dir, "d", "o/../../../../pwn")).toThrow("resolves outside the state");
+    expect(() => proofFile(dir, "../../..", "x")).toThrow("resolves outside the state");
+  });
+
+  test("repository names: owner/name from a closed alphabet, no . or .. segment", () => {
+    expect(repositoryNameError("libre-ai/project.governance_2")).toBeNull();
+    for (const name of ["o/..", "../o", "o/.", "o/a/b", "o", "o/a\tb", "o/a\nb", "/o/a", "o/"]) {
+      expect([name, repositoryNameError(name) === null]).toEqual([name, false]);
+    }
+  });
+
   test("finding lines drop blank lines and carriage returns", () => {
     expect(findingLines("a\r\n\nb\n")).toEqual(["a", "b"]);
     expect(findingLines("")).toEqual([]);
@@ -495,7 +559,7 @@ describe("tickets", () => {
     expect(markdown).toContain("| ok | Title of ok | 0 | — | 0 | conforme |");
     expect(markdown).toContain("| later | Title of later | info | — | 0 | ABSENT |");
     expect(markdown).toContain(
-      "Détecteurs : 4 (conforme 1, à corriger 1, informatif 0, ERREUR 1, ABSENT 1)",
+      "Détecteurs : 4 (conforme 1, à corriger 1, informatif 0, ERREUR 1, EXEMPTÉ 0, ABSENT 1)",
     );
   });
 
@@ -536,7 +600,7 @@ describe("tickets", () => {
     expect((await runTickets(["/s", "--detectors", "/d", "--x", "y"], { discover })).code).toBe(2);
   });
 
-  test("only exempt lines measured nothing: ABSENT, not conforme", () => {
+  test("only exempt lines measured nothing: EXEMPTÉ, neither conforme nor ABSENT", () => {
     const row = {
       repository: "o/p",
       detector: "a",
@@ -546,7 +610,8 @@ describe("tickets", () => {
       status: "exempté" as const,
       detail: "",
     };
-    expect(ticketStatus([row])).toBe("ABSENT");
+    expect(ticketStatus([row])).toBe("EXEMPTÉ");
+    // ABSENT stays the brief's: a detector without any line in the state.
     expect(ticketStatus([])).toBe("ABSENT");
     expect(ticketStatus([row, { ...row, verdict: "info", status: "ok", count: 3 }])).toBe(
       "informatif",
@@ -641,6 +706,130 @@ describe("local reader (worktrees and detector scripts, no network)", () => {
     const missing = await reader.run({ ...detector("m", 0), path: join(root, "none.sh") }, target);
     expect(missing.ok).toBe(false);
   });
+
+  test("a worktree reached through a symbolic link is unreadable and never run", async () => {
+    const root = worktreeRoot();
+    const outside = realpathSync(scratch("outside"));
+    symlinkSync(join(root, "o", "alpha"), join(root, "o", "link"));
+    mkdirSync(join(outside, "alpha"));
+    symlinkSync(outside, join(root, "evil"));
+    const reader = localFleetReader({ worktrees: root, snapshot: root, environment: {} });
+    for (const repository of ["o/link", "evil/alpha"]) {
+      const head = await reader.head(repository);
+      expect([repository, head.ok ? "" : head.reason]).toEqual([
+        repository,
+        `${repository}: ${repository.split("/")[repository === "o/link" ? 1 : 0]} is a symbolic link`,
+      ]);
+    }
+    const marker = join(outside, "ran");
+    const run = await reader.run(script(`touch ${marker}`), {
+      scope: "repo",
+      repository: "o/link",
+    });
+    expect(run.ok).toBe(false);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test("a worktree that differs from HEAD is unreadable: modified or untracked", async () => {
+    for (const dirt of ["modified", "untracked"] as const) {
+      const root = worktreeRoot();
+      const repo = join(root, "o", "alpha");
+      writeFileSync(join(repo, dirt === "modified" ? "file.txt" : "new.txt"), "y\n");
+      const head = await localFleetReader({
+        worktrees: root,
+        snapshot: root,
+        environment: {},
+      }).head("o/alpha");
+      expect([dirt, head.ok ? "" : head.reason]).toEqual([
+        dirt,
+        "o/alpha: the working tree differs from HEAD (modified or untracked files)",
+      ]);
+    }
+  });
+
+  test("a detector past its (injected) timeout is an error", async () => {
+    const root = worktreeRoot();
+    const reader = localFleetReader({
+      worktrees: root,
+      snapshot: root,
+      environment: { PATH: process.env.PATH },
+      timeoutMs: 300,
+    });
+    const run = await reader.run(script("sleep 3; echo late"), {
+      scope: "repo",
+      repository: "o/alpha",
+    });
+    expect(run).toEqual({ ok: false, reason: "detector timeout after 300 ms" });
+  }, 10_000);
+
+  test("an output over the bound is an error, never a truncation", async () => {
+    const root = worktreeRoot();
+    const reader = localFleetReader({
+      worktrees: root,
+      snapshot: root,
+      environment: { PATH: process.env.PATH },
+      maxStdoutBytes: 8,
+    });
+    const target = { scope: "repo", repository: "o/alpha" } as const;
+    expect(await reader.run(script("echo 1234567"), target)).toEqual({
+      ok: true,
+      lines: ["1234567"],
+    });
+    expect(await reader.run(script("echo 12345678"), target)).toEqual({
+      ok: false,
+      reason: "detector output exceeds 8 bytes",
+    });
+  });
+
+  test("the detector's process group dies with it; later output is not counted", async () => {
+    const root = worktreeRoot();
+    const pidFile = join(scratch("pid"), "pid");
+    const reader = localFleetReader({
+      worktrees: root,
+      snapshot: root,
+      environment: { PATH: process.env.PATH },
+      timeoutMs: 5_000,
+    });
+    const started = Date.now();
+    const run = await reader.run(script(`(sleep 3; echo late) & echo $! > ${pidFile}; echo now`), {
+      scope: "repo",
+      repository: "o/alpha",
+    });
+    expect(run).toEqual({ ok: true, lines: ["now"] });
+    expect(Date.now() - started).toBeLessThan(2_500);
+    const pid = Number((await Bun.file(pidFile).text()).trim());
+    let alive = true;
+    for (let attempt = 0; attempt < 20 && alive; attempt += 1) {
+      try {
+        process.kill(pid, 0);
+        await Bun.sleep(50);
+      } catch {
+        alive = false;
+      }
+    }
+    expect(alive).toBe(false);
+  }, 10_000);
+
+  test("a process that left the group and holds the output is an error, its output ignored", async () => {
+    const root = worktreeRoot();
+    const reader = localFleetReader({
+      worktrees: root,
+      snapshot: root,
+      environment: { PATH: process.env.PATH },
+      timeoutMs: 8_000,
+    });
+    // setsid moves the grandchild out of the detector's group, out of reach of the kill.
+    const run = await reader.run(
+      script(
+        `perl -MPOSIX -e 'fork and exit; POSIX::setsid(); sleep 3; print "late\\n"'; echo now`,
+      ),
+      { scope: "repo", repository: "o/alpha" },
+    );
+    expect(run).toEqual({
+      ok: false,
+      reason: "detector a process left by the program kept its output open after it exited",
+    });
+  }, 10_000);
 
   test("end to end: discovered detectors on a worktree, then the tickets", async () => {
     const root = worktreeRoot();
