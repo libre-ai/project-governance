@@ -1,195 +1,834 @@
+import { spawnSync } from "node:child_process";
 import {
   createCipheriv,
+  createDecipheriv,
   createHash,
+  createPrivateKey,
+  createPublicKey,
   generateKeyPairSync,
+  getCiphers,
   randomBytes,
   scryptSync,
 } from "node:crypto";
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, readFileSync, writeSync } from "node:fs";
+import {
+  type FileHandle,
+  lstat,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
+import { constants as osConstants } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 
 /**
- * Key Generation Ceremony for Ed25519 Origin Signatures (WP-G2-Z01).
- *
- * Generates an Ed25519 keypair, seals the private key with a memory-hard KDF
- * (scrypt), and outputs the public key in SPKI PEM format. The private key
- * is never written to disk in plaintext — only sealed in an encrypted
- * envelope. The script refuses to run in CI/automation (checks for CI env vars)
- * and loudly warns about air-gap compliance.
- *
- * Public key output: suitable for registration in config/signing-keys.v1.json
- * Private key sealing: owner uses a strong passphrase (32+ chars, air-gapped)
- * to unseal on demand via a secure (offline) ceremony.
- *
- * CRITICAL: This script MUST be run on an air-gapped machine. The private
- * key is security-critical and must never traverse a network boundary.
+ * Key generation ceremony for the Ed25519 origin-signature key (WP-G2-Z01).
+ * Owner-run, offline; docs/security/KEY-CEREMONY-RUNBOOK.md is the procedure.
  *
  * Usage:
- *   bun keygen-ceremony.ts                    # Interactive ceremony
- *   bun keygen-ceremony.ts --dev-key          # Dev ephemeral key (for testing)
- *   bun keygen-ceremony.ts --public-key-only  # Output only public key (no seal)
+ *   bun tools/security/keygen-ceremony.ts --out <dir> [--purpose <text>] [--passphrase-fd <n>]
+ *   bun tools/security/keygen-ceremony.ts --dev-key [--purpose <text>]
+ *   bun tools/security/keygen-ceremony.ts --public-key-only [--purpose <text>]
+ *   bun tools/security/keygen-ceremony.ts --verify-sealed <file> --public-key <pem> [--passphrase-fd <n>]
+ *
+ * Exit codes: 0 success, 1 tool failure (write, unseal, mismatch, public key
+ * shape), 2 usage, 4 refusal (CI detected outside --dev-key, output under
+ * git, existing target, passphrase refused). An envelope that does not unseal
+ * names its reason with a SealError code on standard error (exit 1).
+ *
+ * Sealing: envelope version 0x01, scrypt then AES-256-GCM (layout below),
+ * which the pinned Bun provides; an envelope of the first, unversioned
+ * ChaCha20-Poly1305 format is still read where the runtime has that cipher.
+ *
+ * The passphrase is read from the controlling terminal without echo (twice,
+ * both entries equal) or from an inherited descriptor (--passphrase-fd). It is
+ * never accepted as an argument nor read from the environment: an argument is
+ * visible to every process listing and an environment variable is inherited
+ * by every child, and either one lands in shell history or CI logs.
+ *
+ * Standard output carries only the registry entry (JSON) to copy into
+ * config/signing-keys.v1.json; every human-facing line goes to standard
+ * error. The tool never writes the registry itself: registering a key is an
+ * owner act.
+ *
+ * Importing this module runs nothing: the ceremony starts under
+ * `import.meta.main` only, so the test imports the real functions.
  */
 
-function checkCIEnvironment(): boolean {
-  const ciVars = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE"];
-  return ciVars.some((key) => process.env[key]);
+export interface RegistryEntry {
+  id: string;
+  algorithm: "Ed25519";
+  publicKey: string;
+  purpose: string;
+  activatedAt: string;
+  revokedAt: null;
 }
 
-function deriveKeyId(publicKeyPem: string): string {
-  // Derive a deterministic keyId from the public key using SHA-256 fingerprint.
-  // Format: prod_key_YYYYMMDD_<8-char hash>
-  const hash = createHash("sha256").update(publicKeyPem).digest("hex").slice(0, 8);
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  return `prod_key_${date}_${hash}`;
+export interface GeneratedKeyPair {
+  privateKeyPem: string;
+  publicKeyPem: string;
 }
 
-function generateKeyPair(): { privateKeyPem: string; publicKeyPem: string } {
-  const { privateKey, publicKey } = generateKeyPairSync("ed25519", {
-    privateKeyEncoding: { format: "pem", type: "pkcs8" },
-    publicKeyEncoding: { format: "pem", type: "spki" },
+/** File-system operations the ceremony performs on --out and --verify-sealed paths. */
+export interface CeremonyFs {
+  isDirectory(path: string): Promise<boolean>;
+  exists(path: string): Promise<boolean>;
+  /** Creates `path`; fails if it already exists. */
+  writeExclusive(path: string, data: Uint8Array, mode: number): Promise<void>;
+  readFile(path: string): Promise<Uint8Array>;
+  /** Moves `from` to `to`; fails if `to` already exists. */
+  renameNoClobber(from: string, to: string): Promise<void>;
+  /** Removes `path`; absent is not an error. */
+  remove(path: string): Promise<void>;
+}
+
+/** Everything `main` touches outside its arguments, injectable by the tests. */
+export interface CeremonyIo {
+  env: Readonly<Record<string, string | undefined>>;
+  now(): Date;
+  stdout(text: string): void;
+  stderr(text: string): void;
+  readPassphraseFromFd(fd: number): Promise<string>;
+  /** Reads one line from the controlling terminal with echo disabled. */
+  readPassphraseFromTerminal(prompt: string): Promise<string>;
+  generateKeyPair(): GeneratedKeyPair;
+  fs: CeremonyFs;
+}
+
+export const EXIT_OK = 0;
+export const EXIT_FAILURE = 1;
+export const EXIT_USAGE = 2;
+export const EXIT_REFUSED = 4;
+
+const CI_VARIABLES = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE"];
+const MINIMUM_PASSPHRASE_LENGTH = 32;
+const DEFAULT_PURPOSE = "AgentContributorLineage v1, Proof v1 origin signatures";
+
+// DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410 §4): SEQUENCE(42),
+// SEQUENCE(5) { OID 1.3.101.112 }, BIT STRING(33) with 0 unused bits.
+const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const ED25519_SPKI_LENGTH = 44;
+
+// Envelope, version 0x01 (the only one this tool writes):
+//   version(1) = 0x01 || salt(16) || nonce(12) || ciphertext || tag(16)
+// AES-256-GCM under scrypt(passphrase, salt), the 29-byte header as AAD.
+// AES-256-GCM because the pinned Bun (BoringSSL) has no ChaCha20-Poly1305.
+//
+// The first version of the tool wrote no version byte:
+//   salt(16) || nonce(12) || ciphertext || tag(16), ChaCha20-Poly1305.
+// It only ever sealed an Ed25519 PKCS#8 PEM (119 bytes), so its envelopes are
+// exactly 163 bytes, and that length is how one is recognised. A version 0x01
+// envelope of the same key is 164 bytes, and sealPrivateKey seals nothing but
+// that canonical PEM, so the two lengths never meet.
+const SEAL_VERSION_AES_256_GCM = 0x01;
+const SEAL_CIPHER = "aes-256-gcm";
+const LEGACY_SEAL_CIPHER = "chacha20-poly1305";
+const VERSION_LENGTH = 1;
+const SALT_LENGTH = 16;
+const NONCE_LENGTH = 12;
+const TAG_LENGTH = 16;
+const HEADER_LENGTH = VERSION_LENGTH + SALT_LENGTH + NONCE_LENGTH;
+const ED25519_PKCS8_PEM_LENGTH = 119;
+const LEGACY_ENVELOPE_LENGTH = SALT_LENGTH + NONCE_LENGTH + ED25519_PKCS8_PEM_LENGTH + TAG_LENGTH;
+const SCRYPT_KEY_LENGTH = 32;
+const SCRYPT_OPTIONS = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
+
+export type SealErrorCode =
+  | "SEAL_TOO_SHORT"
+  | "SEAL_UNKNOWN_VERSION"
+  | "SEAL_LEGACY_CIPHER_UNAVAILABLE"
+  | "SEAL_AUTH_FAILED";
+
+/** Why an envelope does not unseal; `code` is stable, the message is for humans. */
+export class SealError extends Error {
+  readonly code: SealErrorCode;
+  constructor(code: SealErrorCode, message: string) {
+    super(`${code}: ${message}`);
+    this.name = "SealError";
+    this.code = code;
+  }
+}
+
+/** Key identifier: lowercase hex SHA-256 of the 32 raw public-key bytes. */
+export function deriveKeyId(rawPublicKey: Uint8Array): string {
+  if (rawPublicKey.length !== 32) {
+    throw new RangeError(`an Ed25519 public key is 32 bytes, got ${rawPublicKey.length}`);
+  }
+  return createHash("sha256").update(rawPublicKey).digest("hex");
+}
+
+function rawPublicKeyFromSpkiDer(der: Uint8Array): Uint8Array {
+  if (der.length !== ED25519_SPKI_LENGTH) {
+    throw new Error(`Ed25519 SPKI is ${ED25519_SPKI_LENGTH} bytes, got ${der.length}`);
+  }
+  if (!Buffer.from(der.subarray(0, ED25519_SPKI_PREFIX.length)).equals(ED25519_SPKI_PREFIX)) {
+    throw new Error("SPKI prefix is not the Ed25519 one");
+  }
+  return Uint8Array.from(der.subarray(ED25519_SPKI_PREFIX.length));
+}
+
+/** Throws unless `pem` is exactly the 44-byte Ed25519 SPKI form. */
+export function rawPublicKeyFromSpkiPem(pem: string): Uint8Array {
+  const lines = pem.trim().split(/\r?\n/);
+  if (
+    lines.length < 3 ||
+    lines[0] !== "-----BEGIN PUBLIC KEY-----" ||
+    lines[lines.length - 1] !== "-----END PUBLIC KEY-----"
+  ) {
+    throw new Error("not a PUBLIC KEY PEM block");
+  }
+  const body = lines.slice(1, -1).join("");
+  const der = Buffer.from(body, "base64");
+  // Buffer's base64 decoder skips invalid characters silently: a round trip
+  // is the only way to know the body was canonical base64.
+  if (body.length === 0 || der.toString("base64") !== body) {
+    throw new Error("PEM body is not canonical base64");
+  }
+  return rawPublicKeyFromSpkiDer(der);
+}
+
+function rawPublicKeyFromPrivatePem(pkcs8Pem: string): Uint8Array {
+  const privateKey = createPrivateKey({ key: pkcs8Pem, format: "pem" });
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("sealed key is not an Ed25519 key");
+  }
+  // createPublicKey derives the public half when handed a private key.
+  return rawPublicKeyFromSpkiDer(
+    createPublicKey({ key: pkcs8Pem, format: "pem" }).export({ format: "der", type: "spki" }),
+  );
+}
+
+function deriveSealingKey(passphrase: string, salt: Uint8Array): Buffer {
+  return scryptSync(passphrase, salt, SCRYPT_KEY_LENGTH, SCRYPT_OPTIONS);
+}
+
+/** Throws unless `pkcs8Pem` is an Ed25519 key in the PEM form generateKeyPairSync writes. */
+function assertCanonicalEd25519Pem(pkcs8Pem: string): void {
+  const privateKey = createPrivateKey({ key: pkcs8Pem, format: "pem" });
+  if (privateKey.asymmetricKeyType !== "ed25519") {
+    throw new Error("only an Ed25519 private key is sealed");
+  }
+  const canonical = privateKey.export({ format: "pem", type: "pkcs8" }).toString();
+  if (canonical !== pkcs8Pem || Buffer.byteLength(pkcs8Pem) !== ED25519_PKCS8_PEM_LENGTH) {
+    throw new Error("the private key PEM is not in its canonical PKCS#8 form");
+  }
+}
+
+/** Envelope version 0x01: scrypt (N=16384, r=8, p=1) then AES-256-GCM, header as AAD. */
+export function sealPrivateKey(pkcs8Pem: string, passphrase: string): Uint8Array {
+  assertCanonicalEd25519Pem(pkcs8Pem);
+  const salt = randomBytes(SALT_LENGTH);
+  const nonce = randomBytes(NONCE_LENGTH);
+  const header = Buffer.concat([Buffer.from([SEAL_VERSION_AES_256_GCM]), salt, nonce]);
+  const key = deriveSealingKey(passphrase, salt);
+  try {
+    const cipher = createCipheriv(SEAL_CIPHER, key, nonce, { authTagLength: TAG_LENGTH });
+    cipher.setAAD(header);
+    const ciphertext = Buffer.concat([cipher.update(pkcs8Pem, "utf8"), cipher.final()]);
+    return Buffer.concat([header, ciphertext, cipher.getAuthTag()]);
+  } finally {
+    key.fill(0);
+  }
+}
+
+function openEnvelope(
+  cipherName: typeof SEAL_CIPHER | typeof LEGACY_SEAL_CIPHER,
+  passphrase: string,
+  parts: { salt: Uint8Array; nonce: Uint8Array; aad: Uint8Array | null; body: Uint8Array },
+): string {
+  const ciphertext = parts.body.subarray(0, parts.body.length - TAG_LENGTH);
+  const tag = parts.body.subarray(parts.body.length - TAG_LENGTH);
+  const key = deriveSealingKey(passphrase, parts.salt);
+  try {
+    const options = { authTagLength: TAG_LENGTH };
+    // One call per literal: node's typings pick the AEAD overload by the
+    // algorithm's literal type, and a union matches none of them.
+    const decipher =
+      cipherName === SEAL_CIPHER
+        ? createDecipheriv(SEAL_CIPHER, key, parts.nonce, options)
+        : createDecipheriv(LEGACY_SEAL_CIPHER, key, parts.nonce, options);
+    if (parts.aad !== null) decipher.setAAD(parts.aad);
+    decipher.setAuthTag(tag);
+    try {
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+    } catch {
+      throw new SealError("SEAL_AUTH_FAILED", "wrong passphrase or altered envelope");
+    }
+  } finally {
+    key.fill(0);
+  }
+}
+
+/** Inverse of sealPrivateKey; throws a SealError on anything that does not unseal. */
+export function unsealPrivateKey(sealed: Uint8Array, passphrase: string): string {
+  if (sealed.length === LEGACY_ENVELOPE_LENGTH) {
+    if (!getCiphers().includes(LEGACY_SEAL_CIPHER)) {
+      throw new SealError(
+        "SEAL_LEGACY_CIPHER_UNAVAILABLE",
+        `legacy envelope (no version byte, ${LEGACY_SEAL_CIPHER}): cipher unavailable in this runtime`,
+      );
+    }
+    return openEnvelope(LEGACY_SEAL_CIPHER, passphrase, {
+      salt: sealed.subarray(0, SALT_LENGTH),
+      nonce: sealed.subarray(SALT_LENGTH, SALT_LENGTH + NONCE_LENGTH),
+      aad: null,
+      body: sealed.subarray(SALT_LENGTH + NONCE_LENGTH),
+    });
+  }
+  if (sealed.length <= HEADER_LENGTH + TAG_LENGTH) {
+    throw new SealError("SEAL_TOO_SHORT", "the envelope is shorter than its header and tag");
+  }
+  const version = sealed[0];
+  if (version !== SEAL_VERSION_AES_256_GCM) {
+    throw new SealError(
+      "SEAL_UNKNOWN_VERSION",
+      `envelope version ${String(version)} is not one this tool reads`,
+    );
+  }
+  return openEnvelope(SEAL_CIPHER, passphrase, {
+    salt: sealed.subarray(VERSION_LENGTH, VERSION_LENGTH + SALT_LENGTH),
+    nonce: sealed.subarray(VERSION_LENGTH + SALT_LENGTH, HEADER_LENGTH),
+    aad: sealed.subarray(0, HEADER_LENGTH),
+    body: sealed.subarray(HEADER_LENGTH),
   });
-  return { privateKeyPem: privateKey, publicKeyPem: publicKey };
+}
+
+export function registryEntry(input: {
+  keyId: string;
+  publicKeyPem: string;
+  purpose: string;
+  activatedAt: string;
+}): RegistryEntry {
+  return {
+    id: input.keyId,
+    algorithm: "Ed25519",
+    publicKey: input.publicKeyPem.trim(),
+    purpose: input.purpose,
+    activatedAt: input.activatedAt,
+    revokedAt: null,
+  };
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  return error instanceof Error && "code" in error && error.code === code;
 }
 
 /**
- * Seal the private key with a memory-hard KDF (scrypt) + Chacha20-Poly1305 AEAD.
- *
- * The sealed envelope contains:
- * - Salt (16 bytes, random)
- * - IV (12 bytes, random for ChaCha20)
- * - Ciphertext (encrypted private key)
- * - Auth tag (16 bytes, for Poly1305)
- *
- * To unseal, the owner provides the passphrase, which is run through scrypt
- * with the same salt to derive the encryption key.
+ * Nearest `.git` entry (directory, gitdir file or link) at `dir` or above, or
+ * null. Walks the parents itself: asking git would trust a binary and a
+ * configuration (GIT_DIR, GIT_CEILING_DIRECTORIES) the ceremony does not control.
  */
-function sealPrivateKey(privateKeyPem: string, passphrase: string): Buffer {
-  const salt = randomBytes(16);
-  const iv = randomBytes(12);
+export async function findGitAncestor(dir: string): Promise<string | null> {
+  let current: string;
+  try {
+    current = await realpath(resolve(dir));
+  } catch (error) {
+    if (!hasErrorCode(error, "ENOENT")) throw error;
+    current = resolve(dir);
+  }
+  for (;;) {
+    const candidate = join(current, ".git");
+    try {
+      await lstat(candidate);
+      return candidate;
+    } catch (error) {
+      if (!hasErrorCode(error, "ENOENT") && !hasErrorCode(error, "ENOTDIR")) throw error;
+    }
+    const parent = dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
 
-  // Derive a 32-byte key from the passphrase using scrypt.
-  // N=16384, r=8, p=1 is a reasonable balance for modern machines.
-  const derivedKey = scryptSync(passphrase, salt, 32, {
-    N: 16384,
-    r: 8,
-    p: 1,
-    maxmem: 64 * 1024 * 1024, // 64 MB max memory
+type Mode =
+  | { kind: "generate"; out: string; purpose: string; passphraseFd: number | null }
+  | { kind: "dev-key"; purpose: string }
+  | { kind: "public-key-only"; purpose: string }
+  | { kind: "verify"; sealed: string; publicKey: string; passphraseFd: number | null };
+
+const VALUE_OPTIONS = new Set([
+  "--out",
+  "--purpose",
+  "--passphrase-fd",
+  "--verify-sealed",
+  "--public-key",
+]);
+const FLAG_OPTIONS = new Set(["--dev-key", "--public-key-only"]);
+
+function parseArguments(argv: readonly string[]): Mode | { error: string } {
+  const values = new Map<string, string>();
+  const flags = new Set<string>();
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index] ?? "";
+    if (argument === "--passphrase" || argument.startsWith("--passphrase=")) {
+      return {
+        error: "a passphrase is never accepted as an argument; use the terminal or --passphrase-fd",
+      };
+    }
+    if (FLAG_OPTIONS.has(argument)) {
+      if (flags.has(argument)) return { error: `${argument} given twice` };
+      flags.add(argument);
+      continue;
+    }
+    if (VALUE_OPTIONS.has(argument)) {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        return { error: `${argument} needs a value` };
+      }
+      if (values.has(argument)) return { error: `${argument} given twice` };
+      values.set(argument, value);
+      index += 1;
+      continue;
+    }
+    // Never echo the argument: an operator who types a secret where an option
+    // belongs (`--PASSPHRASE=…`, `--token=…`, a bare word) must not see it
+    // copied to standard error, which ends up in terminal scrollback and logs.
+    return { error: `unknown argument at position ${index + 1} (its text is not shown)` };
+  }
+
+  let passphraseFd: number | null = null;
+  const fdText = values.get("--passphrase-fd");
+  if (fdText !== undefined) {
+    if (!/^\d+$/.test(fdText) || fdText === "1" || fdText === "2") {
+      return { error: "--passphrase-fd takes a readable descriptor number other than 1 and 2" };
+    }
+    passphraseFd = Number(fdText);
+  }
+  const purpose = values.get("--purpose") ?? DEFAULT_PURPOSE;
+  const sealed = values.get("--verify-sealed");
+  const selectors = [flags.has("--dev-key"), flags.has("--public-key-only"), sealed !== undefined];
+  if (selectors.filter(Boolean).length > 1) {
+    return { error: "--dev-key, --public-key-only and --verify-sealed are exclusive" };
+  }
+
+  if (sealed !== undefined) {
+    const publicKey = values.get("--public-key");
+    if (publicKey === undefined) return { error: "--verify-sealed needs --public-key" };
+    if (values.has("--out") || values.has("--purpose")) {
+      return { error: "--verify-sealed takes neither --out nor --purpose" };
+    }
+    return { kind: "verify", sealed, publicKey, passphraseFd };
+  }
+  if (values.has("--public-key")) return { error: "--public-key belongs to --verify-sealed" };
+  if (flags.has("--dev-key") || flags.has("--public-key-only")) {
+    if (values.has("--out") || passphraseFd !== null) {
+      return { error: "--dev-key and --public-key-only write nothing and read no passphrase" };
+    }
+    return { kind: flags.has("--dev-key") ? "dev-key" : "public-key-only", purpose };
+  }
+  const out = values.get("--out");
+  if (out === undefined) return { error: "--out <directory> is required" };
+  return { kind: "generate", out, purpose, passphraseFd };
+}
+
+const USAGE = [
+  "usage: keygen-ceremony.ts --out <dir> [--purpose <text>] [--passphrase-fd <n>]",
+  "       keygen-ceremony.ts --dev-key [--purpose <text>]",
+  "       keygen-ceremony.ts --public-key-only [--purpose <text>]",
+  "       keygen-ceremony.ts --verify-sealed <file> --public-key <pem> [--passphrase-fd <n>]",
+].join("\n");
+
+function stripOneLineEnding(text: string): string {
+  if (text.endsWith("\r\n")) return text.slice(0, -2);
+  if (text.endsWith("\n")) return text.slice(0, -1);
+  return text;
+}
+
+type PassphraseResult = { ok: true; value: string } | { ok: false; code: number; reason: string };
+
+async function acquirePassphrase(
+  fd: number | null,
+  io: CeremonyIo,
+  choosing: boolean,
+): Promise<PassphraseResult> {
+  let value: string;
+  try {
+    if (fd !== null) {
+      value = stripOneLineEnding(await io.readPassphraseFromFd(fd));
+    } else {
+      value = await io.readPassphraseFromTerminal("Passphrase: ");
+      if (choosing) {
+        const repeated = await io.readPassphraseFromTerminal("Repeat passphrase: ");
+        if (repeated !== value) {
+          return { ok: false, code: EXIT_REFUSED, reason: "the two entries differ" };
+        }
+      }
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { ok: false, code: EXIT_FAILURE, reason: `cannot read the passphrase: ${detail}` };
+  }
+  if (choosing && [...value].length < MINIMUM_PASSPHRASE_LENGTH) {
+    return {
+      ok: false,
+      code: EXIT_REFUSED,
+      reason: `a passphrase needs at least ${MINIMUM_PASSPHRASE_LENGTH} characters`,
+    };
+  }
+  return { ok: true, value };
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function printBanner(io: CeremonyIo, mode: Mode["kind"]): void {
+  const lines = ["Ed25519 key ceremony (WP-G2-Z01): you hold the custody of the generated key."];
+  if (mode === "dev-key") {
+    lines.push("DEV MODE: ephemeral key, nothing written; never register it.");
+  } else {
+    lines.push(
+      "Run offline only: no network interface, no remote access, no storage but --out.",
+      "The private half is never printed and never written unsealed.",
+    );
+  }
+  io.stderr(`${lines.join("\n")}\n\n`);
+}
+
+function generateChecked(io: CeremonyIo): { pair: GeneratedKeyPair; keyId: string } {
+  const pair = io.generateKeyPair();
+  const keyId = deriveKeyId(rawPublicKeyFromSpkiPem(pair.publicKeyPem));
+  return { pair, keyId };
+}
+
+function printEntry(io: CeremonyIo, keyId: string, publicKeyPem: string, purpose: string): void {
+  const entry = registryEntry({
+    keyId,
+    publicKeyPem,
+    purpose,
+    activatedAt: io.now().toISOString(),
   });
-
-  // Encrypt the private key with ChaCha20-Poly1305.
-  const cipher = createCipheriv("chacha20-poly1305", derivedKey, iv);
-  const ciphertext = cipher.update(privateKeyPem, "utf8");
-  const finalCiphertext = Buffer.concat([ciphertext, cipher.final()]);
-  const authTag = cipher.getAuthTag();
-
-  // Return: salt || iv || ciphertext || authTag
-  return Buffer.concat([salt, iv, finalCiphertext, authTag]);
+  io.stdout(`${JSON.stringify(entry, null, 2)}\n`);
 }
 
-async function ceremony(args: readonly string[]): Promise<void> {
-  const isDevKey = args.includes("--dev-key");
-  const publicKeyOnly = args.includes("--public-key-only");
-
-  // ===== CRITICAL: Check for CI environment =====
-  if (checkCIEnvironment() && !isDevKey) {
-    console.error("❌ FATAL: CI environment detected.");
-    console.error("This ceremony MUST be run locally on an air-gapped machine.");
-    console.error("Refusing to generate production keys in CI/automation.");
-    console.error("If this is a test, pass --dev-key for an ephemeral dev key.");
-    process.exit(1);
+async function runGenerate(mode: Extract<Mode, { kind: "generate" }>, io: CeremonyIo) {
+  const outDir = resolve(mode.out);
+  if (!(await io.fs.isDirectory(outDir))) {
+    io.stderr(`--out ${outDir} is not an existing directory\n`);
+    return EXIT_FAILURE;
+  }
+  let gitEntry: string | null;
+  try {
+    gitEntry = await findGitAncestor(outDir);
+  } catch (error) {
+    io.stderr(`cannot inspect the parents of --out: ${describe(error)}\n`);
+    return EXIT_FAILURE;
+  }
+  if (gitEntry !== null) {
+    io.stderr(`refused: --out is inside a git working tree (${gitEntry})\n`);
+    return EXIT_REFUSED;
   }
 
-  // ===== WARNINGS: Air-gap compliance =====
-  console.log("");
-  console.log("⚠️  ════════════════════════════════════════════════════════════════");
-  console.log("⚠️  CRITICAL: Ed25519 Key Generation Ceremony (WP-G2-Z01)");
-  console.log("⚠️  ════════════════════════════════════════════════════════════════");
-  console.log("⚠️");
-  console.log("⚠️  YOU are responsible for the private key custody and air-gap security.");
-  console.log("⚠️");
-  if (isDevKey) {
-    console.log("⚠️  DEV MODE: Generating an ephemeral, test-only keypair.");
-    console.log("⚠️  This key is NOT suitable for production signing.");
-  } else {
-    console.log("⚠️  PRODUCTION MODE: Verify this machine is air-gapped NOW:");
-    console.log("⚠️    • No Wi-Fi, Bluetooth, or Ethernet connected.");
-    console.log("⚠️    • No SSH, VPN, or remote access.");
-    console.log("⚠️    • No USB/external storage except for offline backup.");
-    console.log("⚠️    • Network monitoring tools disabled.");
-    console.log("⚠️");
-    console.log("⚠️  Private key MUST NEVER:");
-    console.log("⚠️    • Be written to disk in plaintext.");
-    console.log("⚠️    • Cross a network boundary.");
-    console.log("⚠️    • Be shared, backed up online, or hardcoded.");
-    console.log("⚠️    • Be printed or logged (except sealed envelope).");
-  }
-  console.log("⚠️  ════════════════════════════════════════════════════════════════");
-  console.log("");
-
-  // ===== Generate keypair =====
-  console.log("🔑 Generating Ed25519 keypair...");
-  const { privateKeyPem, publicKeyPem } = generateKeyPair();
-  const keyId = deriveKeyId(publicKeyPem);
-  console.log(`✓ Keypair generated (keyId: ${keyId})`);
-  console.log("");
-
-  // ===== Output public key =====
-  console.log("===============================================");
-  console.log("🔑 Ed25519 Key Pair Generated Successfully");
-  console.log("===============================================");
-  console.log("");
-  console.log("Public Key (SPKI PEM, for repo registration):");
-  // Output the full PEM as-is (includes BEGIN/END markers)
-  console.log(publicKeyPem.trim());
-  console.log("");
-  console.log("KeyID (deterministic, derived from public key):");
-  console.log(keyId);
-  console.log("");
-
-  if (publicKeyOnly) {
-    console.log("✓ Public key exported (--public-key-only mode, no sealing)");
-    return;
+  const passphrase = await acquirePassphrase(mode.passphraseFd, io, true);
+  if (!passphrase.ok) {
+    io.stderr(`refused: ${passphrase.reason}\n`);
+    return passphrase.code;
   }
 
-  // ===== Seal the private key =====
-  if (isDevKey) {
-    console.log("ℹ️  DEV MODE: Private key is NOT sealed (ephemeral, for testing).");
-  } else {
-    console.log("⚠️  Sealing private key with memory-hard KDF (scrypt) + ChaCha20-Poly1305...");
-
-    // For production, we'd read the passphrase interactively.
-    // For now, we'll generate one and instruct the owner.
-    const passphraseGuide =
-      "Use a strong passphrase (32+ chars, random) when unsealing.\n" +
-      "The passphrase is NEVER stored — you must remember or write it down offline.";
-
-    console.log(passphraseGuide);
-
-    // Seal with a placeholder passphrase (owner will re-seal with their own).
-    const defaultPassphrase =
-      process.env.KEYGEN_TEST_PASSPHRASE || "placeholder-passphrase-replace-with-yours";
-    const sealedEnvelope = sealPrivateKey(privateKeyPem, defaultPassphrase);
-
-    // Write sealed envelope to a temporary file
-    const sealedPath = join(tmpdir(), `private-key-sealed-${keyId}.bin`);
-    writeFileSync(sealedPath, sealedEnvelope);
-    console.log("");
-    console.log("✓ Private key sealed and written to:");
-    console.log(`  ${sealedPath}`);
-    console.log("");
-    console.log("Next Steps:");
-    console.log("1. Transfer the sealed envelope to USB (offline storage).");
-    console.log("2. Verify checksum: sha256sum private-key-sealed-*.bin");
-    console.log("3. Store USB in a secure location (coffre-fort, HSM, geographically replicated).");
-    console.log("4. Register the public key in config/signing-keys.v1.json");
-    console.log("5. Follow KEY-CEREMONY-RUNBOOK.md for rotation/revocation protocols.");
-    console.log("");
+  let generated: { pair: GeneratedKeyPair; keyId: string };
+  try {
+    generated = generateChecked(io);
+  } catch (error) {
+    io.stderr(`generated public key has the wrong shape: ${describe(error)}\n`);
+    return EXIT_FAILURE;
+  }
+  const { pair, keyId } = generated;
+  const sealedPath = join(outDir, `${keyId}.sealed`);
+  const publicPath = join(outDir, `${keyId}.pub.pem`);
+  // Outside both final patterns, so an interrupted run never leaves a file
+  // that looks like a finished envelope.
+  const partialPath = join(outDir, `${keyId}.partial`);
+  for (const target of [sealedPath, publicPath, partialPath]) {
+    if (await io.fs.exists(target)) {
+      io.stderr(`refused: ${target} already exists\n`);
+      return EXIT_REFUSED;
+    }
   }
 
-  console.log("===============================================");
-  console.log("✓ Ceremony complete. Public key is ready to register.");
-  console.log("===============================================");
+  const written: string[] = [];
+  try {
+    const envelope = sealPrivateKey(pair.privateKeyPem, passphrase.value);
+    await io.fs.writeExclusive(partialPath, envelope, 0o600);
+    written.push(partialPath);
+
+    const readBack = await io.fs.readFile(partialPath);
+    const unsealedPublic = rawPublicKeyFromPrivatePem(unsealPrivateKey(readBack, passphrase.value));
+    const generatedPublic = rawPublicKeyFromSpkiPem(pair.publicKeyPem);
+    if (!Buffer.from(unsealedPublic).equals(Buffer.from(generatedPublic))) {
+      throw new Error("the envelope read back does not hold the generated key");
+    }
+
+    await io.fs.renameNoClobber(partialPath, sealedPath);
+    written.splice(written.indexOf(partialPath), 1, sealedPath);
+    await io.fs.writeExclusive(publicPath, Buffer.from(pair.publicKeyPem, "utf8"), 0o644);
+    written.push(publicPath);
+  } catch (error) {
+    io.stderr(`ceremony failed, removing what it wrote: ${describe(error)}\n`);
+    for (const path of written.reverse()) {
+      try {
+        await io.fs.remove(path);
+      } catch (removeError) {
+        io.stderr(`could not remove ${path}: ${describe(removeError)}\n`);
+      }
+    }
+    return EXIT_FAILURE;
+  }
+
+  io.stderr(
+    [
+      `key id: ${keyId}`,
+      `sealed: ${sealedPath} (unsealed and checked against the public key before it was named)`,
+      `public: ${publicPath}`,
+      "Standard output holds the registry entry for config/signing-keys.v1.json.",
+      "",
+    ].join("\n"),
+  );
+  printEntry(io, keyId, pair.publicKeyPem, mode.purpose);
+  return EXIT_OK;
 }
 
-await ceremony(process.argv.slice(2));
+async function runVerify(mode: Extract<Mode, { kind: "verify" }>, io: CeremonyIo) {
+  let expected: Uint8Array;
+  try {
+    const pem = Buffer.from(await io.fs.readFile(resolve(mode.publicKey))).toString("utf8");
+    expected = rawPublicKeyFromSpkiPem(pem);
+  } catch (error) {
+    io.stderr(`cannot read the public key: ${describe(error)}\n`);
+    return EXIT_FAILURE;
+  }
+  // Verifying does not choose a passphrase: an envelope sealed under an
+  // older, shorter one must still be checkable.
+  const passphrase = await acquirePassphrase(mode.passphraseFd, io, false);
+  if (!passphrase.ok) {
+    io.stderr(`${passphrase.reason}\n`);
+    return EXIT_FAILURE;
+  }
+  let unsealed: Uint8Array;
+  try {
+    const envelope = await io.fs.readFile(resolve(mode.sealed));
+    unsealed = rawPublicKeyFromPrivatePem(unsealPrivateKey(envelope, passphrase.value));
+  } catch (error) {
+    io.stderr(`cannot unseal: ${describe(error)}\n`);
+    return EXIT_FAILURE;
+  }
+  if (!Buffer.from(unsealed).equals(Buffer.from(expected))) {
+    io.stderr("MISMATCH: the envelope does not hold the key of --public-key\n");
+    return EXIT_FAILURE;
+  }
+  io.stderr(`MATCH: the envelope holds key ${deriveKeyId(expected)}\n`);
+  return EXIT_OK;
+}
+
+export async function main(argv: readonly string[], io: CeremonyIo): Promise<number> {
+  const mode = parseArguments(argv);
+  if ("error" in mode) {
+    io.stderr(`${mode.error}\n${USAGE}\n`);
+    return EXIT_USAGE;
+  }
+  const ciVariable = CI_VARIABLES.find((name) => io.env[name]);
+  if (ciVariable !== undefined && mode.kind !== "dev-key") {
+    io.stderr(
+      `refused: ${ciVariable} is set. The ceremony runs offline on the owner's machine; ` +
+        "pass --dev-key for an ephemeral test key.\n",
+    );
+    return EXIT_REFUSED;
+  }
+  if (mode.kind === "verify") return runVerify(mode, io);
+  printBanner(io, mode.kind);
+  if (mode.kind === "generate") return runGenerate(mode, io);
+
+  let generated: { pair: GeneratedKeyPair; keyId: string };
+  try {
+    generated = generateChecked(io);
+  } catch (error) {
+    io.stderr(`generated public key has the wrong shape: ${describe(error)}\n`);
+    return EXIT_FAILURE;
+  }
+  io.stderr(
+    mode.kind === "dev-key"
+      ? `dev key id: ${generated.keyId} (ephemeral, nothing written)\n`
+      : `key id: ${generated.keyId} (public half only, the private half is discarded)\n`,
+  );
+  printEntry(io, generated.keyId, generated.pair.publicKeyPem, mode.purpose);
+  return EXIT_OK;
+}
+
+const STTY_CANDIDATES = ["/bin/stty", "/usr/bin/stty"];
+
+/**
+ * Absolute path of stty, never a PATH lookup: the ceremony does not trust a
+ * binary the environment chooses (same reason findGitAncestor does not run git).
+ */
+export function resolveStty(
+  candidates: readonly string[] = STTY_CANDIDATES,
+  isFile: (path: string) => boolean = (path) => existsSync(path),
+): string {
+  const found = candidates.find((path) => isAbsolute(path) && isFile(path));
+  if (found === undefined) throw new Error(`no stty at ${candidates.join(" or ")}`);
+  return found;
+}
+
+const RESTORE_SIGNALS = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
+type RestoreSignal = (typeof RESTORE_SIGNALS)[number];
+
+export interface SignalSource {
+  once(event: RestoreSignal, listener: () => void): unknown;
+  removeListener(event: RestoreSignal, listener: () => void): unknown;
+}
+
+function exitOnSignal(signal: RestoreSignal): void {
+  process.exit(128 + osConstants.signals[signal]);
+}
+
+/**
+ * Runs `body` with the terminal altered, and calls `restore` exactly once:
+ * when `body` settles, or on SIGINT/SIGTERM/SIGHUP before that. Without the
+ * signal path, Ctrl-C at the passphrase prompt leaves the shell without echo.
+ */
+export async function withTerminalRestored<T>(
+  restore: () => void,
+  body: () => Promise<T>,
+  source: SignalSource = process,
+  onSignal: (signal: RestoreSignal) => void = exitOnSignal,
+): Promise<T> {
+  let restored = false;
+  const restoreOnce = () => {
+    if (restored) return;
+    restored = true;
+    restore();
+  };
+  const listeners = RESTORE_SIGNALS.map((signal) => {
+    const listener = () => {
+      restoreOnce();
+      onSignal(signal);
+    };
+    source.once(signal, listener);
+    return { signal, listener };
+  });
+  try {
+    return await body();
+  } finally {
+    for (const { signal, listener } of listeners) source.removeListener(signal, listener);
+    restoreOnce();
+  }
+}
+
+async function readTerminalLine(handle: FileHandle): Promise<string> {
+  const chunks: Buffer[] = [];
+  const buffer = Buffer.alloc(256);
+  let total = 0;
+  for (;;) {
+    // Asynchronous on purpose: a blocking read would keep the signal
+    // listeners of withTerminalRestored from ever running.
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+    if (bytesRead === 0) break;
+    chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+    total += bytesRead;
+    if (buffer.subarray(0, bytesRead).includes(0x0a) || total > 4096) break;
+  }
+  buffer.fill(0);
+  return stripOneLineEnding(Buffer.concat(chunks).toString("utf8"));
+}
+
+async function readHiddenFromTerminal(prompt: string): Promise<string> {
+  const stty = resolveStty();
+  const handle = await open("/dev/tty", "r+");
+  try {
+    const fd = handle.fd;
+    // stty acts on its standard input: handing it the terminal descriptor
+    // reads and sets the controlling terminal, without a dependency.
+    const saved = spawnSync(stty, ["-g"], { stdio: [fd, "pipe", "ignore"], encoding: "utf8" });
+    const state = saved.status === 0 ? saved.stdout.trim() : "";
+    if (state === "") throw new Error("cannot read the terminal settings");
+    await handle.write(prompt);
+    return await withTerminalRestored(
+      () => {
+        spawnSync(stty, [state], { stdio: [fd, "ignore", "ignore"] });
+        writeSync(fd, "\n");
+      },
+      async () => {
+        const silenced = spawnSync(stty, ["-echo"], { stdio: [fd, "ignore", "ignore"] });
+        if (silenced.status !== 0) throw new Error("cannot turn terminal echo off");
+        return readTerminalLine(handle);
+      },
+    );
+  } finally {
+    await handle.close();
+  }
+}
+
+const nodeFs: CeremonyFs = {
+  async isDirectory(path) {
+    try {
+      return (await stat(path)).isDirectory();
+    } catch (error) {
+      if (hasErrorCode(error, "ENOENT")) return false;
+      throw error;
+    }
+  },
+  async exists(path) {
+    try {
+      await lstat(path);
+      return true;
+    } catch (error) {
+      if (hasErrorCode(error, "ENOENT")) return false;
+      throw error;
+    }
+  },
+  async writeExclusive(path, data, mode) {
+    const handle = await open(path, "wx", mode);
+    try {
+      await handle.writeFile(data);
+      await handle.sync();
+    } catch (error) {
+      await handle.close();
+      await rm(path, { force: true });
+      throw error;
+    }
+    await handle.close();
+  },
+  async readFile(path) {
+    return readFile(path);
+  },
+  // shortcut: check-then-rename leaves a window between the two calls, a
+  // single-operator offline machine has no concurrent writer; a hard link
+  // would close it but FAT32 removable media (runbook) has none.
+  // Upgrade trigger: the ceremony runs where another process writes to --out.
+  async renameNoClobber(from, to) {
+    if (await nodeFs.exists(to)) throw new Error(`${to} already exists`);
+    await rename(from, to);
+  },
+  async remove(path) {
+    await rm(path, { force: true });
+  },
+};
+
+export function createNodeIo(): CeremonyIo {
+  return {
+    env: process.env,
+    now: () => new Date(),
+    stdout: (text) => {
+      process.stdout.write(text);
+    },
+    stderr: (text) => {
+      process.stderr.write(text);
+    },
+    readPassphraseFromFd: async (fd) => readFileSync(fd, "utf8"),
+    readPassphraseFromTerminal: (prompt) => readHiddenFromTerminal(prompt),
+    generateKeyPair: () => {
+      const { privateKey, publicKey } = generateKeyPairSync("ed25519", {
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+      return { privateKeyPem: privateKey, publicKeyPem: publicKey };
+    },
+    fs: nodeFs,
+  };
+}
+
+if (import.meta.main) {
+  process.exitCode = await main(process.argv.slice(2), createNodeIo());
+}
