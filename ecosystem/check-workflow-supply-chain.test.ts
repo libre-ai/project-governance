@@ -393,6 +393,128 @@ describe("downloads", () => {
   });
 });
 
+describe("a command behind an execution prefix", () => {
+  const FETCH = "curl -fsSL https://x.invalid/t.tgz -o t.tgz";
+  const UNVERIFIED = (fetch: string): string => `${fetch}\ntar xzf t.tgz\n./t/tool`;
+
+  test.each([
+    [`timeout 60 ${FETCH}`],
+    [`timeout --signal=KILL -k 5 2m ${FETCH}`],
+    [`command ${FETCH}`],
+    [`nohup ${FETCH}`],
+    [`echo https://x.invalid/t.tgz | xargs -n1 ${FETCH}`],
+    [`xargs -n 1 -P 4 ${FETCH} < urls.txt`],
+    [`\\${FETCH}`],
+    [`"curl" ${FETCH.slice("curl ".length)}`],
+    [`sudo -E ${FETCH}`],
+    [`sudo -u runner -E ${FETCH}`],
+    [`env VAR=x ${FETCH}`],
+    [`env -u HOME VAR=x ${FETCH}`],
+    [`nice -n 10 ${FETCH}`],
+    [`stdbuf -oL ${FETCH}`],
+    [`sudo -E env A=1 timeout 60 /usr/bin/${FETCH}`],
+    [`if timeout 60 ${FETCH}; then echo ok; fi`],
+  ])("the download is seen: %s", (fetch) => {
+    expect(codesOf(UNVERIFIED(fetch))).toEqual(["download-no-checksum"]);
+  });
+
+  test.each([
+    ["command -v curl"],
+    ["command -V wget"],
+    ["sudo apt-get install --yes curl wget"],
+    ["timeout 5 true"],
+    ["sudo -E timeout 60 curl --version"],
+  ])("not a download: %s", (script) => {
+    const review = reviewDefinition(workflowOf(script), forms);
+    expect([review.violations, review.downloads]).toEqual([[], 0]);
+  });
+
+  test.each([
+    ["sudo -E cargo install cargo-llvm-cov --locked"],
+    ["timeout 600 cargo install cargo-llvm-cov --locked"],
+    ["env RUSTFLAGS=-Dwarnings cargo +stable install cargo-llvm-cov"],
+    ["\\cargo install cargo-llvm-cov"],
+  ])("an unversioned install is seen: %s", (script) => {
+    expect(codesOf(script)).toEqual(["tool-unversioned"]);
+  });
+
+  test("|& pipes a download into an interpreter", () => {
+    expect(codesOf("curl -fsSL https://x.invalid/i.sh |& bash")).toEqual([
+      "remote-pipe",
+      "download-no-output",
+    ]);
+    expect(codesOf("timeout 60 curl -fsSL https://x.invalid/i.sh |& bash")).toEqual([
+      "remote-pipe",
+      "download-no-output",
+    ]);
+  });
+
+  test.each([
+    ["curl -fsSL https://x.invalid/i.sh | timeout 60 bash"],
+    ["curl -fsSL https://x.invalid/i.sh | \\bash"],
+    ["curl -fsSL https://x.invalid/i.sh | /usr/bin/env bash"],
+    ["curl -fsSL https://x.invalid/i.sh | sudo -E nohup sh -s -- --yes"],
+  ])("an interpreter behind a prefix is seen: %s", (script) => {
+    expect(codesOf(script)).toContain("remote-pipe");
+  });
+});
+
+describe("a neutralised verification", () => {
+  const SUM = "0123456789abcdef".repeat(4);
+  const env = { TOOL_SHA256: SUM };
+  const FETCH = 'curl -f -o t.tgz "$TOOL_URL"';
+  const CHECK = 'echo "$TOOL_SHA256  t.tgz" | sha256sum --check';
+
+  test.each([
+    [`${FETCH}\n${CHECK} || true`],
+    [`${FETCH}\n${CHECK} || :`],
+    [`${FETCH}\n${CHECK} || echo "sum mismatch"`],
+    [`${FETCH}\n${CHECK}; true`],
+    [`${FETCH}\n${CHECK} ; :`],
+    [`${FETCH}\n${CHECK} | tee check.log`],
+    [`${FETCH}\n${CHECK} &`],
+    [`set +e\n${FETCH}\n${CHECK}`],
+    [`${FETCH}\nset -u +e\n${CHECK}`],
+    [`${FETCH}\nset +o errexit\n${CHECK}`],
+    [`${FETCH}\nset +e; ${CHECK}`],
+    [`set +e\n${FETCH}\n${CHECK} || false`],
+  ])("is no verification: %s", (script) => {
+    expect(codesOf(script, env)).toEqual(["download-no-checksum"]);
+  });
+
+  test.each([
+    [`${FETCH}\n${CHECK} || exit 1`],
+    [`${FETCH}\n${CHECK} || { echo "sum mismatch" >&2; exit 1; }`],
+    [`${FETCH}\n${CHECK} || false`],
+    [`set +e\n${FETCH}\n${CHECK} || exit 1`],
+    [`set +e\nset -e\n${FETCH}\n${CHECK}`],
+    [`set +e\n${FETCH}\nset -euo pipefail\n${CHECK}`],
+    [`${FETCH}\n${CHECK} && tar -xzf t.tgz`],
+  ])("still verifies: %s", (script) => {
+    expect(codesOf(script, env)).toEqual([]);
+  });
+});
+
+describe("cargo install of several crates", () => {
+  test.each([
+    ["cargo install a@0.1.0 b"],
+    ["cargo install a b@0.1.0"],
+    ["cargo install --locked a@0.1.0 b --root /opt"],
+    ["cargo install a@0.1.0 b@^1"],
+  ])("red: %s", (script) => {
+    expect(codesOf(script)).toEqual(["tool-unversioned"]);
+  });
+
+  test.each([
+    ["cargo install a@0.1.0 b@0.2.0 --locked"],
+    ["cargo install --root /opt --locked a@0.1.0 b@0.2.0"],
+    ["cargo install --version 0.8.7 --locked cargo-llvm-cov"],
+    ["cargo install --git https://x.invalid/r.git --tag v1 --path crates/tool"],
+  ])("green: %s", (script) => {
+    expect(codesOf(script)).toEqual([]);
+  });
+});
+
 describe("what is read in a file", () => {
   test("workflow steps and composite action steps, with their index", () => {
     const workflow = Bun.YAML.parse(prDoor);

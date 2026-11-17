@@ -43,13 +43,24 @@
  * Comparing a sum to the canonical toolchain policy stays the job of
  * `check-toolchain-source`; this gate holds its presence and its shape.
  *
+ * A verification counts only while its exit status still fails the step. The
+ * runner's shells start with errexit; a check whose status is discarded (a
+ * later pipeline stage, `&`, `; true`, `|| true`, `|| :`, any `||` that does
+ * not exit non-zero) or run after `set +e` without `|| exit N` is no check.
+ *
  * DECLARED LIMITS. A script is read line by line: a command folded with a
- * trailing backslash is not joined. curl and wget are recognised where a
- * command starts (line start, after `|`, `;`, `&`, `(`, `$(`, a backquote, a
- * shell keyword, `sudo` or `env`), so a wrapper function hides them and a
- * package list naming `curl` is not a download. The output file is compared as
- * it is written: `$DIR/x` and `${DIR}/x` are two names, and the second then
- * counts as unverified.
+ * trailing backslash is not joined. curl, wget and cargo are recognised as the
+ * program a simple command runs (line start, after `|`, `;`, `&`, `(`, `{`,
+ * `$(`, a backquote or a shell keyword), read through assignments, quotes, a
+ * leading backslash, a path and the execution prefixes of `EXECUTION_PREFIXES`
+ * (`sudo -E`, `env A=1`, `timeout 60`, `xargs -n1`, `nohup`, `command`, ...).
+ * A wrapper function, a program named by a variable or a command inside a
+ * quoted `-c` string hides them, and a package list naming `curl` is not a
+ * download. errexit is taken as on when the script starts: a step `shell:`
+ * without `-e` is not read, and a check that is the left side of `&&` or the
+ * condition of an `if` still counts. The output file is compared as it is
+ * written: `$DIR/x` and `${DIR}/x` are two names, and the second then counts
+ * as unverified.
  */
 
 import { GateReport } from "../tools/quality/gate-report";
@@ -311,14 +322,151 @@ function readCommand(line: string, start: number): ShellCommand {
   return { words, end: index };
 }
 
-/** Where a command may start on a line, followed by its assignments and an optional path. */
-const COMMAND_POSITION =
-  "(?:^|[|;&(`{!]|\\$\\(|\\b(?:then|do|else|if|while|until|sudo|exec|time|env)\\s)\\s*(?:-\\S+\\s+)*(?:\\w+=\\S*\\s+)*(?:[\\w./-]*/)?";
-const DOWNLOAD_COMMAND = new RegExp(`${COMMAND_POSITION}(curl|wget)(?=\\s|$)`, "g");
-const CARGO_INSTALL = new RegExp(
-  `${COMMAND_POSITION}(cargo)\\s+(?:\\+\\S+\\s+)?install(?=\\s|$)`,
-  "g",
-);
+/** Where a command may start on a line: line start, an operator, a group, a substitution. */
+const COMMAND_START = /(?:^|[|;&(`{]|\$\()\s*/g;
+const ASSIGNMENT = /^\w+=/;
+/** Words that open a command without being one: the command is the word after them. */
+const SHELL_KEYWORDS: ReadonlySet<string> = new Set([
+  "!",
+  "{",
+  "if",
+  "then",
+  "elif",
+  "else",
+  "while",
+  "until",
+  "do",
+]);
+
+/**
+ * A program that runs the command written after it: its options, the option
+ * letters that take a value, and the positional words it reads before that
+ * command. `stops` names the letters with which it runs nothing (`command -v`).
+ */
+interface ExecutionPrefix {
+  readonly valued: string;
+  readonly longValued: readonly string[];
+  readonly positionals: number;
+  readonly assignments: boolean;
+  readonly stops: string;
+}
+
+function prefix(spec: Partial<ExecutionPrefix>): ExecutionPrefix {
+  return { valued: "", longValued: [], positionals: 0, assignments: false, stops: "", ...spec };
+}
+
+const EXECUTION_PREFIXES: Readonly<Record<string, ExecutionPrefix>> = {
+  builtin: prefix({}),
+  chronic: prefix({}),
+  command: prefix({ stops: "vV" }),
+  doas: prefix({ valued: "uC" }),
+  env: prefix({
+    valued: "uCSP",
+    longValued: ["--unset", "--chdir", "--split-string"],
+    assignments: true,
+  }),
+  exec: prefix({ valued: "a" }),
+  ionice: prefix({ valued: "cnp", longValued: ["--class", "--classdata", "--pid"] }),
+  nice: prefix({ valued: "n", longValued: ["--adjustment"] }),
+  nohup: prefix({}),
+  setsid: prefix({}),
+  stdbuf: prefix({ valued: "ioe", longValued: ["--input", "--output", "--error"] }),
+  sudo: prefix({
+    valued: "ugCDprtUT",
+    longValued: ["--user", "--group", "--close-from", "--chdir", "--prompt", "--role", "--type"],
+  }),
+  time: prefix({ valued: "fo", longValued: ["--format", "--output"] }),
+  timeout: prefix({ valued: "sk", longValued: ["--signal", "--kill-after"], positionals: 1 }),
+  xargs: prefix({
+    valued: "adEILnPs",
+    longValued: [
+      "--arg-file",
+      "--delimiter",
+      "--eof",
+      "--max-lines",
+      "--max-args",
+      "--max-procs",
+      "--max-chars",
+    ],
+  }),
+};
+
+/** Index of the word after `prefix`'s options and positionals, or -1 when it runs nothing. */
+function skipPrefix(words: readonly string[], from: number, spec: ExecutionPrefix): number {
+  let index = from;
+  while (index < words.length) {
+    const word = words[index] ?? "";
+    if (word === "--") {
+      index++;
+      break;
+    }
+    if (word.startsWith("--")) {
+      const takesNext = !word.includes("=") && spec.longValued.includes(word);
+      index += takesNext ? 2 : 1;
+      continue;
+    }
+    if (spec.assignments && ASSIGNMENT.test(word)) {
+      index++;
+      continue;
+    }
+    if (!word.startsWith("-") || word.length === 1) break;
+    // `nice -10`: a niceness written as an option.
+    let consumed = 1;
+    if (!/^-\d+$/.test(word)) {
+      for (let at = 1; at < word.length; at++) {
+        const letter = word.charAt(at);
+        if (spec.stops.includes(letter)) return -1;
+        if (spec.valued.includes(letter)) {
+          if (at === word.length - 1) consumed = 2;
+          break;
+        }
+      }
+    }
+    index += consumed;
+  }
+  return index + spec.positionals;
+}
+
+interface SimpleCommand {
+  /** The program run, its path removed: `curl` for `/usr/bin/curl`, `\curl` or `"curl"`. */
+  readonly name: string;
+  readonly args: readonly string[];
+  /** Index on the line where the command, prefixes included, starts. */
+  readonly start: number;
+  /** Index of the first character after the command. */
+  readonly end: number;
+}
+
+/**
+ * Every simple command of a line, read through its leading assignments and
+ * through the execution prefixes above (`sudo -E env A=1 timeout 60 curl …`
+ * runs curl). A command those prefixes do not run (`command -v curl`) is left out.
+ */
+function simpleCommands(line: string): SimpleCommand[] {
+  const commands: SimpleCommand[] = [];
+  for (const match of line.matchAll(COMMAND_START)) {
+    const start = (match.index ?? 0) + match[0].length;
+    const { words, end } = readCommand(line, start);
+    let index = 0;
+    for (;;) {
+      while (ASSIGNMENT.test(words[index] ?? "") || SHELL_KEYWORDS.has(words[index] ?? "")) {
+        index++;
+      }
+      const word = words[index];
+      if (word === undefined) break;
+      const name = word.slice(word.lastIndexOf("/") + 1);
+      const spec = EXECUTION_PREFIXES[name];
+      if (spec === undefined) {
+        commands.push({ name, args: words.slice(index + 1), start, end });
+        break;
+      }
+      index = skipPrefix(words, index + 1, spec);
+      if (index < 0) break;
+    }
+  }
+  return commands;
+}
+
 const CARGO_BINSTALL = /(?<![\w.-])cargo\s+(?:\+\S+\s+)?binstall(?![\w-])/;
 const MOVING_VERSION = /@latest(?![\w.-])|--version[ =]+["']?latest(?![\w.-])|\/releases\/latest\//;
 const EXACT_VERSION = /^\d+\.\d+\.\d+(?:[-+][\w.]+)?$/;
@@ -333,34 +481,77 @@ function resolve(token: string, env: Readonly<Record<string, string>>): string |
   return Object.hasOwn(env, name) ? (env[name] ?? null) : null;
 }
 
-/** The start of the command name a `COMMAND_POSITION` match ends with. */
-function commandStart(match: RegExpMatchArray, name: string): number {
-  return (match.index ?? 0) + match[0].lastIndexOf(name);
-}
+/** `cargo install` options that take a value: the next word is that value, not a crate. */
+const CARGO_INSTALL_VALUED = new Set([
+  "--version",
+  "--vers",
+  "--git",
+  "--branch",
+  "--tag",
+  "--rev",
+  "--path",
+  "--root",
+  "--index",
+  "--registry",
+  "--features",
+  "-F",
+  "--target",
+  "--target-dir",
+  "--profile",
+  "--config",
+  "--jobs",
+  "-j",
+  "-Z",
+  "--color",
+  "--message-format",
+  "--bin",
+  "--example",
+]);
 
+/**
+ * Whether every crate a `cargo install` names is pinned: by `crate@x.y.z`, or,
+ * for a crate written bare, by an exact `--version`. A `--path` install is a
+ * local build and needs neither.
+ */
 function cargoInstallIsVersioned(
   words: readonly string[],
   env: Readonly<Record<string, string>>,
 ): boolean {
-  for (const [index, word] of words.entries()) {
-    if (word === "--path" || word.startsWith("--path=")) return true;
-    if (/^[\w-]+@/.test(word) && EXACT_VERSION.test(word.slice(word.indexOf("@") + 1))) return true;
+  const crates: string[] = [];
+  let version: string | null = null;
+  for (let index = 0; index < words.length; index++) {
+    const word = words[index] ?? "";
+    const equals = word.indexOf("=");
+    const name = word.startsWith("--") && equals !== -1 ? word.slice(0, equals) : word;
     let value: string | null = null;
-    if (word === "--version") value = words[index + 1] ?? null;
-    else if (word.startsWith("--version=")) value = word.slice("--version=".length);
-    if (value === null) continue;
-    const literal = resolve(value.replace(/^=/, ""), env);
-    if (literal !== null && EXACT_VERSION.test(literal)) return true;
+    if (name !== word) value = word.slice(equals + 1);
+    else if (CARGO_INSTALL_VALUED.has(word)) {
+      index++;
+      value = words[index] ?? "";
+    } else if (!word.startsWith("-")) {
+      crates.push(word);
+      continue;
+    }
+    if (name === "--path") return true;
+    if ((name === "--version" || name === "--vers") && value !== null) version = value;
   }
-  return false;
+  const exact = version === null ? null : resolve(version, env);
+  const versionIsExact = exact !== null && EXACT_VERSION.test(exact);
+  // `cargo install --git <url>` names no crate and installs what the branch holds.
+  if (crates.length === 0) return versionIsExact;
+  return crates.every((crate) => {
+    const at = crate.indexOf("@");
+    return at === -1 ? versionIsExact : EXACT_VERSION.test(crate.slice(at + 1));
+  });
 }
 
 function isUnversionedTool(line: string, env: Readonly<Record<string, string>>): boolean {
   if (MOVING_VERSION.test(line) || CARGO_BINSTALL.test(line)) return true;
-  for (const match of line.matchAll(CARGO_INSTALL)) {
-    if (!cargoInstallIsVersioned(readCommand(line, commandStart(match, "cargo")).words, env)) {
-      return true;
-    }
+  for (const { name, args } of simpleCommands(line)) {
+    if (name !== "cargo") continue;
+    const subcommand = args[0]?.startsWith("+") === true ? 1 : 0;
+    if (args[subcommand] !== "install") continue;
+    if (!cargoInstallIsVersioned(args.slice(subcommand + 1), env)) return true;
   }
   return false;
 }
@@ -504,15 +695,13 @@ interface FoundDownload {
 
 function findDownloads(line: string): FoundDownload[] {
   const found: FoundDownload[] = [];
-  for (const match of line.matchAll(DOWNLOAD_COMMAND)) {
-    const tool = match[1] === "wget" ? "wget" : "curl";
-    const command = readCommand(line, commandStart(match, tool));
-    const args = command.words.slice(1);
+  for (const { name, args, end } of simpleCommands(line)) {
+    if (name !== "curl" && name !== "wget") continue;
     // Asking the tool what it is downloads nothing.
     if (args.includes("--version") || args.includes("--help")) continue;
     found.push({
-      download: tool === "curl" ? parseCurl(args) : parseWget(args),
-      rest: line.slice(command.end),
+      download: name === "curl" ? parseCurl(args) : parseWget(args),
+      rest: line.slice(end),
     });
   }
   return found;
@@ -532,22 +721,74 @@ function citationIndex(text: string, file: string): number {
 
 const SHA_COMMAND = /(?<![\w.-])(sha256sum|shasum)(?=\s|$)/g;
 
-/** Whether the text runs `sha256sum --check` (or `-c`), or `shasum -a 256 -c`. */
-function verifiesSha256(text: string): boolean {
+/** After the check: the next stage of a pipeline, a background `&`, a `; true` or `; :`. */
+const STATUS_DISCARDED = /^\s*(?:\|(?!\|)|&(?!&)|;\s*(?:true|:)(?![\w.-]))/;
+/** An `||` alternative that still fails the step: `exit N`/`return N` with N ≠ 0, alone or in a group. */
+const ALTERNATIVE_FAILS =
+  /^\s*\|\|\s*(?:[{(]\s*)?(?:(?:[^;|&]|[<>]&)*;\s*)*?(?:exit|return)\s+[1-9]\d*(?![\w.])/;
+/** `|| false` fails the step only while errexit is on. */
+const ALTERNATIVE_FALSE = /^\s*\|\|\s*false(?![\w.-])/;
+
+/**
+ * Whether the exit status of the check still stops the step. The runner's
+ * shells start with errexit (`bash -e`, `sh -e`): a failed check ends the step
+ * unless the script discards its status (a later pipeline stage without
+ * pipefail, `&`, `|| true`, `|| :`, any `||` that does not fail) or turned
+ * errexit off before it (`set +e`, `set +o errexit`), where only `|| exit N`
+ * still stops it.
+ */
+function statusKept(rest: string, errexit: boolean): boolean {
+  if (STATUS_DISCARDED.test(rest)) return false;
+  if (/^\s*\|\|/.test(rest)) {
+    return ALTERNATIVE_FAILS.test(rest) || (errexit && ALTERNATIVE_FALSE.test(rest));
+  }
+  return errexit;
+}
+
+/**
+ * Whether the text runs `sha256sum --check` (or `-c`), or `shasum -a 256 -c`,
+ * with a status that still fails the step; `errexitAt` tells, for a position
+ * on the text, whether errexit is on there.
+ */
+function verifiesSha256(text: string, errexitAt: (position: number) => boolean): boolean {
   for (const match of text.matchAll(SHA_COMMAND)) {
-    const words = readCommand(text, match.index ?? 0).words.slice(1);
+    const position = match.index ?? 0;
+    const command = readCommand(text, position);
+    const words = command.words.slice(1);
     const checks = words.some((word) => word === "--check" || /^-[a-z]*c[a-z]*$/.test(word));
     if (!checks) continue;
-    if (match[1] === "sha256sum") return true;
-    const algorithm = words.some(
-      (word, index) =>
-        word === "-a256" ||
-        word === "--algorithm=256" ||
-        ((word === "-a" || word === "--algorithm") && words[index + 1] === "256"),
-    );
-    if (algorithm) return true;
+    const algorithm =
+      match[1] === "sha256sum" ||
+      words.some(
+        (word, index) =>
+          word === "-a256" ||
+          word === "--algorithm=256" ||
+          ((word === "-a" || word === "--algorithm") && words[index + 1] === "256"),
+      );
+    if (algorithm && statusKept(text.slice(command.end), errexitAt(position))) return true;
   }
   return false;
+}
+
+/**
+ * The errexit changes a line makes, in order: `set -e`/`-o errexit` turns it
+ * on, `set +e`/`+o errexit` off, an option group counting when it holds `e`.
+ */
+function errexitChanges(line: string): { readonly at: number; readonly on: boolean }[] {
+  const changes: { at: number; on: boolean }[] = [];
+  for (const { name, args, start } of simpleCommands(line)) {
+    if (name !== "set") continue;
+    for (let index = 0; index < args.length; index++) {
+      const arg = args[index] ?? "";
+      if (arg === "--" || !/^[-+]/.test(arg)) break;
+      const on = arg.startsWith("-");
+      if (/^[-+]o$/.test(arg)) {
+        index++;
+        if (args[index] === "errexit") changes.push({ at: start, on });
+      } else if (/^[-+][a-zA-Z]*e/.test(arg)) changes.push({ at: start, on });
+    }
+  }
+  return changes;
 }
 
 /** The token a checksum line places before the file name: `<sum>  <file>`. */
@@ -595,6 +836,18 @@ function reviewScript(run: RunScript, forms: readonly RemoteExecutionForm[]): Sc
     }
   }
 
+  const changes = examined.map(errexitChanges);
+  /** Whether errexit is on at `position` of line `lineIndex`: on when the script starts. */
+  const errexitAt = (lineIndex: number, position: number): boolean => {
+    let on = true;
+    for (const [index, ofLine] of changes.slice(0, lineIndex + 1).entries()) {
+      for (const change of ofLine) {
+        if (index < lineIndex || change.at <= position) on = change.on;
+      }
+    }
+    return on;
+  };
+
   let downloads = 0;
   for (const [index, line] of examined.entries()) {
     if (line === "") continue;
@@ -606,12 +859,18 @@ function reviewScript(run: RunScript, forms: readonly RemoteExecutionForm[]): Sc
       else {
         const file = download.sink.file;
         // The rest of the line comes first: `curl -o f … && unzip f` uses the file there.
-        const later = [{ index, text: rest }].concat(
-          examined.slice(index + 1).map((text, offset) => ({ index: index + 1 + offset, text })),
+        const later = [{ index, text: rest, offset: line.length - rest.length }].concat(
+          examined
+            .slice(index + 1)
+            .map((text, next) => ({ index: index + 1 + next, text, offset: 0 })),
         );
         const use =
           file === null ? undefined : later.find(({ text }) => citationIndex(text, file) !== -1);
-        if (file === null || use === undefined || !verifiesSha256(use.text)) {
+        if (
+          file === null ||
+          use === undefined ||
+          !verifiesSha256(use.text, (position) => errexitAt(use.index, use.offset + position))
+        ) {
           add("download-no-checksum", index);
         } else {
           const sum = sumBefore(use.text, citationIndex(use.text, file));
