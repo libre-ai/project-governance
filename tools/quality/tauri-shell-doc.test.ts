@@ -94,6 +94,14 @@ function bullets(text: string[]): string[] {
   return items;
 }
 
+/** Cells of a table row, trimmed, without the empty edges of `| a | b |`. */
+function cells(row: string): string[] {
+  return row
+    .split("|")
+    .slice(1, -1)
+    .map((cell) => cell.trim());
+}
+
 const NUMBERED_TITLES = [
   "## 1. Les six contrôles et leur vecteur rouge",
   "## 2. Contraintes de configuration",
@@ -208,13 +216,26 @@ describe("TAURI-SHELL.md §4 — second instrument of C6, the loopback TCP scan"
     expect(scan.length).toBeGreaterThan(0);
   });
 
-  test("it names the four outcomes, and refused means ECONNREFUSED alone", () => {
-    const rows = scan.filter((line) => line.startsWith("| "));
-    for (const outcome of ["ouvert", "refusé", "délai", "erreur"]) {
-      expect(rows.filter((row) => row.startsWith(`| ${outcome} |`)).length).toBe(1);
+  test("it names the four outcomes, each with its counter and its definition", () => {
+    const rows = scan.filter((line) => line.startsWith("| ")).map(cells);
+    const outcome = (name: string): string[] => {
+      const found = rows.filter((row) => row[0] === name);
+      expect(found.length).toBe(1);
+      return found[0] ?? [];
+    };
+    // Whole cells, not substrings: an extra clause appended to a definition
+    // ("ECONNREFUSED, and only it, or EHOSTUNREACH") must turn this red.
+    expect(outcome("ouvert")).toEqual(["ouvert", "`open`", "la connexion TCP est établie"]);
+    expect(outcome("refusé")).toEqual(["refusé", "`refused`", "`ECONNREFUSED`, et seulement lui"]);
+    expect(outcome("délai")).toEqual(["délai", "`timeout`", "aucune réponse en 2 s"]);
+    const error = outcome("erreur");
+    expect(error.slice(0, 2)).toEqual(["erreur", "`error`"]);
+    // The examples after "toute autre issue" are free; nothing else is.
+    expect(error[2]).toMatch(/^toute autre issue(?: \(par exemple (?:`E[A-Z]+`(?:, )?)+\))?$/);
+    // Neither unknown outcome may be defined as closed, in any wording.
+    for (const row of [outcome("délai"), error]) {
+      expect(row.join(" ")).not.toMatch(/ferm/i);
     }
-    const refused = rows.find((row) => row.startsWith("| refusé |")) ?? "";
-    expect(refused).toContain("`ECONNREFUSED`, et seulement lui");
   });
 
   test("timeout and error are never counted as closed", () => {
@@ -231,19 +252,30 @@ describe("TAURI-SHELL.md §4 — second instrument of C6, the loopback TCP scan"
   test("it states the success criterion", () => {
     const start = scan.findIndex((line) => line.startsWith("**Critère de succès"));
     expect(start).toBeGreaterThan(-1);
-    const criterion = flat(bullets(scan.slice(start + 1, start + 12)));
-    expect(criterion).toMatch(/balayage `coquille`, moins ceux du balayage `reference`/);
-    expect(criterion).toContain("exactement la liste attendue");
-    expect(criterion).toContain("délai = erreur = 0");
-    expect(criterion).toContain("`scanned` = 65535");
+    const rest = scan.slice(start + 1);
+    const end = rest.findIndex((line) => line.startsWith("**"));
+    // Exactly three conditions: a fourth one, or one narrowed to a single
+    // scan, turns this red.
+    expect(bullets(end === -1 ? rest : rest.slice(0, end))).toEqual([
+      "les ports ouverts du balayage `coquille`, moins ceux du balayage `reference`, sont exactement la liste attendue, qui est vide pour une coquille ;",
+      "délai = erreur = 0 dans les deux balayages ;",
+      "`scanned` = 65535 dans les deux balayages.",
+    ]);
   });
 
-  test("it states the three exit codes with their meaning", () => {
-    const rows = scan.filter((line) => /^\| \d+ \| /.test(line));
-    expect(rows.map((row) => row.split("|")[1]?.trim())).toEqual(["0", "1", "2"]);
-    expect(rows[0]).toMatch(/^\| 0 \| vert\b/);
-    expect(rows[1]).toMatch(/^\| 1 \| violation\b/);
-    expect(rows[2]).toMatch(/^\| 2 \| usage\b/);
+  test("it states the three exit codes with every cause", () => {
+    const rows = scan.filter((line) => /^\| \d+ \| /.test(line)).map(cells);
+    expect(rows).toEqual([
+      ["0", "vert : les trois conditions tiennent"],
+      [
+        "1",
+        "violation : un port ouvert hors liste, ou délai > 0, ou erreur > 0, ou `scanned` différent de 65535",
+      ],
+      [
+        "2",
+        "usage : argument manquant ou malformé, port hors de 1 à 65535, port attendu présent parmi les ports de l'hôte",
+      ],
+    ]);
   });
 
   test("the reference scan, taken before launch, is the source of the host ports", () => {
@@ -259,14 +291,28 @@ describe("TAURI-SHELL.md §4 — second instrument of C6, the loopback TCP scan"
     const stripped = scanText
       .replaceAll("127.0.0.1", "")
       .replaceAll("0.0.0.0", "")
+      .replaceAll("fe80::1%lo0", "")
+      .replaceAll("::1", "")
+      .replaceAll("1 à 65535", "")
       .replaceAll("65535", "")
       .replace(/ADR-\d+/g, "")
       .replace(/§\d+(?:\.\d+)*/g, "");
     expect(stripped.match(/\d{2,}/g) ?? []).toEqual([]);
     // Single digits stay legitimate (exit codes, the 2 s delay), so a port
-    // list is also refused where it would be written: after `hote=`.
+    // is also refused where it would be written: after `hote=` or
+    // `coquille=`, after the word port, and after an address colon.
     expect(scanText).toContain("hote=<ports>");
     expect(scanText.match(/(?:hote|coquille)=\d/g) ?? []).toEqual([]);
+    expect(stripped.match(/\bports?\s*(?:n°\s*)?[:`(]?\s*\d/gi) ?? []).toEqual([]);
+    expect(stripped.match(/:\s*\d/g) ?? []).toEqual([]);
+  });
+
+  test("the limits declare the link-local loopback address as not scanned", () => {
+    const start = scan.findIndex((line) => line.startsWith("**Limites déclarées"));
+    expect(start).toBeGreaterThan(-1);
+    const limits = bullets(scan.slice(start + 1)).filter((item) => item.includes("`fe80::1%lo0`"));
+    expect(limits.length).toBe(1);
+    expect(limits[0]).toMatch(/n'est pas balayée/);
   });
 });
 
