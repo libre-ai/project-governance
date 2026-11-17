@@ -40,7 +40,7 @@ dependencies:
   # dépendances réelles, aux pins qu'elle porte effectivement.
   - on: libre-ai/schemas-and-contracts
     why: "autorité des contrats publics, consommée par les tests d'autorisation"
-    pinned: "github:libre-ai/schemas-and-contracts#d2767988c7b1a00b304b76c5d5ac92b93898bf30"
+    pinned: "github:libre-ai/schemas-and-contracts#5ed1f716d0061117b4a59935b5558384612a2914"
   - on: libre-ai/capability-authorization
     why: "seul foyer du patch biscuit-auth vendorisé (I-28), consommé sous [patch.crates-io]"
     pinned: "7ce06366663ff8b4329d0bc25f589c8ef830aef0"
