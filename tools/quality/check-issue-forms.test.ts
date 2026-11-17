@@ -10,6 +10,7 @@ const KNOWN_LABELS: ReadonlySet<string> = new Set([
   "kind:decision-request",
   "kind:idea",
   "kind:question",
+  "kind:rule-feedback",
   "ready",
 ]);
 
@@ -116,6 +117,101 @@ body:
     id: document
     attributes:
       label: Document carrying the missing fact
+    validations:
+      required: true
+`;
+
+// A copy of the organisation's real form: libre-ai/.github, `.github/ISSUE_TEMPLATE/rule-feedback.yml`,
+// as added by work package L028. Only its two SPDX header lines are left out, so that the licence
+// tooling does not read them as this test file's own licence; the rest is verbatim.
+const RULE_FEEDBACK = `#
+# Rule feedback: a divergent reading of a served rule, reported by identifiers
+# only. Every field is one line and required, so GitHub renders the issue body
+# as eight "### <label>" sections, in this order: Rule identifier, Excerpt
+# digest, Pack, Snapshot, Overlays, Core version, Nature, Proposal. That body is
+# the ticket format: the feedback command prints the same eight labels in the
+# same order, and tools/quality/check-rule-feedback.ts in
+# libre-ai/project-governance validates it. The labels are load-bearing; the
+# value forms are read by that validator, not repeated here. Validated by
+# tools/quality/check-issue-forms.ts in libre-ai/project-governance.
+name: Rule feedback
+description: A divergent reading of a served rule, reported by identifiers only
+title: "[Rule feedback]: "
+labels:
+  - kind:rule-feedback
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Copy each value from the output of the feedback command, field by field. Paste no
+        rule text, no rephrasing of the pack, no description of your project and no machine
+        path: the ticket carries identifiers only, and this issue is public.
+  - type: input
+    id: rule-id
+    attributes:
+      label: Rule identifier
+      description: "The identifier of the served rule, as the feedback command prints it."
+      placeholder: "<source>:<key>#<locator>"
+    validations:
+      required: true
+  - type: input
+    id: excerpt-digest
+    attributes:
+      label: Excerpt digest
+      description: "The digest of the excerpt you read: 64 lowercase hexadecimal digits. It names the edition of the text, never the text itself."
+      placeholder: "<64 hex>"
+    validations:
+      required: true
+  - type: input
+    id: pack
+    attributes:
+      label: Pack
+      description: "The pack that served the rule, in the form source@edition."
+      placeholder: "<source>@<edition>"
+    validations:
+      required: true
+  - type: input
+    id: snapshot
+    attributes:
+      label: Snapshot
+      description: "The snapshot that served the pack, in the form publisher@version."
+      placeholder: "<publisher>@<version>"
+    validations:
+      required: true
+  - type: input
+    id: overlays
+    attributes:
+      label: Overlays
+      description: "The reference of each served overlay that has an entry on this rule, in stack order, separated by commas without spaces; none when there is none."
+      placeholder: "<publisher>/<overlay>@<version>,... or none"
+    validations:
+      required: true
+  - type: input
+    id: core-version
+    attributes:
+      label: Core version
+      description: "The version of the core tool, in the form MAJOR.MINOR.PATCH, optionally followed by a pre-release."
+      placeholder: "<major>.<minor>.<patch>"
+    validations:
+      required: true
+  - type: dropdown
+    id: nature
+    attributes:
+      label: Nature
+      description: "What the divergence is about: the wording of the rule, its trigger, or its level."
+      multiple: false
+      options:
+        - rephrasing
+        - trigger
+        - level
+    validations:
+      required: true
+  - type: input
+    id: proposal
+    attributes:
+      label: Proposal
+      description: "One line, or none. For rephrasing, the proposed wording; for trigger, type=value; for level, the proposed level."
+      placeholder: "none"
     validations:
       required: true
 `;
@@ -320,6 +416,227 @@ describe("validateIssueForm: idea and question", () => {
     );
     expect(
       mentions(validateIssueForm(wrongType, KNOWN_LABELS), "Document carrying the missing fact"),
+    ).toBe(true);
+  });
+});
+
+describe("validateIssueForm: rule-feedback", () => {
+  const NATURE_OPTIONS =
+    "      options:\n        - rephrasing\n        - trigger\n        - level\n";
+  const PACK_ELEMENT = `  - type: input
+    id: pack
+    attributes:
+      label: Pack
+      description: "The pack that served the rule, in the form source@edition."
+      placeholder: "<source>@<edition>"
+    validations:
+      required: true
+`;
+
+  test("the real rule-feedback form of the organisation has no violation", () => {
+    expect(validateIssueForm(RULE_FEEDBACK, KNOWN_LABELS)).toEqual([]);
+  });
+
+  // The six mutants the L028 author built against this form, each reproduced on the fixture.
+  test("mutant: the kind label replaced by another kind is refused", () => {
+    const text = mutate(RULE_FEEDBACK, "  - kind:rule-feedback\n", "  - kind:idea\n");
+    expect(
+      mentions(validateIssueForm(text, KNOWN_LABELS), 'kind:idea: missing field "Statement"'),
+    ).toBe(true);
+  });
+
+  test("mutant: a renamed field label is refused as missing and unexpected", () => {
+    const violations = validateIssueForm(
+      mutate(RULE_FEEDBACK, "label: Rule identifier", "label: Rule ID"),
+      KNOWN_LABELS,
+    );
+    expect(violations).toEqual([
+      'kind:rule-feedback: missing field "Rule identifier"',
+      'kind:rule-feedback: unexpected field "Rule ID"',
+    ]);
+  });
+
+  test("mutant: Nature as an input instead of a dropdown is refused", () => {
+    const asInput = mutate(
+      mutate(RULE_FEEDBACK, "  - type: dropdown\n", "  - type: input\n"),
+      `      multiple: false\n${NATURE_OPTIONS}`,
+      "",
+    );
+    expect(validateIssueForm(asInput, KNOWN_LABELS)).toEqual([
+      'kind:rule-feedback: field "Nature" must be a dropdown, found input',
+    ]);
+  });
+
+  test("mutant: an options list under validations is refused by the line whitelist", () => {
+    const text = mutate(
+      RULE_FEEDBACK,
+      'placeholder: "none"\n    validations:\n      required: true\n',
+      'placeholder: "none"\n    validations:\n      required: true\n      options:\n        - x\n',
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), "list item is only allowed")).toBe(true);
+  });
+
+  test("mutant: two fields swapped is refused as out of order", () => {
+    const swapped = mutate(
+      mutate(RULE_FEEDBACK, PACK_ELEMENT, ""),
+      "  - type: input\n    id: overlays\n",
+      `${PACK_ELEMENT}  - type: input\n    id: overlays\n`,
+    );
+    expect(validateIssueForm(swapped, KNOWN_LABELS)).toEqual([
+      'kind:rule-feedback: field "Snapshot" is out of order, expected "Pack" at its place',
+    ]);
+  });
+
+  test("mutant: an optional Proposal is refused", () => {
+    const optional = mutate(
+      RULE_FEEDBACK,
+      'placeholder: "none"\n    validations:\n      required: true\n',
+      'placeholder: "none"\n    validations:\n      required: false\n',
+    );
+    expect(validateIssueForm(optional, KNOWN_LABELS)).toEqual([
+      'kind:rule-feedback: field "Proposal" must be required',
+    ]);
+  });
+
+  test("a missing field is reported once, as missing, not also as out of order", () => {
+    const violations = validateIssueForm(mutate(RULE_FEEDBACK, PACK_ELEMENT, ""), KNOWN_LABELS);
+    expect(violations).toEqual(['kind:rule-feedback: missing field "Pack"']);
+  });
+
+  test("a field used twice is reported as a repeat, not also as out of order", () => {
+    const repeated = mutate(
+      RULE_FEEDBACK,
+      PACK_ELEMENT,
+      `${PACK_ELEMENT}${PACK_ELEMENT.replace("id: pack", "id: pack-again")}`,
+    );
+    expect(validateIssueForm(repeated, KNOWN_LABELS)).toEqual([
+      'label "Pack" is used by two fields',
+    ]);
+  });
+
+  test("the field order is checked only for the ordered kind", () => {
+    const reordered = mutate(
+      IDEA,
+      "  - type: textarea\n    id: statement\n    attributes:\n      label: Statement\n    validations:\n      required: true\n",
+      "",
+    ).concat(
+      "  - type: textarea\n    id: statement\n    attributes:\n      label: Statement\n    validations:\n      required: true\n",
+    );
+    expect(validateIssueForm(reordered, KNOWN_LABELS)).toEqual([]);
+  });
+
+  test("Nature must offer exactly rephrasing, trigger and level, in this order", () => {
+    const dropped = mutate(RULE_FEEDBACK, "        - level\n", "");
+    expect(mentions(validateIssueForm(dropped, KNOWN_LABELS), "must offer exactly")).toBe(true);
+    const reordered = mutate(
+      RULE_FEEDBACK,
+      "        - rephrasing\n        - trigger\n",
+      "        - trigger\n        - rephrasing\n",
+    );
+    expect(mentions(validateIssueForm(reordered, KNOWN_LABELS), "must offer exactly")).toBe(true);
+    const added = mutate(RULE_FEEDBACK, "        - level\n", "        - level\n        - other\n");
+    expect(mentions(validateIssueForm(added, KNOWN_LABELS), "must offer exactly")).toBe(true);
+  });
+
+  test("Nature must be single-choice", () => {
+    const multiple = mutate(RULE_FEEDBACK, "multiple: false", "multiple: true");
+    expect(validateIssueForm(multiple, KNOWN_LABELS)).toEqual([
+      'kind:rule-feedback: field "Nature" must be single-choice (multiple: false)',
+    ]);
+    const absent = mutate(RULE_FEEDBACK, "      multiple: false\n", "");
+    expect(validateIssueForm(absent, KNOWN_LABELS)).toEqual([]);
+    const notBoolean = mutate(RULE_FEEDBACK, "multiple: false", "multiple: maybe");
+    expect(mentions(validateIssueForm(notBoolean, KNOWN_LABELS), "must be a boolean")).toBe(true);
+  });
+});
+
+describe("validateIssueForm: dropdown options", () => {
+  test("a double-quoted option is accepted", () => {
+    const quoted = mutate(RULE_FEEDBACK, "        - trigger\n", '        - "trigger"\n');
+    expect(validateIssueForm(quoted, KNOWN_LABELS)).toEqual([]);
+  });
+
+  const REFUSED_ITEMS: readonly (readonly [string, string, string])[] = [
+    ["a flow mapping", "        - {a: 1}\n", "options list item"],
+    ["a mapping", "        - a: b\n", "options list item"],
+    ["a single-quoted string", "        - 'trigger'\n", "options list item"],
+    ["a trailing comment", "        - trigger # c\n", "options list item"],
+    ["a nested list item", "        - - trigger\n", "options list item"],
+    ["an item 2 spaces too deep", "          - trigger\n", "list item is only allowed"],
+    ["an item at the indentation of its key", "      - trigger\n", "list item is only allowed"],
+    ["a key under an option", "        - trigger\n          x: y\n", "indentation"],
+  ];
+  for (const [name, replacement, cause] of REFUSED_ITEMS) {
+    test(`an options item that is ${name} is refused`, () => {
+      const text = mutate(RULE_FEEDBACK, "        - trigger\n", replacement);
+      expect(mentions(validateIssueForm(text, KNOWN_LABELS), cause)).toBe(true);
+    });
+  }
+
+  test("an options list outside an element's attributes is refused", () => {
+    const atRoot = `${IDEA.replace("body:\n", "options:\n        - a\nbody:\n")}`;
+    expect(mentions(validateIssueForm(atRoot, KNOWN_LABELS), "list item")).toBe(true);
+    const inElement = mutate(
+      IDEA,
+      "    id: statement\n",
+      "    id: statement\n    options:\n        - a\n",
+    );
+    expect(mentions(validateIssueForm(inElement, KNOWN_LABELS), "list item")).toBe(true);
+  });
+
+  test("an options key repeated after its list is seen", () => {
+    const text = mutate(
+      RULE_FEEDBACK,
+      "        - level\n",
+      "        - level\n      options:\n        - other\n",
+    );
+    expect(mentions(validateIssueForm(text, KNOWN_LABELS), 'key "options" is repeated')).toBe(true);
+  });
+
+  test("options or multiple on a field that is not a dropdown are refused", () => {
+    const options = mutate(
+      IDEA,
+      "      label: Statement\n",
+      "      label: Statement\n      options:\n        - a\n",
+    );
+    expect(validateIssueForm(options, KNOWN_LABELS)).toEqual([
+      "body[0] (textarea) cannot have attributes.options",
+    ]);
+    const multiple = mutate(
+      IDEA,
+      "      label: Statement\n",
+      "      label: Statement\n      multiple: false\n",
+    );
+    expect(validateIssueForm(multiple, KNOWN_LABELS)).toEqual([
+      "body[0] (textarea) cannot have attributes.multiple",
+    ]);
+  });
+
+  test("a dropdown needs a non-empty list of distinct strings", () => {
+    const none = mutate(
+      RULE_FEEDBACK,
+      "      multiple: false\n      options:\n        - rephrasing\n        - trigger\n        - level\n",
+      "",
+    );
+    expect(
+      mentions(validateIssueForm(none, KNOWN_LABELS), "needs a non-empty attributes.options"),
+    ).toBe(true);
+    const empty = mutate(
+      RULE_FEEDBACK,
+      "      options:\n        - rephrasing\n        - trigger\n        - level\n",
+      "      options: []\n",
+    );
+    expect(mentions(validateIssueForm(empty, KNOWN_LABELS), "flow")).toBe(true);
+    const twice = mutate(RULE_FEEDBACK, "        - level\n", "        - level\n        - level\n");
+    expect(mentions(validateIssueForm(twice, KNOWN_LABELS), 'option "level" is listed twice')).toBe(
+      true,
+    );
+    const number = mutate(RULE_FEEDBACK, "        - level\n", "        - 1\n");
+    expect(
+      mentions(
+        validateIssueForm(number, KNOWN_LABELS),
+        "options must be non-empty strings, found 1",
+      ),
     ).toBe(true);
   });
 });
@@ -886,13 +1203,15 @@ describe("runIssueFormCheck", () => {
     "decision-request.yml": DECISION_REQUEST,
     "idea.yml": IDEA,
     "question.yml": QUESTION,
+    "rule-feedback.yml": RULE_FEEDBACK,
   };
 
-  test("four valid forms pass and the volume is printed", async () => {
+  test("the five valid forms pass and the volume is printed", async () => {
     const { formsDir, labelsPath } = workspace(ALL_FORMS);
     const { code, output } = await run(formsDir, labelsPath);
     expect(code).toBe(0);
-    expect(output).toContain("4 formulaires examinés, 0 violations");
+    expect(output).toContain("5 formulaires examinés, 0 violations");
+    expect(output).toContain("5 entrées dans");
   });
 
   test("a violation names the file and fails the run", async () => {
@@ -904,7 +1223,7 @@ describe("runIssueFormCheck", () => {
     expect(code).not.toBe(0);
     expect(output).toContain("idea.yml");
     // The renamed field is both a missing "Why deferred" and an unexpected "Reason".
-    expect(output).toContain("4 formulaires examinés, 2 violations");
+    expect(output).toContain("5 formulaires examinés, 2 violations");
   });
 
   test("an empty directory is not a success", async () => {
@@ -927,7 +1246,7 @@ describe("runIssueFormCheck", () => {
     });
     const { code, output } = await run(formsDir, labelsPath);
     expect(code).toBe(0);
-    expect(output).toContain("4 formulaires examinés, 0 violations");
+    expect(output).toContain("5 formulaires examinés, 0 violations");
     expect(output).toContain("1 ignoré");
   });
 
@@ -958,6 +1277,6 @@ describe("runIssueFormCheck", () => {
     const { code, output } = await run(formsDir, labelsPath);
     expect(code).not.toBe(0);
     expect(output).toContain("broken.yml");
-    expect(output).toContain("5 formulaires examinés, 1 violation");
+    expect(output).toContain("6 formulaires examinés, 1 violation");
   });
 });
