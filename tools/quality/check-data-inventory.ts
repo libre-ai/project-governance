@@ -527,6 +527,12 @@ export const NOT_GATED: readonly NotGated[] = [
     because: "before and after trees of the fleet-bump tests",
   },
   {
+    path: "tools/security/fixtures/",
+    extensions: [".json"],
+    because:
+      "contract schemas copied byte for byte from the contracts authority, read by the key-ceremony test, which refuses a copy whose SHA-256 differs from its origin.json",
+  },
+  {
     path: "verification/",
     extensions: [".json"],
     because: "golden reports and questionnaires of the verification harnesses",
