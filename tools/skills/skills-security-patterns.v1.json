@@ -1,0 +1,70 @@
+{
+  "patterns": [
+    {
+      "id": "remote-exec-pipe-to-shell",
+      "category": "remote-execution",
+      "regex": "\\b(curl|wget)\\b.*\\|\\s*(sudo\\b[^|]*?\\s)?((\\S*/)?env\\s+)?(\\S*/)?((ba|z|da|k|fi)?sh|python[0-9.]*|perl|node|ruby|php)\\b",
+      "because": "a download piped into a shell or an interpreter runs code nobody has read"
+    },
+    {
+      "id": "remote-exec-substitution",
+      "category": "remote-execution",
+      "regex": "(\\b(eval|source|(ba|z|da)?sh(\\s+-c)?)|(^|[\\s;&|(\\x60])\\.)\\s+[\"']?(\\$\\(|<\\()\\s*(curl|wget)\\b",
+      "because": "a download evaluated through a substitution runs code nobody has read"
+    },
+    {
+      "id": "secret-read-dotenv",
+      "category": "secret-read",
+      "regex": "(\\b(cat|less|more|head|tail|source)|(^|[\\s;&|(\\x60])\\.)\\s+((-[^\\s|;&]+|\\d+|[^\\s|;&./-]*[./][^\\s|;&]*)\\s+)*[\"']?[^\\s|;&\"']*\\.env(?!\\.example)(\\.[a-z]+)?(?![\\w.])",
+      "because": "displaying or sourcing an environment file puts its values in the agent's context"
+    },
+    {
+      "id": "secret-read-key-material",
+      "category": "secret-read",
+      "regex": "(~|\\$HOME|\\$\\{HOME\\})/\\.(ssh|aws|gnupg|netrc)\\b|\\bid_(rsa|ed25519|ecdsa)\\b",
+      "because": "a skill has no reason to reach the user's key and credential stores"
+    },
+    {
+      "id": "environment-dump",
+      "category": "environment-export",
+      "regex": "(^|[\\s;&|(\\x60])(printenv|env)\\s*(\\||>)|(^|[\\s;&|(\\x60])printenv\\b(?!\\s+[\\w$])|(^\\s*|[;&|(\\x60]\\s*)env\\s*($|[;&|)\\x60])",
+      "because": "a dump of the environment exports every value it holds, secrets included"
+    },
+    {
+      "id": "environment-serialise",
+      "category": "environment-export",
+      "regex": "JSON\\.stringify\\(\\s*process\\.env\\s*\\)",
+      "because": "serialising the whole environment exports every value it holds, secrets included"
+    },
+    {
+      "id": "gate-bypass-no-verify",
+      "category": "gate-bypass",
+      "regex": "--no-verify\\b|\\bgit\\s+commit\\b[^|;&]*\\s-[A-Za-z]*n[A-Za-z]*(?![\\w-])",
+      "because": "skipping the git hooks (--no-verify, or -n on git commit) removes the checks the repository runs before a commit or a push"
+    },
+    {
+      "id": "gate-bypass-skip-permissions",
+      "category": "gate-bypass",
+      "regex": "--dangerously-skip-permissions\\b|\\bdangerouslyDisableSandbox\\b|\\bbypassPermissions\\b",
+      "because": "disabling the harness permission prompts or sandbox removes the user's authorisation step"
+    },
+    {
+      "id": "gate-bypass-skip-ci",
+      "category": "gate-bypass",
+      "regex": "\\[(skip ci|ci skip|no ci|skip actions|actions skip)\\]|\\bci\\.skip\\b",
+      "because": "a commit or a push marked to skip CI lands without a verdict attached to it"
+    },
+    {
+      "id": "write-outside-redirect",
+      "category": "write-outside-repository",
+      "regex": "(>>?|\\btee\\s+(-a\\s+)?)\\s*[\"']?((~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/|/[^\\s\"']*/\\.\\./)",
+      "because": "a redirection into the home directory or a system directory writes outside the repository"
+    },
+    {
+      "id": "write-outside-copy",
+      "category": "write-outside-repository",
+      "regex": "\\b(cp|mv|ln|install)\\s+[^|;&\\n]*\\s[\"']?((~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/|/[^\\s\"']*/\\.\\./)",
+      "because": "a copy, move or link into the home directory or a system directory writes outside the repository"
+    }
+  ]
+}
