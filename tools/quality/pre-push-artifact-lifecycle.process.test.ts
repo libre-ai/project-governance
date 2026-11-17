@@ -173,6 +173,95 @@ describe("pre-push under a real git push", () => {
   });
 });
 
+describe("the gate judges the tree of the pushed commit, not the index or the work tree", () => {
+  const worktrees = (f: Fixture): number =>
+    git(f.work, ["worktree", "list", "--porcelain"])
+      .split("\n")
+      .filter((line) => line.startsWith("worktree ")).length;
+
+  test("a branch that is not checked out, adding an untested script: refused", () => {
+    const f = fixture();
+    git(f.work, ["switch", "-q", "-c", "side"]);
+    commit(f.work, { "bad.sh": "echo bad\n" });
+    git(f.work, ["switch", "-q", SERVED]);
+    const pushed = push(f, ["side"]);
+    expect(pushed.stderr).toContain("code without test: bad.sh");
+    expect(pushed.stderr).toContain("push REFUSED (gate exit 1)");
+    expect(pushed.exitCode).not.toBe(0);
+    expect(() => remoteTip(f, "side")).toThrow();
+    // The temporary worktree of the pushed commit is gone.
+    expect(worktrees(f)).toBe(1);
+  });
+
+  test("a branch that is not checked out, with its test committed: passes", () => {
+    const f = fixture();
+    git(f.work, ["switch", "-q", "-c", "side"]);
+    const tip = commit(f.work, { "ok.sh": "echo ok\n", "ok.test.sh": "echo test\n" });
+    git(f.work, ["switch", "-q", SERVED]);
+    const pushed = push(f, ["side"]);
+    expect(pushed.stderr).toContain("code: checked=1 tested=1 ephemeral=0 exempted=0 untested=0");
+    expect(pushed.exitCode).toBe(0);
+    expect(remoteTip(f, "side")).toBe(tip);
+    expect(worktrees(f)).toBe(1);
+  });
+
+  test("a push naming its repository by --git-dir judges the pushed commit, not this work tree", () => {
+    const f = fixture();
+    git(f.work, ["switch", "-q", "-c", "side"]);
+    commit(f.work, { "bad.sh": "echo bad\n" });
+    git(f.work, ["switch", "-q", SERVED]);
+    const pushed = run(
+      [
+        "git",
+        `--git-dir=${join(f.work, ".git")}`,
+        `--work-tree=${f.work}`,
+        "push",
+        "origin",
+        "side",
+      ],
+      f.work,
+    );
+    expect(pushed.stderr).toContain("code without test: bad.sh");
+    expect(pushed.exitCode).not.toBe(0);
+    expect(() => remoteTip(f, "side")).toThrow();
+    expect(worktrees(f)).toBe(1);
+  });
+
+  test("a test only staged does not cover a committed untested script: refused", () => {
+    const f = fixture();
+    commit(f.work, { "bad2.sh": "echo bad\n" });
+    const before = remoteTip(f, SERVED);
+    writeFileSync(join(f.work, "bad2.test.sh"), "echo test\n");
+    git(f.work, ["add", "bad2.test.sh"]);
+    const pushed = push(f, [SERVED]);
+    expect(pushed.stderr).toContain("code without test: bad2.sh");
+    expect(pushed.stderr).toContain("push REFUSED (gate exit 1)");
+    expect(pushed.exitCode).not.toBe(0);
+    expect(remoteTip(f, SERVED)).toBe(before);
+    expect(worktrees(f)).toBe(1);
+  });
+
+  test("an untracked file is examined with the checked-out commit of a clean tree", () => {
+    const f = fixture();
+    commit(f.work, { "ok.sh": "echo ok\n", "ok.test.sh": "echo test\n" });
+    writeFileSync(join(f.work, "stray.txt"), "x\n");
+    const pushed = push(f, [SERVED]);
+    expect(pushed.stderr).toContain("untracked without marker: stray.txt");
+    expect(pushed.exitCode).not.toBe(0);
+  });
+
+  test("a dirty tree: the untracked files are not examined, and that is printed", () => {
+    const f = fixture();
+    commit(f.work, { "ok.sh": "echo ok\n", "ok.test.sh": "echo test\n" });
+    writeFileSync(join(f.work, "README.md"), "changed\n");
+    writeFileSync(join(f.work, "stray.txt"), "x\n");
+    const pushed = push(f, [SERVED]);
+    expect(pushed.stderr).toContain("untracked files of the work tree NOT examined");
+    expect(pushed.stderr).not.toContain("stray.txt");
+    expect(pushed.exitCode).toBe(0);
+  });
+});
+
 describe("pre-push called directly", () => {
   test("nothing new to push: passes without running the gate", () => {
     const f = fixture();
@@ -188,11 +277,37 @@ describe("pre-push called directly", () => {
     const f = fixture();
     const result = run([process.execPath, GUARD, "origin"], f.work, {}, "not a ref line\n");
     expect(result.stderr).toContain("unexpected line 1");
+    expect(result.stderr).toContain("push REFUSED");
+    expect(result.stderr).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
     expect(result.exitCode).toBe(2);
   });
 
-  test("a remote opening with a dash is a usage error", () => {
+  test("a remote opening with a dash is a usage error, the override named", () => {
     const f = fixture();
-    expect(run([process.execPath, GUARD, "--upload-pack=x"], f.work, {}, "").exitCode).toBe(2);
+    const result = run([process.execPath, GUARD, "--upload-pack=x"], f.work, {}, "");
+    expect(result.stderr).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
+    expect(result.exitCode).toBe(2);
+  });
+
+  test("outside a work tree: refused, the override named", () => {
+    const bare = join(workspace, `bare-${fixtureCount}.git`);
+    mkdirSync(bare);
+    git(bare, ["init", "-q", "--bare"]);
+    const result = run([process.execPath, GUARD, "origin"], bare, {}, "");
+    expect(result.stderr).toContain("not inside a git work tree");
+    expect(result.stderr).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
+    expect(result.exitCode).toBe(2);
+  });
+
+  test("the override lets a refusal of the guard itself through, saying so", () => {
+    const f = fixture();
+    const result = run(
+      [process.execPath, GUARD, "origin"],
+      f.work,
+      { ARTIFACT_LIFECYCLE_ALLOW_PUSH: "1" },
+      "not a ref line\n",
+    );
+    expect(result.stderr).toContain("OVERRIDE ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 active");
+    expect(result.exitCode).toBe(0);
   });
 });

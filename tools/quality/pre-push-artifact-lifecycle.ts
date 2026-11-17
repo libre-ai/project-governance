@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runGit } from "./git-diff";
 
@@ -14,7 +15,7 @@ import { runGit } from "./git-diff";
 //
 // and only once: this guard reads them all before judging any. For each ref it
 // measures what the remote does not have, and runs check-artifact-lifecycle.ts
-// on that interval only, plus the untracked files of the work tree:
+// on that interval only, on the tree of the PUSHED commit:
 //
 //   - a deleted ref (local sha all zeros): nothing to examine;
 //   - a ref the remote already has at the same commit: nothing new;
@@ -25,8 +26,19 @@ import { runGit } from "./git-diff";
 //     protocol (`git ls-remote --symref <remote> HEAD`), never a written name;
 //   - no base found that way: the whole gate, and the reason is printed.
 //
+// The gate judges the index and the work tree it is given, and `--range` only
+// narrows which added paths it judges. The pushed commit is therefore judged
+// in a detached temporary worktree of that commit, removed afterwards, unless
+// it is the checked-out commit and neither the index nor a tracked file of the
+// work tree differs from it: then the work tree is the commit, and the gate
+// runs there with its untracked files, examined once. A ref that is not that
+// commit is judged without the untracked files of this machine, which belong
+// to no pushed commit; when no pushed ref is that commit, the guard prints
+// that the untracked files were not examined.
+//
 // A red gate refuses the push (exit: the code of the gate) and prints how to
-// override. ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 lets a red push through, saying so
+// override. Every refusal of the guard itself (usage, unreadable input, no work
+// tree) names the override too, which lets it through the same way. ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 lets a red push through, saying so
 // and saying that the CI job (reusable-artifact-lifecycle.yml) replays the same
 // gate: this hook is the fast layer, the CI is the layer that enforces. A gate
 // that cannot run is a skipped gate, printed on every push, never silence.
@@ -114,6 +126,8 @@ export type Plan =
   | {
       readonly kind: "gate";
       readonly ref: string;
+      /** The pushed commit, whose tree is judged. */
+      readonly sha: string;
       /** `<base>..<local>`, or null for the whole gate. */
       readonly range: string | null;
       readonly why: string;
@@ -156,13 +170,20 @@ export function planPush(remote: string, refs: readonly PushedRef[], ports: Port
         return {
           kind: "gate",
           ref,
+          sha: pushed.localSha,
           range: `${base}..${pushed.localSha}`,
           why: "what the remote does not have",
         };
       }
     }
     const { base, why } = servedBase(remote, pushed.localSha, ports);
-    return { kind: "gate", ref, range: base === null ? null : `${base}..${pushed.localSha}`, why };
+    return {
+      kind: "gate",
+      ref,
+      sha: pushed.localSha,
+      range: base === null ? null : `${base}..${pushed.localSha}`,
+      why,
+    };
   });
 }
 
@@ -170,12 +191,19 @@ export interface GateRun {
   /** Null: the gate could not be started. */
   readonly exitCode: number | null;
   readonly output: string;
+  /** Whether the untracked files of the work tree were part of this run. */
+  readonly untrackedExamined: boolean;
 }
 
 export interface Runner {
   /** Whether the gate is where this guard expects it. */
   gateAvailable(): boolean;
-  runGate(range: string | null, untracked: boolean): GateRun;
+  /**
+   * The gate on the tree of commit `sha`. `untracked` asks for the untracked
+   * files of the work tree too; the runner examines them only where the work
+   * tree is that commit, and says whether it did.
+   */
+  runGate(sha: string, range: string | null, untracked: boolean): GateRun;
 }
 
 // A ref name is text of the pushing repository: a line break would forge a line.
@@ -188,6 +216,30 @@ export interface Outcome {
   readonly lines: string[];
 }
 
+/** A red verdict: refused with `code` and the override named, or let through by the override. */
+function conclude(code: number, override: boolean, say: (text: string) => void): number {
+  if (override) {
+    say(
+      `OVERRIDE ${OVERRIDE_VARIABLE}=1 active: push allowed despite exit ${code}; the CI job ${CI_JOB} replays the same gate`,
+    );
+    return 0;
+  }
+  say(
+    `push REFUSED (gate exit ${code}). Override: ${OVERRIDE_VARIABLE}=1 git push ...; the CI job ${CI_JOB} replays the same gate`,
+  );
+  return code;
+}
+
+/** A refusal of the guard itself (usage, unreadable input): same override, same wording. */
+export function refuse(reason: string, override: boolean): Outcome {
+  const lines: string[] = [];
+  const say = (text: string): void => {
+    lines.push(`${GUARD}: ${printable(text)}`);
+  };
+  say(reason);
+  return { exitCode: conclude(2, override, say), lines };
+}
+
 /** Run the planned gates, aggregate their codes, apply the override. */
 export function guard(plans: readonly Plan[], runner: Runner, override: boolean): Outcome {
   const lines: string[] = [];
@@ -195,7 +247,9 @@ export function guard(plans: readonly Plan[], runner: Runner, override: boolean)
     lines.push(`${GUARD}: ${printable(text)}`);
   };
   for (const plan of plans) say(`${plan.ref}: ${plan.why}`);
-  const gated = plans.filter((plan) => plan.kind === "gate");
+  const gated = plans.filter(
+    (plan): plan is Extract<Plan, { kind: "gate" }> => plan.kind === "gate",
+  );
   if (gated.length === 0) {
     say(`refs=${plans.length} examined=0: pass`);
     return { exitCode: 0, lines };
@@ -205,14 +259,22 @@ export function guard(plans: readonly Plan[], runner: Runner, override: boolean)
     return { exitCode: 0, lines };
   }
   const codes: number[] = [];
-  for (const [index, plan] of gated.entries()) {
-    // The untracked files belong to the work tree, not to a ref: examined once.
-    const run = runner.runGate(plan.range, index === 0);
+  // The untracked files belong to the work tree, not to a ref: examined once,
+  // with the first ref whose commit the work tree is.
+  let untrackedExamined = false;
+  for (const plan of gated) {
+    const run = runner.runGate(plan.sha, plan.range, !untrackedExamined);
+    untrackedExamined ||= run.untrackedExamined;
     lines.push(...run.output.split("\n").filter((line) => line !== ""));
     if (run.exitCode === null) {
       say(`${plan.ref}: the gate could not be started`);
       codes.push(2);
     } else codes.push(run.exitCode);
+  }
+  if (!untrackedExamined) {
+    say(
+      "untracked files of the work tree NOT examined: no pushed ref is the checked-out commit with an index and tracked files equal to it",
+    );
   }
   // A code outside the gate's contract is red too, after the known ones.
   const red =
@@ -224,16 +286,7 @@ export function guard(plans: readonly Plan[], runner: Runner, override: boolean)
     say("pass");
     return { exitCode: 0, lines };
   }
-  if (override) {
-    say(
-      `OVERRIDE ${OVERRIDE_VARIABLE}=1 active: push allowed despite exit ${red}; the CI job ${CI_JOB} replays the same gate`,
-    );
-    return { exitCode: 0, lines };
-  }
-  say(
-    `push REFUSED (gate exit ${red}). Override: ${OVERRIDE_VARIABLE}=1 git push ...; the CI job ${CI_JOB} replays the same gate`,
-  );
-  return { exitCode: red, lines };
+  return { exitCode: conclude(red, override, say), lines };
 }
 
 // ------------------------------------------------------------------ real ports
@@ -259,26 +312,99 @@ function gitPorts(root: string): Ports {
   };
 }
 
+// Variables that point git at a repository, an index or a work tree: inherited
+// by the gate run in a temporary worktree, they would send it back to this one.
+const LOCATING_VARIABLES: ReadonlySet<string> = new Set([
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_PREFIX",
+]);
+
+/** Whether the work tree at `root` is commit `sha`: HEAD is it, and no tracked file nor the index differs. */
+function workTreeIs(root: string, sha: string): boolean {
+  const head = runGit(["-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}"]);
+  if (head.exitCode !== 0 || head.stdout.trim() !== sha) return false;
+  // --no-optional-locks: a status in a hook must not rewrite the index.
+  const status = runGit([
+    "--no-optional-locks",
+    "-C",
+    root,
+    "status",
+    "--porcelain=v1",
+    "-z",
+    "--untracked-files=no",
+    "--ignore-submodules=none",
+  ]);
+  return status.exitCode === 0 && status.stdout === "";
+}
+
+function spawnGate(
+  argv: readonly string[],
+  env: Readonly<Record<string, string | undefined>>,
+): { readonly exitCode: number | null; readonly output: string } {
+  try {
+    const result = Bun.spawnSync([process.execPath, GATE_FILE, ...argv], {
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...env },
+    });
+    const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
+    return {
+      exitCode: result.exitCode,
+      output: `${decode(result.stdout)}${decode(result.stderr)}`,
+    };
+  } catch {
+    return { exitCode: null, output: "" };
+  }
+}
+
 function gateRunner(root: string, env: Readonly<Record<string, string | undefined>>): Runner {
   return {
     gateAvailable: () => existsSync(GATE_FILE),
-    runGate: (range, untracked) => {
-      const argv = ["check", root];
-      if (range !== null) argv.push("--range", range);
-      if (!untracked) argv.push("--no-untracked");
+    runGate: (sha, range, untracked) => {
+      const narrowing = range === null ? [] : ["--range", range];
+      if (workTreeIs(root, sha)) {
+        const run = spawnGate(
+          ["check", root, ...narrowing, ...(untracked ? [] : ["--no-untracked"])],
+          env,
+        );
+        return { ...run, untrackedExamined: untracked };
+      }
+      // Anything else: a detached worktree of the pushed commit, so the gate
+      // reads that commit's tree as its index and work tree. Its hooks are
+      // off: checking out a commit to judge it runs nothing of the repository.
+      const parent = mkdtempSync(join(tmpdir(), "artifact-lifecycle-pre-push-"));
+      const tree = join(parent, "tree");
       try {
-        const result = Bun.spawnSync([process.execPath, GATE_FILE, ...argv], {
-          stdout: "pipe",
-          stderr: "pipe",
-          env: { ...env },
-        });
-        const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes);
-        return {
-          exitCode: result.exitCode,
-          output: `${decode(result.stdout)}${decode(result.stderr)}`,
-        };
-      } catch {
-        return { exitCode: null, output: "" };
+        const added = runGit([
+          "-C",
+          root,
+          "-c",
+          "core.hooksPath=/dev/null",
+          "worktree",
+          "add",
+          "--quiet",
+          "--detach",
+          tree,
+          sha,
+        ]);
+        if (added.exitCode !== 0) {
+          return {
+            exitCode: null,
+            output: `${GUARD}: could not check out the pushed commit: ${printable(added.stderr.trim())}\n`,
+            untrackedExamined: false,
+          };
+        }
+        const isolated = Object.fromEntries(
+          Object.entries(env).filter(([name]) => !LOCATING_VARIABLES.has(name)),
+        );
+        const run = spawnGate(["check", tree, ...narrowing, "--no-untracked"], isolated);
+        return { ...run, untrackedExamined: false };
+      } finally {
+        runGit(["-C", root, "worktree", "remove", "--force", "--force", tree]);
+        rmSync(parent, { recursive: true, force: true });
       }
     },
   };
@@ -288,30 +414,26 @@ async function main(
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,
 ): Promise<number> {
+  const override = env[OVERRIDE_VARIABLE] === "1";
+  const report = (outcome: Outcome): number => {
+    console.error(outcome.lines.join("\n"));
+    return outcome.exitCode;
+  };
   const [remote = ""] = argv;
   // A remote opening with "-" would be read by git as an option.
   if (remote === "" || remote.startsWith("-") || argv.length > 2) {
-    console.error(`${GUARD}: ${USAGE}`);
-    return 2;
+    return report(refuse(USAGE, override));
   }
   const top = runGit(["rev-parse", "--show-toplevel"]);
-  if (top.exitCode !== 0) {
-    console.error(`${GUARD}: not inside a git work tree`);
-    return 2;
-  }
+  if (top.exitCode !== 0) return report(refuse("not inside a git work tree", override));
   const root = top.stdout.replace(/\n$/, "");
   const parsed = parsePushedRefs(await Bun.stdin.text());
   if (!parsed.ok) {
-    console.error(`${GUARD}: unexpected line ${parsed.line} on the standard input`);
-    return 2;
+    return report(refuse(`unexpected line ${parsed.line} on the standard input`, override));
   }
-  const outcome = guard(
-    planPush(remote, parsed.refs, gitPorts(root)),
-    gateRunner(root, env),
-    env[OVERRIDE_VARIABLE] === "1",
+  return report(
+    guard(planPush(remote, parsed.refs, gitPorts(root)), gateRunner(root, env), override),
   );
-  console.error(outcome.lines.join("\n"));
-  return outcome.exitCode;
 }
 
 if (import.meta.main) process.exit(await main(process.argv.slice(2), process.env));
