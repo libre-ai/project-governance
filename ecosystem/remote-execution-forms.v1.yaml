@@ -1,0 +1,110 @@
+schema_version: libre-ai.remote-execution-forms.v1
+# The forms by which downloaded content reaches an interpreter without having
+# been stored, verified and read first. Read by
+# ecosystem/check-workflow-supply-chain.ts, which applies them to the `run:`
+# scripts of the fleet's workflows and composite actions. This file is the only
+# definition of these four forms: another gate that needs them reads this
+# table, it does not write the patterns again.
+#
+# `interpreters`: the programs that execute what they are given. A name is
+# lowercase letters and digits only, because it is placed inside a pattern.
+#
+# `forms`: one entry per code, in the order the gate prints them.
+#   - `pattern` is the source of a regular expression, compiled with the flags
+#     `g` and `m`. The token {{interpreter}} is replaced by a non-capturing
+#     group holding the alternation of `interpreters`. The pattern is applied
+#     to a whole script in which comment lines and blank lines have been
+#     emptied, so `^` is the start of a line and `.` never crosses one. The
+#     line reported is the one where the match starts.
+#   - `red` holds scripts the pattern must match, `green` scripts that none of
+#     the four patterns may match. An entry without both is refused, and the
+#     gate's test replays every one of them.
+#
+# Declared limits, shared by every reader: a script is read line by line, so a
+# command folded over several lines with a trailing backslash is not joined;
+# `remote-script-run` knows a downloaded script by its explicit output file
+# (`-o`, `--output`, `-O` of wget, `--output-document`), not by the name a
+# server gives it.
+interpreters:
+  - sh
+  - bash
+  - dash
+  - zsh
+  - ksh
+  - python
+  - python3
+  - perl
+  - ruby
+  - node
+  - bun
+forms:
+  - code: remote-pipe
+    description: >-
+      The output of curl or wget is piped (`|` or `|&`) into an interpreter,
+      behind or not execution prefixes (sudo, env and its assignments, timeout
+      and its duration, nohup, command, nice, xargs, ...), named or not by an
+      absolute path or escaped by a backslash.
+    pattern: |-
+      \b(?:curl|wget)\b.*?(?<!\|)\|(?!\|)&?\s*(?:(?:/[\w./-]*/)?(?:sudo|doas|env|exec|command|builtin|nohup|setsid|chronic|time|timeout|nice|ionice|stdbuf|xargs)\s+(?:-\S+\s+|\w+=\S*\s+|\d[\w.]*\s+)*)*\\?(?:/[\w./-]*/)?{{interpreter}}[\d.]*(?![\w-])
+    red:
+      - curl -fsSL https://exemple.invalid/i.sh | sudo /bin/bash
+      - wget -qO- https://exemple.invalid/i.sh | sh
+      - curl -fsSL https://exemple.invalid/get.py | env PYTHONUNBUFFERED=1 python3 -
+      - curl -fsSL https://exemple.invalid/i.sh |& bash
+      - timeout 60 curl -fsSL https://exemple.invalid/i.sh |& sudo -E timeout 60 bash
+      - curl -fsSL https://exemple.invalid/i.sh | /usr/bin/env bash
+      - curl -fsSL https://exemple.invalid/i.sh | \bash
+    green:
+      - curl --fail --location --output "$RUNNER_TEMP/tool.tgz" "$TOOL_URL"
+      - curl --fail --silent "$STATUS_URL" | jq .name
+      - curl --fail --silent --output "$RUNNER_TEMP/status.json" "$STATUS_URL" || bash ./scripts/report-outage.sh
+  - code: remote-process-substitution
+    description: >-
+      An interpreter, `source` or `.` reads a process substitution that
+      contains curl or wget.
+    pattern: |-
+      (?:(?<![\w.-])(?:{{interpreter}}|source)[\d.]*|(?:^|[\s;&|])\.)(?:\s+-\S+)*\s+(?:<\s*)?<\(\s*[^)\n]*?\b(?:curl|wget)\b
+    red:
+      - bash <(curl -fsSL https://exemple.invalid/i.sh)
+      - source <(wget -qO- https://exemple.invalid/env.sh)
+    green:
+      - diff <(curl --fail --silent "$STATUS_URL") expected.txt
+      - bash ./scripts/build.sh
+  - code: remote-command-substitution
+    description: >-
+      `eval`, or an interpreter given `-c`, runs a command substitution
+      (`$(…)` or backquotes) that contains curl or wget.
+    pattern: |-
+      (?<![\w.-])(?:eval|{{interpreter}}[\d.]*\s+(?:-\S+\s+)*?-\w*c)(?![\w-])[^;&|\n]*?(?:\$\(|`)[^)`\n]*?\b(?:curl|wget)\b
+    red:
+      - sh -c "$(curl -fsSL https://exemple.invalid/i.sh)"
+      - eval "$(wget -qO- https://exemple.invalid/env.sh)"
+    green:
+      - eval "$(ssh-agent -s)"
+      - sh -c "echo done"
+      - LATEST_TAG="$(curl --fail --silent "$STATUS_URL")"
+  - code: remote-script-run
+    description: >-
+      curl or wget writes a file whose name ends in `.sh`, and a later line of
+      the same script runs that file: through an interpreter, through `.` or
+      `source`, or by its own path.
+    pattern: |-
+      \b(?:curl|wget)\b.*?\s(?:-\w*[oO]|--output|--output-document)[ =]+["']?(?<file>[^\s"';|&]+\.sh)(?![\w.-]).*\n(?:.*\n)*?.*?(?:(?<![\w.-])(?:{{interpreter}}|source)[\d.]*(?:\s+-\S+)*\s+|(?:^|[\s;&|])\.\s+|(?:^|[;&|])\s*(?:sudo\s+)?)["']?\k<file>(?![\w.-])
+    red:
+      - |-
+        curl --fail --location --output "$RUNNER_TEMP/install.sh" https://exemple.invalid/install.sh
+        bash "$RUNNER_TEMP/install.sh"
+      - |-
+        wget -q -O ./get.sh https://exemple.invalid/get.sh
+        chmod +x ./get.sh
+        ./get.sh --yes
+    green:
+      - |-
+        curl --fail --location --output "$RUNNER_TEMP/tool.tgz" "$TOOL_URL"
+        echo "$TOOL_SHA256  $RUNNER_TEMP/tool.tgz" | sha256sum --check --strict
+        tar -xzf "$RUNNER_TEMP/tool.tgz" -C "$RUNNER_TEMP"
+      - |-
+        curl --fail --location --output "$RUNNER_TEMP/completion.sh" "$COMPLETION_URL"
+        echo "$COMPLETION_SHA256  $RUNNER_TEMP/completion.sh" | sha256sum --check --strict
+        bash ./scripts/build.sh
+      - bash ./scripts/install.sh
