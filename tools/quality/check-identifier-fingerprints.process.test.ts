@@ -205,7 +205,17 @@ describe("the gate on a fixture repository", () => {
     });
     const result = run(path);
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain(`${DATA_PATH}: exemptPaths[0]: not a regular file`);
+    expect(result.stderr).toContain(`${DATA_PATH}: exemptPaths[0]: not-a-file`);
+  });
+
+  test("an exempt path naming a code file exits 1: exemptions are data files only", () => {
+    const path = repository("exempt-code", {
+      files: { "tools/quote.ts": `export const x = "${IDENTIFIER}";\n` },
+      data: dataText([{ path: "tools/quote.ts", because: "quoted on purpose" }]),
+    });
+    const result = run(path);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(`${DATA_PATH}: exemptPaths[0]: not-data`);
   });
 });
 
