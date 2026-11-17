@@ -84,14 +84,24 @@ interface Launcher {
   readonly directory: string;
   /** The arguments of the single call, or null when the launcher was never called. */
   readonly calls: () => string[] | null;
+  /** SHELLCHECK_OPTS as the launcher saw it, `<unset>` when absent, null when never called. */
+  readonly options: () => string | null;
 }
 
-/** A stand-in launcher: it records its arguments, NUL-separated, and exits with FAKE_EXIT. */
+/**
+ * A stand-in launcher: it records its arguments, NUL-separated, and the
+ * SHELLCHECK_OPTS it inherited, then exits with FAKE_EXIT.
+ */
 function launcher(name: string = "shellcheck-stand-in"): Launcher {
   const directory: string = scratchDirectory("launcher-");
   const path: string = join(directory, name);
   const record: string = join(directory, "record");
-  writeFileSync(path, `#!${BASH}\nprintf '%s\\0' "$@" > '${record}'\nexit "$FAKE_EXIT"\n`);
+  const options: string = join(directory, "options");
+  writeFileSync(
+    path,
+    `#!${BASH}\nprintf '%s\\0' "$@" > '${record}'\n` +
+      `printf '%s' "\${SHELLCHECK_OPTS-<unset>}" > '${options}'\nexit "$FAKE_EXIT"\n`,
+  );
   chmodSync(path, 0o755);
   return {
     path,
@@ -101,6 +111,7 @@ function launcher(name: string = "shellcheck-stand-in"): Launcher {
       const fields: string[] = readFileSync(record, "utf8").split("\0");
       return fields.slice(0, -1);
     },
+    options: (): string | null => (existsSync(options) ? readFileSync(options, "utf8") : null),
   };
 }
 
@@ -190,7 +201,34 @@ describe("what the launcher is handed", () => {
     });
     // Exact equality: no --exclude, no --include, no second severity, no file
     // that is untracked or lacks the extension, a name with a space kept whole.
-    expect(fake.calls()).toEqual(["--severity=error", "--", ...TRACKED_SHELL]);
+    expect(fake.calls()).toEqual(["--norc", "--severity=error", "--", ...TRACKED_SHELL]);
+  });
+
+  // A `.shellcheckrc` tracked by the repository under check would otherwise be
+  // read by shellcheck: `disable=all` turns an error-severity finding green.
+  test("a tracked .shellcheckrc is not read: --norc, and it is not handed over", () => {
+    const fake: Launcher = launcher();
+    const outcome: Outcome = run(
+      repository({
+        ...TRACKED,
+        ".shellcheckrc": "disable=all\n",
+        "dir/.shellcheckrc": "disable=all\n",
+      }),
+      { SHELLCHECK_IMAGE: IMAGE, SHELLCHECK_BIN: fake.path, FAKE_EXIT: "0" },
+    );
+    expect(outcome.code).toBe(0);
+    expect(fake.calls()).toEqual(["--norc", "--severity=error", "--", ...TRACKED_SHELL]);
+  });
+
+  test("SHELLCHECK_OPTS does not reach the launcher", () => {
+    const fake: Launcher = launcher();
+    run(repository(TRACKED), {
+      SHELLCHECK_IMAGE: IMAGE,
+      SHELLCHECK_BIN: fake.path,
+      SHELLCHECK_OPTS: "--exclude=SC1072,SC1073",
+      FAKE_EXIT: "0",
+    });
+    expect(fake.options()).toBe("<unset>");
   });
 
   test("without SHELLCHECK_BIN, the container runs offline on a read-only mount", () => {
@@ -212,6 +250,7 @@ describe("what the launcher is handed", () => {
       "--workdir",
       "/mnt",
       IMAGE,
+      "--norc",
       "--severity=error",
       "--",
       ...TRACKED_SHELL,
@@ -346,8 +385,16 @@ describe("a tracked shell file that cannot be read", () => {
     expect(fake.calls()).toBeNull();
   });
 
-  // The owner bit is ignored for the super-user, who reads every file.
-  test.skipIf(process.getuid?.() === 0)("unreadable: exit 2, launcher never called", () => {
+  // The owner bit is ignored for the super-user, who reads every file, so the
+  // case cannot be built as root. The skip is printed, and under CI it is not
+  // taken: a CI job running as root fails here instead of passing unmeasured.
+  const asRoot: boolean = process.getuid?.() === 0;
+  const skipUnreadable: boolean = asRoot && !process.env.CI;
+  if (skipUnreadable) {
+    console.warn("check-shell-lint.test: SKIPPED 'unreadable' (uid 0 reads every file)");
+  }
+  test.skipIf(skipUnreadable)("unreadable: exit 2, launcher never called", () => {
+    expect(asRoot).toBe(false);
     const fake: Launcher = launcher();
     const root: string = repository(TRACKED);
     chmodSync(join(root, "with space.sh"), 0o000);
@@ -360,5 +407,33 @@ describe("a tracked shell file that cannot be read", () => {
     expect(outcome.code).toBe(2);
     expect(outcome.err).toContain("missing or unreadable: with space.sh");
     expect(fake.calls()).toBeNull();
+  });
+});
+
+// The stand-in proves the arguments; this proves what they do, with the real
+// shellcheck handed through SHELLCHECK_BIN. Absent shellcheck is a printed skip
+// on a workstation and a failure under CI.
+describe("the real shellcheck ignores the configuration of the repository", () => {
+  const shellcheck: string | null = Bun.which("shellcheck");
+  const skipReal: boolean = shellcheck === null && !process.env.CI;
+  if (skipReal) {
+    console.warn("check-shell-lint.test: SKIPPED 'real shellcheck' (shellcheck not on PATH)");
+  }
+  // A parse error is error severity (SC1072, SC1073).
+  const BROKEN: Record<string, string> = { "broken.sh": "#!/bin/sh\nif then\n" };
+
+  test.skipIf(skipReal).each([
+    ["disable=all", { ".shellcheckrc": "disable=all\n" }, {}],
+    ["disable of the two codes", { ".shellcheckrc": "disable=SC1072,SC1073\n" }, {}],
+    ["severity raised by rc", { ".shellcheckrc": "severity=style\ndisable=all\n" }, {}],
+    ["SHELLCHECK_OPTS", {}, { SHELLCHECK_OPTS: "--exclude=SC1072,SC1073" }],
+  ] as const)("%s: an error-severity finding stays red (exit 1)", (_name, rc, env) => {
+    expect(shellcheck).not.toBeNull();
+    const outcome: Outcome = run(repository({ ...BROKEN, ...rc }), {
+      SHELLCHECK_IMAGE: IMAGE,
+      SHELLCHECK_BIN: shellcheck ?? "",
+      ...env,
+    });
+    expect(outcome.code).toBe(1);
   });
 });
