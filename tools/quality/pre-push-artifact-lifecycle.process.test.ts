@@ -299,7 +299,7 @@ describe("pre-push called directly", () => {
     expect(result.exitCode).toBe(2);
   });
 
-  test("the override lets a refusal of the guard itself through, saying so", () => {
+  test("the override does not lift a refusal of the guard itself", () => {
     const f = fixture();
     const result = run(
       [process.execPath, GUARD, "origin"],
@@ -307,7 +307,45 @@ describe("pre-push called directly", () => {
       { ARTIFACT_LIFECYCLE_ALLOW_PUSH: "1" },
       "not a ref line\n",
     );
-    expect(result.stderr).toContain("OVERRIDE ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 active");
-    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toContain("push REFUSED (exit 2)");
+    expect(result.stderr).toContain("lifts violations only (exit 1)");
+    expect(result.stderr).not.toContain("OVERRIDE");
+    expect(result.exitCode).toBe(2);
+  });
+});
+
+describe("the override lifts violations only, under a real git push", () => {
+  const OVERRIDE = { ARTIFACT_LIFECYCLE_ALLOW_PUSH: "1" };
+
+  test.each([
+    [
+      "a malformed marker",
+      { "ok.sh": "echo ok\n", "ok.test.sh": "echo t\n", "wip.txt": "# ephemeral: soon\n" },
+      4,
+      "malformed marker: wip.txt",
+    ],
+    [
+      "a malformed exemptions entry",
+      { "sync.sh": "echo\n", ".artifact-lifecycle-exemptions": "sync.sh\n" },
+      2,
+      ".artifact-lifecycle-exemptions line 1: missing-reason",
+    ],
+    [
+      "a violation next to an unevaluable merged() marker",
+      { "bad.sh": "echo bad\n", "wip.txt": "# ephemeral: until=merged(some-owner/some-repo#1)\n" },
+      3,
+      "unavailable marker: wip.txt",
+    ],
+  ])("%s: refused with its code, the remote unchanged", (_name, files, code, said) => {
+    const f = fixture();
+    commit(f.work, files);
+    const before = remoteTip(f, SERVED);
+    const pushed = push(f, [SERVED], OVERRIDE);
+    expect(pushed.stderr).toContain(said);
+    expect(pushed.stderr).toContain(`push REFUSED (exit ${code})`);
+    expect(pushed.stderr).toContain("lifts violations only (exit 1)");
+    expect(pushed.stderr).not.toContain("OVERRIDE");
+    expect(pushed.exitCode).not.toBe(0);
+    expect(remoteTip(f, SERVED)).toBe(before);
   });
 });
