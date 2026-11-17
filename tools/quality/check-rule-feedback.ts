@@ -18,9 +18,12 @@
  * on one line, and an empty line between sections. CRLF line ends and one
  * final line end are admitted. Anything else is refused: text before, between
  * or after the sections, an unknown, repeated, missing or misplaced section, a
- * comment, a value on two lines, a space at the start or end of a line, and
- * any character `findUnreadableCharacter` refuses. The body is never read
- * heuristically.
+ * comment, a value on two lines, a space at the start or end of a line, any
+ * character `findUnreadableCharacter` refuses, and any format character
+ * (`\p{Cf}`, bidirectional controls included) or separator other than U+0020
+ * (`\p{Z}`). The free values (the rephrasing, the value of a trigger) hold 1
+ * to 1000 code points, at least one visible character, and neither `<` nor
+ * `>`. The body is never read heuristically.
  *
  * Forms. The common forms (rule identifier, excerpt digest, slug, edition,
  * overlay reference, level, trigger type) are NOT written here: they are read
@@ -29,11 +32,13 @@
  * `bun run fetch:contracts-authority`), rule R1 of
  * `contracts/rule-common-v1/SEMANTICS.md`. A missing or stale checkout, an
  * unreadable schema, an absent pointer or a leaf outside the shape R2 allows is
- * a named failure, never an empty or permissive form. Patterns are matched on
- * the whole value (R2: ECMA-262 `test`, anchored, no `m` flag) and lengths are
- * counted in code points. The forms that belong to the ticket alone (rule R6:
- * snapshot version, core version, the three natures, the proposal line, the
- * overlay list and its `none`) are defined below.
+ * a named failure, never an empty or permissive form; so is a length bound
+ * written `null`. A pattern must compile on its own, then is matched on the
+ * whole value as `^(?:<pattern>)$` (R2, R3: ECMA-262 `test`, `u` flag, no `m`
+ * flag), whatever anchors it carries; lengths are counted in code points.
+ * The forms that belong to the ticket alone (rule R6: snapshot version, core
+ * version, the three natures, the proposal line, the overlay list and its
+ * `none`) are defined below.
  *
  * Output: one counts line, then `pass` or `refused: <reason>`. A reason names
  * a field label or a line number, never a value read from the ticket: the
@@ -167,25 +172,36 @@ function readStringLeaf(name: string, leaf: unknown): Loaded<StringForm> {
   if (leaf.type !== "string") return { ok: false, reason: `${pointer} is not a string form` };
   const source: unknown = leaf.pattern;
   if (typeof source !== "string") return { ok: false, reason: `${pointer} has no pattern` };
-  // R3: anchored at both ends, so `test` decides the whole value.
-  if (!source.startsWith("^") || !source.endsWith("$") || source.endsWith("\\$")) {
-    return { ok: false, reason: `${pointer} has a pattern that is not anchored (rule R3)` };
-  }
+  // R3: the pattern decides the whole value. Inspecting its first and last
+  // characters does not say so (`^a|b$` is anchored on one branch each), so
+  // the pattern is wrapped in `^(?:…)$`. The source must compile on its own
+  // first: a source such as `a)|(?:.*` would otherwise close the wrapping
+  // group and splice in an unanchored branch.
   let pattern: RegExp;
   try {
-    pattern = new RegExp(source, "u");
+    new RegExp(source, "u");
+    pattern = new RegExp(`^(?:${source})$`, "u");
   } catch {
     return { ok: false, reason: `${pointer} has a pattern that does not compile with the u flag` };
   }
-  const minLength: unknown = leaf.minLength ?? null;
-  const maxLength: unknown = leaf.maxLength ?? null;
+  // A bound is absent (no key) or a natural integer; `null` is neither.
+  const bound = (key: string): unknown => (Object.hasOwn(leaf, key) ? leaf[key] : null);
+  const minLength: unknown = bound("minLength");
+  const maxLength: unknown = bound("maxLength");
   if (
-    (minLength !== null && !isLength(minLength)) ||
-    (maxLength !== null && !isLength(maxLength))
+    (Object.hasOwn(leaf, "minLength") && !isLength(minLength)) ||
+    (Object.hasOwn(leaf, "maxLength") && !isLength(maxLength))
   ) {
     return { ok: false, reason: `${pointer} has a length bound that is not a natural integer` };
   }
-  return { ok: true, value: { pattern, minLength, maxLength } };
+  return {
+    ok: true,
+    value: {
+      pattern,
+      minLength: isLength(minLength) ? minLength : null,
+      maxLength: isLength(maxLength) ? maxLength : null,
+    },
+  };
 }
 
 function readListLeaf(name: string, leaf: unknown): Loaded<readonly string[]> {
@@ -290,10 +306,30 @@ function ticketLines(text: string): readonly string[] {
   return trimmed.split("\n");
 }
 
-/** Every line read on its own, before the structure: comment and edge spaces. */
+/**
+ * A format character (`\p{Cf}`: zero width, soft hyphen, bidirectional
+ * controls, tags) or a separator other than U+0020 (`\p{Z}`). Both render as
+ * nothing or as a plain space, so a value that holds one does not read as it
+ * is written. Local to the ticket: the shared guard is left unchanged.
+ */
+const INVISIBLE: RegExp = /[\p{Cf}\p{Z}]/u;
+
+function invisibleCodePoint(line: string): string | null {
+  for (const char of line) {
+    if (char !== " " && INVISIBLE.test(char)) {
+      const hex: string = (char.codePointAt(0) as number).toString(16).toUpperCase();
+      return `U+${hex.padStart(4, "0")}`;
+    }
+  }
+  return null;
+}
+
+/** Every line read on its own, before the structure: comment, invisible characters, edge spaces. */
 function lineProblem(lines: readonly string[]): string | null {
   for (const [index, line] of lines.entries()) {
     if (line.includes(COMMENT_OPENING)) return `line ${index + 1}: a comment is not allowed`;
+    const invisible: string | null = invisibleCodePoint(line);
+    if (invisible !== null) return `line ${index + 1}: invisible character ${invisible}`;
     if (line === NO_RESPONSE) return `line ${index + 1}: an empty answer is not allowed`;
     if (line.startsWith(" ") || line.endsWith(" ")) {
       return `line ${index + 1}: a space at the start or end of a line is not allowed`;
@@ -383,6 +419,28 @@ function coreVersionHolds(value: string): boolean {
   return codePoints(value) <= CORE_VERSION_MAX_LENGTH && CORE_VERSION.test(value);
 }
 
+/**
+ * A visible character: a letter, a digit, a punctuation mark or a symbol. A
+ * value of combining marks alone, or of spaces alone, carries none.
+ */
+const VISIBLE: RegExp = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/** `<` and `>` open and close HTML, which the forge renders and may hide. */
+const MARKUP: RegExp = /[<>]/;
+
+/**
+ * The reason a free value (the rephrasing, the value of a trigger) is refused,
+ * or null: 1 to 1000 code points, at least one visible character, no markup.
+ */
+function freeValueProblem(label: string, value: string): string | null {
+  if (codePoints(value) > PROPOSAL_MAX_LENGTH) {
+    return fieldReason(label, `longer than ${PROPOSAL_MAX_LENGTH} characters`);
+  }
+  if (!VISIBLE.test(value)) return fieldReason(label, "no visible character");
+  if (MARKUP.test(value)) return fieldReason(label, "< and > are not allowed");
+  return null;
+}
+
 /** The reason a proposal does not fit its nature, or null when it does. */
 function proposalProblem(
   nature: string,
@@ -407,11 +465,9 @@ function proposalProblem(
     if (equals === proposal.length - 1) {
       return fieldReason(label, "incompatible with the nature trigger, empty trigger value");
     }
-    return null;
+    return freeValueProblem(label, proposal.slice(equals + 1));
   }
-  return codePoints(proposal) > PROPOSAL_MAX_LENGTH
-    ? fieldReason(label, `longer than ${PROPOSAL_MAX_LENGTH} characters`)
-    : null;
+  return freeValueProblem(label, proposal);
 }
 
 /** Each field judged on its own value; `Proposal` is judged against `Nature`. */

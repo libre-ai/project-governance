@@ -1,15 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
   CHECKOUT_DIR,
   type ContractsAuthorityPin,
-  checkoutState,
   FETCH_COMMAND,
   PIN_PATH,
-  readPin,
   stampFor,
 } from "../../crates/ecosystem-engine/scripts/contracts-authority";
 
@@ -36,6 +34,8 @@ import {
 
 const SCRIPT = join(import.meta.dir, "check-rule-feedback.ts");
 const ROOT = join(import.meta.dir, "..", "..");
+/** What `bun run fetch:contracts-authority` runs, after its runtime floor check. */
+const FETCH_SCRIPT = join(ROOT, "crates/ecosystem-engine/scripts/fetch-contracts-authority.ts");
 
 /** The eight labels of the issue form, in order (brief L028, `listes_completes`). */
 const LABELS: readonly string[] = [
@@ -68,15 +68,43 @@ const FORMS_A = {
   },
 };
 
-/** FORMS_A with the rule identifier, the levels and the trigger types changed. */
+/**
+ * FORMS_A with each of the seven leaves changed: every leaf admits what FORMS_A
+ * admits plus one value of its own (`ONLY_B`). The valid ticket holds under
+ * both sets, so a value of `ONLY_B` is the only difference between two runs.
+ */
 const FORMS_B = {
   $defs: {
-    ...FORMS_A.$defs,
-    ruleId: { type: "string", pattern: "^[A-Z]+$" },
-    level: { enum: ["MAY"] },
-    triggerType: { enum: ["path"] },
+    ruleId: {
+      type: "string",
+      minLength: 3,
+      maxLength: 200,
+      pattern: "^(?:[a-z]+:[a-z]+#[A-Za-z0-9]+|[A-Z]+)$",
+    },
+    excerptDigest: {
+      type: "string",
+      minLength: 64,
+      maxLength: 64,
+      pattern: "^(?:[a-f0-9]+|[g-z]+)$",
+    },
+    slug: { type: "string", maxLength: 32, pattern: "^(?:[a-z][a-z0-9-]*|_[a-z]+)$" },
+    edition: { type: "string", pattern: "^(?:[0-9]+(?:\\.[0-9]+)*|v[0-9]+)$" },
+    overlayReference: { type: "string", pattern: "^(?:[a-z]+/[a-z]+@[0-9]+|[a-z]+:[a-z]+)$" },
+    level: { enum: ["MUST", "MUST_NOT", "SHOULD", "MAY_NOT"] },
+    triggerType: { enum: ["glob", "keyword", "path"] },
   },
 };
+
+/** Per leaf of the contract: ticket changes that hold under FORMS_B and not under FORMS_A. */
+const ONLY_B: readonly (readonly [string, Readonly<Record<string, string>>, string])[] = [
+  ["ruleId", { "Rule identifier": "RULE" }, 'field "Rule identifier"'],
+  ["excerptDigest", { "Excerpt digest": "g".repeat(64) }, 'field "Excerpt digest"'],
+  ["slug", { Pack: "_pub@2.1" }, 'field "Pack"'],
+  ["edition", { Pack: "rules@v2" }, 'field "Pack"'],
+  ["overlayReference", { Overlays: "publisher:local" }, 'field "Overlays"'],
+  ["level", { Proposal: "MAY_NOT" }, 'field "Proposal"'],
+  ["triggerType", { Nature: "trigger", Proposal: "path=x" }, 'field "Proposal"'],
+];
 
 const VALID: Readonly<Record<string, string>> = {
   "Rule identifier": "src:doc#R1",
@@ -394,6 +422,88 @@ describe("values are judged against their forms", () => {
     expectRefused(check(`\u{FEFF}${ticket()}`), "line 1: unreadable character U+FEFF");
   });
 
+  test("a trigger value holds 1 to 1000 characters", () => {
+    // Counted in code points, as the rephrasing proposal ("glob=" is 5 of them).
+    for (const unit of ["a", "\u{1D11E}"]) {
+      expect(check(ticket({ Nature: "trigger", Proposal: `glob=${unit.repeat(1000)}` })).code).toBe(
+        0,
+      );
+      expectRefused(
+        check(ticket({ Nature: "trigger", Proposal: `glob=${unit.repeat(1001)}` })),
+        'field "Proposal": longer than 1000 characters',
+      );
+    }
+  });
+
+  test("a free value without a visible character is refused", () => {
+    // A lone combining mark, or a run of spaces between visible text and
+    // nothing: neither reaches the line-edge or invisible-character refusals.
+    for (const value of ["\u{301}", "\u{301}\u{301}"]) {
+      expectRefused(
+        check(ticket({ Nature: "trigger", Proposal: `glob=${value}` })),
+        'field "Proposal": no visible character',
+      );
+      expectRefused(
+        check(ticket({ Nature: "rephrasing", Proposal: value })),
+        'field "Proposal": no visible character',
+      );
+    }
+    expect(check(ticket({ Nature: "rephrasing", Proposal: "e\u{301}" })).code).toBe(0);
+  });
+
+  test("format characters and spaces other than U+0020 are refused, naming line and code point", () => {
+    // \p{Cf} (zero width, soft hyphen, bidirectional controls, tag characters)
+    // and \p{Z} other than U+0020; the shared guard refuses U+00A0, U+2028,
+    // U+2029 and U+FEFF on its own and is left unchanged.
+    const cases: readonly string[] = [
+      "\u{200B}",
+      "\u{200E}",
+      "\u{200F}",
+      "\u{AD}",
+      "\u{202A}",
+      "\u{202E}",
+      "\u{2066}",
+      "\u{2069}",
+      "\u{E0041}",
+      "\u{2009}",
+      "\u{3000}",
+      "\u{1680}",
+    ];
+    for (const char of cases) {
+      const codePoint = `U+${(char.codePointAt(0) as number).toString(16).toUpperCase().padStart(4, "0")}`;
+      expectRefused(
+        check(ticket({ Nature: "rephrasing", Proposal: `a${char}b` })),
+        `line 31: invisible character ${codePoint}`,
+      );
+      expectRefused(
+        check(ticket({ Nature: "trigger", Proposal: `glob=a${char}b` })),
+        `line 31: invisible character ${codePoint}`,
+      );
+    }
+    expectRefused(
+      check(ticket({ "Rule identifier": "src:doc#R\u{202E}1" })),
+      "line 3: invisible character U+202E",
+    );
+    expectRefused(
+      check(ticket().replace("### Pack", "### Pa\u{200B}ck")),
+      "line 9: invisible character U+200B",
+    );
+    expect(check(ticket({ Nature: "rephrasing", Proposal: "a plain sentence" })).code).toBe(0);
+  });
+
+  test("< and > are refused in a free value", () => {
+    for (const value of ["<b>x</b>", "a < b", "a > b", "<details>", "x>"]) {
+      expectRefused(
+        check(ticket({ Nature: "rephrasing", Proposal: value })),
+        'field "Proposal": < and > are not allowed',
+      );
+      expectRefused(
+        check(ticket({ Nature: "trigger", Proposal: `glob=${value}` })),
+        'field "Proposal": < and > are not allowed',
+      );
+    }
+  });
+
   test("a ticket file that is not valid UTF-8 is refused", () => {
     const bytes = new TextEncoder().encode(ticket());
     const broken = new Uint8Array([...bytes.slice(0, 20), 0xff, ...bytes.slice(20)]);
@@ -421,6 +531,10 @@ describe("no value leaks into the output", () => {
     ["long rephrasing", ticket({ Nature: "rephrasing", Proposal: SENTINEL.repeat(100) })],
     ["unreadable", ticket({ Nature: "rephrasing", Proposal: `${SENTINEL}\t` })],
     ["edge space", ticket({ Nature: "rephrasing", Proposal: `${SENTINEL} ` })],
+    ["long trigger value", ticket({ Nature: "trigger", Proposal: `glob=${SENTINEL.repeat(100)}` })],
+    ["invisible character", ticket({ Nature: "rephrasing", Proposal: `${SENTINEL}\u{202E}x` })],
+    ["angle bracket", ticket({ Nature: "rephrasing", Proposal: `<${SENTINEL}>` })],
+    ["angle bracket in trigger", ticket({ Nature: "trigger", Proposal: `glob=<${SENTINEL}` })],
   ];
   const labelOrLine = new RegExp(`field "(?:${LABELS.join("|")})"|line \\d+`);
 
@@ -480,15 +594,6 @@ describe("the common forms are read from the pinned checkout", () => {
       '#/$defs/slug carries the keyword "$ref"',
     ],
     [
-      "unanchored pattern",
-      {
-        schema: JSON.stringify({
-          $defs: { ...FORMS_A.$defs, slug: { type: "string", pattern: "[a-z]+" } },
-        }),
-      },
-      "#/$defs/slug has a pattern that is not anchored",
-    ],
-    [
       "pattern that does not compile",
       {
         schema: JSON.stringify({
@@ -524,29 +629,104 @@ describe("the common forms are read from the pinned checkout", () => {
     });
   }
 
-  test("with other forms, the same values change verdict", () => {
-    const formsB = authority({ schema: JSON.stringify(FORMS_B) });
-    expectRefused(check(ticket(), formsB), 'field "Rule identifier"');
-    expect(check(ticket({ "Rule identifier": "RULE", Proposal: "MAY" }), formsB).code).toBe(0);
-    expectRefused(
-      check(ticket({ "Rule identifier": "RULE", Proposal: "MAY" })),
-      'field "Rule identifier"',
-    );
-    expect(
-      check(ticket({ "Rule identifier": "RULE", Nature: "trigger", Proposal: "path=x" }), formsB)
-        .code,
-    ).toBe(0);
-    expectRefused(check(ticket({ Nature: "trigger", Proposal: "path=x" })), "unknown trigger type");
-  });
-
-  test("at the repository root: pass on the current pinned checkout, a named failure otherwise", async () => {
-    const state = await checkoutState(await readPin(join(ROOT, PIN_PATH)));
-    const result = check(ticket(), ROOT);
-    if (state === "current") {
-      expect(result.code).toBe(0);
-      expect(result.lines).toEqual([PASS_COUNTS, "pass"]);
-    } else {
-      expectRefused(result, `is ${state}, run ${FETCH_COMMAND}`);
+  test("FORMS_B changes each of the seven leaves of FORMS_A", () => {
+    const leaves = Object.keys(FORMS_A.$defs) as (keyof typeof FORMS_A.$defs)[];
+    expect(leaves.length).toBe(7);
+    expect(ONLY_B.map(([leaf]) => leaf).sort()).toEqual([...leaves].sort());
+    for (const leaf of leaves) {
+      expect(FORMS_B.$defs[leaf]).not.toEqual(FORMS_A.$defs[leaf]);
     }
   });
+
+  const formsB = authority({ schema: JSON.stringify(FORMS_B) });
+  test("the valid ticket holds under both sets of forms", () => {
+    expect(check(ticket(), formsB).code).toBe(0);
+    expect(check(ticket()).code).toBe(0);
+  });
+
+  for (const [leaf, changes, reason] of ONLY_B) {
+    test(`with other forms, the same value changes verdict: ${leaf}`, () => {
+      expectRefused(check(ticket(changes)), reason);
+      const underB = check(ticket(changes), formsB);
+      expect(underB.code).toBe(0);
+      expect(underB.lines.at(-1)).toBe("pass");
+    });
+  }
+
+  test("a pattern decides the whole value, whatever its anchors (rule R3)", () => {
+    // `^publisher|rules$` starts with ^ and ends with $, yet as written it
+    // accepts any value that starts with "publisher" or ends with "rules": the
+    // form must still match the whole value. (Both slugs of the valid ticket hold.)
+    const looselyAnchored = authority({
+      schema: JSON.stringify({
+        $defs: { ...FORMS_A.$defs, slug: { type: "string", pattern: "^publisher|rules$" } },
+      }),
+    });
+    expect(check(ticket(), looselyAnchored).code).toBe(0);
+    expectRefused(check(ticket({ Pack: "xrules@2.1" }), looselyAnchored), 'field "Pack"');
+    expectRefused(check(ticket({ Pack: "publisherx@2.1" }), looselyAnchored), 'field "Pack"');
+    // Without anchors at all, the form is still a whole-value match.
+    const unanchored = authority({
+      schema: JSON.stringify({
+        $defs: { ...FORMS_A.$defs, slug: { type: "string", pattern: "[a-z]+" } },
+      }),
+    });
+    expect(check(ticket(), unanchored).code).toBe(0);
+    expectRefused(check(ticket({ Pack: "rules1@2.1" }), unanchored), 'field "Pack"');
+  });
+
+  test("a pattern that would close the wrapping group is refused, not spliced", () => {
+    // Wrapped as ^(?:<source>)$, this source would read ^(?:zz)|(?:.*)$ and
+    // accept anything: it does not compile on its own, so it is refused.
+    const result = check(
+      ticket(),
+      authority({
+        schema: JSON.stringify({
+          $defs: { ...FORMS_A.$defs, slug: { type: "string", pattern: "zz)|(?:.*" } },
+        }),
+      }),
+    );
+    expectRefused(result, "#/$defs/slug has a pattern that does not compile");
+  });
+
+  test("a length bound written null is refused, not read as absent", () => {
+    for (const bound of ["minLength", "maxLength"]) {
+      const result = check(
+        ticket(),
+        authority({
+          schema: JSON.stringify({
+            $defs: {
+              ...FORMS_A.$defs,
+              slug: { type: "string", pattern: "^[a-z]+$", [bound]: null },
+            },
+          }),
+        }),
+      );
+      expectRefused(result, "#/$defs/slug has a length bound that is not a natural integer");
+    }
+  });
+
+  test("at the repository root: the pinned checkout is fetched if needed, read, and the ticket passes", () => {
+    // The test does not accept an absent checkout: in CI `bun run test` runs
+    // before any link that fetches it. The repository's own fetch (integrity
+    // verified before extraction, a no-op on a current checkout) runs first;
+    // a fetch that fails is a failure of this test.
+    const fetched = Bun.spawnSync(["bun", FETCH_SCRIPT], {
+      cwd: ROOT,
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", NO_COLOR: "1" },
+    });
+    const fetchOutput =
+      new TextDecoder().decode(fetched.stdout) + new TextDecoder().decode(fetched.stderr);
+    // The output is part of the compared object so that a failed fetch says why.
+    expect({ code: fetched.exitCode, output: fetchOutput }).toMatchObject({ code: 0 });
+    expect(fetchOutput).toContain("Contracts authority ");
+    expect(
+      existsSync(join(ROOT, CHECKOUT_DIR, "contracts/schemas/rule-common.v1.schema.json")),
+    ).toBe(true);
+    const result = check(ticket(), ROOT);
+    expect(result.code).toBe(0);
+    expect(result.lines).toEqual([PASS_COUNTS, "pass"]);
+  }, 120_000);
 });
