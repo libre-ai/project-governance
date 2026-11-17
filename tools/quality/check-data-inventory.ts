@@ -206,6 +206,11 @@ export const NOT_GATED: readonly NotGated[] = [
       "the register of governance generations: each sha it admits is a governance commit, and generation-coherence.yml replays every generation added",
   },
   {
+    path: "ecosystem/fleet-gates.v1.yaml",
+    because:
+      "the registry of fleet detectors: check-fleet-gates confronts it with the detectors directory both ways, so an entry dropped while its script stays fails as an undeclared gate; that check runs on a directory the owner names, outside bun run check",
+  },
+  {
     path: "ecosystem/repositories.v1.yaml",
     because:
       "the fleet inventory: inventory-drift reconciles it with the GitHub organization in both directions, so a repository dropped from it fails the same day",
