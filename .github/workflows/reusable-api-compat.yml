@@ -1,0 +1,142 @@
+name: reusable-api-compat
+# Fleet gate template: the public API of one crate is compared to a git
+# baseline of the calling repository, and a break without a version increment
+# is refused (tools/quality/check-api-compatibility.ts).
+#
+# Consumed as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-api-compat.yml@<sha>
+#   with:
+#     crate: <package name>
+#     tooling_ref: <sha>
+# with tooling_ref pinned to the SAME sha. `baseline_rev` is optional: without
+# it the baseline is the highest tag `<prefix>-vX.Y.Z` of the crate.
+#
+# The trigger belongs to the CALLER (a tag push, a release branch): this file
+# declares `workflow_call` and nothing else
+# (tools/quality/reusable-api-compat.test.ts asserts it).
+#
+# Prerequisites on the caller:
+#   - the calling job must grant `contents: read`;
+#   - no `container:` on the calling job;
+#   - the checkout below is `fetch-depth: 0`: tags live in the history, and the
+#     gate refuses a shallow repository (exit 19).
+#
+# What runs whose code. The gate comes from the governance repository at
+# tooling_ref, fetched into $RUNNER_TEMP/governance-tooling, and RUNS FROM THAT
+# DIRECTORY: Bun reads `bunfig.toml` and `.env` from its working directory, and
+# in the workspace both belong to the calling repository (measured in
+# reusable-work-package-link.yml). The crate itself IS built, at the head and at
+# the baseline, so its build scripts run: this job therefore holds a read-only
+# token that the checkout does not persist, and no secret.
+#
+# cargo-semver-checks is a precompiled release binary pinned by version and by
+# the sha256 of its archive, never `cargo install`: a registry build resolves
+# against mutable sources, and compiling the tool takes minutes on a runner.
+# The digest below was computed on the downloaded archive on 2026-11-17 and
+# equals the digest the release API reports for that asset; the release
+# publishes no checksum file.
+#
+# The exit codes of the gate (0, 2, 10 to 19) are listed in the script.
+
+on:
+  workflow_call:
+    inputs:
+      crate:
+        description: Package name of the crate whose public API is compared
+        required: true
+        type: string
+      baseline_rev:
+        description: >-
+          Git revision to compare against; empty selects the highest release
+          tag of the crate
+        required: false
+        default: ""
+        type: string
+      tooling_ref:
+        description: >-
+          Full commit (40 lowercase hexadecimal characters) of
+          libre-ai/project-governance providing tools/quality
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  api-compat:
+    name: API compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+        run: |
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          TOOLING_DIR="$RUNNER_TEMP/governance-tooling"
+          mkdir "$TOOLING_DIR"
+          git init --quiet "$TOOLING_DIR"
+          git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
+          git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
+      - name: Install archived Bun toolchain
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable action
+      - name: Install pinned cargo-semver-checks
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CARGO_SEMVER_CHECKS_VERSION: 0.51.0
+          CARGO_SEMVER_CHECKS_ARCHIVE_URL: https://github.com/obi1kenobi/cargo-semver-checks/releases/download/v0.51.0/cargo-semver-checks-x86_64-unknown-linux-musl.tar.gz
+          CARGO_SEMVER_CHECKS_ARCHIVE_SHA256: 396c8508d973c83de52660943a057e971b586f7511c3ba695762373452b43d5b
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/cargo-semver-checks.tar.gz" "$CARGO_SEMVER_CHECKS_ARCHIVE_URL"
+          echo "$CARGO_SEMVER_CHECKS_ARCHIVE_SHA256  $RUNNER_TEMP/cargo-semver-checks.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/cargo-semver-checks"
+          tar -xzf "$RUNNER_TEMP/cargo-semver-checks.tar.gz" -C "$RUNNER_TEMP/cargo-semver-checks"
+          echo "$RUNNER_TEMP/cargo-semver-checks" >> "$GITHUB_PATH"
+          test "$("$RUNNER_TEMP/cargo-semver-checks/cargo-semver-checks" --version)" = "cargo-semver-checks $CARGO_SEMVER_CHECKS_VERSION"
+      - name: State the toolchain in force
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          cargo --version
+          rustc --version
+          cargo-semver-checks --version
+      - name: Compare the public API to the baseline
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
+        env:
+          CRATE: ${{ inputs.crate }}
+          BASELINE_REV: ${{ inputs.baseline_rev }}
+        run: |
+          bun --no-env-file tools/quality/check-bun-minimum.ts
+          if [[ -n "$BASELINE_REV" ]]; then
+            bun --no-env-file tools/quality/check-api-compatibility.ts --repository "$GITHUB_WORKSPACE" --crate "$CRATE" --baseline-rev "$BASELINE_REV"
+          else
+            bun --no-env-file tools/quality/check-api-compatibility.ts --repository "$GITHUB_WORKSPACE" --crate "$CRATE"
+          fi

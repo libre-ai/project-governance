@@ -1,0 +1,4 @@
+# Exemptions of tools/quality/check-product-coupling.ts, parsed by allowlist.ts.
+# One tracked file per line: <repository-relative path> # <reason>
+# A match in a listed file is printed and counted as tolerated; an entry that
+# tolerates no match fails the guard. None is declared.

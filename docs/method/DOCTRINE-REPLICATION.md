@@ -276,6 +276,63 @@ Corollaire : tout ce qui n'est pas décisionnel **à chaque session** doit
 descendre du noyau permanent vers un mécanisme chargé à la demande. Le noyau se
 paie en tokens à chaque session, indéfiniment.
 
+## Rendu dans une section balisée
+
+Le rendu de fichier entier suppose que la cible n'appartient qu'au générateur.
+Quand le fichier d'instructions d'agent porte aussi du texte écrit à la main
+(consignes propres au projet, notes du propriétaire), on n'en génère qu'une
+zone. La commande `tools/doctrine/write-instruction-section.ts` écrit une
+section déjà rendue entre deux lignes balises :
+
+```bash
+bun tools/doctrine/write-instruction-section.ts <cible> <section> [--max-bytes <n>] [--count-with <fichier>]...
+```
+
+**Quand préférer ce mode.** Le rendu de fichier entier reste le défaut : il est
+plus simple, et sa sentinelle suffit. La section balisée sert quand la cible
+porte du texte qu'aucune source canonique ne possède et qu'on ne veut ni
+déplacer ni écraser. Le choix des règles se fait en amont ; la commande reçoit
+la section rendue et l'écrit telle quelle, sans interpréter d'antislash ni de
+motif.
+
+**Les balises ne sont pas la sentinelle.** La sentinelle, en ligne 1, déclare un
+fichier entièrement généré, que le déploiement refuse d'écraser sans elle. Les
+balises `<!-- libre-ai:doctrine:begin -->` et `<!-- libre-ai:doctrine:end -->`
+bornent une zone générée dans un fichier écrit à la main. Elles suivent la
+convention `<!-- libre-ai:<nom>:begin|end -->` du dépôt, mais se comptent en
+**lignes exactes** (un `\r` final retiré), pas en sous-chaînes : une balise
+citée dans une phrase, comme ici, ne compte pas.
+
+Comportement :
+
+- aucune balise dans la cible : la section est ajoutée en fin de fichier, après
+  une ligne vide ; une cible absente est créée ;
+- une paire, début avant fin : les lignes du début à la fin incluses sont
+  remplacées, tous les autres octets restent identiques ;
+- toute autre configuration : rien n'est écrit, et le message donne le nombre
+  de balises de début et de fin et leurs numéros de ligne, car le choix de la
+  copie à garder revient au propriétaire ;
+- `--max-bytes` mesure, avant écriture, la taille du fichier résultant plus
+  celle de chaque `--count-with` (les fichiers que le harnais concatène avant
+  celui du projet) ; la limite et ces fichiers se passent en argument, ils ne se
+  devinent pas ;
+- l'écriture passe par un fichier temporaire du même répertoire puis un
+  renommage : un échec laisse la cible intacte et aucun fichier temporaire.
+
+Rejouer la commande avec la même section rend un fichier identique.
+
+| Code | Sens                                                                                         |
+| ---- | -------------------------------------------------------------------------------------------- |
+| 0    | section écrite (`created`, `appended` ou `replaced`)                                         |
+| 2    | usage : argument manquant ou en trop, option inconnue, `--max-bytes` invalide, chemin en `-` |
+| 3    | entrée illisible : section, cible ou `--count-with` illisible, cible lien ou non-fichier     |
+| 4    | balises : section mal bornée, ou cible avec une configuration autre que zéro ou une paire    |
+| 5    | écriture impossible : fichier temporaire ou renommage                                        |
+| 6    | dépassement de `--max-bytes`                                                                 |
+
+Le code 1 n'est pas employé : aucun composant de ce dépôt ne rend ni ne refuse
+de règles.
+
 ## Ce que ce patron ne fait pas
 
 - Il ne rend pas la doctrine **correcte** — il la rend cohérente et

@@ -1,0 +1,90 @@
+schema_version: libre-ai.invariant-gates.v1
+# Reviewed correspondence invariant -> gate -> test, read by
+# ecosystem/render-invariant-matrix.ts. docs/decisions/INVARIANTS.md stays the
+# only authority on the invariants: this file carries no rule text, no
+# applicability, no date and no source.
+#
+# One entry per invariant in force, exactly. `gates` lists the local, tracked
+# files that enforce it, each with the tracked test that names it, or `test: null`.
+# `gates: []` says that no gate holds the invariant: the projection shows it as
+# "sans gate". Adding a pair asserts that a gate holds an invariant: a review
+# judgment, not a formality.
+entries:
+  - invariant: I-01
+    gates: []
+  - invariant: I-02
+    gates: []
+  - invariant: I-03
+    gates: []
+  - invariant: I-04
+    gates: []
+  - invariant: I-05
+    gates: []
+  - invariant: I-06
+    gates: []
+  - invariant: I-07
+    gates: []
+  - invariant: I-08
+    gates: []
+  - invariant: I-09
+    gates: []
+  - invariant: I-10
+    gates: []
+  - invariant: I-11
+    gates: []
+  - invariant: I-12
+    gates: []
+  - invariant: I-13
+    gates: []
+  - invariant: I-14
+    gates: []
+  - invariant: I-15
+    gates: []
+  - invariant: I-16
+    gates: []
+  - invariant: I-17
+    gates: []
+  - invariant: I-18
+    gates: []
+  - invariant: I-19
+    gates: []
+  - invariant: I-20
+    gates: []
+  - invariant: I-21
+    gates: []
+  - invariant: I-22
+    gates: []
+  - invariant: I-23
+    gates: []
+  - invariant: I-24
+    gates: []
+  - invariant: I-25
+    gates: []
+  - invariant: I-26
+    gates: []
+  - invariant: I-27
+    gates: []
+  - invariant: I-28
+    gates:
+      - gate: crates/ecosystem-engine/scripts/check-patch-rev.ts
+        test: crates/ecosystem-engine/scripts/check-patch-rev.test.ts
+  - invariant: I-29
+    gates: []
+  - invariant: I-30
+    gates: []
+  - invariant: I-31
+    gates: []
+  - invariant: I-32
+    gates: []
+  - invariant: I-33
+    gates: []
+  - invariant: I-34
+    gates: []
+  - invariant: I-36
+    gates: []
+  - invariant: I-37
+    gates: []
+  - invariant: I-38
+    gates: []
+  - invariant: I-39
+    gates: []

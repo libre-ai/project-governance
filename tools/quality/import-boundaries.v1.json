@@ -1,0 +1,5 @@
+{
+  "because": "Read by tools/quality/check-import-boundaries.ts. `products` lists the package names of products: no package of this workspace may import one of them or a sub-path of one, even when it declares it, because a product lives in its own repository and is never a library of another package. `forbidden` maps a package name, as its manifest declares it, to the modules it may not import, exact module and sub-paths, even when declared. Both lists are empty in this repository on purpose: naming product packages and forbidden modules is the owner's decision, not the gate's.",
+  "products": [],
+  "forbidden": {}
+}

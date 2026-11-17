@@ -1,0 +1,34 @@
+name: reusable-shell-lint
+# Fleet gate template, consumed without any parameter as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-shell-lint.yml@<sha>
+#
+# One blocking job: shellcheck at `--severity=error` over every tracked `*.sh`
+# of the checked-out repository, in an image referenced by digest (a tag would
+# let the verdict change with time). The logic and its exit codes live in
+# tools/quality/check-shell-lint.sh, tested by
+# tools/quality/check-shell-lint.test.ts; the structure of this file is locked
+# by tools/quality/reusable-shell-lint.test.ts.
+#
+# The step runs the script of the checked-out tree: a repository that does not
+# carry tools/quality/check-shell-lint.sh gets a red job, never a green one.
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  shell-lint:
+    name: Shell lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: shellcheck at error severity (hard fail)
+        shell: bash
+        env:
+          SHELLCHECK_IMAGE: koalaman/shellcheck@sha256:61862eba1fcf09a484ebcc6feea46f1782532571a34ed51fedf90dd25f925a8d # v0.11.0
+        run: bash tools/quality/check-shell-lint.sh
