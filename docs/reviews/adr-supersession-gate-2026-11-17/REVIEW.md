@@ -1,6 +1,6 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-Verdict: see the candidate-integration pass below
+Verdict: approve-with-minor-reservations (candidate-integration pass `adr-supersession-gate-cir-2`, below)
 
 # Revue du gate `check-adr-supersession` et des marqueurs inverses posés sur les ADR
 
@@ -21,7 +21,7 @@ Les deux premières passes ont porté sur l'index, pas sur un commit : le protoc
 
 Bloquants :
 
-1. `docs/adr/0001-…md:4` — le marqueur « Amendé par : ADR-0035 (décision 11 et conséquence de D16 relative au provisioning) » attribuait à ADR-0001 une clause qu'il ne porte pas : `grep -n "D16" docs/adr/0001-*.md` ne trouvait que le marqueur ; ADR-0035:11 amende « ADR-0001 décision 11, I-07 et la conséquence de D16 », trois objets distincts.
+1. `docs/adr/0001-…md:4` (ligne de l'index revu par cette passe ; le marqueur est en ligne 3 depuis cir-1 M1) — le marqueur « Amendé par : ADR-0035 (décision 11 et conséquence de D16 relative au provisioning) » attribuait à ADR-0001 une clause qu'il ne porte pas : `grep -n "D16" docs/adr/0001-*.md` ne trouvait que le marqueur ; ADR-0035:11 amende « ADR-0001 décision 11, I-07 et la conséquence de D16 », trois objets distincts.
 2. ADR-0030 → ADR-0018 D2 — amendement réel (titre « Amendement d'ADR-0018 D2 ») non vu : le champ aller ne nommait aucune ADR et le gate rangeait ces champs dans un compteur sans échec ; la fixture de la « forme ADR-0030 » ne correspondait pas au vrai ADR-0030.
 
 Non bloquants : libellé parasite (`**Rust** (axum…) … : **renversé**` dans ADR-0063 avalait ADR-0058 et ADR-0032 ; `le **worker** :` dans ADR-0058) ; renvoi détecté sur le seul littéral `voir §` ; libellés `Lève` (ADR-0052) et `Rend caduque` (ADR-0009) non lus ; D3 divergent entre ADR-0020 et ADR-0018 ; « ADR-0039 (topologie) » imprécis ; « §2.2 » ambigu ; nom de liste d'exemptions hors du recensement de `check-data-inventory.ts` ; espace manquante dans `package.json` ; fixture contredisant une exemption ; chiffre d'en-tête décrivant l'état après le diff ; un mutant survivant.
@@ -30,7 +30,7 @@ Non bloquants : libellé parasite (`**Rust** (axum…) … : **renversé**` dans
 
 Toutes les corrections de code de la passe 1 vérifiées, 7 mutants rejoués avec les comptes annoncés. Bloquants :
 
-1. `docs/adr/0041-…md:4` — le marqueur « ADR-0042 (préambule « N'autorise pas », pour le seul domaine Connaissance, §7) » couvrait les quatre interdits du préambule d'ADR-0041:10, quand le champ aller d'ADR-0042:7 n'en amende qu'un : « aucun transfert d'autorité au-delà des transferts tracés ».
+1. `docs/adr/0041-…md:4` (ligne de l'index revu par cette passe ; le marqueur est en ligne 3 depuis cir-1 M1) — le marqueur « ADR-0042 (préambule « N'autorise pas », pour le seul domaine Connaissance, §7) » couvrait les quatre interdits du préambule d'ADR-0041:10, quand le champ aller d'ADR-0042:7 n'en amende qu'un : « aucun transfert d'autorité au-delà des transferts tracés ».
 2. Protocole — revue d'un index non commité (ci-dessus).
 
 Non bloquants : « §7 » sur ADR-0041 et « D1 » d'ADR-0039 cités sans le numéro de leur ADR ; marqueur d'ADR-0018 plus affirmatif que sa source (« passe à » contre « est le candidat qui remplace ») ; trois mutants survivants (déclaration de champ sans comparaison de libellé, `INVERSE_LABEL` sans « par », `isInForce` sans ancre) ; recensement daté de `check-data-inventory.ts` non mis à jour ; commentaire d'en-tête du gate sans `Lève` ni `Rend caduque` ; fixture « a mandate, gone since » trompeuse. Pour information du propriétaire : le diff réécrit le champ aller d'ADR acceptées (0020, 0023, 0030), au-delà de l'ajout de marqueurs, et édite l'en-tête d'ADR-0056, dont ADR-0059 dit « Le texte d'ADR-0056 n'est pas édité ».
@@ -82,6 +82,24 @@ Non bloquants : « §7 » sur ADR-0041 et « D1 » d'ADR-0039 cités sans le num
 - Citations : 20 citations distinctes vers les 15 ADR modifiées, 114 lignes, toutes identiques entre la base et la branche (0 sur 114 sur `a8ab128`).
 - Suite complète : `check:toolchain`, `check:attestation` et 8 tests de `bun test` échouent à l'identique sur la base (Bun local 1.4.4 contre 1.4.0 épinglé ; `mktemp` refusé sous `/var/folders` par le bac à sable ; GraphQL injoignable). `check:pinned-citations` est `unavailable` dans ce bac à sable, sur la base comme sur la branche : `hardenedGitEnvironment` ne transmet pas les variables de proxy au git fils, d'où `repository-unreachable` sur 256 des 297 assertions, alors qu'un `git ls-remote` lancé directement répond ; la CI en est l'instrument. Tous les autres maillons de `bun run check` rendent 0.
 
-## Passe candidate-integration `adr-supersession-gate-cir-2`
+## Passe candidate-integration `adr-supersession-gate-cir-2` — `approve-with-minor-reservations`
 
-Sur le commit qui corrige cir-1 ; consignée dans le commit qui le suit, qui ne touche que ce dossier.
+- **reviewedCommit :** `1b47f615768316d0374b7082316673b669991800` ; **base :** `67ca6d146f709ec3d37c06558398422bbec28dd9` ; modèle `claude-opus-5-5`, autres identifiants non exposés.
+- Ce verdict n'est pas une approbation de promotion par rôle.
+- Aucun blocking defect, aucune required evidence ouverte.
+- Dispositions de cir-1 : M1, m1, m2, m4, n1, n2, n3 et n5 tenus ; m3 tenu et ouvert au propriétaire ; n4 vérifié par le relecteur (page lue, « 41% chase closed dead ends, 57% trigger scope creep »).
+- Mesures du relecteur :
+  - tests du gate : 32 pass ;
+  - gate : 35 assertions sur le commit revu, `failed: 17 of 30` sur l'arbre de la base ;
+  - citations : 21 citations distinctes, 117 lignes, 0 différente (117 sur `a8ab128`) ;
+  - 9 mutants, dont 8 tués ;
+  - `bun run check` maillon par maillon : rouges identiques sur la base (`check:toolchain`, `check:attestation`, 8 tests aux mêmes noms), 36 autres maillons à 0 ;
+  - `check:pinned-citations` `unavailable` des deux côtés.
+- Risques laissés au propriétaire, inchangés : édition d'en-têtes d'ADR acceptées dont ADR-0056 (le relecteur la juge dans le périmètre : précédents sur 0042, 0044, 0049, 0054, 0055, 0060, et aucun invariant d'immuabilité), ADR proposées (« 5 of 44 »), ADR-0002 et D16, K4 sous « Étend ».
+
+| Constat cir-2 | Disposition | Suite |
+| --- | --- | --- |
+| S1 — plancher `Math.max(0, depth - 1)` de `outsideParentheses` non testé, mutant survivant | suggestion, appliquée | Test « a stray closing parenthesis does not let the next clause count as a marker ». Sans le mutant : `33 pass`, `0 fail`. Avec le mutant `depth = depth - 1` : `32 pass`, `1 fail`, sur ce test. Le gate est restauré à l'identique (`cmp`, puis `git diff --exit-code` sur le gate). |
+| S2 — `0001…md:4` et `0041…md:4` cités par les passes préliminaires, lignes déplacées depuis M1 | suggestion, appliquée | Les deux citations précisent qu'elles visent l'index revu par la passe, et que le marqueur est en ligne 3. |
+
+Le commit qui consigne ce verdict ne touche que ce fichier et `tools/quality/check-adr-supersession.test.ts` (un test ajouté) : aucun changement normatif après le verdict (`AGENT-REVIEW-PROTOCOL.md`, « Any normative change after a verdict makes affected approval stale »). Le gate et les ADR sont ceux du commit revu : `git diff 1b47f61 HEAD --stat` le montre.

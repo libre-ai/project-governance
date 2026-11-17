@@ -163,6 +163,14 @@ describe("inverseReferences", () => {
     expect([...inverseReferences(header)]).toEqual(["0067"]);
   });
 
+  test("a stray closing parenthesis does not let the next clause count as a marker", () => {
+    const header = adr(
+      "docs/adr/0064-x.md",
+      "- **Statut :** proposé. **Amendé par :** ADR-0067) x (ADR-0042 §1)",
+    );
+    expect([...inverseReferences(header)]).toEqual(["0067"]);
+  });
+
   test("a mention in prose is not an inverse marker", () => {
     const header = adr(
       "docs/adr/0060-x.md",
