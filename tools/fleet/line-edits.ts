@@ -28,6 +28,10 @@
  *   .rs .js .ts                               ` // M`
  *   anything else, or no extension            refused
  *
+ * The extension is the one of the real file: through a link `l.sh -> f.md`, the
+ * file is Markdown. A marker holding `-->` or `--!>` is refused where it would
+ * be written in an HTML comment.
+ *
  * The whole list is validated against the original content before the first
  * write. An edit that cannot be applied is a refusal printed on stderr as
  * `<path>:<line>: <reason>`, never an omission: one refusal and no file is
@@ -35,11 +39,20 @@
  * in the same directory, then rename, mode kept). The presence or absence of a
  * final newline is kept as found.
  *
+ * Writing is in two phases: every temporary file is prepared first, and a
+ * failure there removes them all and replaces no file. Limit: the renames that
+ * follow are not transactional across files. If one fails after others
+ * succeeded, the tool removes the remaining temporaries, names on stderr the
+ * files rewritten and the files left unchanged, and reports `PARTIAL WRITE` on
+ * stdout: that tree is half edited, and only this case leaves it so.
+ *
  * Exit status: 0 when every edit was applied; 1 when at least one edit was
- * refused (nothing written) or a write failed; 2 on a usage error or a malformed
- * edit list, an empty one included (nothing written).
+ * refused or a temporary file could not be prepared (nothing written), or when
+ * a rename failed (partial write, named as above); 2 on a usage error or a
+ * malformed edit list, an empty one included (nothing written).
  */
 
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
   readFileSync,
@@ -49,7 +62,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { basename, dirname, extname, join, sep } from "node:path";
+import { basename, dirname, extname, join, relative, sep } from "node:path";
 
 import type { Parsed } from "../quality/prd-model";
 
@@ -146,6 +159,13 @@ export function commentFor(path: string, inFence: boolean, marker: string): stri
   return null;
 }
 
+/**
+ * Both end an HTML comment (`--!>` with a parse error): a marker holding one
+ * would leave its tail as visible text. Hash and slash comments end at the end
+ * of the line, which a marker cannot hold.
+ */
+const HTML_COMMENT_CLOSERS: readonly string[] = ["-->", "--!>"];
+
 type FenceState = "outside" | "inside" | "delimiter";
 
 const FENCE = /^\s*(```|~~~)/;
@@ -187,6 +207,13 @@ function changeFor(path: string, text: string, fence: FenceState, edit: LineEdit
       }
       // Also refuses an empty marker: every line contains the empty string.
       if (text.includes(argument)) return refused("the line already carries the marker");
+      if (
+        extname(path) === ".md" &&
+        fence !== "inside" &&
+        HTML_COMMENT_CLOSERS.some((closer) => argument.includes(closer))
+      ) {
+        return refused("the marker would close the HTML comment (--> or --!>)");
+      }
       const comment = commentFor(path, fence === "inside", argument);
       if (comment === null) return refused("mark has no comment form for this file extension");
       return { kind: "set", text: text + comment };
@@ -304,21 +331,112 @@ function locate(rootReal: string, path: string): Located {
   return { ok: true, real, mode: status.mode & 0o7777 };
 }
 
-function writeAtomically(real: string, content: string, mode: number): void {
-  const temporary = join(dirname(real), `.${basename(real)}.${process.pid}.line-edits.tmp`);
+/** One planned rewrite: `path` is the spelling used in messages, `real` the file replaced. */
+export interface PlannedWrite {
+  readonly path: string;
+  readonly real: string;
+  readonly mode: number;
+  readonly content: string;
+}
+
+/** The file-system calls of a write, injectable so a failing rename can be tested. */
+export interface WriteOps {
+  /** Creates `path` exclusively (EEXIST when it exists) and writes `content` to it. */
+  readonly create: (path: string, content: string, mode: number) => void;
+  readonly chmod: (path: string, mode: number) => void;
+  readonly rename: (from: string, to: string) => void;
+  readonly unlink: (path: string) => void;
+}
+
+const NODE_WRITE_OPS: WriteOps = {
+  create: (path, content, mode) => writeFileSync(path, content, { flag: "wx", mode }),
+  chmod: chmodSync,
+  rename: renameSync,
+  unlink: unlinkSync,
+};
+
+export type WriteOutcome =
+  | { readonly ok: true; readonly written: number }
+  /** A temporary file could not be prepared: no file was replaced. */
+  | { readonly ok: false; readonly stage: "stage"; readonly path: string; readonly message: string }
+  /** A rename failed: the files in `replaced` are rewritten, those in `kept` are not. */
+  | {
+      readonly ok: false;
+      readonly stage: "rename";
+      readonly path: string;
+      readonly message: string;
+      readonly replaced: readonly string[];
+      readonly kept: readonly string[];
+    };
+
+/** Random, so the name of a file the tool did not create is never taken for its own. */
+const temporaryFor = (real: string): string =>
+  join(dirname(real), `.${basename(real)}.${randomBytes(8).toString("hex")}.line-edits.tmp`);
+
+const errorCode = (error: unknown): unknown =>
+  typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
+
+const removeQuietly = (ops: WriteOps, path: string): void => {
   try {
-    writeFileSync(temporary, content, { flag: "wx", mode });
-    // The creation mode is filtered by the umask; the original mode is not.
-    chmodSync(temporary, mode);
-    renameSync(temporary, real);
-  } catch (error) {
-    try {
-      unlinkSync(temporary);
-    } catch {
-      // Nothing to remove: the temporary file was never created.
-    }
-    throw error;
+    ops.unlink(path);
+  } catch {
+    // Already gone or never complete: there is nothing left to remove.
   }
+};
+
+/**
+ * Rewrites every planned file in two phases, so a failure while preparing one
+ * file leaves the whole tree as it was: every temporary file is written and
+ * given its mode first, and only then is each one renamed over its file. A
+ * failure in the first phase removes the temporary files already made and
+ * renames nothing. A rename failing after another one succeeded cannot be
+ * undone (renaming several files is not transactional): the outcome names the
+ * files replaced and the files kept, and the remaining temporaries are removed.
+ */
+export function writeAll(
+  writes: readonly PlannedWrite[],
+  ops: WriteOps = NODE_WRITE_OPS,
+): WriteOutcome {
+  const staged: { readonly write: PlannedWrite; readonly temporary: string }[] = [];
+  const abandon = (from: number): void => {
+    for (const { temporary } of staged.slice(from)) removeQuietly(ops, temporary);
+  };
+  for (const write of writes) {
+    const temporary = temporaryFor(write.real);
+    try {
+      ops.create(temporary, write.content, write.mode);
+    } catch (error) {
+      // EEXIST: the file belongs to someone else and stays. Otherwise a partial
+      // file may have been created by this call, and it is ours to remove.
+      if (errorCode(error) !== "EEXIST") removeQuietly(ops, temporary);
+      abandon(0);
+      return { ok: false, stage: "stage", path: write.path, message: (error as Error).message };
+    }
+    staged.push({ write, temporary });
+    try {
+      // The creation mode is filtered by the umask; the original mode is not.
+      ops.chmod(temporary, write.mode);
+    } catch (error) {
+      abandon(0);
+      return { ok: false, stage: "stage", path: write.path, message: (error as Error).message };
+    }
+  }
+  for (const [index, { write, temporary }] of staged.entries()) {
+    try {
+      ops.rename(temporary, write.real);
+    } catch (error) {
+      abandon(index);
+      return {
+        ok: false,
+        stage: "rename",
+        path: write.path,
+        message: (error as Error).message,
+        replaced: staged.slice(0, index).map((entry) => entry.write.path),
+        kept: staged.slice(index).map((entry) => entry.write.path),
+      };
+    }
+  }
+  return { ok: true, written: staged.length };
 }
 
 function main(argv: readonly string[]): number {
@@ -368,7 +486,7 @@ function main(argv: readonly string[]): number {
     }
   }
 
-  const writes: { readonly target: Target; readonly content: string }[] = [];
+  const writes: PlannedWrite[] = [];
   for (const target of targets.values()) {
     const refuseAll = (reason: string): void => {
       for (const edit of target.edits) {
@@ -389,9 +507,20 @@ function main(argv: readonly string[]): number {
       refuseAll("the file is not valid UTF-8");
       continue;
     }
-    const plan = planFileEdits(target.path, original, target.edits);
-    if (!plan.ok) refusals.push(...plan.refusals);
-    else if (plan.content !== original) writes.push({ target, content: plan.content });
+    // Planned under the real file's name: through a link `l.sh -> f.md` the
+    // content is Markdown, and so are its fences and its comment form. Messages
+    // keep the spelling of the edit list.
+    const plan = planFileEdits(relative(rootReal, target.real), original, target.edits);
+    if (!plan.ok) {
+      refusals.push(...plan.refusals.map((refusal) => ({ ...refusal, path: target.path })));
+    } else if (plan.content !== original) {
+      writes.push({
+        path: target.path,
+        real: target.real,
+        mode: target.mode,
+        content: plan.content,
+      });
+    }
   }
 
   if (refusals.length > 0) {
@@ -406,24 +535,30 @@ function main(argv: readonly string[]): number {
     return 1;
   }
 
-  let written = 0;
-  for (const { target, content } of writes) {
-    try {
-      writeAtomically(target.real, content, target.mode);
-      written += 1;
-    } catch (error) {
-      console.error(`${target.path}: cannot write the file: ${(error as Error).message}`);
-      console.log(
-        `line-edits: ${edits.length} edit(s) read, write failed after ${written} of ` +
-          `${writes.length} file(s) written`,
-      );
-      return 1;
-    }
+  const outcome = writeAll(writes);
+  if (outcome.ok) {
+    console.log(
+      `line-edits: ${edits.length} edit(s) read, ${edits.length} applied, ` +
+        `${outcome.written} file(s) written`,
+    );
+    return 0;
   }
+  if (outcome.stage === "stage") {
+    console.error(`${outcome.path}: cannot write the file: ${outcome.message}`);
+    console.log(
+      `line-edits: ${edits.length} edit(s) read, 0 applied, write failed before any rename, ` +
+        "0 file(s) written",
+    );
+    return 1;
+  }
+  console.error(`${outcome.path}: cannot replace the file: ${outcome.message}`);
+  for (const path of outcome.replaced) console.error(`${path}: rewritten before the failure`);
+  for (const path of outcome.kept) console.error(`${path}: left unchanged`);
   console.log(
-    `line-edits: ${edits.length} edit(s) read, ${edits.length} applied, ${written} file(s) written`,
+    `line-edits: ${edits.length} edit(s) read, rename failed, PARTIAL WRITE: ` +
+      `${outcome.replaced.length} of ${writes.length} file(s) written`,
   );
-  return 0;
+  return 1;
 }
 
 if (import.meta.main) {

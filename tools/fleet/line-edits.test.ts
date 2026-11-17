@@ -14,7 +14,15 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { commentFor, type LineEdit, parseEditList, planFileEdits } from "./line-edits";
+import {
+  commentFor,
+  type LineEdit,
+  type PlannedWrite,
+  parseEditList,
+  planFileEdits,
+  type WriteOps,
+  writeAll,
+} from "./line-edits";
 
 const SCRIPT: string = join(import.meta.dir, "line-edits.ts");
 const M = "keep: fixture";
@@ -163,6 +171,16 @@ describe("mark", () => {
     ]);
   });
 
+  test("a marker holding an HTML comment closer is refused outside a fence only", () => {
+    for (const marker of ["-->", "a-->b", "a--!>b"]) {
+      expect(plan("f.md", "x\n", [edit(1, "mark", marker)])).toEqual(["f.md:1"]);
+    }
+    expect(plan("f.md", `${FENCE}\nx\n${FENCE}\n`, [edit(2, "mark", "a-->b")])).toBe(
+      `${FENCE}\nx # a-->b\n${FENCE}\n`,
+    );
+    expect(plan("f.sh", "x\n", [edit(1, "mark", "a-->b")])).toBe("x # a-->b\n");
+  });
+
   test("an empty marker is refused", () => {
     expect(plan("f.sh", "a\n", [edit(1, "mark", "")])).toEqual(["f.sh:1"]);
   });
@@ -264,6 +282,96 @@ describe("planFileEdits", () => {
       "f.md:1",
       "f.md:2",
     ]);
+  });
+});
+
+// --- writing ----------------------------------------------------------------------
+
+describe("writeAll", () => {
+  const writes: readonly PlannedWrite[] = ["a.md", "b.md", "c.md"].map((path) => ({
+    path,
+    real: `/r/${path}`,
+    mode: 0o644,
+    content: "y\n",
+  }));
+
+  /** Records every call; `fail` decides which call throws, and with which code. */
+  function recorder(fail: (call: string, path: string) => string | null): {
+    ops: WriteOps;
+    calls: string[];
+  } {
+    const calls: string[] = [];
+    const step = (call: string, path: string): void => {
+      calls.push(`${call} ${path.replace(/\.[0-9a-f]{16}\./, ".T.")}`);
+      const code = fail(call, path);
+      if (code !== null) throw Object.assign(new Error(code), { code });
+    };
+    return {
+      calls,
+      ops: {
+        create: (path) => step("create", path),
+        chmod: (path) => step("chmod", path),
+        rename: (from, to) => step("rename", `${from} -> ${to}`),
+        unlink: (path) => step("unlink", path),
+      },
+    };
+  }
+
+  test("a temporary that already exists is not removed: it is not the tool's", () => {
+    const { ops, calls } = recorder((call, path) =>
+      call === "create" && path.includes("/.b.md.") ? "EEXIST" : null,
+    );
+    expect(writeAll(writes, ops)).toMatchObject({ ok: false, stage: "stage", path: "b.md" });
+    expect(calls).toEqual([
+      "create /r/.a.md.T.line-edits.tmp",
+      "chmod /r/.a.md.T.line-edits.tmp",
+      "create /r/.b.md.T.line-edits.tmp",
+      "unlink /r/.a.md.T.line-edits.tmp",
+    ]);
+  });
+
+  test("a failed staging removes every temporary made and renames nothing", () => {
+    const { ops, calls } = recorder((call, path) =>
+      call === "chmod" && path.includes("/.c.md.") ? "EPERM" : null,
+    );
+    expect(writeAll(writes, ops)).toMatchObject({ ok: false, stage: "stage", path: "c.md" });
+    expect(calls.filter((call) => call.startsWith("rename"))).toEqual([]);
+    expect(calls.filter((call) => call.startsWith("unlink")).sort()).toEqual([
+      "unlink /r/.a.md.T.line-edits.tmp",
+      "unlink /r/.b.md.T.line-edits.tmp",
+      "unlink /r/.c.md.T.line-edits.tmp",
+    ]);
+  });
+
+  test("a failed rename names the files replaced and kept, and removes the rest", () => {
+    const { ops, calls } = recorder((call, path) =>
+      call === "rename" && path.includes("/.b.md.") ? "EXDEV" : null,
+    );
+    expect(writeAll(writes, ops)).toEqual({
+      ok: false,
+      stage: "rename",
+      path: "b.md",
+      message: "EXDEV",
+      replaced: ["a.md"],
+      kept: ["b.md", "c.md"],
+    });
+    expect(calls.slice(-2)).toEqual([
+      "unlink /r/.b.md.T.line-edits.tmp",
+      "unlink /r/.c.md.T.line-edits.tmp",
+    ]);
+  });
+
+  test("two writes of one file never share a temporary name", () => {
+    const { ops, calls } = recorder(() => null);
+    const names = new Set<string>();
+    const spy: WriteOps = { ...ops, create: (path) => names.add(path) };
+    const one: PlannedWrite = { path: "a.md", real: "/r/a.md", mode: 0o644, content: "y\n" };
+    expect(writeAll([one, one], spy)).toEqual({
+      ok: true,
+      written: 2,
+    });
+    expect(names.size).toBe(2);
+    expect(calls).toHaveLength(4);
   });
 });
 
@@ -401,6 +509,72 @@ describe("bun tools/fleet/line-edits.ts", () => {
     ]);
     expect(result.code).toBe(1);
     expect(result.read("d/f.md")).toBe("a\nb\n");
+  });
+
+  test("a file that cannot be written leaves every other file untouched: exit 1", () => {
+    const base: string = scratch();
+    const root: string = join(base, "tree");
+    mkdirSync(join(root, "d"), { recursive: true });
+    for (const path of ["a.md", "d/b.md"]) {
+      writeFileSync(join(root, path), "x\n");
+      utimesSync(join(root, path), PAST, PAST);
+    }
+    writeFileSync(
+      join(base, "edits.tsv"),
+      `${row("a.md", 1, "mark", M)}\n${row("d/b.md", 1, "mark", M)}\n`,
+    );
+    // No temporary file can be created in d: the second file fails after the first was staged.
+    chmodSync(join(root, "d"), 0o555);
+    try {
+      const result = spawn([root, join(base, "edits.tsv")]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toStartWith("d/b.md: cannot write the file: ");
+      expect(result.stdout).toBe(
+        "line-edits: 2 edit(s) read, 0 applied, write failed before any rename, 0 file(s) written\n",
+      );
+      expect(readFileSync(join(root, "a.md"), "utf8")).toBe("x\n");
+      expect(statSync(join(root, "a.md")).mtimeMs).toBe(PAST.getTime());
+      expect(readFileSync(join(root, "d/b.md"), "utf8")).toBe("x\n");
+      // The temporary file staged for a.md is removed.
+      expect(readdirSync(root).sort()).toEqual(["a.md", "d"]);
+    } finally {
+      chmodSync(join(root, "d"), 0o755);
+    }
+  });
+
+  test("the comment form follows the extension of the real file, not of a link to it", () => {
+    const base: string = scratch();
+    const root: string = join(base, "tree");
+    mkdirSync(root);
+    writeFileSync(join(root, "f.md"), "x\n");
+    symlinkSync("f.md", join(root, "l.sh"));
+    writeFileSync(join(base, "edits.tsv"), `${row("l.sh", 1, "mark", M)}\n`);
+    const result = spawn([root, join(base, "edits.tsv")]);
+    expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(readFileSync(join(root, "f.md"), "utf8")).toBe(`x <!-- ${M} -->\n`);
+  });
+
+  test("a refusal through a link is printed with the spelling of the edit list", () => {
+    const base: string = scratch();
+    const root: string = join(base, "tree");
+    mkdirSync(root);
+    writeFileSync(join(root, "f.txt"), "x\n");
+    symlinkSync("f.txt", join(root, "l.sh"));
+    writeFileSync(join(base, "edits.tsv"), `${row("l.sh", 1, "mark", M)}\n`);
+    const result = spawn([root, join(base, "edits.tsv")]);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toStartWith("l.sh:1: ");
+    expect(readFileSync(join(root, "f.txt"), "utf8")).toBe("x\n");
+  });
+
+  test("a marker that would close the HTML comment is refused: exit 1", () => {
+    for (const marker of ["a --> b", "a --!> b"]) {
+      const result = run({ "f.md": "x\n" }, [row("f.md", 1, "mark", marker)]);
+      expect(result.code).toBe(1);
+      expect(result.stderr).toStartWith("f.md:1: ");
+      expect(result.read("f.md")).toBe("x\n");
+    }
   });
 
   test("content that is not UTF-8: exit 1, bytes unchanged", () => {
