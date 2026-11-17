@@ -259,6 +259,11 @@ export const NOT_GATED: readonly NotGated[] = [
       "the off-code zones register and its review threshold, read by ecosystem/check-off-code-zones.ts; that command is not a step of `bun run check`, so the file delimits no gate today, and making it one (then gating this file) is the owner's decision",
   },
   {
+    path: "ecosystem/open-points.v1.yaml",
+    because:
+      "the governance open points, checked by check-open-points.ts; no gate reads it as an exemption",
+  },
+  {
     path: "ecosystem/portfolio.v1.json",
     because: "the portfolio as published; no gate reads it as an exemption",
   },
