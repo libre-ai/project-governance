@@ -11,8 +11,19 @@
  * every exit path, and nothing is rewritten — a history rewrite is recommended,
  * never performed.
  *
+ * Coverage of `blobs`, printed with every report: every object of the mirror's
+ * store is examined (packed and loose, reachable or not); the path is the one
+ * history gives, and an object no ref reaches is listed as "(unreachable)". A
+ * clone from a local path copies the source's whole object store; a clone over
+ * a transport (file://, https, ssh) receives only what the refs reach, so the
+ * source's unreachable objects are out of sight there. Large file storage
+ * content is never covered, only its pointers: when a `.gitattributes` of
+ * history declares `filter=lfs`, the report says so. A mirror holding no object
+ * at all is exit 2, not an empty green.
+ *
  * `names` reads an inventory of group and project paths, one per line, on
  * standard input, and flags every path having a SEGMENT equal to a tool name.
+ * Segments are separated by slash, hyphen, underscore and dot.
  * The convention is to name what a thing does, not the tool that does it. The
  * inventory comes from the caller on purpose: a tool that listed groups itself
  * would inherit the forge's page size, and an inventory larger than one page is
@@ -24,7 +35,8 @@
  * change. `parseNameRules` validates the shape a future `--rules` file would take.
  *
  * Exit codes: 0 report produced (and, with --strict, no violation), 1 --strict
- * with at least one violation, 2 usage error or unreadable source.
+ * with at least one violation, 2 usage error, unreadable source, or nothing
+ * examined.
  */
 
 import { spawn } from "node:child_process";
@@ -160,7 +172,7 @@ export function auditNames(paths: readonly string[], rules: NameRules): NamesRep
       continue;
     }
     const found = new Set<string>();
-    for (const segment of path.toLowerCase().split(/[/_-]/)) {
+    for (const segment of path.toLowerCase().split(/[/_.-]/)) {
       if (tools.has(segment)) found.add(segment);
     }
     if (found.size === 0) {
@@ -195,6 +207,23 @@ export interface BlobReport {
   recommendations: string[];
 }
 
+/** What the listing saw: the counters sum, examined = reachable + unreachable. */
+export interface HistoryCoverage {
+  examined: number;
+  reachable: number;
+  unreachable: number;
+  blobs: number;
+  /** Versions of a `.gitattributes` in history that declare `filter=lfs`. */
+  lfsAttributes: number;
+}
+
+export interface HistoryReport extends BlobReport {
+  coverage: HistoryCoverage;
+}
+
+/** Path given to an object that no ref reaches: history does not name it. */
+export const UNREACHABLE_PATH = "(unreachable)";
+
 export function parseThreshold(raw: string | undefined): number {
   if (raw === undefined) return DEFAULT_THRESHOLD;
   const value = Number(raw);
@@ -212,13 +241,19 @@ export function analyzeBlobs(entries: readonly BlobEntry[], threshold: number): 
   const shares = new Map<string, SegmentShare>();
   const versions = new Map<string, number>();
   for (const entry of above) {
+    const unreachable = entry.path === UNREACHABLE_PATH;
     const slash = entry.path.indexOf("/");
-    const segment = slash === -1 ? "." : entry.path.slice(0, slash);
+    const segment = unreachable
+      ? UNREACHABLE_PATH
+      : slash === -1
+        ? "."
+        : entry.path.slice(0, slash);
     const share = shares.get(segment) ?? { segment, count: 0, bytes: 0 };
     share.count += 1;
     share.bytes += entry.size;
     shares.set(segment, share);
-    versions.set(entry.path, (versions.get(entry.path) ?? 0) + 1);
+    // Unrelated unreachable objects share the marker, not a path: never versions of one file.
+    if (!unreachable) versions.set(entry.path, (versions.get(entry.path) ?? 0) + 1);
   }
   const bySegment = [...shares.values()]
     .sort((a, b) => b.bytes - a.bytes || a.segment.localeCompare(b.segment))
@@ -250,15 +285,51 @@ export function analyzeBlobs(entries: readonly BlobEntry[], threshold: number): 
   };
 }
 
-/** Output of `cat-file --batch-check` fed with `rev-list --objects`: blobs only. */
-function parseBlobLines(output: string): BlobEntry[] {
-  const entries: BlobEntry[] = [];
+/** Output of `rev-list --objects --all`: every reachable object, with its path when it has one. */
+function parseReachable(output: string): Map<string, string> {
+  const reachable = new Map<string, string>();
   for (const line of output.split("\n")) {
-    const match = /^blob (\d+) ([0-9a-f]{40,64}) (.+)$/.exec(line);
-    if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) continue;
-    entries.push({ sha: match[2], size: Number(match[1]), path: match[3] });
+    const match = /^([0-9a-f]{40,64})(?: (.*))?$/.exec(line);
+    if (match?.[1] === undefined) continue;
+    if (!reachable.has(match[1])) reachable.set(match[1], match[2] ?? "");
   }
-  return entries;
+  return reachable;
+}
+
+/** Output of `cat-file --batch-all-objects --batch-check`: every object of the store. */
+function parseStoreLines(output: string): { type: string; size: number; sha: string }[] {
+  const objects: { type: string; size: number; sha: string }[] = [];
+  for (const line of output.split("\n")) {
+    if (line === "") continue;
+    const match = /^([a-z]+) (\d+) ([0-9a-f]{40,64})$/.exec(line);
+    if (match?.[1] === undefined || match[2] === undefined || match[3] === undefined) {
+      // An unparsed line would be an object neither counted nor examined.
+      throw new Error("cat-file returned a line that is not an object");
+    }
+    objects.push({ type: match[1], size: Number(match[2]), sha: match[3] });
+  }
+  return objects;
+}
+
+/** An attribute line (not a comment) that sets the lfs filter on a pattern. */
+const LFS_FILTER = /^[^#\n]*\sfilter=lfs(\s|$)/m;
+
+/** Output of `cat-file --batch`: counts the contents that declare `filter=lfs`. */
+function countLfsDeclarations(output: Buffer): number {
+  let count = 0;
+  let offset = 0;
+  while (offset < output.length) {
+    const eol = output.indexOf(0x0a, offset);
+    if (eol === -1) break;
+    const header = output.subarray(offset, eol).toString("utf8");
+    const match = /^[0-9a-f]{40,64} [a-z]+ (\d+)$/.exec(header);
+    if (match?.[1] === undefined) throw new Error("cat-file returned an unexpected header");
+    const size = Number(match[1]);
+    const content = output.subarray(eol + 1, eol + 1 + size).toString("utf8");
+    if (LFS_FILTER.test(content)) count += 1;
+    offset = eol + 1 + size + 1;
+  }
+  return count;
 }
 
 // Same hardening as the citation resolver (no user or system config, no prompt,
@@ -286,6 +357,11 @@ export function gitEnvironment(): Record<string, string> {
  * code only: git's stderr can echo a remote URL, and a URL can hold credentials.
  */
 async function git(args: string[], input?: string): Promise<string> {
+  return (await gitBytes(args, input)).toString("utf8");
+}
+
+/** Same as `git`, raw bytes: `cat-file --batch` sizes count bytes, not characters. */
+async function gitBytes(args: string[], input?: string): Promise<Buffer> {
   const hardening = GIT_FLAGS.flatMap((flag) => ["-c", flag]);
   const child = spawn("git", [...hardening, ...args], {
     env: gitEnvironment(),
@@ -303,14 +379,14 @@ async function git(args: string[], input?: string): Promise<string> {
     child.on("close", resolve);
   });
   if (code !== 0) throw new Error(`git ${args[0] ?? ""} failed (exit ${code ?? "signal"})`);
-  return Buffer.concat(chunks).toString("utf8");
+  return Buffer.concat(chunks);
 }
 
 export async function listHistoryBlobs(
   repository: string,
   threshold: number,
   workParent: string = tmpdir(),
-): Promise<BlobReport> {
+): Promise<HistoryReport> {
   // A leading dash would be read by git as an option, a control character has no
   // place in a location; neither is a repository.
   // biome-ignore lint/suspicious/noControlCharactersInRegex: rejecting control characters is the point
@@ -321,13 +397,49 @@ export async function listHistoryBlobs(
   try {
     const mirror = join(dir, "mirror.git");
     await git(["clone", "--mirror", "--quiet", "--", repository, mirror]);
-    const objects = await git(["-C", mirror, "rev-list", "--objects", "--all"]);
-    const checked = await git(
-      ["-C", mirror, "cat-file", "--batch-check=%(objecttype) %(objectsize) %(objectname) %(rest)"],
-      // The sha leads each line; `%(rest)` hands back the path that follows it.
-      objects,
+    // Paths come from history; the objects themselves come from the whole store,
+    // so that a packed or loose object no ref reaches is examined too.
+    const reachable = parseReachable(await git(["-C", mirror, "rev-list", "--objects", "--all"]));
+    const store = parseStoreLines(
+      await git([
+        "-C",
+        mirror,
+        "cat-file",
+        "--batch-all-objects",
+        "--batch-check=%(objecttype) %(objectsize) %(objectname)",
+      ]),
     );
-    return analyzeBlobs(parseBlobLines(checked), threshold);
+    const entries: BlobEntry[] = [];
+    const attributes = new Set<string>();
+    let unreachable = 0;
+    for (const object of store) {
+      const path = reachable.get(object.sha);
+      if (path === undefined) unreachable += 1;
+      if (object.type !== "blob") continue;
+      entries.push({ sha: object.sha, size: object.size, path: path ?? UNREACHABLE_PATH });
+      if (path !== undefined && (path === ".gitattributes" || path.endsWith("/.gitattributes"))) {
+        attributes.add(object.sha);
+      }
+    }
+    const lfsAttributes =
+      attributes.size === 0
+        ? 0
+        : countLfsDeclarations(
+            await gitBytes(
+              ["-C", mirror, "cat-file", "--batch"],
+              `${[...attributes].join("\n")}\n`,
+            ),
+          );
+    return {
+      ...analyzeBlobs(entries, threshold),
+      coverage: {
+        examined: store.length,
+        reachable: store.length - unreachable,
+        unreachable,
+        blobs: entries.length,
+        lfsAttributes,
+      },
+    };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -344,10 +456,14 @@ export interface RunResult {
 const USAGE = "usage: blobs <repository> [threshold-bytes] | names [--json] [--strict]";
 const INVENTORY_PATH = /^[A-Za-z0-9._/-]+$/;
 
-/** A path from a repository is data: no control character may reach a terminal. */
-function printable(text: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: neutralising control characters is the point
-  return text.replace(/[\u0000-\u001f\u007f]/g, "?");
+/**
+ * A path from a repository is data: no control character may reach a terminal.
+ * Replaced: C0, DEL and C1 controls (Cc, U+009B is a terminal's CSI), format
+ * characters (Cf: bidi embeddings, overrides and isolates, direction marks,
+ * zero-width characters), and the line and paragraph separators (Zl, Zp).
+ */
+export function printable(text: string): string {
+  return text.replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, "?");
 }
 
 function usageError(message: string): RunResult {
@@ -394,14 +510,31 @@ async function runNames(args: string[], readStdin: () => Promise<string>): Promi
 async function runBlobs(args: string[]): Promise<RunResult> {
   const [repository, rawThreshold, ...extra] = args;
   if (repository === undefined || extra.length > 0) return usageError("blobs takes a repository");
-  let report: BlobReport;
+  let report: HistoryReport;
   try {
     report = await listHistoryBlobs(repository, parseThreshold(rawThreshold));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return { code: 2, out: "", err: `${printable(reason)}\n` };
   }
+  const { coverage } = report;
+  const examined =
+    `objects examined=${coverage.examined} reachable=${coverage.reachable} ` +
+    `unreachable=${coverage.unreachable} blobs=${coverage.blobs}`;
+  if (coverage.examined === 0) {
+    // An empty store and a clean one would otherwise print the same report.
+    return {
+      code: 2,
+      out: "",
+      err: `${examined}: the clone holds no object, nothing was examined\n`,
+    };
+  }
   const lines = [
+    examined,
+    "coverage: a local path copies the whole object store; a transport (file://, https, ssh) sends only what the refs reach",
+    coverage.lfsAttributes > 0
+      ? `lfs: filter=lfs declared in ${coverage.lfsAttributes} .gitattributes version(s): large file storage content is not covered, only its pointers`
+      : "lfs: no filter=lfs in the .gitattributes of history",
     `threshold=${report.threshold} bytes, objects above=${report.total}, listed=${report.top.length}`,
     ...report.top.map((b) => `${b.size}\t${b.sha.slice(0, 12)}\t${printable(b.path)}`),
     "by first path segment:",
