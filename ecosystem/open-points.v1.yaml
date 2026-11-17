@@ -1,0 +1,27 @@
+# Governance open points: what governance has left open, with an owner and a
+# closure condition a machine evaluates. Checked by ecosystem/check-open-points.ts
+# (`bun run check:open-points`). Decisions are not copied here: `clos_par`
+# cites a `Dnn` of docs/decisions/DECISION-REGISTER.md or an `ADR-NNNN` of
+# docs/adr/, and `source` names the tracked file that states the point.
+# « Overdue » is never written: an `ouvert` point whose condition is due is a
+# violation, treated by closing the point or by renewing its condition.
+schema_version: libre-ai.open-points.v1
+points:
+  - id: point.register-adr-0010-0018-entries
+    question: >-
+      ADR-0010 and ADR-0018 are accepted but have no D-entry in the decision
+      register; does each get one, through its own ADR and explicit human approval?
+    type: decision
+    proprietaire: proprietaire
+    condition: until=2027-02-17
+    etat: ouvert
+    source: docs/decisions/DECISION-REGISTER.md
+  - id: point.adr-0042-amended-by-header
+    question: >-
+      ADR-0042 carries no « Amended by » line although ADR-0052, 0054, 0055 and
+      0057 amend it; does it get one, so that its §8 no longer reads as in force?
+    type: decision
+    proprietaire: proprietaire
+    condition: until=2027-02-17
+    etat: ouvert
+    source: docs/reviews/adr-proposed-triage-2026-11-09/REVIEW.md
