@@ -82,6 +82,46 @@ describe("tokenize", () => {
       { token: "\u{661}", column: 5 },
     ]);
   });
+
+  // Each variant below normalises the WHOLE line, as the brief fixes it, not
+  // piece by piece. Every word is invented.
+
+  test("lower case sees the whole word: a final capital sigma becomes a final sigma", () => {
+    // ZORBALOS in Greek capitals lower-cases to a word ending in U+03C2.
+    expect(tokenize("x \u{396}\u{39F}\u{3A1}\u{392}\u{391}\u{39B}\u{39F}\u{3A3}.")).toEqual([
+      { token: "x", column: 1 },
+      { token: "\u{3B6}\u{3BF}\u{3C1}\u{3B2}\u{3B1}\u{3BB}\u{3BF}\u{3C2}", column: 3 },
+    ]);
+  });
+
+  test("a combining mark is a token character: a dotted capital I does not split", () => {
+    // U+0130 lower-cases to i + U+0307 COMBINING DOT ABOVE.
+    expect(tokenize("\u{130}ZORBLAX quintel")).toEqual([
+      { token: "i\u{307}zorblax", column: 1 },
+      { token: "quintel", column: 10 },
+    ]);
+  });
+
+  test("conjoining Hangul jamo compose into syllables, columns stay in the original line", () => {
+    const syllables = "\u{BDC1}\u{CFC4}"; // an invented two-syllable word
+    const jamo = syllables.normalize("NFD");
+    expect([...jamo].length).toBe(5);
+    expect(tokenize(`${jamo} zz`)).toEqual([
+      { token: syllables, column: 1 },
+      { token: "zz", column: 7 },
+    ]);
+  });
+
+  test("default-ignorable characters are removed before the split", () => {
+    // U+200B ZERO WIDTH SPACE, U+200D ZERO WIDTH JOINER, U+00AD SOFT HYPHEN.
+    for (const ignorable of ["\u{200B}", "\u{200D}", "\u{AD}"]) {
+      expect(tokenize(`a zorb${ignorable}laxquintel b`)).toEqual([
+        { token: "a", column: 1 },
+        { token: "zorblaxquintel", column: 3 },
+        { token: "b", column: 19 },
+      ]);
+    }
+  });
 });
 
 describe("scanText", () => {
@@ -143,6 +183,44 @@ describe("scanText", () => {
   test("an identifier glued inside a longer token is not seen (stated limit)", () => {
     const data = derivedData("person", "zzfixturealpha");
     expect(scanText("x.txt", "prezzfixturealphapost", data).findings).toEqual([]);
+  });
+
+  test("derivation and scan agree across case, composition and invisible characters", () => {
+    const cases: [string, string, string, number][] = [
+      // [why, derived from, written in the file, column]
+      [
+        "final sigma",
+        "\u{396}\u{39F}\u{3A1}\u{392}\u{391}\u{39B}\u{39F}\u{3A3}",
+        "\u{3B6}\u{3BF}\u{3C1}\u{3B2}\u{3B1}\u{3BB}\u{3BF}\u{3C2}",
+        5,
+      ],
+      ["dotted capital I", "\u{130}ZORBLAXQUINTEL", "i\u{307}zorblaxquintel", 5],
+      [
+        "Hangul jamo",
+        "\u{BDC1}\u{CFC4}\u{D0A4}\u{B8E8}",
+        "\u{BDC1}\u{CFC4}\u{D0A4}\u{B8E8}".normalize("NFD"),
+        5,
+      ],
+      ["zero width space", "zorblaxquintel", "zorb\u{200B}laxquintel", 5],
+      ["zero width joiner", "zorblaxquintel", "zorblax\u{200D}quintel", 5],
+      ["soft hyphen", "zorblaxquintel", "zorbla\u{AD}xquintel", 5],
+      ["ignorable in the list", "zorb\u{200B}laxquintel", "zorblaxquintel", 5],
+    ];
+    for (const [why, listed, written, column] of cases) {
+      const data = derivedData("person", listed);
+      expect({ why, findings: scanText("x.txt", `see ${written}.`, data).findings }).toEqual({
+        why,
+        findings: [{ path: "x.txt", line: 1, column, class: "person" }],
+      });
+    }
+  });
+
+  test("confusables, diacritics and file paths are not folded (stated limits)", () => {
+    const data = derivedData("person", "zorblaxquintel");
+    // U+043E CYRILLIC SMALL LETTER O in place of the Latin o.
+    expect(scanText("x.txt", "z\u{43E}rblaxquintel", data).findings).toEqual([]);
+    // U+00F6 o with diaeresis.
+    expect(scanText("x.txt", "z\u{F6}rblaxquintel", data).findings).toEqual([]);
   });
 });
 
