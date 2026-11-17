@@ -92,6 +92,7 @@
     "check:rust": "bun run check:bun:runtime && bun run check:dependency-policy && bun run check:rust:fmt && bun run check:rust:clippy && bun run check:rust:test",
     "check:projection:digest": "bun run check:bun:runtime && bun ecosystem/check-projection-digest.ts",
     "check:resolved-refs": "bun run check:bun:runtime && bun tools/quality/check-resolved-refs.ts",
+    "check:volatile-values": "bun run check:bun:runtime && bun tools/quality/check-volatile-values.ts",
     "check:consumable": "bun run check:bun:runtime && bun tools/quality/check-consumable-manifest.ts"
   },
   "repository": {
