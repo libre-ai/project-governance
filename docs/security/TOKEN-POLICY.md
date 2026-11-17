@@ -28,9 +28,12 @@ is legitimate only when it is needed, narrow, short-lived and written down.
 `tools/security/token-policy.test.ts` checks the inventory below against the
 workflows of the same tree, on every `bun test`: a name a workflow references
 and the inventory lacks, a row no workflow consumes, a name two workflows
-consume, a workflow that passes `secrets: inherit`, a maximum lifetime above
-90 days, a cell that carries a credential-shaped value, and a section that is
-missing or out of order all fail. Its verdict is a function of the tracked
+consume, a job that passes `secrets: inherit` (in any YAML spelling), a read
+of the secrets context that names no secret (`toJSON(secrets)`, a computed
+key), the job token spelled `secrets.GITHUB_TOKEN` instead of `github.token`,
+a maximum lifetime above 90 days, a cell that carries a credential-shaped
+value, and a section that is missing or out of order all fail. Names are read
+in both spellings, `secrets.NAME` and `secrets['NAME']`. Its verdict is a function of the tracked
 files: it reads neither the clock nor the network.
 
 ## Order of preference
