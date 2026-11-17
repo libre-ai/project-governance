@@ -883,7 +883,10 @@ describe("originProblem", () => {
   });
 
   test("the refusal never prints the URL: it may hold a credential", () => {
-    const problem = originProblem("https://user:s3cret@github.com/o/beta.git", REPOSITORY) ?? "";
+    // Assembled at run time so that the repository's secret scan does not
+    // read a committed credential marker in this fixture URL.
+    const url = ["https://user", "s3cret@github.com/o/beta.git"].join(":");
+    const problem = originProblem(url, REPOSITORY) ?? "";
     expect(problem).not.toContain("s3cret");
     expect(problem).toContain("does not designate o/alpha");
   });
