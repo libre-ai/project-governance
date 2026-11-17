@@ -46,9 +46,15 @@
  * PROOF, per repository (code 1 when it fails, nothing written):
  *   1. the edits run through the line editor on a throwaway clone of the
  *      measured sha; the patch is that clone's diff;
- *   2. the lines added and removed (git numstat, never the default diff format)
- *      equal the prediction: mark and replace +1/-1, delete -1, insert +1 per
- *      line, i.e. one plus one per literal `\n` (not checked for `manual`);
+ *   2. the patch touches only files that hold a finding or a declared
+ *      companion (`git apply --numstat -z`), renames and copies nothing, and
+ *      involves no mode 120000 (symbolic link) or 160000 (submodule)
+ *      (`git apply --summary`): this holds for `manual` too, whose lines are
+ *      otherwise not predicted (a manual patch may change any line of those
+ *      files); then the lines added and removed (git numstat, never the
+ *      default diff format) equal the prediction: mark and replace +1/-1,
+ *      delete -1, insert +1 per line, i.e. one plus one per literal `\n` (not
+ *      checked for `manual`);
  *   3. on a second fresh clone of the sha, the detector first reproduces the
  *      measured proof line for line (else the copy is not the measured tree:
  *      code 3), then `git apply --check` and `git apply` (the tool the
@@ -56,7 +62,8 @@
  *   4. on that patched copy, committed so it reads as a clean HEAD, the
  *      detector returns exactly the kept findings: same number AND same paths;
  *   5. the repository's own verification script, when present, exits 0 (its
- *      output is relayed otherwise).
+ *      output is relayed otherwise; a script that cannot be started, not
+ *      executable for instance, is code 3, not a failed proof).
  *
  * STALE OR UNREADABLE INPUT (code 3): a ticket matched by zero or two
  * detectors, a detector of `parc` scope (a kit is per repository), a state
@@ -68,11 +75,16 @@
  *
  * WHAT IS WRITTEN. Only `<kit-root>/<ticket>/`: `manifest.tsv` (MANIFEST_COLUMNS,
  * one line per repository) and `<owner>/<name>.patch`, staged beside the
- * target and renamed in. Throwaway clones live under the system temporary
- * directory and are removed. Nothing is written to a measured worktree (a
- * clone only reads it) and nothing to the forge: no push, no `gh`, no network
- * (the application with its pull request is lot L070). A Python detector runs
- * in an isolated interpreter (`python3 -I`).
+ * target and renamed in (the target is created exclusively first: a directory
+ * that appeared meanwhile is never replaced). Throwaway clones live under the
+ * system temporary directory and are removed. Nothing is written to a measured
+ * worktree (a clone only reads it) and nothing to the forge: no push, no
+ * `gh`, no network (the application with its pull request is lot L070). Git
+ * and the line editor receive PATH, HOME, TMPDIR, LANG and LC_ALL only (never
+ * an inherited GIT_* variable: a GIT_DIR or GIT_INDEX_FILE would aim the
+ * copies' commands at another repository), plus GIT_TERMINAL_PROMPT=0; the
+ * copies' configuration is passed by GIT_CONFIG_COUNT, never written to a
+ * .git/config. A Python detector runs in an isolated interpreter (`python3 -I`).
  *
  * COUNTERS. Success prints `findings = edited + kept + manual` and the lines
  * added and removed; a sum that does not hold is an error.
@@ -83,7 +95,7 @@
  * inconsistent.
  */
 
-import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
 import {
@@ -99,6 +111,7 @@ import {
   type FleetState,
   groupProcessRunner,
   localFleetReader,
+  PASSED_VARIABLES,
   type ProcessRunner,
   proofPath,
   readState,
@@ -446,21 +459,71 @@ export function predictLines(edits: readonly LineEdit[]): {
   return { added, removed };
 }
 
-/** Sums of `git apply --numstat`; null for a binary entry, which no line edit yields. */
-export function numstatTotals(
-  text: string,
-): { readonly added: number; readonly removed: number } | null {
+export interface PatchStat {
+  readonly added: number;
+  readonly removed: number;
+  /** One path per file entry, unquoted (the new name, or the old one for a deletion). */
+  readonly paths: readonly string[];
+}
+
+const NUMSTAT_RECORD = /^([0-9]+)\t([0-9]+)\t([^\0]+)$/;
+
+/**
+ * Sums and paths of `git apply --numstat -z` (one NUL-terminated record per
+ * file); null for a binary entry, which no line edit yields, or a record of
+ * another shape.
+ */
+export function numstatTotals(text: string): PatchStat | null {
   let added = 0;
   let removed = 0;
-  for (const line of text.split("\n")) {
-    if (line === "") continue;
-    const [plus = "", minus = ""] = line.split("\t");
-    if (!LINE_NUMBER.test(plus) && plus !== "0") return null;
-    if (!LINE_NUMBER.test(minus) && minus !== "0") return null;
+  const paths: string[] = [];
+  const records = text.split("\0");
+  if (records.at(-1) === "") records.pop();
+  for (const record of records) {
+    const match = NUMSTAT_RECORD.exec(record);
+    const [, plus, minus, path] = match ?? [];
+    if (plus === undefined || minus === undefined || path === undefined) return null;
     added += Number(plus);
     removed += Number(minus);
+    paths.push(path);
   }
-  return { added, removed };
+  return { added, removed, paths };
+}
+
+/** Modes a patch may never involve: a symbolic link and a submodule (gitlink). */
+const REFUSED_MODES = new Set(["120000", "160000"]);
+
+/**
+ * What `git apply --summary` shows that a kit refuses: a rename or a copy
+ * (numstat names only the destination), a mode 120000 or 160000 created,
+ * deleted or changed. One message per refused line.
+ */
+export function summaryProblems(summary: string): string[] {
+  const problems: string[] = [];
+  for (const raw of summary.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    if (/^(rename|copy) /.test(line)) {
+      problems.push(`the patch renames or copies a file: ${printable(line)}`);
+      continue;
+    }
+    const modes =
+      /^(?:create|delete) mode ([0-7]+) /.exec(line)?.slice(1) ??
+      /^mode change ([0-7]+) => ([0-7]+) /.exec(line)?.slice(1) ??
+      [];
+    const refused = modes.find((mode) => REFUSED_MODES.has(mode));
+    if (refused !== undefined) {
+      problems.push(
+        `the patch involves mode ${refused} (symbolic link or submodule): ${printable(line)}`,
+      );
+    }
+  }
+  return problems;
+}
+
+/** The paths of a patch outside `allowed`, sorted, each once. */
+export function pathsOutside(paths: readonly string[], allowed: ReadonlySet<string>): string[] {
+  return [...new Set(paths.filter((path) => !allowed.has(path)))].sort();
 }
 
 /** Why the residue is not exactly the kept findings (same count AND same paths), or null. */
@@ -562,6 +625,8 @@ type Ran =
   | { readonly ok: true; readonly stdout: string; readonly stderr: string }
   | {
       readonly ok: false;
+      /** False when the program could not be started at all (not executable, absent). */
+      readonly launched: boolean;
       readonly reason: string;
       readonly stdout: string;
       readonly stderr: string;
@@ -579,6 +644,7 @@ async function runCommand(
     if (result.failure !== null) {
       return {
         ok: false,
+        launched: true,
         reason: result.failure,
         stdout,
         stderr: result.stderr,
@@ -587,12 +653,51 @@ async function runCommand(
     if (result.exitCode !== 0) {
       const reason =
         result.signal !== null ? `killed by ${result.signal}` : `exit ${result.exitCode}`;
-      return { ok: false, reason, stdout, stderr: result.stderr };
+      return { ok: false, launched: true, reason, stdout, stderr: result.stderr };
     }
     return { ok: true, stdout, stderr: result.stderr };
   } catch (error) {
-    return { ok: false, reason: errorText(error), stdout: "", stderr: "" };
+    // The runner rejects only when the program cannot be started.
+    return { ok: false, launched: false, reason: errorText(error), stdout: "", stderr: "" };
   }
+}
+
+/** Configuration of every git call of the kit, passed as command-line configuration. */
+function copyConfiguration(hooks: string): readonly (readonly [string, string])[] {
+  return [
+    // A global hooks path must not run in a throwaway copy.
+    ["core.hooksPath", hooks],
+    ["user.name", "remediation-kit"],
+    ["user.email", "remediation-kit@localhost"],
+    ["commit.gpgsign", "false"],
+  ];
+}
+
+/**
+ * The environment of git and of the line editor: the variables a detector
+ * receives (PASSED_VARIABLES of `fleet-state.ts`), never a GIT_* variable of
+ * the caller (a GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or GIT_CONFIG_PARAMETERS
+ * would aim the copies' commands at another repository or configure them),
+ * no prompt, and the copies' configuration by GIT_CONFIG_COUNT, so that no
+ * `git config` writes a .git/config anywhere.
+ */
+export function toolEnvironment(
+  environment: Readonly<Record<string, string | undefined>>,
+  hooks: string,
+): Record<string, string> {
+  const built: Record<string, string> = {};
+  for (const name of PASSED_VARIABLES) {
+    const value = environment[name];
+    if (value !== undefined) built[name] = value;
+  }
+  built.GIT_TERMINAL_PROMPT = "0";
+  const configuration = copyConfiguration(hooks);
+  built.GIT_CONFIG_COUNT = String(configuration.length);
+  for (const [index, [key, value]] of configuration.entries()) {
+    built[`GIT_CONFIG_KEY_${index}`] = key;
+    built[`GIT_CONFIG_VALUE_${index}`] = value;
+  }
+  return built;
 }
 
 function errorText(error: unknown): string {
@@ -664,6 +769,8 @@ interface Context {
   readonly worktrees: string;
   readonly snapshot: string;
   readonly environment: Readonly<Record<string, string>>;
+  /** For git and the line editor: `toolEnvironment`, never the caller's environment. */
+  readonly toolEnvironment: Readonly<Record<string, string>>;
   readonly spawn: ProcessRunner;
   readonly scratch: string;
 }
@@ -799,9 +906,7 @@ async function freshCopy(
 ): Promise<{ ok: true; path: string } | { ok: false; reason: string }> {
   const path = join(root, repository);
   await mkdir(join(root, repository.split("/")[0] ?? ""), { recursive: true });
-  const hooks = join(context.scratch, "no-hooks");
-  await mkdir(hooks, { recursive: true });
-  const env = { ...context.environment, GIT_TERMINAL_PROMPT: "0" };
+  const env = context.toolEnvironment;
   const steps: readonly (readonly string[])[] = [
     [
       "git",
@@ -812,11 +917,6 @@ async function freshCopy(
       join(context.worktrees, repository),
       path,
     ],
-    // Set before the checkout: a global hooks path must not run in a throwaway copy.
-    ["git", "-C", path, "config", "core.hooksPath", hooks],
-    ["git", "-C", path, "config", "user.name", "remediation-kit"],
-    ["git", "-C", path, "config", "user.email", "remediation-kit@localhost"],
-    ["git", "-C", path, "config", "commit.gpgsign", "false"],
     ["git", "-C", path, "checkout", "--quiet", "--detach", sha],
   ];
   for (const argv of steps) {
@@ -841,7 +941,7 @@ async function proveRepository(
   index: number,
 ): Promise<{ ok: true; proven: Proven } | { ok: false; failure: Failure }> {
   const { repository } = target;
-  const env = { ...context.environment, GIT_TERMINAL_PROMPT: "0" };
+  const env = context.toolEnvironment;
   const git = (cwd: string, ...args: string[]) =>
     runCommand(context.spawn, ["git", "-C", cwd, ...args], cwd, env);
   const own = join(context.scratch, String(index));
@@ -920,10 +1020,10 @@ async function proveRepository(
   await mkdir(own, { recursive: true });
   await writeFile(patchFile, patch);
 
-  // 2. Lines added and removed, by numstat, against the prediction.
+  // 2. The files touched, the shape, then the lines added and removed.
   const numstat = await runCommand(
     context.spawn,
-    ["git", "apply", "--numstat", patchFile],
+    ["git", "apply", "--numstat", "-z", patchFile],
     own,
     env,
   );
@@ -932,6 +1032,36 @@ async function proveRepository(
     return {
       ok: false,
       failure: fail(EXIT.proof, `${repository}: the patch has no readable numstat`),
+    };
+  }
+  // A manual patch is not predicted line by line: what it may touch is bounded here.
+  const allowed = new Set([
+    ...target.findings.map((finding) => finding.path),
+    ...plan.edits.map((edit) => edit.path),
+  ]);
+  const outside = pathsOutside(totals.paths, allowed);
+  const summary = await runCommand(
+    context.spawn,
+    ["git", "apply", "--summary", patchFile],
+    own,
+    env,
+  );
+  if (!summary.ok) {
+    return {
+      ok: false,
+      failure: fail(EXIT.proof, `${repository}: the patch has no readable summary`),
+    };
+  }
+  const shape = [
+    ...outside.map(
+      (path) => `the patch touches a file without a finding or a companion: ${printable(path)}`,
+    ),
+    ...summaryProblems(summary.stdout),
+  ];
+  if (shape.length > 0) {
+    return {
+      ok: false,
+      failure: fail(EXIT.proof, ...shape.map((problem) => `${repository}: ${problem}`)),
     };
   }
   if (plan.manual === 0) {
@@ -1050,7 +1180,7 @@ async function proveRepository(
   }
   if (declared) {
     const verifyEnv: Record<string, string> = {};
-    for (const name of ["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL"]) {
+    for (const name of PASSED_VARIABLES) {
       const value = context.environment[name];
       if (value !== undefined) verifyEnv[name] = value;
     }
@@ -1059,6 +1189,15 @@ async function proveRepository(
       FLEET_REPOSITORY: repository,
       FLEET_WORKTREE: copy.path,
     });
+    if (!verified.ok && !verified.launched) {
+      return {
+        ok: false,
+        failure: fail(
+          EXIT.input,
+          `${repository}: verification could not be started: ${printable(verified.reason)}`,
+        ),
+      };
+    }
     if (!verified.ok) {
       const output = `${verified.stdout}\n${verified.stderr}`
         .split("\n")
@@ -1088,7 +1227,12 @@ async function proveRepository(
   };
 }
 
-/** Writes the kit in a staging directory beside its target, then renames it in. */
+/**
+ * Writes the kit in a staging directory beside its target, creates the target
+ * exclusively (a directory that appeared since the check fails here, with no
+ * window between a test and the rename), then renames the staging over that
+ * empty directory it owns.
+ */
 async function writeKit(
   kitRoot: string,
   ticket: string,
@@ -1097,6 +1241,7 @@ async function writeKit(
 ): Promise<void> {
   await mkdir(kitRoot, { recursive: true });
   const staging = await mkdtemp(join(kitRoot, `.${ticket}.kit-`));
+  const target = join(kitRoot, ticket);
   let published = false;
   try {
     await writeFile(join(staging, "manifest.tsv"), manifest, { flag: "wx" });
@@ -1105,8 +1250,14 @@ async function writeKit(
       await mkdir(join(file, ".."), { recursive: true });
       await writeFile(file, patch.content, { flag: "wx" });
     }
-    if ((await readdir(kitRoot)).includes(ticket)) throw new Error(`${ticket} appeared meanwhile`);
-    await rename(staging, join(kitRoot, ticket));
+    await mkdir(target);
+    try {
+      await rename(staging, target);
+    } catch (error) {
+      // Only the empty directory created above: rmdir never removes content.
+      await rmdir(target).catch(() => undefined);
+      throw error;
+    }
     published = true;
   } finally {
     if (!published) await rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -1229,6 +1380,8 @@ export async function runKit(
   const scratch = await realpath(await mkdtemp(join(tmpdir(), "remediation-kit-")));
   try {
     const worktrees = await realpath(dirs.worktrees).catch(() => dirs.worktrees);
+    const hooks = join(scratch, "no-hooks");
+    await mkdir(hooks);
     const context: Context = {
       ticket,
       detector,
@@ -1236,6 +1389,7 @@ export async function runKit(
       worktrees,
       snapshot: dirs.snapshot,
       environment,
+      toolEnvironment: toolEnvironment(environment, hooks),
       spawn: isolatingRunner(spawn),
       scratch,
     };

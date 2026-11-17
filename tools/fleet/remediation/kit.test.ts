@@ -28,6 +28,8 @@ import {
   replayCommand,
   residueProblem,
   runKit,
+  summaryProblems,
+  toolEnvironment,
 } from "./kit";
 
 /**
@@ -296,6 +298,42 @@ describe("a complete kit", () => {
     );
   });
 
+  test("an inherited GIT_* environment never reaches the measured worktree: config and index untouched", async () => {
+    const b = await bench();
+    b.decisions([fix("*")]);
+    const gitDir = join(b.repo, ".git");
+    const config = readFileSync(join(gitDir, "config"));
+    const index = readFileSync(join(gitDir, "index"));
+    const outcome = await runKit([TICKET, LABEL], {
+      environment: {
+        ...b.env,
+        GIT_DIR: gitDir,
+        GIT_WORK_TREE: b.repo,
+        GIT_INDEX_FILE: join(gitDir, "index"),
+        GIT_CONFIG_PARAMETERS: `'core.hooksPath'='${b.root}'`,
+      },
+    });
+    expect(outcome.stderr).toEqual([]);
+    expect(outcome.code).toBe(EXIT.ok);
+    expect(readFileSync(join(gitDir, "config")).equals(config)).toBe(true);
+    expect(readFileSync(join(gitDir, "index")).equals(index)).toBe(true);
+    expect(git(b.home, b.repo, "status", "--porcelain", "--untracked-files=all")).toBe("");
+  });
+
+  test("a kit directory that appears during the run is refused, never replaced", async () => {
+    // The detector creates the (empty) kit directory once the copy is patched:
+    // HOME is the bench's `<root>/home`, the kits are under `<root>/work/kits`.
+    const b = await bench({
+      detector: `if git grep -q GOOD; then mkdir -p "$HOME/../work/kits/${TICKET}"; fi; ${GREP_BAD}`,
+    });
+    b.decisions([fix("*")]);
+    const target = join(b.kits, TICKET);
+    const outcome = await b.run();
+    expect(outcome.code).toBe(EXIT.proof);
+    expect(outcome.stderr.join("\n")).toContain("write failed");
+    expect(existsSync(join(target, "manifest.tsv"))).toBe(false);
+  });
+
   test("no repository in écart: exit 0, nothing written", async () => {
     const b = await bench({ files: { "conf.yml": "b: ok\n" } });
     const outcome = await b.run();
@@ -387,6 +425,64 @@ describe("proof failed: code 1, nothing written", () => {
     expect(outcome.stderr.join("\n")).toContain(
       "the detector returns 1 finding(s) on [third.yml], the kept ones are 1 on [other.yml]",
     );
+  });
+
+  const manualBench = async (patch: string, files?: Readonly<Record<string, string>>) => {
+    const b = await bench(files === undefined ? {} : { files });
+    b.decisions([fix("*", "manual", "")]);
+    mkdirSync(join(b.work, TICKET, "manual", "o"), { recursive: true });
+    writeFileSync(join(b.work, TICKET, "manual", "o", "alpha.patch"), patch);
+    return b;
+  };
+  const FIX_CONF =
+    "diff --git a/conf.yml b/conf.yml\n--- a/conf.yml\n+++ b/conf.yml\n@@ -1,4 +1,4 @@\n-a: BAD\n+a: GOOD\n b: ok\n-c: BAD\n-d: BAD\n+c: GOOD\n+d: GOOD\n";
+
+  test("a manual patch touching a file without a finding: code 1", async () => {
+    const b = await manualBench(
+      `${FIX_CONF}diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1 @@\n-n\n+changed\n`,
+      { "conf.yml": CONF, "notes.txt": "n\n" },
+    );
+    const outcome = await b.run();
+    expect(outcome.code).toBe(EXIT.proof);
+    expect(outcome.stderr.join("\n")).toContain(
+      "the patch touches a file without a finding or a companion: notes.txt",
+    );
+    expect(existsSync(b.kits)).toBe(false);
+  });
+
+  test("a manual patch adding a workflow: code 1", async () => {
+    const b = await manualBench(
+      `${FIX_CONF}diff --git a/.github/workflows/x.yml b/.github/workflows/x.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/x.yml\n@@ -0,0 +1 @@\n+on: push\n`,
+    );
+    const outcome = await b.run();
+    expect(outcome.code).toBe(EXIT.proof);
+    expect(outcome.stderr.join("\n")).toContain(
+      "the patch touches a file without a finding or a companion: .github/workflows/x.yml",
+    );
+  });
+
+  test("a manual patch turning a finding file into a symbolic link: code 1", async () => {
+    const b = await manualBench(
+      "diff --git a/conf.yml b/conf.yml\ndeleted file mode 100644\n--- a/conf.yml\n+++ /dev/null\n@@ -1,4 +0,0 @@\n-a: BAD\n-b: ok\n-c: BAD\n-d: BAD\ndiff --git a/conf.yml b/conf.yml\nnew file mode 120000\n--- /dev/null\n+++ b/conf.yml\n@@ -0,0 +1 @@\n+/etc/hosts\n\\ No newline at end of file\n",
+    );
+    const outcome = await b.run();
+    expect(outcome.code).toBe(EXIT.proof);
+    expect(outcome.stderr.join("\n")).toContain(
+      "the patch involves mode 120000 (symbolic link or submodule)",
+    );
+  });
+
+  test("a verification script that cannot be started: code 3, not a failed proof", async () => {
+    const b = await bench();
+    b.decisions([fix("*")]);
+    const verify = join(b.work, TICKET, "verify", "o", "alpha");
+    mkdirSync(dirname(verify), { recursive: true });
+    writeFileSync(verify, "#!/bin/sh\nexit 0\n");
+    chmodSync(verify, 0o644);
+    const outcome = await b.run();
+    expect(outcome.code).toBe(EXIT.input);
+    expect(outcome.stderr.join("\n")).toContain("verification could not be started");
+    expect(existsSync(b.kits)).toBe(false);
   });
 
   test("a repository's own verification that fails: code 1, its output relayed", async () => {
@@ -510,12 +606,48 @@ describe("pure parts", () => {
     });
   });
 
-  test("numstat sums; a binary entry is unreadable", () => {
-    expect(numstatTotals("2\t1\ta\n0\t3\tb\n")).toEqual({
+  test("numstat -z sums and names the files; a binary entry is unreadable", () => {
+    expect(numstatTotals("2\t1\ta\x000\t3\tb c\n\x00")).toEqual({
       added: 2,
       removed: 4,
+      paths: ["a", "b c\n"],
     });
-    expect(numstatTotals("-\t-\tbin\n")).toBeNull();
+    expect(numstatTotals("-\t-\tbin\x00")).toBeNull();
+  });
+
+  test("the summary refuses a rename, a copy, a symbolic link and a submodule, in any direction", () => {
+    expect(summaryProblems(" mode change 100644 => 100755 run.sh\n rewrite a (90%)\n")).toEqual([]);
+    for (const line of [
+      " create mode 160000 sub",
+      " delete mode 120000 link",
+      " mode change 100644 => 120000 conf.yml",
+      " mode change 120000 => 100644 conf.yml",
+      " rename a => b (100%)",
+      " copy a => b (90%)",
+    ]) {
+      expect([line, summaryProblems(`${line}\n`).length]).toEqual([line, 1]);
+    }
+  });
+
+  test("git and the line editor never inherit a GIT_* variable; the copies' configuration is GIT_CONFIG_COUNT", () => {
+    const env = toolEnvironment(
+      { PATH: "/p", HOME: "/h", GIT_DIR: "/x/.git", GIT_CONFIG_PARAMETERS: "'a'='b'", TOKEN: "t" },
+      "/hooks",
+    );
+    expect(env).toEqual({
+      PATH: "/p",
+      HOME: "/h",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_CONFIG_COUNT: "4",
+      GIT_CONFIG_KEY_0: "core.hooksPath",
+      GIT_CONFIG_VALUE_0: "/hooks",
+      GIT_CONFIG_KEY_1: "user.name",
+      GIT_CONFIG_VALUE_1: "remediation-kit",
+      GIT_CONFIG_KEY_2: "user.email",
+      GIT_CONFIG_VALUE_2: "remediation-kit@localhost",
+      GIT_CONFIG_KEY_3: "commit.gpgsign",
+      GIT_CONFIG_VALUE_3: "false",
+    });
   });
 
   test("the residue compares paths, not only the count", () => {
