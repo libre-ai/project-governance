@@ -133,8 +133,8 @@ describe("what a link is", () => {
       "",
     ].join("\n");
     expect(extractLinks(text)).toEqual([
-      { line: 4, dest: "after.md" },
-      { line: 5, dest: "kept.md" },
+      { line: 4, dest: "after.md", form: "inline" },
+      { line: 5, dest: "kept.md", form: "inline" },
     ]);
   });
 
@@ -152,13 +152,19 @@ describe("what a link is", () => {
 
   test("line numbers count the fenced lines", () => {
     const text = ["```", "x", "```", "[a](b.md)"].join("\n");
-    expect(extractLinks(text)).toEqual([{ line: 4, dest: "b.md" }]);
+    expect(extractLinks(text)).toEqual([{ line: 4, dest: "b.md", form: "inline" }]);
   });
 });
 
+/** Slugs and explicit anchors together, for the tests that only ask whether an anchor exists. */
+function allAnchors(text: string): Set<string> {
+  const { slugs, ids } = headingAnchors(text);
+  return new Set([...slugs, ...ids]);
+}
+
 describe("headings and anchors", () => {
   test("GitHub style slugs, with numbered duplicates", () => {
-    const anchors = headingAnchors(
+    const anchors = allAnchors(
       [
         "# Hello, World!",
         "## Hello, World!",
@@ -174,7 +180,7 @@ describe("headings and anchors", () => {
   });
 
   test("underscore emphasis is dropped from a slug, a lone underscore is kept", () => {
-    const anchors = headingAnchors(
+    const anchors = allAnchors(
       [
         "# The _word_ here",
         "# Use __init__ now",
@@ -190,7 +196,7 @@ describe("headings and anchors", () => {
   });
 
   test("a heading or an anchor inside an HTML comment is not an anchor", () => {
-    const anchors = headingAnchors(
+    const anchors = allAnchors(
       ["<!--", "# Hidden", '<a name="ghost"></a>', "-->", "# Shown", ""].join("\n"),
     );
     expect(anchors.has("shown")).toBe(true);
@@ -199,7 +205,7 @@ describe("headings and anchors", () => {
   });
 
   test("setext headings, explicit html anchors; not headings inside fences or front matter", () => {
-    const anchors = headingAnchors(
+    const anchors = allAnchors(
       [
         "---",
         "title: Not a heading",
@@ -470,6 +476,141 @@ describe("the gate over a repository", () => {
   });
 });
 
+describe("findings of the adversarial review", () => {
+  test("reference definitions and HTML href/src are read and verified like inline links", () => {
+    const dir = repository({
+      "a.md": [
+        "[x][gone] and [ok][b] and [gone2] and [^1]",
+        '<a href="missing3.md">m</a> <a class="c" href=\'b.md\'>b</a> <img src="pic.png">',
+        "",
+        "[gone]: missing.md",
+        "[b]: b.md",
+        '  [gone2]: <missing two.md> "title"',
+        "[^1]: a footnote, not a link",
+        "",
+      ].join("\n"),
+      "b.md": "# B\n",
+    });
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.err.filter((line) => line.startsWith("a.md:"))).toEqual([
+      "a.md:2: link target not found: missing3.md",
+      "a.md:2: link target not found: pic.png",
+      "a.md:4: link target not found: missing.md",
+      "a.md:6: link target not found: missing two.md",
+    ]);
+    const text = result.out.join("\n");
+    expect(text).toContain("total=6 ok=2 errors=4");
+    expect(text).toContain("Forms: inline=0 reference=3 html=3");
+  });
+
+  test("a repository whose only link is a dead reference definition is not an empty green", () => {
+    const dir = repository({ "a.md": "[x][y]\n\n[y]: gone.md\n" });
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.out.join("\n")).not.toContain("EMPTY GREEN");
+  });
+
+  test("an anchor attribute needs a blank before it, and name= counts only on <a>", () => {
+    const { slugs, ids } = headingAnchors(
+      [
+        '<div data-id="fake"></div> <meta name="meta-anchor"> <abbr name="abbr-anchor">x</abbr>',
+        '<span id="real"></span> <a name="named"></a> <a\tclass="c" name="second"></a>',
+        "",
+      ].join("\n"),
+    );
+    expect([...slugs]).toEqual([]);
+    expect([...ids].sort()).toEqual(["named", "real", "second"]);
+  });
+
+  test("an HTML id is case-sensitive, a heading slug is not", () => {
+    const dir = repository({
+      "a.md": '[u](#Mixed) [l](#mixed) [h](#Title)\n\n<span id="Mixed"></span>\n\n# Title\n',
+    });
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenAnchor);
+    expect(result.err).toEqual(["a.md:1: anchor not found: #mixed"]);
+  });
+
+  test("a duplicate heading skips a slug already taken by another heading", () => {
+    const { slugs } = headingAnchors(["# a", "# a-1", "# a", ""].join("\n"));
+    expect([...slugs]).toEqual(["a", "a-1", "a-2"]);
+  });
+
+  test("a trailing slash on a file is a broken link", () => {
+    const dir = repository({
+      "a.md": "[f](b.md/) [d](sub/)\n",
+      "b.md": "# B\n",
+      "sub/x.md": "# X\n",
+    });
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.err).toEqual(["a.md:1: link target is not a directory: b.md/"]);
+  });
+
+  test("a tracked symlink to an ignored file does not satisfy a link", () => {
+    const dir = repository({
+      ".gitignore": "build/\n",
+      "a.md": "[x](link.md)\n",
+      "build/out.md": "# Out\n",
+    });
+    symlinkSync("build/out.md", join(dir, "link.md"));
+    expect(runGit(["-C", dir, "add", "link.md"]).exitCode).toBe(0);
+    const result = run([dir]);
+    expect(result.exitCode).toBe(EXIT.brokenLink);
+    expect(result.err).toContain("a.md:1: link target not tracked: link.md");
+  });
+
+  test("an indented code block after a blank line is code, a list continuation is not", () => {
+    const text = [
+      "para",
+      "",
+      "    [code](gone-one.md)",
+      "\t[tab](gone-two.md)",
+      "",
+      "text [a](a.md)",
+      "    [lazy](lazy.md)",
+      "",
+      "1. item",
+      "",
+      "    [cont](cont.md)",
+      "",
+      "- item",
+      "",
+      "        [nested-code](gone-three.md)",
+      "",
+    ].join("\n");
+    expect(extractLinks(text).map((link) => link.dest)).toEqual(["a.md", "lazy.md", "cont.md"]);
+  });
+
+  test("a fence inside a blockquote is code, and ends with the blockquote", () => {
+    const text = [
+      "> ```",
+      "> [x](gone-one.md)",
+      "> ```",
+      "[a](a.md)",
+      "> ~~~",
+      "> [y](gone-two.md)",
+      "",
+      "[b](b.md)",
+      "",
+    ].join("\n");
+    expect(extractLinks(text).map((link) => link.dest)).toEqual(["a.md", "b.md"]);
+  });
+
+  test("a code span over several lines is code, an unpaired backtick is literal", () => {
+    const text = [
+      "text `start",
+      "[x](gone.md) end` more [a](a.md)",
+      "",
+      "lone ` backtick",
+      "[b](b.md)",
+      "",
+    ].join("\n");
+    expect(extractLinks(text).map((link) => link.dest)).toEqual(["a.md", "b.md"]);
+  });
+});
+
 describe("the counter check", () => {
   const consistent = {
     tracked: 5,
@@ -482,6 +623,9 @@ describe("the counter check", () => {
     anchors: 1,
     external: 2,
     other: 1,
+    inline: 6,
+    reference: 3,
+    html: 1,
   };
 
   test("consistent counters sum", () => {
@@ -492,6 +636,7 @@ describe("the counter check", () => {
     expect(countersSum({ ...consistent, examined: 2 })).toBe(false);
     expect(countersSum({ ...consistent, other: 0 })).toBe(false);
     expect(countersSum({ ...consistent, ok: 5 })).toBe(false);
+    expect(countersSum({ ...consistent, html: 0 })).toBe(false);
   });
 });
 

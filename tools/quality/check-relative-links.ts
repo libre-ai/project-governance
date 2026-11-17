@@ -1,33 +1,45 @@
 /**
  * Relative links and anchors of the tracked Markdown, checked offline.
  *
- * WHAT IT CHECKS. Every inline link `[text](target)` and image of every tracked
- * Markdown file whose target is a relative path, resolved from the directory of
- * the SOURCE file — never from the repository root, because a fallback on the
- * root hides a wrong relative path behind a link that happens to be right from
- * somewhere else. When the target is a Markdown file (or the source itself, for
- * `#fragment`), the fragment must match a heading slug or an explicit HTML
- * anchor of the target. Nothing is fetched.
+ * WHAT IT CHECKS. Every link and image of every tracked Markdown file whose
+ * target is a relative path, in three forms counted apart (`Forms:` line):
+ * inline `[text](target)`; reference definitions `[label]: target`, each
+ * checked once where it is written (the usages `[x][label]`, `[x][]` and
+ * `[label]` point to it; a definition is checked even when unused, a usage
+ * without a definition is plain text, and `[^n]:` is a footnote); and HTML
+ * `<a href>` / `<img src>` written on one line. Targets resolve from the
+ * directory of the SOURCE file — never from the repository root, because a
+ * fallback on the root hides a wrong relative path behind a link that happens
+ * to be right from somewhere else. A target ending in `/` must be a directory.
+ * When the target is a Markdown file (or the source itself, for `#fragment`),
+ * the fragment must match a heading slug (case-insensitive; duplicates
+ * numbered `-1`, `-2`, skipping a slug already taken) or an explicit anchor of
+ * the target: `id=` on any tag, `name=` on `<a>`, each preceded by a blank,
+ * compared case-sensitively. Nothing is fetched.
  *
  * A TARGET MUST BE DELIVERED BY GIT: a tracked file, or a directory holding
- * one. A file that exists only in the working tree (ignored, build output,
- * forgotten `git add`) is reported as `not tracked`, because it is missing from
- * every fresh clone and from the rendered repository.
+ * one, and so must the end of a symlink chain. A file that exists only in the
+ * working tree (ignored, build output, forgotten `git add`) is reported as
+ * `not tracked`, because it is missing from every fresh clone and from the
+ * rendered repository.
  *
  * WHAT IT DOES NOT CHECK, and says so on its output. External links (`http:`,
  * `https:`, `mailto:`, `//host`) are counted as `external`, not verified. Site
  * absolute paths (`/x`), other schemes and empty targets are counted as
  * `other`, not verified: a site-absolute link is relative to a site root this
  * gate does not know, and resolving it from the repository root would report
- * the wrong thing. Reference-style links and autolinks are not read.
- * Fragments on a non-Markdown target (`code.ts#L10`) cannot be checked and are
- * accepted. These are measured limits, not oversights.
+ * the wrong thing. Autolinks (always absolute) and HTML tags split over several
+ * lines are not read. Fragments on a non-Markdown target (`code.ts#L10`) cannot
+ * be checked and are accepted. These are measured limits, not oversights.
  *
- * WHAT IS NEVER A LINK. Fenced blocks (a closing fence has the same character
- * as the opening one and is at least as long, so a three-backtick line inside a
- * four-backtick fence stays inside), inline code spans, HTML comments (also
- * multi-line), and YAML front matter. A leading `---` block counts as front
- * matter only if every line inside looks like YAML; otherwise it is prose.
+ * WHAT IS NEVER A LINK. Code: fenced blocks (a closing fence has the same
+ * character as the opening one and is at least as long, so a three-backtick
+ * line inside a four-backtick fence stays inside; a fence inside a blockquote
+ * ends with the quote), indented blocks (four columns past the enclosing list
+ * item's content, after a blank line), inline code spans (also over several
+ * lines of one paragraph). Also HTML comments (also multi-line) and YAML front
+ * matter. A leading `---` block counts as front matter only if every line
+ * inside looks like YAML; otherwise it is prose.
  *
  * THE FILE LIST IS BUILT HERE, from `git ls-files`: a glob handed to a checker
  * that exits 0 on an empty match would turn a moved directory into a green.
@@ -38,6 +50,7 @@
  * Counters sum, and a mismatch is itself a failure (exit 7):
  *   tracked = examined + excluded + non-regular
  *   total   = ok + errors + external + other
+ *   total   = inline + reference + html
  *
  * Usage: bun tools/quality/check-relative-links.ts [check] <repository>
  *          [--exclude <prefix>=<reason>]... [--fallback-ext md,mdx]
@@ -69,9 +82,12 @@ export const EXIT = {
   extensions: 9,
 } as const;
 
+export type LinkForm = "inline" | "reference" | "html";
+
 export interface Link {
   readonly line: number;
   readonly dest: string;
+  readonly form: LinkForm;
 }
 
 export interface GateResult {
@@ -189,21 +205,51 @@ interface ProseLine {
 
 const FENCE_OPEN = /^\s*(`{3,}|~{3,})(.*)$/;
 const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
+/** Blockquote markers at the start of a line: `>`, each with one optional space. */
+const QUOTE_PREFIX = /^ {0,3}>(?: ?)/;
+const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])(\s+|$)/;
 
-/** Blank the content of inline code spans: a run of n backticks closes at the next run of exactly n. */
-function maskCodeSpans(line: string): string {
-  const runs = [...line.matchAll(/`+/g)];
-  let masked = line;
+/**
+ * Blank the content of inline code spans: a run of n backticks closes at the
+ * next run of exactly n. Line breaks are kept, so a span may cover several
+ * lines of one paragraph and the text still splits back into its lines.
+ */
+function maskCodeSpans(text: string): string {
+  const runs = [...text.matchAll(/`+/g)];
+  let masked = text;
   for (let index = 0; index < runs.length; index += 1) {
     const open = runs[index] as RegExpMatchArray;
     const close = runs.slice(index + 1).find((run) => run[0].length === open[0].length);
     if (close === undefined) continue;
     const from = open.index as number;
     const to = (close.index as number) + close[0].length;
-    masked = masked.slice(0, from) + " ".repeat(to - from) + masked.slice(to);
+    masked =
+      masked.slice(0, from) + masked.slice(from, to).replace(/[^\n]/g, " ") + masked.slice(to);
     index = runs.indexOf(close);
   }
   return masked;
+}
+
+/** Strip the blockquote markers of a line; returns the depth and the content after them. */
+function unquote(line: string): { readonly depth: number; readonly content: string } {
+  let depth = 0;
+  let content = line;
+  for (let match = QUOTE_PREFIX.exec(content); match !== null; match = QUOTE_PREFIX.exec(content)) {
+    depth += 1;
+    content = content.slice(match[0].length);
+  }
+  return { depth, content };
+}
+
+/** Leading indentation in columns, a tab advancing to the next multiple of four. */
+function indentOf(content: string): number {
+  let column = 0;
+  for (const char of content) {
+    if (char === " ") column += 1;
+    else if (char === "\t") column += 4 - (column % 4);
+    else break;
+  }
+  return column;
 }
 
 /** One line of a YAML mapping or sequence, a comment, a blank, or a continuation. */
@@ -244,39 +290,122 @@ function blankComments(
   return { raw: outRaw, masked: outMasked, inComment: open };
 }
 
+interface KeptLine {
+  readonly line: number;
+  readonly raw: string;
+  /** Lines of one paragraph share a group: a code span may run across them, never beyond. */
+  readonly group: number;
+}
+
 /**
- * The lines outside fenced blocks, front matter and HTML comments, numbered
- * from 1. An unclosed fence or comment runs to the end. A leading `---` block
- * is front matter only when every line inside looks like YAML.
+ * The lines outside code, front matter and HTML comments, numbered from 1.
+ *
+ * Code is: a fenced block (also inside a blockquote, where the end of the
+ * quote ends the fence), an indented block (four columns past the content of
+ * the enclosing list item, after a blank line; a list continuation or a lazy
+ * paragraph line is prose), and inline code spans, which may run over the
+ * lines of one paragraph. An unclosed fence or comment runs to the end. A
+ * leading `---` block is front matter only when every line inside looks like
+ * YAML.
  */
 function proseLines(text: string): ProseLine[] {
   const lines = text.split(/\r?\n/);
-  const prose: ProseLine[] = [];
   let start = 0;
   if (lines[0]?.trimEnd() === "---") {
     const end = lines.findIndex((line, index) => index > 0 && /^(?:---|\.\.\.)\s*$/.test(line));
     if (end !== -1 && lines.slice(1, end).every((line) => YAML_LINE.test(line))) start = end + 1;
   }
-  let inComment = false;
-  let fence: { readonly char: string; readonly length: number } | null = null;
+
+  const kept: KeptLine[] = [];
+  let group = 0;
+  let fence: { readonly char: string; readonly length: number; readonly depth: number } | null =
+    null;
+  let previousBlank = true;
+  let inIndentedCode = false;
+  let lastDepth = 0;
+  /** Content columns of the open list items, innermost last. */
+  const lists: number[] = [];
+  // Comment state on a per-line view, only to keep a commented line out of code detection;
+  // the blanking itself is redone below on the paragraph view.
+  let inCommentEstimate = false;
   for (let index = start; index < lines.length; index += 1) {
     const raw = lines[index] as string;
+    const { depth, content } = unquote(raw);
     if (fence !== null) {
-      const close = FENCE_CLOSE.exec(raw)?.[1];
-      if (close !== undefined && close[0] === fence.char && close.length >= fence.length)
-        fence = null;
+      if (depth >= fence.depth) {
+        const close = FENCE_CLOSE.exec(content)?.[1];
+        if (close !== undefined && close[0] === fence.char && close.length >= fence.length)
+          fence = null;
+        continue;
+      }
+      // The blockquote holding the fence has ended, and the fence with it.
+      fence = null;
+    }
+    if (depth !== lastDepth) group += 1;
+    lastDepth = depth;
+
+    if (content.trim() === "") {
+      previousBlank = true;
+      inIndentedCode = false;
+      group += 1;
+      kept.push({ line: index + 1, raw, group });
       continue;
     }
-    const open = FENCE_OPEN.exec(raw);
+
+    const indent = indentOf(content);
+    const item = LIST_ITEM.exec(content);
+    if (previousBlank || item !== null) {
+      while (lists.length > 0 && (lists[lists.length - 1] as number) > indent) lists.pop();
+    }
+    const base = lists[lists.length - 1] ?? 0;
+    if (!inCommentEstimate && (previousBlank || inIndentedCode) && indent >= base + 4) {
+      inIndentedCode = true;
+      previousBlank = false;
+      group += 1;
+      continue;
+    }
+    previousBlank = false;
+    inIndentedCode = false;
+
+    const open = FENCE_OPEN.exec(content);
     const marker = open?.[1];
     // A backtick fence's info string may not contain a backtick: otherwise it is a code span.
     if (marker !== undefined && !(marker[0] === "`" && (open?.[2] ?? "").includes("`"))) {
-      fence = { char: marker[0] as string, length: marker.length };
+      fence = { char: marker[0] as string, length: marker.length, depth };
+      group += 1;
       continue;
     }
-    const visible = blankComments(raw, maskCodeSpans(raw), inComment);
+
+    if (item !== null) {
+      const gap = (item[3] as string).length;
+      lists.push(indent + (item[2] as string).length + (gap === 0 || gap > 4 ? 1 : gap));
+    }
+    inCommentEstimate = blankComments(raw, maskCodeSpans(raw), inCommentEstimate).inComment;
+    // A heading or a table row is a block of its own line; a list item opens a new paragraph.
+    const ownLine = /^ {0,3}#{1,6}(?:\s|$)/.test(content) || /^\s*\|/.test(content);
+    if (ownLine || item !== null) group += 1;
+    kept.push({ line: index + 1, raw, group });
+    if (ownLine) group += 1;
+  }
+
+  const masked = new Map<number, string>();
+  for (let from = 0; from < kept.length; ) {
+    let to = from;
+    while (to < kept.length && (kept[to] as KeptLine).group === (kept[from] as KeptLine).group)
+      to += 1;
+    const block = kept.slice(from, to);
+    const parts = maskCodeSpans(block.map((entry) => entry.raw).join("\n")).split("\n");
+    for (const [offset, entry] of block.entries())
+      masked.set(entry.line, parts[offset] ?? entry.raw);
+    from = to;
+  }
+
+  const prose: ProseLine[] = [];
+  let inComment = false;
+  for (const entry of kept) {
+    const visible = blankComments(entry.raw, masked.get(entry.line) ?? entry.raw, inComment);
     inComment = visible.inComment;
-    prose.push({ line: index + 1, raw: visible.raw, masked: visible.masked });
+    prose.push({ line: entry.line, raw: visible.raw, masked: visible.masked });
   }
   return prose;
 }
@@ -323,20 +452,45 @@ function readDestination(
   return text[position] === ")" ? { dest, end: position } : null;
 }
 
-/** Every inline link and image destination outside code, each with its line, in reading order. */
+/**
+ * A link reference definition, `[label]: <dest> "title"`, also inside a
+ * blockquote. A label starting with `^` is a footnote, not a link.
+ */
+const REFERENCE_DEFINITION = /^(?: {0,3}>\s?)*\s*\[(?!\^)(?:[^\]\\]|\\.)+\]:[ \t]*(<[^>\n]*>|\S+)/;
+/** `href` on an `<a>` tag and `src` on an `<img>` tag, the attribute preceded by a blank. */
+const HTML_LINK = /<(?:a(?=\s)[^>]*?\shref|img(?=\s)[^>]*?\ssrc)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
+
+/**
+ * Every link and image destination outside code, each with its line and form,
+ * in reading order: inline `[x](dest)`, reference definitions `[y]: dest`
+ * (each definition once, where it is written: the usages `[x][y]`, `[x][]`
+ * and `[y]` point to it), and HTML `<a href>` / `<img src>` on one line.
+ */
 export function extractLinks(text: string): Link[] {
-  const links: Link[] = [];
+  const links: (Link & { readonly column: number })[] = [];
   for (const { line, masked } of proseLines(text)) {
     for (let index = 0; index < masked.length - 1; index += 1) {
       if (masked[index] !== "]" || masked[index + 1] !== "(" || masked[index - 1] === "\\")
         continue;
       const parsed = readDestination(masked, index + 2);
       if (parsed === null) continue;
-      links.push({ line, dest: parsed.dest });
+      links.push({ line, dest: parsed.dest, form: "inline", column: index });
       index = parsed.end;
     }
+    const definition = REFERENCE_DEFINITION.exec(masked);
+    const target = definition?.[1];
+    if (target !== undefined) {
+      const dest = target.startsWith("<") ? target.slice(1, -1) : target;
+      links.push({ line, dest, form: "reference", column: masked.indexOf(target) });
+    }
+    for (const match of masked.matchAll(HTML_LINK)) {
+      const dest = match[1] ?? match[2] ?? "";
+      links.push({ line, dest, form: "html", column: match.index as number });
+    }
   }
-  return links;
+  return links
+    .sort((a, b) => a.line - b.line || a.column - b.column)
+    .map(({ line, dest, form }) => ({ line, dest, form }));
 }
 
 function slugOf(heading: string): string {
@@ -355,15 +509,35 @@ function slugOf(heading: string): string {
   );
 }
 
-/** Heading slugs (ATX and setext, duplicates numbered `-1`, `-2`) and explicit `id`/`name` anchors. */
-export function headingAnchors(text: string): Set<string> {
-  const anchors = new Set<string>();
-  const seen = new Map<string, number>();
+export interface Anchors {
+  /** Heading slugs, lower case: a fragment is compared to them case-insensitively. */
+  readonly slugs: ReadonlySet<string>;
+  /** Explicit HTML anchors, as written: an `id` is case-sensitive. */
+  readonly ids: ReadonlySet<string>;
+}
+
+/** `id=` on any tag and `name=` on `<a>` only, the attribute preceded by a blank. */
+const HTML_ANCHOR =
+  /<(?:[a-zA-Z][a-zA-Z0-9-]*(?=\s)[^>]*?\sid|a(?=\s)[^>]*?\sname)=["']([^"']+)["']/g;
+
+/**
+ * Heading slugs (ATX and setext) and explicit `id`/`name` anchors. A duplicate
+ * slug is numbered `-1`, `-2`, skipping any slug already taken, so `a`, `a-1`,
+ * `a` gives `a`, `a-1`, `a-2`.
+ */
+export function headingAnchors(text: string): Anchors {
+  const slugs = new Set<string>();
+  const ids = new Set<string>();
+  const occurrences = new Map<string, number>();
   const add = (heading: string): void => {
-    const slug = slugOf(heading);
-    const count = seen.get(slug) ?? 0;
-    seen.set(slug, count + 1);
-    anchors.add(count === 0 ? slug : `${slug}-${count}`);
+    const original = slugOf(heading);
+    let slug = original;
+    while (slugs.has(slug)) {
+      const count = (occurrences.get(original) ?? 0) + 1;
+      occurrences.set(original, count);
+      slug = `${original}-${count}`;
+    }
+    slugs.add(slug);
   };
   const prose = proseLines(text);
   for (const [index, { line, raw, masked }] of prose.entries()) {
@@ -379,11 +553,9 @@ export function headingAnchors(text: string): Set<string> {
     ) {
       add(raw);
     }
-    for (const match of masked.matchAll(/<[a-zA-Z][^>]*?\b(?:id|name)=["']([^"']+)["']/g)) {
-      anchors.add((match[1] as string).toLowerCase());
-    }
+    for (const match of masked.matchAll(HTML_ANCHOR)) ids.add(match[1] as string);
   }
-  return anchors;
+  return { slugs, ids };
 }
 
 // ------------------------------------------------------------------- the check
@@ -412,7 +584,7 @@ interface Context {
   readonly root: string;
   readonly realRoot: string;
   readonly fallbackExtensions: readonly string[];
-  readonly anchorCache: Map<string, Set<string>>;
+  readonly anchorCache: Map<string, Anchors>;
   /** Tracked paths and every directory above them, `/`-separated, the root as `""`. */
   readonly tracked: ReadonlySet<string>;
 }
@@ -439,13 +611,17 @@ export interface Counters {
   readonly anchors: number;
   readonly external: number;
   readonly other: number;
+  readonly inline: number;
+  readonly reference: number;
+  readonly html: number;
 }
 
-/** Both sums of the header; each side is counted by a different step of `run`. */
+/** The three sums of the header; each side is counted by a different step of `run`. */
 export function countersSum(c: Counters): boolean {
   return (
     c.tracked === c.examined + c.excluded + c.nonRegular &&
-    c.extracted === c.ok + c.broken + c.anchors + c.external + c.other
+    c.extracted === c.ok + c.broken + c.anchors + c.external + c.other &&
+    c.extracted === c.inline + c.reference + c.html
   );
 }
 
@@ -514,8 +690,15 @@ function checkRelative(context: Context, source: string, dest: string): Problem 
   }
   if (!isInside(context.realRoot, real))
     return { kind: "broken", reason: "link resolves outside the repository" };
+  // A tracked symlink delivers only its own text: what it points to must be delivered too.
+  if (!context.tracked.has(relative(context.realRoot, real).split(sep).join("/")))
+    return { kind: "broken", reason: "link target not tracked" };
+  const isFile = statSync(real).isFile();
+  // `b.md/` names a directory; a renderer serves nothing at that path for a file.
+  if (path.endsWith("/") && isFile)
+    return { kind: "broken", reason: "link target is not a directory" };
 
-  if (rawFragment === "" || !isMarkdownPath(real) || !statSync(real).isFile()) return null;
+  if (rawFragment === "" || !isMarkdownPath(real) || !isFile) return null;
   const fragment = decode(rawFragment);
   if (fragment === null) return { kind: "anchor", reason: "invalid percent-encoding in anchor" };
   let anchors = context.anchorCache.get(real);
@@ -523,7 +706,7 @@ function checkRelative(context: Context, source: string, dest: string): Problem 
     anchors = headingAnchors(readFileSync(real, "utf8"));
     context.anchorCache.set(real, anchors);
   }
-  return anchors.has(fragment.toLowerCase())
+  return anchors.ids.has(fragment) || anchors.slugs.has(fragment.toLowerCase())
     ? null
     : { kind: "anchor", reason: "anchor not found" };
 }
@@ -606,6 +789,7 @@ export function run(argv: readonly string[]): GateResult {
   };
   let extracted = 0;
   const counts = { total: 0, ok: 0, broken: 0, anchors: 0, external: 0, other: 0 };
+  const forms: Record<LinkForm, number> = { inline: 0, reference: 0, html: 0 };
   const failures: string[] = [];
   let examined = 0;
 
@@ -624,8 +808,9 @@ export function run(argv: readonly string[]): GateResult {
     examined += 1;
     const links = extractLinks(text);
     extracted += links.length;
-    for (const { line, dest } of links) {
+    for (const { line, dest, form } of links) {
       counts.total += 1;
+      forms[form] += 1;
       const kind = classify(dest);
       if (kind === "external") counts.external += 1;
       else if (kind === "other") counts.other += 1;
@@ -645,6 +830,7 @@ export function run(argv: readonly string[]): GateResult {
   const out = [
     `Files: tracked=${markdown.length} examined=${examined} excluded=${excluded} non-regular=${nonRegular} prefixes=${prefixes} fallback-ext=${parsed.fallbackExtensions.length === 0 ? "none" : parsed.fallbackExtensions.join(",")}`,
     `Links: total=${counts.total} ok=${counts.ok} errors=${counts.broken + counts.anchors} (broken=${counts.broken} anchors=${counts.anchors}) external=${counts.external} (not verified) other=${counts.other} (not verified) scope=offline relative links and anchors`,
+    `Forms: inline=${forms.inline} reference=${forms.reference} html=${forms.html}`,
   ];
   for (const exclusion of parsed.exclusions)
     out.push(`Excluded: ${exclusion.prefix}: ${exclusion.reason}`);
@@ -661,6 +847,9 @@ export function run(argv: readonly string[]): GateResult {
     anchors: counts.anchors,
     external: counts.external,
     other: counts.other,
+    inline: forms.inline,
+    reference: forms.reference,
+    html: forms.html,
   });
   if (!sums) return { exitCode: EXIT.counters, out, err: [...err, "counters do not sum"] };
   if (examined === 0)
