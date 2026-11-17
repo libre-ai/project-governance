@@ -55,6 +55,7 @@
     "check:skills": "bun run check:bun:runtime && bun tools/skills/check-skills.ts",
     "check:skills-routing": "bun run check:bun:runtime && bun tools/skills/check-skills-routing.ts",
     "check:skills-cascade": "bun run check:bun:runtime && bun tools/skills/check-skills-cascade.ts",
+    "check:skills-security": "bun run check:bun:runtime && bun tools/skills/check-skills-security.ts",
     "build:skills-manifest": "bun run check:bun:runtime && bun tools/skills/build-skills-manifest.ts",
     "check:skills-manifest": "bun run check:bun:runtime && bun tools/skills/build-skills-manifest.ts --check",
     "check:pr-door": "bun run check:bun:runtime && bun tools/quality/check-pr-door.ts",
