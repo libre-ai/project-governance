@@ -45,6 +45,10 @@ export interface MatrixCounts {
   /** Rows of the table refused for their shape; rows + rejectedRows = data rows read. */
   readonly rejectedRows: number;
   readonly statusColumns: number;
+  /** The header text of each status column, in order: one per reference. */
+  readonly statusHeaders: readonly string[];
+  /** The verdict cell of each counted row, in row order (index 0 is row 1). */
+  readonly rowVerdicts: readonly string[];
   readonly statuses: Readonly<Record<Status, number>>;
   /** Status cells outside the four values: counted apart, never dropped. */
   readonly otherStatuses: number;
@@ -80,6 +84,8 @@ export function countMatrix(text: string): MatrixCounts {
   const statuses: Record<Status, number> = { natif: 0, partiel: 0, absent: 0, "non mesuré": 0 };
   const verdicts: Record<Verdict, number> = { reprendre: 0, adapter: 0, réécrire: 0, exclure: 0 };
   const structure: string[] = [];
+  const rowVerdicts: string[] = [];
+  let statusHeaders: string[] = [];
   let rows = 0;
   let rejectedRows = 0;
   let statusColumns = 0;
@@ -135,6 +141,10 @@ export function countMatrix(text: string): MatrixCounts {
   if (headerOk && separatorOk) {
     const width = headerNames.length;
     statusColumns = width - fixed;
+    statusHeaders = (header?.cells ?? []).slice(
+      LEADING_HEADERS.length,
+      LEADING_HEADERS.length + statusColumns,
+    );
     for (const { lineNumber, cells } of table.slice(2)) {
       const numbered = /^[0-9]+$/.test(cells[0] ?? "");
       if (cells.length !== width || !numbered) {
@@ -165,6 +175,7 @@ export function countMatrix(text: string): MatrixCounts {
       const [verdict = "", decision = "", source = "", proof = ""] = cells.slice(
         width - TRAILING_HEADERS.length,
       );
+      rowVerdicts.push(verdict);
       if (isVerdict(verdict)) verdicts[verdict] += 1;
       else otherVerdicts += 1;
 
@@ -185,6 +196,8 @@ export function countMatrix(text: string): MatrixCounts {
     rows,
     rejectedRows,
     statusColumns,
+    statusHeaders,
+    rowVerdicts,
     statuses,
     otherStatuses,
     verdicts,
