@@ -450,6 +450,35 @@ describe("agentic risks", () => {
     expect(risk(FILE, "", "detection or judgment").risks.red).toBe(1);
   });
 
+  test.each([
+    ["a missing detection", "`src/absent.ts`"],
+    ["a Detection outside the grammar", "see the logs"],
+    ["an empty Detection", ""],
+  ])("a Barrier `residual:` does not excuse %s: red, exit 1", (_label, detection) => {
+    const outcome = risk(RESIDUAL, detection, "detection or judgment");
+    expect(outcome.risks).toEqual({ total: 1, barred: 0, residual: 0, red: 1 });
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("a Barrier `residual:` beside a dangling detection prints and counts it", () => {
+    const outcome = risk(RESIDUAL, "`src/absent.ts`", "detection or judgment");
+    expect(outcome.evidence).toMatchObject({ cited: 1, missing: 1 });
+    expect(outcome.lines.join("\n")).toContain("AR-01: src/absent.ts: missing");
+  });
+
+  test("a Barrier `residual:` beside an unavailable detection: red, exit 3", () => {
+    const outcome = risk(RESIDUAL, PINNED, "detection or judgment");
+    expect(outcome.risks).toMatchObject({ residual: 0, red: 1 });
+    expect(outcome.exitCode).toBe(3);
+  });
+
+  test("`refusal before execution` cannot rest on a `residual:` Barrier: red", () => {
+    const outcome = risk(RESIDUAL, RESIDUAL, "refusal before execution");
+    expect(outcome.risks).toEqual({ total: 1, barred: 0, residual: 0, red: 1 });
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.lines.join("\n")).toContain("needs a barrier that is a named test");
+  });
+
   test("a risk red only through an unavailable barrier: exit 3", () => {
     const outcome = risk(PINNED, RESIDUAL, "detection or judgment");
     expect(outcome.risks.red).toBe(1);
@@ -504,6 +533,31 @@ describe("findNamedTest, TypeScript", () => {
     expect(found('const quote = /["\']/;\ntest("refuses the write", () => {});')).toBe(true);
     expect(found('const ratio = total / 2; // "\ntest("refuses the write", () => {});')).toBe(true);
   });
+
+  test.each([
+    "return",
+    "typeof",
+    "instanceof",
+    "in",
+    "of",
+    "new",
+    "delete",
+    "void",
+    "throw",
+    "case",
+    "do",
+    "else",
+    "await",
+    "yield",
+  ])("a regular expression after `%s` holding a backtick hides nothing", (keyword) => {
+    expect(found(`x = ${keyword} /\`/;\ntest("refuses the write", () => {});`)).toBe(true);
+  });
+
+  test("a property named like a keyword is followed by a division, not a regular expression", () => {
+    expect(found('n = a.of / 2, s = "/`", t = 1;\ntest("refuses the write", () => {});')).toBe(
+      true,
+    );
+  });
 });
 
 describe("findNamedTest, Rust", () => {
@@ -519,6 +573,15 @@ describe("findNamedTest, Rust", () => {
   test("a function under #[test] and #[ignore] is not found, in either order", () => {
     expect(found("#[test]\n#[ignore]\nfn refuses_the_write() {}")).toBe(false);
     expect(found('#[ignore = "slow"]\n#[test]\nfn refuses_the_write() {}')).toBe(false);
+  });
+
+  test("a function ignored under a condition (cfg_attr) is not found", () => {
+    expect(found("#[test]\n#[cfg_attr(miri, ignore)]\nfn refuses_the_write() {}")).toBe(false);
+    expect(
+      found(
+        '#[cfg_attr(not(feature = "slow"), ignore = "slow")]\n#[test]\nfn refuses_the_write() {}',
+      ),
+    ).toBe(false);
   });
 
   test("a function without attribute, or under another function's #[test], is not found", () => {
