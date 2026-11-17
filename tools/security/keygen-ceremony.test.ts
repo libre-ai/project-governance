@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   createCipheriv,
   createDecipheriv,
+  createHash,
   createPrivateKey,
   createPublicKey,
   generateKeyPairSync,
@@ -24,6 +25,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
+import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 
 import {
   type CeremonyFs,
@@ -51,15 +54,59 @@ import {
  *
  * Expected values come from outside the code under test:
  * - RFC 8032 §7.1 TEST 1 gives the seed and the public key;
- * - the expected identifier is the SHA-256 of those 32 public bytes computed
- *   by an independent tool:
+ * - the expected identifier is `ed25519-` (signing-keys.v1, rule K3) and the
+ *   SHA-256 of those 32 public bytes computed by an independent tool:
  *   printf d75a9801…511a | xxd -r -p | shasum -a 256
- * - the Ed25519 SPKI prefix is RFC 8410 §4.
+ * - the Ed25519 SPKI prefix is RFC 8410 §4;
+ * - the registry entry is judged by the signing-keys.v1 schema of the contracts
+ *   authority, copied byte for byte under ./fixtures/signing-keys-v1 (origin.json
+ *   names the repository, the commit and each file's SHA-256).
  */
 const RFC8032_TEST1_SEED = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
 const RFC8032_TEST1_PUBLIC = "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
-const RFC8032_TEST1_KEY_ID = "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9";
+const RFC8032_TEST1_KEY_ID =
+  "ed25519-21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9";
 const PKCS8_ED25519_PREFIX = "302e020100300506032b657004220420";
+
+// Required members of a signing-keys.v1 key, from the contract (SEMANTICS.md, registry table).
+const REGISTRY_KEY_MEMBERS = [
+  "activatedAt",
+  "algorithm",
+  "artifactTypes",
+  "publicKey",
+  "purpose",
+  "revokedAt",
+  "signingKeyId",
+  "witness",
+];
+
+const CONTRACT_DIR = join(import.meta.dir, "fixtures", "signing-keys-v1");
+interface ContractOrigin {
+  commit: string;
+  files: { path: string; source: string; sha256: string }[];
+}
+const CONTRACT_ORIGIN: ContractOrigin = JSON.parse(
+  readFileSync(join(CONTRACT_DIR, "origin.json"), "utf8"),
+);
+
+/** Validator of a whole signing-keys.v1 registry, built from the vendored contract. */
+function registryValidator(): (registry: unknown) => boolean {
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats(ajv);
+  for (const file of CONTRACT_ORIGIN.files) {
+    ajv.addSchema(JSON.parse(readFileSync(join(CONTRACT_DIR, file.path), "utf8")));
+  }
+  const validate = ajv.getSchema(
+    "https://contracts.libre-ai.fr/schemas/signing-keys.v1.schema.json",
+  );
+  if (validate === undefined) throw new Error("signing-keys.v1 schema not loaded");
+  return (registry) => validate(registry) === true;
+}
+const isValidRegistry = registryValidator();
+const registryOf = (...keys: unknown[]) => ({
+  schemaVersion: "libre-ai.signing-keys.v1",
+  keys,
+});
 
 const PASSPHRASE = "test-only passphrase, forty characters!!";
 const OTHER_PASSPHRASE = "another test-only passphrase, also long enough";
@@ -278,7 +325,7 @@ describe("module surface", () => {
     expect(readdirSync(cwd)).toEqual(before);
   });
 
-  test("deriveKeyId is the SHA-256 of the RFC 8032 TEST 1 public key", () => {
+  test("deriveKeyId is ed25519- and the SHA-256 of the RFC 8032 TEST 1 public key (K3)", () => {
     expect(deriveKeyId(Buffer.from(RFC8032_TEST1_PUBLIC, "hex"))).toBe(RFC8032_TEST1_KEY_ID);
     expect(() => deriveKeyId(new Uint8Array(31))).toThrow();
   });
@@ -288,7 +335,7 @@ describe("module surface", () => {
     for (const now of [new Date("2026-01-01T00:00:00Z"), new Date("2027-06-15T23:59:59Z")]) {
       const h = harness({ now });
       expect(await main(["--dev-key"], h.io)).toBe(EXIT_OK);
-      ids.push(JSON.parse(h.stdout()).id);
+      ids.push(JSON.parse(h.stdout()).signingKeyId);
     }
     expect(ids).toEqual([RFC8032_TEST1_KEY_ID, RFC8032_TEST1_KEY_ID]);
   });
@@ -318,33 +365,121 @@ describe("module surface", () => {
     expect(() => rawPublicKeyFromSpkiPem(privateKeyPem)).toThrow();
   });
 
-  test("registryEntry carries exactly the six registry keys", () => {
-    const entry = registryEntry({
-      keyId: RFC8032_TEST1_KEY_ID,
-      publicKeyPem: rfcKeyPair().publicKeyPem,
-      purpose: "test",
-      activatedAt: "2026-11-17T10:00:00.000Z",
-    });
-    expect(Object.keys(entry).sort()).toEqual(
-      ["activatedAt", "algorithm", "id", "publicKey", "purpose", "revokedAt"].sort(),
-    );
-    expect(entry.algorithm).toBe("Ed25519");
-    expect(entry.revokedAt).toBeNull();
-  });
-
-  test("the printed entry is JSON with exactly the six registry keys, and no secret", async () => {
-    const h = harness();
-    expect(await main(["--dev-key", "--purpose", "test"], h.io)).toBe(EXIT_OK);
-    const printed = JSON.parse(h.stdout());
-    expect(Object.keys(printed).sort()).toEqual(
-      ["activatedAt", "algorithm", "id", "publicKey", "purpose", "revokedAt"].sort(),
-    );
-    expect(printed.revokedAt).toBeNull();
-    assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
-  });
-
   test("findGitAncestor finds nothing above a plain temporary directory", async () => {
     expect(await findGitAncestor(freshDir())).toBeNull();
+  });
+});
+
+describe("registry entry: the signing-keys.v1 contract", () => {
+  const ENTRY_INPUT = {
+    signingKeyId: RFC8032_TEST1_KEY_ID,
+    publicKeyPem: rfcKeyPair().publicKeyPem,
+    purpose: "test",
+    artifactTypes: [],
+    activatedAt: "2026-11-17T10:00:00.000Z",
+    signatory: "key-custodian",
+    witnessComment: "test key",
+  } as const;
+
+  test("the vendored contract files are byte-identical to the ones origin.json records", () => {
+    expect(CONTRACT_ORIGIN.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(CONTRACT_ORIGIN.files.map((file) => file.path).sort()).toEqual(
+      readdirSync(CONTRACT_DIR)
+        .filter((name) => name !== "origin.json")
+        .sort(),
+    );
+    for (const file of CONTRACT_ORIGIN.files) {
+      const digest = createHash("sha256")
+        .update(readFileSync(join(CONTRACT_DIR, file.path)))
+        .digest("hex");
+      expect([file.path, digest]).toEqual([file.path, file.sha256]);
+    }
+  });
+
+  test("the contract schema discriminates: a key named `id`, or a signatory address, is refused", () => {
+    const entry = registryEntry(ENTRY_INPUT);
+    expect(isValidRegistry(registryOf(entry))).toBe(true);
+    const { signingKeyId, ...rest } = entry;
+    expect(isValidRegistry(registryOf({ id: signingKeyId, ...rest }))).toBe(false);
+    expect(
+      isValidRegistry(
+        registryOf({ ...entry, witness: { ...entry.witness, signatory: "owner@example.org" } }),
+      ),
+    ).toBe(false);
+  });
+
+  test("registryEntry carries exactly the required members of a key, revokedAt null", () => {
+    const entry = registryEntry({ ...ENTRY_INPUT, artifactTypes: ["release", "evidence"] });
+    expect(Object.keys(entry).sort()).toEqual(REGISTRY_KEY_MEMBERS);
+    expect(Object.keys(entry.witness).sort()).toEqual(["attestedAt", "comment", "signatory"]);
+    expect(entry.algorithm).toBe("Ed25519");
+    expect(entry.revokedAt).toBeNull();
+    expect(entry.artifactTypes).toEqual(["release", "evidence"]);
+    expect(isValidRegistry(registryOf(entry))).toBe(true);
+  });
+
+  test("registryEntry refuses what the contract refuses", () => {
+    expect(() => registryEntry({ ...ENTRY_INPUT, signatory: "owner@example.org" })).toThrow();
+    expect(() => registryEntry({ ...ENTRY_INPUT, signatory: "Key-Custodian" })).toThrow();
+    expect(() => registryEntry({ ...ENTRY_INPUT, purpose: "" })).toThrow();
+    expect(() => registryEntry({ ...ENTRY_INPUT, purpose: "p".repeat(257) })).toThrow();
+    expect(() =>
+      registryEntry({ ...ENTRY_INPUT, artifactTypes: ["release", "release"] }),
+    ).toThrow();
+  });
+
+  for (const mode of [["--dev-key"], ["--public-key-only"]] as const) {
+    test(`${mode[0]}: the printed entry validates signing-keys.v1, and no secret`, async () => {
+      const h = harness();
+      expect(await main([...mode, "--purpose", "test"], h.io)).toBe(EXIT_OK);
+      const printed = JSON.parse(h.stdout());
+      expect(Object.keys(printed).sort()).toEqual(REGISTRY_KEY_MEMBERS);
+      expect(printed.signingKeyId).toBe(RFC8032_TEST1_KEY_ID);
+      expect(printed.revokedAt).toBeNull();
+      expect(printed.artifactTypes).toEqual([]);
+      expect(printed.witness.signatory).toBe("key-custodian");
+      expect(isValidRegistry(registryOf(printed))).toBe(true);
+      assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
+    });
+  }
+
+  test("--artifact-types and --signatory reach the printed entry", async () => {
+    const h = harness();
+    const args = [
+      "--dev-key",
+      "--artifact-types",
+      "release,evidence",
+      "--signatory",
+      "release-key-custodian",
+    ];
+    expect(await main(args, h.io)).toBe(EXIT_OK);
+    const printed = JSON.parse(h.stdout());
+    expect(printed.artifactTypes).toEqual(["release", "evidence"]);
+    expect(printed.witness.signatory).toBe("release-key-custodian");
+    expect(isValidRegistry(registryOf(printed))).toBe(true);
+  });
+
+  for (const [shape, args, secret] of [
+    ["signatory address", ["--signatory", "owner@example.org"], "owner@example.org"],
+    ["signatory capitalised", ["--signatory", "Owner"], "Owner"],
+    ["unknown artifact type", ["--artifact-types", "release,firmware"], "firmware"],
+    ["repeated artifact type", ["--artifact-types", "build,build"], "build,build"],
+    ["empty purpose", ["--purpose", ""], null],
+  ] as const) {
+    test(`${shape}: 2, nothing printed, the value is not echoed`, async () => {
+      const h = harness();
+      expect(await main(["--dev-key", ...args], h.io)).toBe(EXIT_USAGE);
+      expect(h.stdout()).toBe("");
+      if (secret !== null) expect(h.stderr()).not.toContain(secret);
+    });
+  }
+
+  test("--verify-sealed takes no entry option", async () => {
+    for (const option of ["--purpose", "--artifact-types", "--signatory"]) {
+      const h = harness();
+      const args = ["--verify-sealed", "x.sealed", "--public-key", "x.pem", option, "release"];
+      expect([option, await main(args, h.io)]).toEqual([option, EXIT_USAGE]);
+    }
   });
 });
 
@@ -505,7 +640,8 @@ describe("passphrase intake through the real process", () => {
     });
     expect(result.status).toBe(EXIT_OK);
     const entry = JSON.parse(result.stdout);
-    const sealed = readFileSync(join(out, `${entry.id}.sealed`));
+    expect(isValidRegistry(registryOf(entry))).toBe(true);
+    const sealed = readFileSync(join(out, `${entry.signingKeyId}.sealed`));
     const privatePem = unsealPrivateKey(sealed, OTHER_PASSPHRASE);
     expect(() => unsealPrivateKey(sealed, PASSPHRASE)).toThrow();
     const seed = createPrivateKey(privatePem)
@@ -537,7 +673,8 @@ describe("sealing", () => {
     ]);
     expect(readdirSync(out).sort()).toEqual([`${id}.pub.pem`, `${id}.sealed`]);
     expect(statSync(join(out, `${id}.sealed`)).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(h.stdout()).id).toBe(id);
+    expect(JSON.parse(h.stdout()).signingKeyId).toBe(id);
+    expect(isValidRegistry(registryOf(JSON.parse(h.stdout())))).toBe(true);
     assertNoSecret(h.stdout() + h.stderr(), PASSPHRASE, RFC8032_TEST1_SEED);
   });
 
