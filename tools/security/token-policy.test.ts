@@ -49,17 +49,79 @@ interface Inventory {
   readonly rows: readonly (readonly string[])[];
 }
 
+// The two spellings of a read that names one secret: `secrets.NAME` and
+// `secrets['NAME']` (double quotes accepted too). Matched over the raw text,
+// comments included, so a name is never missed for sitting in an odd place.
+const NAMED_READ =
+  /\bsecrets(?:\.([A-Za-z_][A-Za-z0-9_]*)|\s*\[\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2\s*\])/g;
+
+// The job's own token, which the policy's rank 1 spells `github.token`.
+const JOB_TOKEN = "GITHUB_TOKEN";
+
 const secretNames = (workflowText: string): string[] =>
   [
-    ...new Set(
-      [...workflowText.matchAll(/\bsecrets\.([A-Za-z_][A-Za-z0-9_]*)/g)].map(
-        (match) => match[1] ?? "",
-      ),
-    ),
+    ...new Set([...workflowText.matchAll(NAMED_READ)].map((match) => match[1] ?? match[3] ?? "")),
   ].sort();
 
-const inheritsSecrets = (workflowText: string): boolean =>
-  /^\s*secrets:\s*inherit\b/m.test(workflowText);
+// Every expression GitHub evaluates: the `${{ … }}` spans of any key or
+// value, and an `if:` value written without delimiters, which GitHub reads as
+// an expression all the same. Comments are gone once the YAML is parsed.
+function expressionsOf(node: unknown, key: string | null, out: string[]): string[] {
+  const spans = (text: string): string[] =>
+    [...text.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].map((match) => match[1] ?? "");
+  if (typeof node === "string") {
+    const found = spans(node);
+    out.push(...(found.length === 0 && key === "if" ? [node] : found));
+  } else if (Array.isArray(node)) {
+    for (const item of node) expressionsOf(item, null, out);
+  } else if (typeof node === "object" && node !== null) {
+    for (const [childKey, child] of Object.entries(node)) {
+      out.push(...spans(childKey));
+      expressionsOf(child, childKey, out);
+    }
+  }
+  return out;
+}
+
+// What is left of `secrets` once the named reads and the string literals are
+// removed reads the context as a whole (`toJSON(secrets)`, `secrets`, a
+// computed key): it hands every stored secret over and names none of them.
+const readsWholeContext = (expression: string): boolean =>
+  /(?<![\w.-])secrets(?![\w-])/.test(
+    expression.replace(NAMED_READ, "").replace(/'(?:[^']|'')*'/g, "''"),
+  );
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Findings on one workflow that do not involve the inventory. */
+function workflowFindings(workflow: WorkflowSource): string[] {
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(workflow.text);
+  } catch {
+    // An unreadable source is a failure, never an empty workflow.
+    return [`workflow ${workflow.path} is not parseable YAML`];
+  }
+  const findings: string[] = [];
+  const jobs = isRecord(parsed) ? parsed.jobs : undefined;
+  for (const [job, definition] of Object.entries(isRecord(jobs) ? jobs : {})) {
+    const secrets = isRecord(definition) ? definition.secrets : undefined;
+    if (typeof secrets === "string" && secrets.trim().toLowerCase() === "inherit")
+      findings.push(`workflow ${workflow.path}: job ${job} passes "secrets: inherit"`);
+  }
+  if (expressionsOf(parsed, null, []).some(readsWholeContext))
+    findings.push(`workflow ${workflow.path} reads the secrets context without naming a secret`);
+  if (secretNames(workflow.text).some((name) => name.toUpperCase() === JOB_TOKEN))
+    findings.push(
+      `workflow ${workflow.path} reads the job token as secrets.${JOB_TOKEN}; use github.token`,
+    );
+  return findings;
+}
+
+/** Names of stored secrets, the job token excluded: it is refused apart. */
+const storedSecretNames = (workflowText: string): string[] =>
+  secretNames(workflowText).filter((name) => name.toUpperCase() !== JOB_TOKEN);
 
 const sectionHeadings = (document: string): string[] =>
   document
@@ -160,9 +222,8 @@ function inventoryFindings(document: string, workflows: readonly WorkflowSource[
 
   const consumersOf = new Map<string, string[]>();
   for (const workflow of workflows) {
-    if (inheritsSecrets(workflow.text))
-      findings.push(`workflow ${workflow.path} passes "secrets: inherit"`);
-    for (const name of secretNames(workflow.text)) {
+    findings.push(...workflowFindings(workflow));
+    for (const name of storedSecretNames(workflow.text)) {
       consumersOf.set(name, [...(consumersOf.get(name) ?? []), workflow.path]);
     }
   }
@@ -276,7 +337,7 @@ describe("token policy against this tree", () => {
   });
 
   test("header, sections and inventory hold against the workflows", () => {
-    const referenced = new Set(workflows.flatMap((workflow) => secretNames(workflow.text)));
+    const referenced = new Set(workflows.flatMap((workflow) => storedSecretNames(workflow.text)));
     const inventory = readInventory(policy);
     console.log(
       `token-policy: ${workflows.length} workflow(s) read, ${referenced.size} secret name(s) referenced, ` +
@@ -337,6 +398,9 @@ const BUMP_WORKFLOW = workflow(
   "      - env:\n          TOKEN: $" + "{{ secrets.BUMP_TOKEN }}",
 );
 const PLAIN_WORKFLOW = workflow("ci.yml", "      - run: bun test");
+/** A workflow whose one step passes `expression` to an environment variable. */
+const envWorkflow = (name: string, expression: string): WorkflowSource =>
+  workflow(name, `      - env:\n          VALUE: \${{ ${expression} }}`);
 const withCell = (column: string, value: string): string[] =>
   BUMP_ROW.map((cell, index) => (COLUMNS[index] === column ? value : cell));
 
@@ -394,7 +458,91 @@ describe("token policy refusals", () => {
   test("secrets: inherit in a workflow", () => {
     const caller = workflow("caller.yml", "      - run: true\n    secrets: inherit");
     expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, caller])).toEqual([
-      'workflow .github/workflows/caller.yml passes "secrets: inherit"',
+      'workflow .github/workflows/caller.yml: job run passes "secrets: inherit"',
+    ]);
+  });
+
+  // The same mapping in every spelling YAML allows: a line-anchored pattern
+  // sees one of them.
+  test.each([
+    ["quoted", 'jobs:\n  call:\n    uses: ./.github/workflows/r.yml\n    secrets: "inherit"\n'],
+    [
+      "single-quoted",
+      "jobs:\n  call:\n    uses: ./.github/workflows/r.yml\n    secrets: 'inherit'\n",
+    ],
+    ["in a flow mapping", "jobs:\n  call: { uses: ./.github/workflows/r.yml, secrets: inherit }\n"],
+    ["after a comment", "jobs:\n  call:\n    uses: ./r.yml\n    secrets: inherit # all of them\n"],
+  ])("secrets: inherit %s", (_, text) => {
+    const caller: WorkflowSource = { path: `${WORKFLOW_DIRECTORY}caller.yml`, text };
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, caller])).toEqual([
+      'workflow .github/workflows/caller.yml: job call passes "secrets: inherit"',
+    ]);
+  });
+
+  test("a workflow that is not YAML is a finding, never an empty workflow", () => {
+    const broken: WorkflowSource = { path: `${WORKFLOW_DIRECTORY}broken.yml`, text: "jobs: [\n" };
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, broken])).toEqual([
+      "workflow .github/workflows/broken.yml is not parseable YAML",
+    ]);
+  });
+
+  test.each([
+    ["single quotes", "secrets['HIDDEN_BRACKET']"],
+    ["double quotes", 'secrets["HIDDEN_BRACKET"]'],
+    ["spaces", "secrets[ 'HIDDEN_BRACKET' ]"],
+  ])("a name read with the bracket form, %s", (_, expression) => {
+    const hidden = envWorkflow("hidden.yml", expression);
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, hidden])).toEqual([
+      "secret HIDDEN_BRACKET is referenced by .github/workflows/hidden.yml and has no inventory row",
+    ]);
+  });
+
+  // A read of the context that names no secret cannot be inventoried: it
+  // hands every stored secret to the step.
+  test.each([
+    ["toJSON(secrets)", "toJSON(secrets)"],
+    ["the bare context", "secrets"],
+    ["a computed key", "secrets[matrix.name]"],
+    ["a formatted key", "secrets[format('{0}_TOKEN', 'BUMP')]"],
+  ])("a read of %s", (_, expression) => {
+    const dump = envWorkflow("dump.yml", expression);
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, dump])).toEqual([
+      "workflow .github/workflows/dump.yml reads the secrets context without naming a secret",
+    ]);
+  });
+
+  test("a read in an if condition, which takes an expression without delimiters", () => {
+    const guarded = workflow(
+      "guarded.yml",
+      "      - if: toJSON(secrets) != '{}'\n        run: true",
+    );
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, guarded])).toEqual([
+      "workflow .github/workflows/guarded.yml reads the secrets context without naming a secret",
+    ]);
+  });
+
+  test("the word secrets in a comment, a run script or a string literal is not a read", () => {
+    const prose = workflow(
+      "prose.yml",
+      "      # never pass the secrets to this job\n" +
+        "      - run: echo 'no secrets here'\n" +
+        "        if: $" +
+        "{{ contains(github.event.head_commit.message, 'secrets') }}",
+    );
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, prose])).toEqual([]);
+  });
+
+  // docs/security/TOKEN-POLICY.md, rank 1: the job's own token is
+  // `github.token`. Spelling it as a stored secret hides it among the
+  // inventoried ones, so the check refuses it instead of exempting it.
+  test.each([
+    ["secrets.GITHUB_TOKEN"],
+    ["secrets.github_token"],
+    ["secrets['GITHUB_TOKEN']"],
+  ])("%s instead of github.token", (expression) => {
+    const job = envWorkflow("job.yml", expression);
+    expect(policyFindings(document([BUMP_ROW]), [BUMP_WORKFLOW, job])).toEqual([
+      "workflow .github/workflows/job.yml reads the job token as secrets.GITHUB_TOKEN; use github.token",
     ]);
   });
 
