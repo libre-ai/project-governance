@@ -10,7 +10,7 @@ sur elle-même.
 - **Portée :** la suite de tests de tout gate et de tout outil de flotte, dans ce dépôt et
   dans ceux qui en copient les gabarits : forme des doublures, environnement du processus
   fils, table de cas, preuve par mutant, déclaration de ce que la suite ne discrimine pas,
-  et les deux réponses écrites qui accompagnent chaque test. Méthode, pas doctrine : rien ici
+  et les deux questions écrites qui accompagnent chaque test. Méthode, pas doctrine : rien ici
   n'est un invariant, et un ADR qui tranche autrement prime.
 - **Hors portée :** une doublure par fournisseur (forge, planificateur, machine virtuelle,
   résolution de noms). La note donne le principe ; chaque outil écrit la doublure de la
@@ -27,9 +27,9 @@ dépendance) est celui de cette note-là et ne se redéfinit pas ici.
 
 L'adaptateur de test est un **faux client à état en donnée** :
 
-- **Un fichier d'état.** Ce que la dépendance répondrait (dépôts, branches, réglages,
-  réponses d'erreur) est une donnée posée par le cas, pas du code dans la doublure. La
-  doublure lit ce fichier pour répondre et le modifie quand l'outil écrit.
+- **Un fichier d'état.** Ce que la dépendance renverrait (dépôts, branches, réglages,
+  erreurs) est une donnée posée par le cas, pas du code dans la doublure. La
+  doublure lit ce fichier pour construire sa sortie et le modifie quand l'outil écrit.
 - **Un journal d'appels.** La doublure y ajoute une ligne par appel reçu, avec ses arguments,
   dans l'ordre de réception, lectures comprises.
 - **Deux assertions par cas.** Sur l'état final : ce que l'outil a écrit, et ce qu'il a laissé
@@ -37,7 +37,7 @@ L'adaptateur de test est un **faux client à état en donnée** :
   figurer. Un outil qui écrit avant d'avoir relu, ou qui écrit après un refus, a un état final
   parfois correct et un journal faux ; seul le journal le montre.
 - **Un appel imprévu est un échec.** Une requête que l'état du cas ne décrit pas fait échouer
-  la doublure avec un code distinctif ; elle ne reçoit jamais une réponse vide, qui se
+  la doublure avec un code distinctif ; elle ne rend jamais une sortie vide, qui se
   confondrait avec « la dépendance n'a rien ».
 
 Le faux client prend l'une de deux formes selon la couture de l'outil : un adaptateur en
@@ -63,9 +63,10 @@ construit de rien :
   d'autre : une variable ambiante du run d'intégration continue ne peut pas décider d'un
   verdict. Une suite qui hérite de l'environnement mesure le run ambiant, pas son cas.
 
-L'implémentation à lire est `spawnClean` dans
-`distribution/templates/langgraph-gates/langgraph-gates.test.ts` (`PATH` et un `HOME` jetable,
-avec un test qui épingle les seules variables que le fils reçoit).
+`spawnClean`, dans `distribution/templates/langgraph-gates/langgraph-gates.test.ts`, est une
+instance du `HOME` jetable et de l'environnement construit de rien : le fils reçoit deux
+variables, et un test épingle qu'il n'en reçoit pas d'autre. `spawnClean` n'est pas une
+instance du `PATH` réduit : il transmet le `PATH` hérité, pour trouver `git`.
 
 ## Table de cas
 
@@ -96,16 +97,17 @@ Un cas rouge ne prouve rien tant qu'il n'a pas été montré vert sans la garde 
 Chaque cas rouge est donc rejoué contre un **mutant** de l'outil : une copie dont la ligne
 décisive est remplacée par un no-op.
 
-- **Remplacée, jamais supprimée.** Supprimer une ligne déséquilibre la structure et fait
-  rougir tout, pour la mauvaise raison. Le remplacement garde la forme du programme et
-  neutralise la seule décision visée.
+- **Remplacée, jamais supprimée.** La ligne décisive est remplacée par un no-op, jamais
+  supprimée. Supprimer une ligne déséquilibre la structure et fait rougir tout, pour la
+  mauvaise raison. Le remplacement garde la forme du programme et neutralise la seule
+  décision visée.
 - **Exactement une occurrence.** Le texte décisif se cherche tel quel dans le fichier. Zéro
   occurrence, ou plusieurs, fait échouer la suite : la mutation ne dit plus quelle garde elle
   neutralise.
-- **Trois échecs de la suite, pas du cas.** Un mutant identique à l'original (le remplacement
-  ne change rien) ; un mutant qui plante, car il prouve que la mutation casse le programme,
-  pas que le cas vérifie quelque chose ; un mutant qui laisse tout vert, car aucun cas ne
-  discrimine la garde.
+- **Trois échecs de la suite, pas du cas.** Un mutant identique à l'original fait échouer la
+  suite, car le remplacement ne change rien. Un mutant qui plante fait échouer la suite, car
+  il prouve que la mutation casse le programme, pas que le cas vérifie quelque chose. Un
+  mutant qui laisse tout vert fait échouer la suite, car aucun cas ne discrimine la garde.
 - **La copie seule est mutée.** Le mutant s'écrit dans un répertoire jetable ; le fichier sous
   revue n'est jamais touché.
 - **Un cas est une paire.** Le verdict qu'il épingle tient sur l'outil et ne tient pas sur le
@@ -139,10 +141,12 @@ permet de mettre en défaut sans un point d'injection que l'outil n'a pas.
 
 Neutraliser prouve qu'un test discrimine ; cela ne prouve pas qu'il discrimine la bonne chose.
 Pour tout test ajouté ou modifié, la description de la demande de fusion répond par écrit aux
-deux questions suivantes, chacune avec une réponse obligatoire :
+deux questions suivantes.
 
 1. Quelle erreur concrète fait rougir ce test ?
 2. Un refactor équivalent, ou un meilleur résultat tout aussi valide, le ferait-il rougir aussi ?
+
+Chacune des deux réponses est obligatoire.
 
 La réponse à la première est le no-op de la table des mutants : la ligne neutralisée et le cas
 qui rougit. Si la réponse à la seconde est oui, le test verrouille l'implémentation et non le
