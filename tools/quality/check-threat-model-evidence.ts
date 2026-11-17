@@ -23,16 +23,22 @@
  *     network is ever read;
  *   - a named test is a `test("<name>"` or `it("<name>"` call written outside
  *     comments and without a modifier (TypeScript), or a `fn <name>` under
- *     `#[test]` and not under `#[ignore` (Rust);
+ *     `#[test]` and under no attribute mentioning `ignore`, `cfg_attr`
+ *     included (Rust);
  *   - an agentic risk has a barrier that is not a document, and a risk that
- *     claims `refusal before execution` holds at least one named test.
+ *     claims `refusal before execution` holds at least one named test (so its
+ *     Barrier is never `residual:`); its Detection is judged in every case, a
+ *     residual barrier included.
  *
  * WHAT IT DOES NOT ASSERT: that the evidence covers the threat, nor that the
  * test is green. Existence only — relevance stays a review matter, the same
  * position as the citations gate. Not read either: a `describe.skip` around a
  * test, a test name built at run time (`test.each`, an interpolated template),
  * and a call written inside the `${…}` of a template literal that itself holds
- * a backtick.
+ * a backtick. In Rust, a `#[test]` inside a module that is never compiled
+ * (`#[cfg(any())]`, or any `cfg` that is false on the runner) is read as found:
+ * only the attributes of the function itself are read, not those of its
+ * enclosing modules.
  *
  * Counters sum to what is covered: threats = mitigated + residual + unmapped,
  * risks = barred + residual + red, cited = found + missing + unavailable +
@@ -367,7 +373,23 @@ const IDENTIFIER_START = /[A-Za-z_$]/;
 const IDENTIFIER_PART = /[A-Za-z0-9_$]/;
 /** After one of these, a `/` opens a regular expression; after anything else it divides. */
 const BEFORE_REGEX = new Set(["", "(", ",", "=", ":", "[", "!", "&", "|", "?", "{", ";", "+", "-"]);
-const BEFORE_REGEX_WORD = "return";
+/** Keywords an expression follows: a `/` after one opens a regular expression, as after `(`. */
+const BEFORE_REGEX_WORDS: ReadonlySet<string> = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "case",
+  "do",
+  "else",
+  "await",
+  "yield",
+]);
 
 /** The index after the string literal opening at `from`; a quote left open ends at the line. */
 function skipString(source: string, from: number): number {
@@ -437,7 +459,8 @@ function findTypeScriptTest(source: string, name: string): boolean {
           }
         }
       }
-      previous = word === BEFORE_REGEX_WORD ? "" : "a";
+      // After `.` the word is a property (`range.of / 2`), never a keyword.
+      previous = BEFORE_REGEX_WORDS.has(word) && previous !== "." ? "" : "a";
       index = end;
     } else {
       if (!/\s/.test(character)) previous = character;
@@ -515,7 +538,9 @@ function findRustTest(source: string, name: string): boolean {
       attributes.push((attribute[1] ?? "").trim());
       head = head.slice(0, attribute.index).trimEnd();
     }
-    const ignored = attributes.some((attribute) => attribute.startsWith("ignore"));
+    // `#[ignore]`, `#[ignore = "…"]` and a conditional `#[cfg_attr(…, ignore)]` alike: any
+    // attribute that mentions `ignore` is read as ignoring, the safe side of the doubt.
+    const ignored = attributes.some((attribute) => attribute.includes("ignore"));
     if (attributes.includes("test") && !ignored) return true;
   }
   return false;
@@ -718,18 +743,17 @@ export function evaluateEvidence(input: EvidenceInput): EvidenceOutcome {
     risks.total += 1;
     const barrier = parseEvidenceCell(row.barrier);
     const detection = parseEvidenceCell(row.detection);
-    if (barrier.kind === "residual") {
-      // Its detection is still counted and printed, so a dangling one is seen.
-      if (detection.kind === "evidence") judgeItems(row.id, detection.items);
-      risks.residual += 1;
-      continue;
-    }
     let cause: Cause = "none";
     const refuse = (reason: string): void => {
       cause = "hard";
       lines.push(`${row.id}: red — ${reason}`);
     };
-    if (barrier.kind === "invalid") {
+    if (barrier.kind === "residual") {
+      // A residual barrier is no refusal: the claim needs a named test among the barriers.
+      if (row.criterion === "refusal before execution") {
+        refuse("`refusal before execution` needs a barrier that is a named test, not `residual:`");
+      }
+    } else if (barrier.kind === "invalid") {
       refuse(`Barrier: ${barrier.reason}`);
     } else {
       const judged = judgeItems(row.id, barrier.items);
@@ -747,11 +771,13 @@ export function evaluateEvidence(input: EvidenceInput): EvidenceOutcome {
     if (detection.kind === "invalid") {
       refuse(`Detection: ${detection.reason}`);
     } else if (detection.kind === "evidence") {
+      // Judged whatever the barrier, a residual one included: a dangling detection is red.
       cause = worse(cause, judgeItems(row.id, detection.items).cause);
     }
     verdict = worse(verdict, cause);
-    if (cause === "none") risks.barred += 1;
-    else risks.red += 1;
+    if (cause !== "none") risks.red += 1;
+    else if (barrier.kind === "residual") risks.residual += 1;
+    else risks.barred += 1;
   }
 
   for (const surface of surfaces) {

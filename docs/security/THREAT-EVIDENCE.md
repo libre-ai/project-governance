@@ -44,10 +44,14 @@ longer in the model is counted an `orphan`, and both fail the control.
   neither found nor missing.
 - A named test is read in `.ts` files (`test("<name>"` or `it("<name>"`, outside
   comments, without `.skip`, `.todo`, `.skipIf`, `.if`, `.failing` or `.each`)
-  and in `.rs` files (`fn <name>` under `#[test]`, not under `#[ignore`).
+  and in `.rs` files (`fn <name>` under `#[test]`, under no attribute that
+  mentions `ignore`, a conditional `cfg_attr` included).
 - Criterion is `refusal before execution` or `detection or judgment`. The first
   is a claim the ledger must back with a named test among the barriers; a
-  barrier whose refusal no recognised test names is recorded under the second.
+  barrier whose refusal no recognised test names is recorded under the second,
+  and so is a risk whose Barrier is `residual:`.
+- A Detection cell is judged whatever the Barrier: beside a `residual:` barrier,
+  a detection that is missing or outside the grammar still makes the risk red.
 - A document is never a barrier: a `.md` target in a Barrier cell is refused.
 
 No evidence below is pinned in another repository: no commit of another
