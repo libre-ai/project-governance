@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -231,6 +231,43 @@ describe("compareParity: structure", () => {
     expect(violations.some((v) => v.category === "blocs" && /fermé/.test(v.message))).toBe(true);
   });
 
+  test("un bloc de code dans une liste (indenté de 4 espaces ou plus) est comparé", () => {
+    for (const indent of ["    ", "      ", "\t"]) {
+      const listed = (command: string) =>
+        doc({
+          code: [
+            "- step",
+            "",
+            `${indent}${FENCE}sh`,
+            `${indent}${command}`,
+            `${indent}${FENCE}`,
+          ].join("\n"),
+        });
+      const result = compareParity(listed("rm -rf /tmp/build"), listed("rm -rf /"));
+      expect(result.violations.map((v) => v.category)).toEqual(["blocs"]);
+      expect(result.counts.find((c) => c.category === "blocs")).toMatchObject({ a: 1, b: 1 });
+    }
+  });
+
+  test("un bloc de code sous « > » est comparé", () => {
+    const quoted = (command: string) =>
+      doc({ code: [`> ${FENCE}sh`, `> ${command}`, `> ${FENCE}`].join("\n") });
+    const result = compareParity(quoted("rm -rf /tmp/build"), quoted("rm -rf /"));
+    expect(result.violations.map((v) => v.category)).toEqual(["blocs"]);
+    // Sous « > > » aussi, et derrière une puce de liste.
+    const nested = (command: string) =>
+      doc({ code: [`> > - ${FENCE}sh`, `> >   ${command}`, `> >   ${FENCE}`].join("\n") });
+    expect(categories(nested("rm -rf /tmp/build"), nested("rm -rf /"))).toEqual(["blocs"]);
+  });
+
+  test("trois backticks suivis d'un backtick dans l'info-string ne sont pas une clôture", () => {
+    const inline = doc({ code: "- ```x``` is inline code" });
+    const result = compareParity(inline, inline);
+    expect(result.counts.find((c) => c.category === "blocs")).toMatchObject({ a: 0, b: 0 });
+    // Lue comme clôture, elle ouvrirait un bloc jamais fermé.
+    expect(result.violations).toEqual([]);
+  });
+
   test("un dièse dans un bloc de code n'est pas un titre", () => {
     const withComment = doc({
       code: [`${FENCE}sh`, "# a comment", FENCE].join("\n"),
@@ -343,11 +380,84 @@ describe("compareParity: mots-clés d'exigence", () => {
     }
   });
 
+  test("MUST NOT coupé en fin de ligne reste une interdiction, jamais une obligation", () => {
+    const en = doc({ prose: "A MUST\nNOT be empty. B SHOULD.\nIt MAY go." });
+    expect(categories(en, docFr({ prose: "A DOIT être vide. B DEVRAIT. Il PEUT." }))).toEqual([
+      "exigences",
+    ]);
+    expect(
+      compareParity(en, docFr({ prose: "A NE DOIT PAS être vide. B DEVRAIT. Il PEUT." }))
+        .violations,
+    ).toEqual([]);
+    // Même forme côté français : « NE DOIT⏎PAS ».
+    const fr = docFr({ prose: "A NE DOIT\nPAS être vide. B DEVRAIT. Il PEUT." });
+    expect(
+      compareParity(doc({ prose: "A MUST NOT be empty. B SHOULD. It MAY go." }), fr).violations,
+    ).toEqual([]);
+  });
+
+  test("MUST NOT séparé par une insécable, une tabulation ou une fine insécable : interdiction", () => {
+    for (const blank of [" ", "\t", " ", " \t "]) {
+      const en = doc({ prose: `A MUST${blank}NOT be empty. B SHOULD. It MAY go.` });
+      expect(categories(en, doc({ prose: "A DOIT être vide. B DEVRAIT. Il PEUT." }))).toEqual([
+        "exigences",
+      ]);
+      expect(
+        compareParity(en, doc({ prose: "A NE DOIT PAS être vide. B DEVRAIT. Il PEUT." }))
+          .violations,
+      ).toEqual([]);
+    }
+  });
+
+  test("MUST NOT coupé dans une citation « > » reste une interdiction", () => {
+    const en = doc({ prose: "> A MUST\n> NOT be empty. B SHOULD. It MAY go." });
+    expect(categories(en, doc({ prose: "> A DOIT être vide. B DEVRAIT. Il PEUT." }))).toEqual([
+      "exigences",
+    ]);
+  });
+
   test("un mot-clé français en forme décomposée (NFD) est reconnu", () => {
     const nfd = "Il est RECOMMANDÉ.";
     expect(
       compareParity(doc({ prose: "It is RECOMMENDED." }), doc({ prose: nfd })).violations,
     ).toEqual([]);
+  });
+});
+
+describe("compareParity: nombres et mots-clés se comparent section par section", () => {
+  const twoSections = (first: string, second: string) =>
+    ["# Specification v1.2.0", "## 1. Requests", first, "## 2. Responses", second, ""].join("\n\n");
+
+  test("deux seuils échangés entre deux sections : détecté", () => {
+    const en = twoSections(
+      "A request MUST stay under 200 bytes.",
+      "A response MUST stay under 300 bytes.",
+    );
+    const fr = twoSections(
+      "Une requête DOIT rester sous 300 octets.",
+      "Une réponse DOIT rester sous 200 octets.",
+    );
+    const violations = compareParity(en, fr).violations;
+    expect(violations.map((v) => v.category)).toEqual(["nombres"]);
+    expect(violations[0]?.message).toContain("1. Requests");
+  });
+
+  test("un MUST et un MAY échangés entre deux sections : détecté", () => {
+    const en = twoSections("A request MUST be signed.", "A response MAY be cached.");
+    const fr = twoSections("Une requête PEUT être signée.", "Une réponse DOIT être mise en cache.");
+    expect(categories(en, fr)).toEqual(["exigences"]);
+  });
+
+  test("un segment de code en ligne déplacé d'une section à l'autre : détecté", () => {
+    const en = twoSections("Use `id`. It MUST.", "Use `name`. It MAY.");
+    const fr = twoSections("Utiliser `name`. Il DOIT.", "Utiliser `id`. Il PEUT.");
+    expect(categories(en, fr)).toEqual(["code-en-ligne"]);
+  });
+
+  test("l'ordre à l'intérieur d'une section reste libre", () => {
+    const en = twoSections("Between 200 and 300, it MUST and MAY.", "None.");
+    const fr = twoSections("Il PEUT et DOIT, entre 300 et 200.", "Aucun.");
+    expect(compareParity(en, fr).violations).toEqual([]);
   });
 });
 
@@ -363,6 +473,8 @@ describe("compareParity: durée bornée sur une entrée hostile", () => {
     ["code en ligne, backticks isolés", "`a ".repeat(3000)],
     ["tableau, blancs", `a |${" ".repeat(3000)}x\n---|${" ".repeat(3000)}x`],
     ["nombres, groupes d'espaces", `1${" 000".repeat(3000)}x`],
+    ["préfixe de conteneur, citations et puces", `${"> - ".repeat(3000)}x`],
+    ["paragraphe, 3000 lignes coupées", "MUST\nNOT ".repeat(3000)],
   ];
 
   for (const [name, text] of hostile) {
@@ -440,6 +552,27 @@ describe("runParity: codes de sortie 0, 1, 2", () => {
     expect(result.code).toBe(2);
   });
 
+  test("UTF-16LE sans BOM : code 2, jamais un texte vidé de ses titres", async () => {
+    // Texte ASCII : en UTF-16LE, chaque caractère est suivi d'un NUL, ce qui reste de
+    // l'UTF-8 valide (un texte accentué, lui, est déjà refusé comme UTF-8 invalide).
+    const utf16 = new Uint8Array(Buffer.from(doc(), "utf16le"));
+    const result = await runParity([file("en5.md", doc()), file("fr5.md", utf16)]);
+    expect(result.code).toBe(2);
+    expect(result.lines.join("\n")).toContain("contrôle");
+  });
+
+  test("un caractère NUL ou un contrôle C0 : code 2 ; tabulation, LF, CR admis", async () => {
+    for (const control of ["\u0000", "\u0001", "\u000b", "\u000c", "\u001b", "\u001f"]) {
+      const result = await runParity([
+        file("en6.md", doc()),
+        file("fr6.md", docFr({ prose: `Texte${control} DOIT. DEVRAIT. PEUT.` })),
+      ]);
+      expect(result.code).toBe(2);
+    }
+    const allowed = docFr().replace(/\n/g, "\r\n").replace("Tampon :", "Tampon\t:");
+    expect((await runParity([file("en7.md", doc()), file("fr7.md", allowed)])).code).toBe(0);
+  });
+
   test("usage : nombre d'arguments différent de 2 : code 2", async () => {
     expect((await runParity([])).code).toBe(2);
     expect((await runParity([join(dir, "en.md")])).code).toBe(2);
@@ -449,6 +582,16 @@ describe("runParity: codes de sortie 0, 1, 2", () => {
   test("le même fichier des deux côtés ne certifie rien : code 2", async () => {
     const path = file("same.md", doc());
     expect((await runParity([path, path])).code).toBe(2);
+  });
+
+  test("le même fichier par un lien symbolique ou physique : code 2", async () => {
+    const path = file("same2.md", doc());
+    const soft = join(dir, "same2-soft.md");
+    const hard = join(dir, "same2-hard.md");
+    symlinkSync(path, soft);
+    linkSync(path, hard);
+    expect((await runParity([path, soft])).code).toBe(2);
+    expect((await runParity([hard, path])).code).toBe(2);
   });
 
   test("deux textes vides : rien examiné, code 2 et non un vert", async () => {
