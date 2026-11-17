@@ -1,6 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { check, parseRegister, REGISTER_PATH, SCHEMA_VERSION } from "./check-off-code-zones";
+import {
+  check,
+  MAX_THRESHOLD_DAYS,
+  parseRegister,
+  REGISTER_PATH,
+  SCHEMA_VERSION,
+} from "./check-off-code-zones";
 
 // Expectations come from the rule (R12): owner, version and fingerprint each
 // required; review date missing, malformed, future or strictly older than the
@@ -102,6 +110,94 @@ describe("check", () => {
       "reference date",
     ]);
   });
+
+  test("a threshold above the ceiling set in code is a violation", () => {
+    expect(MAX_THRESHOLD_DAYS).toBe(365);
+    expect(messagesOf([zone()], 1e9)).toEqual([
+      "review_max_age_days: 1000000000 day(s) exceeds the ceiling of 365 day(s) set in code",
+    ]);
+    expect(messagesOf([zone()], 366)).toHaveLength(1);
+    expect(messagesOf([zone()], 365)).toEqual([]);
+  });
+
+  test("an owner, version or fingerprint that is not a string must be quoted", () => {
+    // `version: 1.0` reaches the check as the number 1: the field is there, unquoted.
+    const text = `schema_version: ${SCHEMA_VERSION}\nreview_max_age_days: 365\nzones:\n  - id: off-code.a\n    owner: owner\n    version: 1.0\n    fingerprint: sha256:00\n    reviewed_on: 2026-11-01\n`;
+    const register = parseRegister(text);
+    if (typeof register === "string") throw new Error(register);
+    expect(messagesOf(register.zones)).toEqual([
+      "zones.off-code.a: version must be a quoted string",
+    ]);
+    expect(messagesOf([zone({ owner: 42, version: 4, fingerprint: true })])).toEqual([
+      "zones.off-code.signing-module-firmware: owner must be a quoted string",
+      "zones.off-code.signing-module-firmware: version must be a quoted string",
+      "zones.off-code.signing-module-firmware: fingerprint must be a quoted string",
+    ]);
+  });
+
+  test("zones whose review cannot be judged are counted apart, never compliant", () => {
+    expect(check([zone()], "365", TODAY)).toMatchObject({
+      zonesRead: 1,
+      compliant: 0,
+      violating: 0,
+      unjudged: 1,
+    });
+    expect(
+      check([zone(), zone({ id: "off-code.b", owner: "" })], THRESHOLD, "2026-13-01"),
+    ).toMatchObject({
+      zonesRead: 2,
+      compliant: 0,
+      violating: 1,
+      unjudged: 1,
+    });
+    expect(check([zone()], 1e9, TODAY)).toMatchObject({ compliant: 0, unjudged: 1 });
+  });
+});
+
+describe("the gate run", () => {
+  const workspaces: string[] = [];
+  afterAll(() => {
+    for (const workspace of workspaces) rmSync(workspace, { recursive: true, force: true });
+  });
+
+  function runGate(register: string): { code: number; stdout: string; stderr: string } {
+    const cwd = mkdtempSync(join(tmpdir(), "off-code-zones-"));
+    workspaces.push(cwd);
+    mkdirSync(join(cwd, "ecosystem"));
+    writeFileSync(join(cwd, REGISTER_PATH), register);
+    const run = Bun.spawnSync(
+      [process.execPath, join(import.meta.dir, "check-off-code-zones.ts"), `--today=${TODAY}`],
+      { cwd, env: { PATH: process.env.PATH ?? "" } },
+    );
+    return { code: run.exitCode, stdout: run.stdout.toString(), stderr: run.stderr.toString() };
+  }
+
+  const header = `schema_version: ${SCHEMA_VERSION}\nreview_max_age_days: 365\n`;
+
+  test("an empty register asserts nothing and says so, with its counters", () => {
+    const run = runGate(`${header}zones: []\n`);
+    expect(run.code).toBe(0);
+    expect(run.stdout).not.toContain("assertion(s) hold");
+    expect(run.stdout).toContain("verified nothing, as declared: aucune zone déclarée");
+    expect(run.stdout).toContain("read=0 compliant=0 violating=0 unjudged=0");
+  });
+
+  test("a register with a compliant zone holds one assertion per zone", () => {
+    const run = runGate(
+      `${header}zones:\n  - id: off-code.a\n    owner: o\n    version: "1"\n    fingerprint: f\n    reviewed_on: 2026-11-01\n`,
+    );
+    expect(run.code).toBe(0);
+    expect(run.stdout).toContain("read=1 compliant=1 violating=0 unjudged=0");
+  });
+
+  test("a doubled threshold key fails the gate", () => {
+    const run = runGate(
+      `schema_version: ${SCHEMA_VERSION}\nreview_max_age_days: 365\nreview_max_age_days: 99999\n` +
+        'zones:\n  - id: off-code.a\n    owner: o\n    version: "1"\n    fingerprint: f\n    reviewed_on: 2019-01-01\n',
+    );
+    expect(run.code).toBe(1);
+    expect(run.stderr).toContain("written twice");
+  });
 });
 
 describe("parseRegister", () => {
@@ -125,6 +221,34 @@ describe("parseRegister", () => {
     expect(parseRegister("schema_version: other\nzones: []\n")).toContain("schema_version");
     expect(parseRegister(`${header}zones: none\n`)).toBe("zones is not a list");
     expect(parseRegister("zones: [\n")).toContain("unreadable YAML");
+  });
+
+  test("refuses a root key written twice: the parser keeps only the last, loosest one", () => {
+    const text =
+      `schema_version: ${SCHEMA_VERSION}\nreview_max_age_days: 365\n` +
+      "review_max_age_days: 99999\nzones: []\n";
+    expect(parseRegister(text)).toContain("written twice");
+    expect(parseRegister(text)).toContain("review_max_age_days");
+  });
+
+  test("refuses a zone key written twice", () => {
+    const text =
+      `${header}zones:\n  - id: off-code.a\n    reviewed_on: 2019-01-01\n` +
+      "    reviewed_on: 2026-11-01\n";
+    expect(parseRegister(text)).toContain("written twice");
+    expect(parseRegister(text)).toContain("reviewed_on");
+  });
+
+  test("refuses a key written outside the bare block form the line reading sees", () => {
+    for (const text of [
+      `${header}"review_max_age_days": 99999\nzones: []\n`,
+      `${header}? review_max_age_days\n: 99999\nzones: []\n`,
+      `${header}zones: [{id: off-code.a, reviewed_on: 2019-01-01, reviewed_on: 2026-11-01}]\n`,
+      `${header}zones:\n  - {id: off-code.a}\n`,
+    ]) {
+      const register = parseRegister(text);
+      expect(typeof register).toBe("string");
+    }
   });
 
   test("the register of this repository parses and holds", async () => {

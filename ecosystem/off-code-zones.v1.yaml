@@ -8,8 +8,11 @@ schema_version: libre-ai.off-code-zones.v1
 # infrastructure" that nobody names is an exception nobody reviews. Each zone
 # here carries an owner, a version, a fingerprint and the date of its last
 # review; a review that is missing, malformed, in the future or older than
-# `review_max_age_days` fails the gate. The threshold is inclusive: a review
-# exactly `review_max_age_days` old still holds.
+# `review_max_age_days` is a violation reported by that command
+# (`bun run check:off-code-zones`). No chain runs it today: it is not a step of
+# `bun run check` nor of a workflow. The threshold is inclusive: a review
+# exactly `review_max_age_days` old still holds, and the code caps it at 365.
+# Each key is written once, bare, in block form: a doubled key is refused.
 #
 # Entry shape (every field required; any other key is ignored):
 #   - id: off-code.<name>
