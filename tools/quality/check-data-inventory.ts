@@ -182,6 +182,11 @@ export const NOT_GATED: readonly NotGated[] = [
     because:
       "the product packages and forbidden modules check-import-boundaries.ts refuses, empty today; that gate is not in `bun run check`, so no aggregate verdict depends on this table yet. Removing an entry lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
   },
+  {
+    path: "tools/quality/adr-citations.v1.json",
+    because:
+      "the authority documents and foreign repositories check-adr-citations.ts reads; that gate is run by hand and is in no chain, so no aggregate verdict depends on this table yet. Removing a document or adding a repository loosens it: gate this path in check-review-evidence.ts when the gate is activated",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
