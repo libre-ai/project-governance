@@ -23,7 +23,9 @@
  * Usage: bun ecosystem/render-invariant-matrix.ts           (writes the projection)
  *        bun ecosystem/render-invariant-matrix.ts --check   (writes nothing)
  * Exit:  0 green; 1 violation, or committed projection differing from the
- *        regeneration; 2 usage.
+ *        regeneration; 2 usage. `--check` reads the register, the
+ *        correspondence, the tests and the projection from the git index:
+ *        stage an edit before checking it; a projection never indexed is red.
  */
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -155,6 +157,16 @@ function gateStem(gate: string): string {
   return posix.basename(gate).replace(/\.[^.]+$/, "");
 }
 
+/**
+ * Whether `body` names `stem` as a word of a path: not inside a longer name
+ * (`check-things`, `precheck-thing`) and not as a letter of an unrelated word.
+ * A following `.` stays allowed, for `check-thing.ts`.
+ */
+function citesStem(body: string, stem: string): boolean {
+  const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![A-Za-z0-9_.-])${escaped}(?![A-Za-z0-9_-])`).test(body);
+}
+
 interface PairCounts {
   gates: number;
   tests: number;
@@ -186,6 +198,12 @@ function checkPairs(
     if (pair.test === null) continue;
     counts.tests += 1;
     const testItem = `${item} → ${pair.test}`;
+    // A gate that names itself would « cite » its own base name: the citation
+    // check would then certify a test that does not exist.
+    if (pair.test === pair.gate) {
+      report.check(testItem, false, "the test is the gate itself, not a test of it");
+      continue;
+    }
     if (!paths.has(pair.test)) {
       report.check(testItem, false, "test is not a file tracked by git");
       continue;
@@ -196,7 +214,7 @@ function checkPairs(
       continue;
     }
     const stem = gateStem(pair.gate);
-    const cites = body.includes(stem);
+    const cites = citesStem(body, stem);
     report.check(
       testItem,
       cites,
@@ -227,7 +245,14 @@ export function buildInvariantMatrix(
   // never matches after the « é » of « Retiré »: it reads the one retired row
   // of the register as in force. `parseInvariants` reads the state correctly
   // and overwrites duplicates in silence. A row is retired if either says so.
+  // The two do not read the same ids (`I-\d+` with a closing `|` against
+  // `I-` and 2-3 digits): a row only one of them sees has no agreed state, so
+  // it is refused below instead of defaulting to « en vigueur ».
   const standing = parseInvariants(register.text ?? "");
+  const halfRead = [
+    ...[...parsed.entries.keys()].filter((id) => !standing.has(id)),
+    ...[...standing.keys()].filter((id) => !parsed.entries.has(id)),
+  ];
   const ids = [...parsed.entries.values()].map((entry) => ({
     id: entry.id,
     retired: entry.retired || standing.get(entry.id) === "retiré",
@@ -251,6 +276,9 @@ export function buildInvariantMatrix(
       true,
       `${ids.length} row(s), ${live.length} in force, ${retired} retired`,
     );
+  }
+  for (const id of halfRead) {
+    report.check(id, false, "read by only one of the two register readers: state undecided");
   }
 
   const correspondence: ParsedMapping =
@@ -378,28 +406,36 @@ if (import.meta.main) {
 
   const root = git(process.cwd(), ["rev-parse", "--show-toplevel"])?.trim() ?? process.cwd();
   const listing = git(root, ["ls-files", "-z"]);
-  const tracked: TrackedTree = {
-    paths: listing === null ? null : new Set(listing.split("\0").filter(Boolean)),
-    text: (path) => readOrNull(join(root, path)),
-  };
+  const paths = listing === null ? null : new Set(listing.split("\0").filter(Boolean));
+  // `--check` judges what is committed: every source, the projection included,
+  // is read from the index (`git show :<path>`), never from the disk, where an
+  // unstaged edit or a projection never indexed would pass for the committed
+  // one. Generation reads the disk, where the correspondence is being edited.
+  const read = check
+    ? (path: string) => git(root, ["show", `:${path}`])
+    : (path: string) => readOrNull(join(root, path));
+  const tracked: TrackedTree = { paths, text: read };
   const { report, matrix } = buildInvariantMatrix(
-    { path: REGISTER_PATH, text: readOrNull(join(root, REGISTER_PATH)) },
-    { path: MAPPING_PATH, text: readOrNull(join(root, MAPPING_PATH)) },
+    { path: REGISTER_PATH, text: read(REGISTER_PATH) },
+    { path: MAPPING_PATH, text: read(MAPPING_PATH) },
     tracked,
   );
 
   if (matrix !== null) {
     const rendered = renderInvariantMatrix(matrix);
     if (check) {
-      const committed = readOrNull(join(root, PROJECTION_PATH));
+      const isTracked = paths?.has(PROJECTION_PATH) === true;
+      const committed = isTracked ? read(PROJECTION_PATH) : null;
       report.check(
         PROJECTION_PATH,
         committed === rendered,
         committed === rendered
           ? "byte-identical to the regeneration"
-          : committed === null
-            ? "absent — generate it with `bun ecosystem/render-invariant-matrix.ts`"
-            : "differs from the regeneration — run `bun ecosystem/render-invariant-matrix.ts`",
+          : !isTracked
+            ? "not tracked by git — generate it with `bun ecosystem/render-invariant-matrix.ts`, then `git add` it"
+            : committed === null
+              ? "tracked but could not be read from the index"
+              : "differs from the regeneration — run `bun ecosystem/render-invariant-matrix.ts`",
       );
     } else {
       await Bun.write(join(root, PROJECTION_PATH), rendered);
