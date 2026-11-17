@@ -1,5 +1,5 @@
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
-import { discoverDetectors } from "./fleet-gates";
+import { discoverDetectors, printable } from "./fleet-gates";
 
 /**
  * Fleet detectors discovery (`bun ecosystem/check-fleet-gates.ts <directory>`):
@@ -19,7 +19,11 @@ const report = new GateReport();
 if (found.ok) {
   for (const detector of found.detectors) {
     const target = detector.target === null ? "info" : String(detector.target);
-    report.check(detector.id, true, `${detector.scope}, target ${target}, ${detector.path}`);
+    report.check(
+      detector.id,
+      true,
+      `${detector.scope}, target ${target}, ${printable(detector.path)}`,
+    );
   }
   report.volume(
     `${found.examined} entries read: ${found.detectors.length} detector(s), ${found.ignored} other file(s), ${found.links} link(s), ${found.folders} folder(s)`,
