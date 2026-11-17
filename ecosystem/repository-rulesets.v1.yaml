@@ -12,6 +12,13 @@
 # provider and never proposes a correction — changing a ruleset stays a human
 # act (I-17, ADR-0029 §2.8).
 #
+# Writing rules, enforced by the gate, which also reads this file line by
+# line: block style only (no flow collection except the empty `[]` and `{}`,
+# no quoted key, anchor, tag, block scalar or document marker); every key
+# once per mapping, since the parser would silently keep the last of two; and
+# quote any scalar the parser would convert — a plain scalar must read back as
+# itself, so `1.10`, `0x10`, `012` or `~` are refused unless quoted.
+#
 # Dated measurement, to replay before relying on it: the entry below
 # transcribes the rulesets read on 2026-11-17 (list with parents included,
 # then each ruleset in full). It records the state as read, taken as the
