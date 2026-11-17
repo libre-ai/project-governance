@@ -24,7 +24,7 @@ The historical decision corpus has not been imported in full. Imported sources a
 
 ## Product direction and consolidation
 
-[Vision](VISION.md) · [Consolidation decision](docs/adr/2026-09-29-portfolio-consolidation.md) · [Forge design](docs/architecture/forge/README.md)
+[Vision](docs/architecture/forge/VISION.md) · [Consolidation decision](docs/adr/2026-09-29-portfolio-consolidation.md) · [Forge design](docs/architecture/forge/README.md)
 
 These documents distinguish accepted direction, design candidates and capabilities still awaiting qualification. Historical authorities remain available during admission.
 
