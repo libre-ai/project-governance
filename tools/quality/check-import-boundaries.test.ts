@@ -333,6 +333,164 @@ describe("template-literal specifiers", () => {
   });
 });
 
+// Review of 2026-11-17: a relative path that climbs out of its package reaches
+// another package (or a product checked out beside it) without naming it, so
+// rule 1 never sees it. A package reaches another by name; a path that leaves
+// its own directory is refused.
+describe("relative imports stay inside their package", () => {
+  test.each([
+    ["another package", "../../beta/src/index"],
+    ["a folder outside the workspace", "../../../../prod/src/y"],
+    ["the packages folder itself", "../../index"],
+    ["an absolute path", "/srv/prod/src/y"],
+    ["a file URL", "file:///srv/prod/src/y.ts"],
+  ])("a specifier reaching %s is a violation", (_label, specifier) => {
+    const result = checkImportBoundaries(
+      [alpha(`import { y } from "${specifier}";\n`)],
+      EMPTY_TABLE,
+    );
+    expect(result.violations).toEqual([
+      {
+        package: "@libre-ai/alpha",
+        file: "packages/alpha/src/index.ts",
+        line: 1,
+        target: specifier,
+        reason: expect.stringContaining("leaves its package"),
+      },
+    ]);
+  });
+
+  test("a re-export and a dynamic import climbing out are refused too", () => {
+    const result = checkImportBoundaries(
+      [alpha('export * from "../../beta/src";\nconst m = await import("../../beta");\n')],
+      EMPTY_TABLE,
+    );
+    expect(result.violations.map((violation) => violation.line)).toEqual([1, 2]);
+  });
+
+  test("relative paths that stay inside the package are accepted", () => {
+    const nested: PackageInput = {
+      dir: "packages/alpha",
+      manifest: manifest({}),
+      files: [
+        {
+          path: "packages/alpha/src/view/a.ts",
+          content:
+            'import "./b";\nimport "../util/c";\nimport "../../package.json";\nimport "..";\n',
+        },
+      ],
+    };
+    const result = checkImportBoundaries([nested], EMPTY_TABLE);
+    expect(result.violations).toEqual([]);
+    expect(result.counters.imports).toBe(4);
+  });
+
+  test("a sibling directory sharing the package name as a prefix is outside it", () => {
+    const result = checkImportBoundaries([alpha('import "../../alpha-extra/src";\n')], EMPTY_TABLE);
+    expect(result.violations.map((violation) => violation.target)).toEqual([
+      "../../alpha-extra/src",
+    ]);
+  });
+});
+
+// Review of 2026-11-17: a regular-expression literal holding `/*` or a
+// backquote was read as a comment or template opener, hiding the rest of the
+// file or reading later comments as code.
+describe("regular-expression literals", () => {
+  const products: BoundaryTable = { products: ["@libre-ai/prod"], forbidden: new Map() };
+
+  test.each([
+    ["an assignment", "const re = /[/*]/;"],
+    ["a call argument", 'const s = t.replace(/[/*]/g, "");'],
+    ["a return", "function f() { return /[/*]/; }"],
+    ["a condition", "if (ok) /[/*]/.test(s);"],
+    ["a line-comment opener", "const re = /[//]/;"],
+    ["an unbalanced quote", `const re = /["']/;`],
+  ])("a regex after %s hides nothing that follows", (_label, line) => {
+    const source = `${line}\nexport * from "@libre-ai/prod";\n/* x */\n`;
+    const result = checkImportBoundaries([alpha(source)], products);
+    expect(result.violations.map((violation) => [violation.line, violation.target])).toEqual([
+      [2, "@libre-ai/prod"],
+    ]);
+  });
+
+  test("a backquote in a regex does not open a template over the next lines", () => {
+    const source = 'const re = /`/;\n// import "@libre-ai/beta";\nexport const ok = 1;\n';
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations).toEqual([]);
+  });
+
+  test("a division is not a regex: the comment after it is still blanked", () => {
+    const source = [
+      'const half = total / 2; // import "@libre-ai/beta";',
+      'const mean = (a + b) / 2; // import "@libre-ai/beta";',
+      'const i = list[0] / 2; /* import "@libre-ai/beta"; */',
+    ].join("\n");
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations).toEqual([]);
+  });
+
+  test("a backquote inside a substitution's comment does not close its template", () => {
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the substitution is the fixture.
+    const source = 'const t = `${\n  a // `\n}`;\nimport "@libre-ai/beta";\n';
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations.map((violation) => [violation.line, violation.target])).toEqual([
+      [4, "@libre-ai/beta"],
+    ]);
+  });
+
+  test("closed templates with nested substitutions are not read as left open", () => {
+    const source = [
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: the substitution is the fixture.
+      "const t = `a ${`b ${c}`} d ${ { e: 1 }.e } /*`;",
+      'import "@libre-ai/beta"; // */',
+    ].join("\n");
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations.map((violation) => [violation.line, violation.target])).toEqual([
+      [2, "@libre-ai/beta"],
+    ]);
+  });
+
+  // A block comment or a template literal that never closes would read the rest
+  // of the file as empty: the file is a violation, never zero imports.
+  test.each([
+    ["a block comment", '/* never closed\nimport "@libre-ai/beta";\n'],
+    ["a template literal", 'const t = `never closed\nimport "@libre-ai/beta";\n'],
+  ])("%s left open at the end of the file is a violation", (_label, source) => {
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    // Template text is not blanked, so the open template may also yield the
+    // import it swallows; what matters is that the file does not pass.
+    expect(result.violations).toContainEqual({
+      package: "@libre-ai/alpha",
+      file: "packages/alpha/src/index.ts",
+      line: 1,
+      target: "(source)",
+      reason: expect.stringContaining("never closes"),
+    });
+  });
+});
+
+// Review of 2026-11-17: formatters put a long specifier on its own line.
+describe("a specifier on another line than its keyword", () => {
+  test.each([
+    ["a dynamic import", 'const m = await import(\n  "@libre-ai/beta"\n);\n', 2],
+    ["a named import", 'import {\n  a,\n  b,\n} from\n  "@libre-ai/beta";\n', 5],
+    ["a require", 'const g = require(\n  "@libre-ai/beta",\n);\n', 2],
+    ["a re-export", 'export {\n  x,\n} from "@libre-ai/beta";\n', 3],
+  ])("%s is read, at the line of its specifier", (_label, source, line) => {
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.violations.map((violation) => [violation.line, violation.target])).toEqual([
+      [line, "@libre-ai/beta"],
+    ]);
+  });
+
+  test("a keyword in a comment does not pair with a string on the next line", () => {
+    const source = '// import\nconst s = "@libre-ai/beta";\n';
+    const result = checkImportBoundaries([alpha(source)], EMPTY_TABLE);
+    expect(result.counters.imports).toBe(0);
+  });
+});
+
 describe("parseBoundaryTable", () => {
   test("reads a well-formed table", () => {
     const table = parseBoundaryTable(
