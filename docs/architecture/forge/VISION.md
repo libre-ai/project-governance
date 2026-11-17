@@ -66,4 +66,4 @@ Code, méthodes, exemples, contre-exemples et apprentissages constituent des sor
 
 Consolider les familles existantes, avec une autorité par domaine. Forge peut être le nom du produit porté par ai-work-supervision sans création immédiate de nouveaux dépôts. L'autorité se transfère après admission vérifiée, sans rendre les sources historiques inaccessibles.
 
-[Décision de consolidation](docs/adr/2026-09-29-portfolio-consolidation.md) · [Design Forge](docs/architecture/forge/README.md) · [Registre de transition](docs/consolidation/repository-register.json)
+[Décision de consolidation](../../adr/2026-09-29-portfolio-consolidation.md) · [Design Forge](README.md) · [Registre de transition](../../consolidation/repository-register.json)
