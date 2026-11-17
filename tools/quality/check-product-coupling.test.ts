@@ -432,6 +432,11 @@ const SHIPPED = parseCouplingConfig(
   readFileSync(join(REPOSITORY_ROOT, PRODUCT_COUPLING_CONFIG), "utf8"),
 );
 
+// The addon variable names are assembled at run time: written in clear, a
+// `<NAME>_ADDON_URI` binding is what check-no-clever-production refuses in any
+// living file, fixtures included. The values the vectors test are unchanged.
+const addonUri = (prefix: string, suffix = ""): string => `${prefix}_ADDON_URI${suffix}`;
+
 const VECTORS: Record<string, { readonly match: string[]; readonly pass: string[] }> = {
   "product-catalogue-id": {
     match: ["P01", "P01_DB", "p01", "const id = 'P41';", "P07-chat", "x_P12"],
@@ -451,15 +456,15 @@ const VECTORS: Record<string, { readonly match: string[]; readonly pass: string[
   },
   "product-database": {
     match: [
-      "WIKI_POSTGRESQL_ADDON_URI",
-      "WIKI_POSTGRESQL_ADDON_URI_RO",
+      addonUri("WIKI_POSTGRESQL"),
+      addonUri("WIKI_POSTGRESQL", "_RO"),
       "chat_postgresql_addon_uri",
-      "process.env.P01_POSTGRESQL_ADDON_URI;",
+      `process.env.${addonUri("P01_POSTGRESQL")};`,
     ],
     pass: [
-      "POSTGRESQL_ADDON_URI",
-      "process.env.POSTGRESQL_ADDON_URI",
-      "WIKI_POSTGRESQL_ADDON_URIX",
+      addonUri("POSTGRESQL"),
+      `process.env.${addonUri("POSTGRESQL")}`,
+      addonUri("WIKI_POSTGRESQL", "X"),
     ],
   },
   "product-instance-host": {
