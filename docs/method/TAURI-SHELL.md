@@ -1039,6 +1039,9 @@ Sur une coquille conforme, `coquille=` est vide, `timeout=0`, `error=0` et
 - Un port de l'hôte ouvert entre les deux balayages est attribué à la
   coquille. Le verdict est alors rouge à tort, jamais vert à tort ; rejouer
   les deux balayages le tranche.
+- L'adresse lien-local de la boucle locale (`fe80::1%lo0` sur macOS) n'est
+  pas balayée. Un écouteur lié à cette seule adresse échappe au balayage ;
+  `lsof` le voit s'il appartient à l'arbre de processus de la coquille.
 - UDP n'est pas balayé, ni aucune adresse hors de la boucle locale.
 - Ce second instrument n'a été exécuté sur aucune coquille construite :
   **NON VÉRIFIÉ** (§6).
