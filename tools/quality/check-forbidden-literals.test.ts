@@ -1,5 +1,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -7,6 +15,7 @@ import {
   FORBIDDEN_LITERAL_MARKER,
   type LiteralFamily,
   type LiteralScan,
+  parseStagedEntries,
   scanForbiddenLiterals,
 } from "./check-forbidden-literals";
 
@@ -44,7 +53,8 @@ function sums(scan: LiteralScan): boolean {
       scan.excludedProse +
       scan.excludedLockfile +
       scan.excludedPatternSubject +
-      scan.excludedBinary
+      scan.excludedBinary +
+      scan.excludedLink
   );
 }
 
@@ -64,9 +74,18 @@ describe("download handed to an interpreter", () => {
     expect(scan.examined).toBe(0);
   });
 
-  test("is not counted on a line that is only a comment", () => {
-    for (const prefix of ["#", "  # ", "//", " * ", "/*", "<!--"]) {
-      expect(scanLine("tools/x.sh", `${prefix}${DOWNLOAD_LINE}`).findings).toEqual([]);
+  test("is not counted on a line that is only a comment, in the file's own syntax", () => {
+    const comments: readonly (readonly [string, string])[] = [
+      ["tools/x.sh", "#"],
+      ["tools/x.sh", "  # "],
+      [WORKFLOW, "# "],
+      ["tools/x.ts", "//"],
+      ["tools/x.ts", " * "],
+      ["tools/x.rs", "/*"],
+      ["tools/x.html", "<!--"],
+    ];
+    for (const [path, prefix] of comments) {
+      expect(scanLine(path, `${prefix}${DOWNLOAD_LINE}`).findings).toEqual([]);
     }
   });
 
@@ -231,6 +250,167 @@ describe("exclusions and counters", () => {
     expect(scan.tracked).toBe(0);
     expect(sums(scan)).toBe(true);
   });
+
+  test("a link entry is excluded, counted apart and never read", () => {
+    const scan = scanForbiddenLiterals([
+      { path: "tools/a.sh", text: DOWNLOAD_LINE, link: true },
+      { path: "tools/b.sh", text: "true\n" },
+    ]);
+    expect(scan.findings).toEqual([]);
+    expect(scan.excludedLink).toBe(1);
+    expect(scan.examined).toBe(1);
+    expect(sums(scan)).toBe(true);
+  });
+});
+
+describe("staged entries", () => {
+  const sha = "a".repeat(40);
+  test("each path once, a link or submodule mode marks it, a malformed record is a failure", () => {
+    const output = [
+      `100644 ${sha} 0\ttools/a.sh`,
+      `120000 ${sha} 0\ttools/link`,
+      `160000 ${sha} 0\tvendor/sub`,
+      `100644 ${sha} 2\tboth`,
+      `120000 ${sha} 3\tboth`,
+    ]
+      .map((record) => `${record}\0`)
+      .join("");
+    const read = parseStagedEntries(output);
+    expect(read.ok && [...read.links]).toEqual([
+      ["tools/a.sh", false],
+      ["tools/link", true],
+      ["vendor/sub", true],
+      ["both", true],
+    ]);
+    expect(parseStagedEntries("tools/a.sh\0").ok).toBe(false);
+    expect(parseStagedEntries(`100644 ${sha} 0\ttools/a.sh`).ok).toBe(false);
+  });
+});
+
+describe("comment syntax follows the file", () => {
+  test("a shell case default branch is code, not a comment", () => {
+    const line = glue("  *) ", DOWNLOAD_LINE, " ;;");
+    expect(families(scanLine("tools/x.sh", line))).toEqual(["download-to-interpreter"]);
+  });
+
+  test("a block-comment continuation is a comment in a TypeScript file", () => {
+    expect(scanLine("tools/x.ts", ` * ${DOWNLOAD_LINE}`).findings).toEqual([]);
+  });
+
+  test("a private member is code, not a comment, in a TypeScript file", () => {
+    const line = `  #target = "${ADDRESS_LINE}";`;
+    expect(families(scanLine("tools/x.ts", line))).toEqual(["network-ipv4-literal"]);
+  });
+});
+
+describe("relay anywhere in the pipeline", () => {
+  test("an interpreter by path, through env, after another stage, or under sudo -u", () => {
+    const head = glue(CURL, " -fsSL https://x.example/i.sh");
+    const relays = [
+      glue(head, PIPE, "/bin/bash"),
+      glue(head, PIPE, "tee /tmp/i", PIPE, "sh"),
+      glue(head, PIPE, "env sh"),
+      glue(head, PIPE, "/usr/bin/env -i PATH=/bin bash -s"),
+      glue(head, PIPE, "sudo -u root bash"),
+      glue(head, " |& sh"),
+    ];
+    for (const line of relays) {
+      expect(families(scanLine("tools/x.sh", line))).toEqual(["download-to-interpreter"]);
+    }
+  });
+
+  test("a non-interpreter stage, a logical or, and a later command are not relays", () => {
+    const head = glue(CURL, " -fsSL u");
+    for (const line of [
+      glue(head, PIPE, "grep sh"),
+      glue(head, " || /bin/bash fallback.sh"),
+      glue(head, " -o f && echo done", PIPE, "sh"),
+      glue(head, PIPE, "tee bash.log"),
+    ]) {
+      expect(scanLine("tools/x.sh", line).findings).toEqual([]);
+    }
+  });
+
+  test("a download continued by a backslash onto the relay line is counted on its first line", () => {
+    const text = `first\n${CURL} -fsSL https://x.example/i.sh \\\n  | sh\nlast\n`;
+    const scan = scanForbiddenLiterals([{ path: "tools/x.sh", text }]);
+    expect(scan.findings.map(({ line, family }) => ({ line, family }))).toEqual([
+      { line: 2, family: "download-to-interpreter" },
+    ]);
+  });
+});
+
+describe("variants of the other families", () => {
+  test("a sticky open mode, other symbolic forms and a mode writable by others are counted", () => {
+    for (const form of [
+      `${CHMOD} 1${SEVENS} d`,
+      `${CHMOD} o+rwx d`,
+      `${CHMOD} -R a=rwx d`,
+      `${CHMOD} u+x,o+w d`,
+      `${CHMOD} 666 f`,
+      `os.${CHMOD}(p, 0o${SEVENS})`,
+    ]) {
+      expect(families(scanLine("tools/x.sh", form))).toEqual(["world-writable-permission"]);
+    }
+  });
+
+  test("modes closed to others are not counted", () => {
+    for (const form of [`${CHMOD} 644 f`, `${CHMOD} u+w f`, `${CHMOD} g+w f`, `${CHMOD} 1755 d`]) {
+      expect(scanLine("tools/x.sh", form).findings).toEqual([]);
+    }
+  });
+
+  test("an address ending a sentence is still an address", () => {
+    expect(families(scanLine("tools/x.sh", `${ADDRESS_LINE}.`))).toEqual(["network-ipv4-literal"]);
+  });
+
+  test("an expression or quoted true tolerates failure as much as the bare word", () => {
+    const key = glue("continue", "-on-", "error: ");
+    for (const value of [glue("$", "{{ true }}"), "'true'", '"true"', "True"]) {
+      expect(families(scanLine(WORKFLOW, `        ${key}${value}`))).toEqual([
+        "unjustified-failure-tolerance",
+      ]);
+    }
+    expect(scanLine(WORKFLOW, `        ${key}false`).findings).toEqual([]);
+  });
+});
+
+describe("the marker must be a trailing comment after the literal", () => {
+  test("a marker inside a string, or outside any comment, exempts nothing", () => {
+    for (const line of [
+      `echo "# ${FORBIDDEN_LITERAL_MARKER} quoted"; ${DOWNLOAD_LINE}`,
+      `${DOWNLOAD_LINE} "${FORBIDDEN_LITERAL_MARKER} not a comment"`,
+      `${DOWNLOAD_LINE} '# ${FORBIDDEN_LITERAL_MARKER} still a string'`,
+    ]) {
+      const scan = scanLine("tools/x.sh", line);
+      expect(families(scan)).toEqual(["download-to-interpreter"]);
+      expect(scan.allowed).toEqual([]);
+    }
+  });
+
+  test("a comment opener that is not the file's syntax exempts nothing", () => {
+    const scan = scanLine(
+      "tools/x.ts",
+      `run("${ADDRESS_LINE}"); # ${FORBIDDEN_LITERAL_MARKER} why`,
+    );
+    expect(families(scan)).toEqual(["network-ipv4-literal"]);
+  });
+
+  test("a block comment closed before the literal exempts nothing", () => {
+    const line = `x(); /* ${FORBIDDEN_LITERAL_MARKER} why */ run("${ADDRESS_LINE}");`;
+    const scan = scanLine("tools/x.ts", line);
+    expect(families(scan)).toEqual(["network-ipv4-literal"]);
+    expect(scan.allowed).toEqual([]);
+  });
+
+  test("a trailing comment in the file's syntax exempts", () => {
+    const scan = scanLine(
+      "tools/x.ts",
+      `run("${ADDRESS_LINE}"); // ${FORBIDDEN_LITERAL_MARKER} why`,
+    );
+    expect(scan.findings).toEqual([]);
+    expect(scan.allowed.map((finding) => finding.family)).toEqual(["network-ipv4-literal"]);
+  });
 });
 
 const REPOSITORY = join(import.meta.dir, "..", "..");
@@ -330,6 +510,38 @@ describe("the gate as a process", () => {
     expect(run.stdout).toBe("");
   });
 
+  test("a link to a file outside the repository is not read", () => {
+    const outside = join(scratch, "outside-file");
+    mkdirSync(outside);
+    writeFileSync(join(outside, "secret.sh"), `${DOWNLOAD_LINE}\n`);
+    const root = repository("file-link", { "tools/kept.sh": "true\n" });
+    symlinkSync(join(outside, "secret.sh"), join(root, "tools/file-link.sh"));
+    git(root, ["add", "-A"]);
+    const run = runGate(root, systemPath, scratch);
+    expect(run.stdout).not.toContain("x.example");
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toContain("excluded-link=1");
+  });
+
+  test("links and gitlinks are counted apart and never followed", () => {
+    const outside = join(scratch, "outside-target");
+    mkdirSync(join(outside, "dir"), { recursive: true });
+    writeFileSync(join(outside, "secret.sh"), `${DOWNLOAD_LINE}\n`);
+    const root = repository("links", { "tools/kept.sh": "true\n" });
+    symlinkSync(join(outside, "secret.sh"), join(root, "tools/file-link.sh"));
+    symlinkSync(join(outside, "dir"), join(root, "tools/dir-link"));
+    git(root, ["add", "-A"]);
+    // A submodule entry whose checkout is absent: its path is not a readable file.
+    git(root, ["update-index", "--add", "--cacheinfo", `160000,${"1".repeat(40)},vendor/sub`]);
+    const run = runGate(root, systemPath, scratch);
+    expect(run.stderr).toBe("");
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).not.toContain("x.example");
+    expect(run.stdout).toContain(
+      "tracked=4 examined=1 excluded-prose=0 excluded-lockfile=0 excluded-test-fixture=0 excluded-binary=0 excluded-link=3",
+    );
+  });
+
   test("the fleet template as annotated: exit 0 with counters that sum", () => {
     const template = readFileSync(join(REPOSITORY, TEMPLATE_PATH), "utf8");
     const root = repository("annotated", {
@@ -342,7 +554,7 @@ describe("the gate as a process", () => {
     const run = runGate(root, systemPath, scratch);
     expect(run.exitCode).toBe(0);
     expect(run.stdout).toContain(
-      "tracked=5 examined=1 excluded-prose=1 excluded-lockfile=1 excluded-test-fixture=1 excluded-binary=1 findings=0 allowed=1",
+      "tracked=5 examined=1 excluded-prose=1 excluded-lockfile=1 excluded-test-fixture=1 excluded-binary=1 excluded-link=0 findings=0 allowed=1",
     );
     expect(run.stdout).toContain(`  allowed  ${TEMPLATE_PATH}:`);
     expect(run.stdout).toContain("Forbidden literals verified");
