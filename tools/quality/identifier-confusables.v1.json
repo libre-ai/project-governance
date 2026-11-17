@@ -1,0 +1,402 @@
+{
+  "because": "Homoglyphs folded to their Latin skeleton before an identifier fingerprint is taken, read by tools/quality/check-identifier-fingerprints.ts (fold order and limits in its header). A bounded excerpt of Unicode UTS #39 confusables.txt: every line whose source is ONE letter (\\p{L}) in U+0080..U+02AF (Latin), U+0370..U+03FF (Greek) or U+0400..U+052F (Cyrillic) and whose target is ONE ASCII letter. Nothing else of the file is kept: other scripts, multi-character targets and ASCII-to-ASCII lines are out on purpose. Replacing this file changes every fingerprint: regenerate the entries of identifier-fingerprints.v1.json with --derive.",
+  "source": {
+    "url": "https://www.unicode.org/Public/security/latest/confusables.txt",
+    "date": "2026-08-06",
+    "sha256": "6ed3ee967c9dfdf6677d563c9985182fbc50a2efb7d6059cd57b2e2ce18f5b92"
+  },
+  "pairs": [
+    {
+      "from": "0251",
+      "to": "a"
+    },
+    {
+      "from": "03B1",
+      "to": "a"
+    },
+    {
+      "from": "0430",
+      "to": "a"
+    },
+    {
+      "from": "0391",
+      "to": "A"
+    },
+    {
+      "from": "0410",
+      "to": "A"
+    },
+    {
+      "from": "0184",
+      "to": "b"
+    },
+    {
+      "from": "042C",
+      "to": "b"
+    },
+    {
+      "from": "0392",
+      "to": "B"
+    },
+    {
+      "from": "0412",
+      "to": "B"
+    },
+    {
+      "from": "03F2",
+      "to": "c"
+    },
+    {
+      "from": "0441",
+      "to": "c"
+    },
+    {
+      "from": "03F9",
+      "to": "C"
+    },
+    {
+      "from": "0421",
+      "to": "C"
+    },
+    {
+      "from": "0501",
+      "to": "d"
+    },
+    {
+      "from": "0435",
+      "to": "e"
+    },
+    {
+      "from": "04BD",
+      "to": "e"
+    },
+    {
+      "from": "0395",
+      "to": "E"
+    },
+    {
+      "from": "0415",
+      "to": "E"
+    },
+    {
+      "from": "0192",
+      "to": "f"
+    },
+    {
+      "from": "0284",
+      "to": "f"
+    },
+    {
+      "from": "017F",
+      "to": "f"
+    },
+    {
+      "from": "03DC",
+      "to": "F"
+    },
+    {
+      "from": "0261",
+      "to": "g"
+    },
+    {
+      "from": "018D",
+      "to": "g"
+    },
+    {
+      "from": "050C",
+      "to": "G"
+    },
+    {
+      "from": "04BB",
+      "to": "h"
+    },
+    {
+      "from": "04BA",
+      "to": "h"
+    },
+    {
+      "from": "0397",
+      "to": "H"
+    },
+    {
+      "from": "041D",
+      "to": "H"
+    },
+    {
+      "from": "0131",
+      "to": "i"
+    },
+    {
+      "from": "026A",
+      "to": "i"
+    },
+    {
+      "from": "0269",
+      "to": "i"
+    },
+    {
+      "from": "03B9",
+      "to": "i"
+    },
+    {
+      "from": "0456",
+      "to": "i"
+    },
+    {
+      "from": "0237",
+      "to": "j"
+    },
+    {
+      "from": "03F3",
+      "to": "j"
+    },
+    {
+      "from": "0458",
+      "to": "j"
+    },
+    {
+      "from": "037F",
+      "to": "J"
+    },
+    {
+      "from": "0408",
+      "to": "J"
+    },
+    {
+      "from": "039A",
+      "to": "K"
+    },
+    {
+      "from": "041A",
+      "to": "K"
+    },
+    {
+      "from": "0196",
+      "to": "l"
+    },
+    {
+      "from": "01C0",
+      "to": "l"
+    },
+    {
+      "from": "0399",
+      "to": "l"
+    },
+    {
+      "from": "0406",
+      "to": "l"
+    },
+    {
+      "from": "04CF",
+      "to": "l"
+    },
+    {
+      "from": "04C0",
+      "to": "l"
+    },
+    {
+      "from": "039C",
+      "to": "M"
+    },
+    {
+      "from": "03FA",
+      "to": "M"
+    },
+    {
+      "from": "041C",
+      "to": "M"
+    },
+    {
+      "from": "039D",
+      "to": "N"
+    },
+    {
+      "from": "03BF",
+      "to": "o"
+    },
+    {
+      "from": "03C3",
+      "to": "o"
+    },
+    {
+      "from": "03ED",
+      "to": "o"
+    },
+    {
+      "from": "043E",
+      "to": "o"
+    },
+    {
+      "from": "039F",
+      "to": "O"
+    },
+    {
+      "from": "041E",
+      "to": "O"
+    },
+    {
+      "from": "00FE",
+      "to": "p"
+    },
+    {
+      "from": "01BF",
+      "to": "p"
+    },
+    {
+      "from": "03C1",
+      "to": "p"
+    },
+    {
+      "from": "03F1",
+      "to": "p"
+    },
+    {
+      "from": "03F8",
+      "to": "p"
+    },
+    {
+      "from": "0440",
+      "to": "p"
+    },
+    {
+      "from": "03A1",
+      "to": "P"
+    },
+    {
+      "from": "0420",
+      "to": "P"
+    },
+    {
+      "from": "051B",
+      "to": "q"
+    },
+    {
+      "from": "051A",
+      "to": "Q"
+    },
+    {
+      "from": "0433",
+      "to": "r"
+    },
+    {
+      "from": "01A6",
+      "to": "R"
+    },
+    {
+      "from": "024C",
+      "to": "R"
+    },
+    {
+      "from": "01BD",
+      "to": "s"
+    },
+    {
+      "from": "0455",
+      "to": "s"
+    },
+    {
+      "from": "0405",
+      "to": "S"
+    },
+    {
+      "from": "03A4",
+      "to": "T"
+    },
+    {
+      "from": "0422",
+      "to": "T"
+    },
+    {
+      "from": "028B",
+      "to": "u"
+    },
+    {
+      "from": "03C5",
+      "to": "u"
+    },
+    {
+      "from": "03BD",
+      "to": "v"
+    },
+    {
+      "from": "0475",
+      "to": "v"
+    },
+    {
+      "from": "0474",
+      "to": "V"
+    },
+    {
+      "from": "026F",
+      "to": "w"
+    },
+    {
+      "from": "0461",
+      "to": "w"
+    },
+    {
+      "from": "0448",
+      "to": "w"
+    },
+    {
+      "from": "051D",
+      "to": "w"
+    },
+    {
+      "from": "051C",
+      "to": "W"
+    },
+    {
+      "from": "0445",
+      "to": "x"
+    },
+    {
+      "from": "03A7",
+      "to": "X"
+    },
+    {
+      "from": "0425",
+      "to": "X"
+    },
+    {
+      "from": "0263",
+      "to": "y"
+    },
+    {
+      "from": "028F",
+      "to": "y"
+    },
+    {
+      "from": "03B3",
+      "to": "y"
+    },
+    {
+      "from": "0443",
+      "to": "y"
+    },
+    {
+      "from": "04AF",
+      "to": "y"
+    },
+    {
+      "from": "03A5",
+      "to": "Y"
+    },
+    {
+      "from": "03D2",
+      "to": "Y"
+    },
+    {
+      "from": "0423",
+      "to": "Y"
+    },
+    {
+      "from": "04AE",
+      "to": "Y"
+    },
+    {
+      "from": "0396",
+      "to": "Z"
+    }
+  ]
+}

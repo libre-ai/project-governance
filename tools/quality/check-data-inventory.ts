@@ -197,6 +197,16 @@ export const NOT_GATED: readonly NotGated[] = [
     because:
       "the invariant → gate → test correspondence read by ecosystem/render-invariant-matrix.ts; that script is not in `bun run check`, so no aggregate verdict depends on this file yet, and an entry exempts nothing: it only changes what the generated matrix displays. Adding a pair asserts that a gate holds an invariant: whether that belongs in check-review-evidence.ts is an open owner question",
   },
+  {
+    path: "tools/quality/identifier-fingerprints.v1.json",
+    because:
+      "the fingerprints and exempt paths check-identifier-fingerprints.ts reads; that gate is not in `bun run check` nor in a workflow, so no aggregate verdict depends on this file yet. Removing an entry or adding an exemption lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
+  },
+  {
+    path: "tools/quality/identifier-confusables.v1.json",
+    because:
+      "the homoglyph table check-identifier-fingerprints.ts folds with, verified when read; same gate, not in `bun run check` nor in a workflow. Removing a pair lets a homoglyph through: gate this path in check-review-evidence.ts when the gate is activated",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
