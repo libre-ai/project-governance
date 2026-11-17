@@ -31,6 +31,12 @@ const encodedTokenUrlSafe = encodedToken
   .replaceAll("+", "-")
   .replaceAll("/", "_")
   .replaceAll("=", "");
+/** The same, padding kept: base64url as many encoders write it. */
+const encodedTokenUrlSafePadded = encodedToken.replaceAll("+", "-").replaceAll("/", "_");
+
+function backslashes(count: number): string {
+  return "\\".repeat(count);
+}
 
 const uriScheme = ["postgresql", "//"].join(":");
 const uriPassword = "p".repeat(12);
@@ -61,6 +67,9 @@ describe("fixtures are what the brief says they are", () => {
     expect(encodedToken).toContain("/");
     expect(encodedToken.endsWith("=")).toBe(true);
     expect(encodedTokenUrlSafe).not.toMatch(/[+/=]/);
+    expect(encodedTokenUrlSafePadded).toMatch(/[-_]/);
+    expect(encodedTokenUrlSafePadded.endsWith("==")).toBe(true);
+    expect(backslashes(2)).toHaveLength(2);
   });
 });
 
@@ -118,6 +127,13 @@ describe("opaque-base64-field", () => {
       "opaque-base64-field",
     ]);
     expect(labels(pair("credentials", `${opaque40.slice(0, 30)}+_`))).toEqual([]);
+  });
+
+  test("the URL-safe alphabet with trailing padding is base64 too", () => {
+    expect(labels(pair("credentials", `${opaque40.slice(0, 30)}-_==`))).toEqual([
+      "opaque-base64-field",
+    ]);
+    expect(labels(pair("credentials", `${opaque40.slice(0, 30)}-_===`))).toEqual([]);
   });
 
   test("the threshold is 20 characters", () => {
@@ -183,6 +199,29 @@ describe("secret-named-literal", () => {
 
   test("an escaped quote does not end the literal", () => {
     expect(labels(assign("pwd", `ab\\"${"x".repeat(5)}`))).toEqual(["secret-named-literal"]);
+    expect(labels(assign("pwd", `ab${backslashes(3)}"${"x".repeat(5)}`))).toEqual([
+      "secret-named-literal",
+    ]);
+  });
+
+  test("a quote behind an even run of backslashes ends the string", () => {
+    for (const count of [2, 4]) {
+      const content = `{"dir":"C:${backslashes(count)}","apiKey":"${hex64}"}`;
+      expect([count, labels(content)]).toEqual([count, ["opaque-hex-field"]]);
+    }
+    expect(labels(`{"dir":"C:${backslashes(2)}","pwd":"${"x".repeat(8)}"}`)).toEqual([
+      "secret-named-literal",
+    ]);
+  });
+
+  test("the arrow and walrus separators", () => {
+    const literal = "x".repeat(8);
+    expect(labels(`'password' => '${literal}'`)).toEqual(["secret-named-literal"]);
+    expect(labels(`password := "${literal}"`)).toEqual(["secret-named-literal"]);
+    expect(labels(`'apiKey' => '${hex64}'`)).toEqual(["opaque-hex-field"]);
+    expect(labels(`"apiKey" := "${hex64}"`)).toEqual(["opaque-hex-field"]);
+    expect(labels(`if (pwd >= "${literal}") {}`)).toEqual([]);
+    expect(labels(`if (pwd === "${literal}") {}`)).toEqual([]);
   });
 });
 
@@ -218,6 +257,7 @@ describe("encoded-credential", () => {
   test("the base64 of a forge token is a finding under any name, in both alphabets", () => {
     expect(labels(pair("note", encodedToken))).toEqual(["encoded-credential"]);
     expect(labels(pair("note", encodedTokenUrlSafe))).toEqual(["encoded-credential"]);
+    expect(labels(pair("note", encodedTokenUrlSafePadded))).toEqual(["encoded-credential"]);
     expect(labels(`run("${encodedToken}")`)).toEqual(["encoded-credential"]);
   });
 
@@ -327,6 +367,8 @@ describe("findings", () => {
       `'${'"'.repeat(maximum)}`,
       'a="'.repeat(maximum / 3),
       "\\'".repeat(maximum / 2),
+      `"${backslashes(maximum)}"`,
+      `"${`${backslashes(3)}"`.repeat(maximum / 4)}`,
       `${"a".repeat(maximum)}="${"b".repeat(4)}"`,
     ];
     const started = Bun.nanoseconds();
