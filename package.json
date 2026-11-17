@@ -36,6 +36,7 @@
     "check:fleet-versions": "bun run check:bun:runtime && bun ecosystem/check-fleet-versions.ts",
     "check:fleet-gates": "bun run check:bun:runtime && bun ecosystem/check-fleet-gates.ts",
     "check:briques": "bun run check:bun:runtime && bun ecosystem/check-briques.ts",
+    "check:open-points": "bun run check:bun:runtime && bun ecosystem/check-open-points.ts",
     "check:produits": "bun run check:bun:runtime && bun ecosystem/check-produits.ts",
     "build:vision": "bun run check:bun:runtime && bun distribution/build-vision.ts",
     "build:products-with-code": "bun run check:bun:runtime && bun distribution/build-products-with-code.ts",

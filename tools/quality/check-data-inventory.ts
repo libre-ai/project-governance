@@ -219,6 +219,11 @@ export const NOT_GATED: readonly NotGated[] = [
     because: "the record of what migrated where; no gate reads it as an exemption",
   },
   {
+    path: "ecosystem/open-points.v1.yaml",
+    because:
+      "the governance open points, checked by check-open-points.ts; no gate reads it as an exemption",
+  },
+  {
     path: "ecosystem/portfolio.v1.json",
     because: "the portfolio as published; no gate reads it as an exemption",
   },
