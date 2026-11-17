@@ -105,34 +105,79 @@ describe("parseCatalogue", () => {
   });
 });
 
-const report = (tests: number, failures: string[]): string =>
+// A failing test case: its error type and how many assertions ran before it failed. The two
+// failure shapes are the ones bun writes: 1.4.4 `<failure type=… message=…>…</failure>`, and
+// 1.4.0 a bare `<failure type="AssertionError" />` whatever was thrown.
+interface Failing {
+  readonly type: string;
+  readonly ran: number;
+  readonly bare?: boolean;
+}
+
+const report = (tests: number, failures: Failing[]): string =>
   [
     `<testsuites name="bun test" tests="${tests}" assertions="1" failures="${failures.length}" skipped="0">`,
-    ...failures.map((type) => `<failure type="${type}" message="m">x</failure>`),
+    ...failures.map(({ type, ran, bare }) =>
+      [
+        `<testcase name="a &gt; b" classname="" line="1" assertions="${ran}">`,
+        bare === true
+          ? `<failure type="${type}" />`
+          : `<failure type="${type}" message="m">x</failure>`,
+        "</testcase>",
+      ].join("\n"),
+    ),
+    `<testcase name="green" classname="" line="2" assertions="1" />`,
     "</testsuites>",
   ].join("\n");
 
+const ASSERTED = { type: "AssertionError", ran: 1 } as const;
+
 describe("classify", () => {
   test("a red run with an assertion failure kills the mutant", () => {
-    expect(classify(1, report(3, ["AssertionError"]), "", undefined).verdict).toBe("killed");
+    expect(classify(1, report(3, [ASSERTED]), "", undefined).verdict).toBe("killed");
+    // Bun 1.4.0 shape: a bare failure element after one assertion ran.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 1, bare: true }]), "", undefined),
+    ).toEqual({ verdict: "killed", tests: 3, assertions: 1 });
   });
 
   test("a failure before any assertion is invalid, not killed", () => {
     // Load failure: bun writes no report at all.
     expect(classify(1, null, "error: Cannot find module", undefined).verdict).toBe("invalid");
-    // A thrown error is not an assertion.
-    expect(classify(1, report(3, ["Error"]), "", undefined).verdict).toBe("invalid");
+    // A thrown error is not an assertion (bun 1.4.4 writes its real type).
+    expect(classify(1, report(3, [{ type: "Error", ran: 0 }]), "", undefined).verdict).toBe(
+      "invalid",
+    );
+    // Bun 1.4.0 types every failure `AssertionError`: zero assertions run still means the case
+    // failed before any assertion.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 0, bare: true }]), "", undefined)
+        .verdict,
+    ).toBe("invalid");
+    // An error named `AssertionError` thrown by hand, no assertion run.
+    expect(
+      classify(1, report(3, [{ type: "AssertionError", ran: 0 }]), "", undefined).verdict,
+    ).toBe("invalid");
+    // A failure element outside any test case is not attributed to an assertion.
+    expect(
+      classify(
+        1,
+        '<testsuites tests="1">\n<failure type="AssertionError" />\n</testsuites>',
+        "",
+        undefined,
+      ).verdict,
+    ).toBe("invalid");
     // An unreadable report proves nothing.
     expect(classify(1, "garbage", "", undefined).verdict).toBe("invalid");
   });
 
   test("a red run without the expected trace is invalid", () => {
-    expect(classify(1, report(3, ["AssertionError"]), "Received: 1", "Received: 999").verdict).toBe(
+    expect(classify(1, report(3, [ASSERTED]), "Received: 1", "Received: 999").verdict).toBe(
       "invalid",
     );
-    expect(
-      classify(1, report(3, ["AssertionError"]), "Received: 999", "Received: 999").verdict,
-    ).toBe("killed");
+    expect(classify(1, report(3, [ASSERTED]), "Received: 999", "Received: 999").verdict).toBe(
+      "killed",
+    );
   });
 
   test("a green run with tests is survived; a green run with no test is invalid", () => {

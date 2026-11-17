@@ -18,7 +18,9 @@
  * writes the original bytes back and checks them byte for byte.
  *
  * Verdicts, read from the JUnit report bun writes:
- *   killed    the oracle failed BY ASSERTION, and printed the declared trace if one is declared;
+ *   killed    the oracle failed BY ASSERTION (a test case typed `AssertionError` that ran at
+ *             least one assertion, see `assertionFailures`), and printed the declared trace if
+ *             one is declared;
  *   survived  the oracle stayed green with at least one test run;
  *   invalid   anything else: a load or syntax error, a thrown error, no report, no test run,
  *             a red run without the trace. A crash proves the mutant breaks the program, not
@@ -293,6 +295,34 @@ export interface Verdict {
   readonly assertions: number;
 }
 
+// A `<testcase>` element, self-closing or with a body. Attribute values are matched as quoted
+// strings so a `>` inside one (a test name) cannot end the tag early.
+const TESTCASE = /<testcase\b((?:[^>"]|"[^"]*")*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+const TESTCASE_ASSERTIONS = /\bassertions="(\d+)"/;
+
+/**
+ * Count the test cases that failed BY ASSERTION: the case records a failure typed
+ * `AssertionError` AND at least one assertion run before it failed.
+ *
+ * Why both: the `type` alone is not a runtime-independent signal. Bun 1.4.0 (the pinned
+ * toolchain) writes `<failure type="AssertionError" />` for every failure, a thrown `Error` or a
+ * `TypeError` included, while 1.4.4 writes the real error type. The per-case `assertions` count
+ * is written by both, and a case that failed with zero assertions failed before any assertion,
+ * which is invalid by definition. Residual limit on 1.4.0 only: a case that passes an assertion
+ * and then throws a non-assertion error is indistinguishable, in the report, from an assertion
+ * failure; 1.4.4 tells them apart by `type`.
+ */
+function assertionFailures(report: string): number {
+  let count = 0;
+  for (const match of report.matchAll(TESTCASE)) {
+    const attributes = match[1] ?? "";
+    const body = match[2] ?? "";
+    const ran = Number(TESTCASE_ASSERTIONS.exec(attributes)?.[1] ?? "0");
+    if (ran > 0 && body.includes('<failure type="AssertionError"')) count += 1;
+  }
+  return count;
+}
+
 /** Classify one oracle run. Pure: takes the exit code, the JUnit report (or null) and the output. */
 export function classify(
   exitCode: number,
@@ -303,7 +333,7 @@ export function classify(
   const header = report === null ? null : /<testsuites\b[^>]*\btests="(\d+)"[^>]*>/.exec(report);
   if (report === null || header === null) return { verdict: "invalid", tests: 0, assertions: 0 };
   const tests = Number(header[1]);
-  const assertions = report.split('<failure type="AssertionError"').length - 1;
+  const assertions = assertionFailures(report);
   if (exitCode === 0)
     return {
       verdict: tests > 0 && !report.includes("<failure") ? "survived" : "invalid",
