@@ -67,6 +67,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     because:
       "same absence as check-pr-door.ts: the Not-added line lives in a pull request description, and the diff it is confronted to is the pull request's. On a pull_request run an absent or unreadable event payload, data file or diff fails instead of reading as empty",
   },
+  {
+    file: "ecosystem/check-off-code-zones.ts",
+    because:
+      "an empty off-code zones register is the owner's statement that no part of the infrastructure stays outside the code — zero zones is that truth, printed with its counters; an unreadable or unparseable register still fails instead of reading as empty",
+  },
 ];
 
 const SCANNED_DIRECTORIES = ["tools", "ecosystem"];
