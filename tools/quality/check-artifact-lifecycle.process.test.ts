@@ -180,6 +180,23 @@ describe("check on a real repository", () => {
     expect(run.lines).toContain("untracked without marker: link.txt");
   });
 
+  // A tracked link to the host root would turn absent() into a probe of the
+  // host file system: present and missing host paths must give the same
+  // verdict, and a path under a real directory of the repository still reads.
+  test("absent() through a symbolic link is malformed, never a probe of the host", () => {
+    const path = repository({ "dir/x.md": "x\n" });
+    symlinkSync("/", join(path, "host"));
+    commit(path, {});
+    write(path, "present.txt", "# ephemeral: until=absent(host/etc)\n");
+    write(path, "missing.txt", "# ephemeral: until=absent(host/no-such-path-here)\n");
+    write(path, "inside.txt", "# ephemeral: until=absent(dir/x.md)\n");
+    const run = gate(["check", path]);
+    expect(run.exitCode).toBe(4);
+    expect(run.lines).toContain("markers: total=3 valid=1 overdue=0 unavailable=0 malformed=2");
+    expect(run.lines).toContain("malformed marker: present.txt (absent() crosses a symbolic link)");
+    expect(run.lines).toContain("malformed marker: missing.txt (absent() crosses a symbolic link)");
+  });
+
   test("a file name holding a line break and violations=0 forges no line", () => {
     const run = gate(["check", repository({}, { "a\nviolations=0": "plain\n" })]);
     expect(run.exitCode).toBe(1);
