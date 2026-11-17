@@ -135,6 +135,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "ecosystem/staleness-exceptions.v1.yaml",
+      [
+        "ecosystem/staleness-exceptions.v2.yaml",
+        "ecosystem/staleness-exceptions.v1.yaml.bak",
+        "docs/ecosystem/staleness-exceptions.v1.yaml",
+        "ecosystem/check-fleet-staleness.ts",
+      ],
+    ],
+    [
       "ecosystem/sql-construction-allowlist.v1.yaml",
       [
         "ecosystem/sql-construction-allowlist.v2.yaml",

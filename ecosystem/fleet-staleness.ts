@@ -98,8 +98,13 @@ export function buildStalenessQuery(repositories: readonly string[]): string {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+// GraphQL DateTime and GitTimestamp are ISO 8601 date-times with an offset.
+// Date.parse alone accepts far more ("1" parses as 2001), so the shape is
+// checked first and Date.parse then refuses impossible values (month 13).
+const ISO_8601_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
 const isTimestamp = (value: unknown): value is string =>
-  typeof value === "string" && !Number.isNaN(Date.parse(value));
+  typeof value === "string" && ISO_8601_DATE_TIME.test(value) && !Number.isNaN(Date.parse(value));
 
 const unreadable = (reason: string): RepositoryReading => ({ kind: "unreadable", reason });
 

@@ -321,6 +321,40 @@ describe("parseStalenessResponse", () => {
     expect(readings.size).toBe(3);
   });
 
+  // Date.parse reads far more than ISO 8601: "1" is 2001, "March 7" is a year
+  // the engine picks. GraphQL DateTime is ISO 8601, so anything else is a
+  // response that lost its shape, not a date.
+  test.each([
+    "1",
+    "March 7, 2026",
+    "2026-10-30",
+    "2026/10/30 08:00:00",
+    "2026-10-30 08:00:00Z",
+  ])("a head commit date %p that is not an ISO 8601 date-time makes the repository unreadable", (committedDate) => {
+    const readings = parse(node({ defaultBranchRef: { target: { committedDate } } }));
+    expect(readings.get("acme/bad")?.kind).toBe("unreadable");
+    expect(readings.get("acme/ok")?.kind).toBe("read");
+  });
+
+  test.each([
+    "1",
+    "October 1, 2026",
+  ])("a pull request createdAt %p that is not an ISO 8601 date-time makes the repository unreadable", (createdAt) => {
+    const readings = parse(
+      node({ pullRequests: { totalCount: 1, nodes: [{ ...prNode, createdAt }] } }),
+    );
+    expect(readings.get("acme/bad")?.kind).toBe("unreadable");
+  });
+
+  test.each([
+    "2026-10-30T08:00:00Z",
+    "2026-10-30T08:00:00.123Z",
+    "2026-10-30T10:00:00+02:00",
+  ])("an ISO 8601 date-time %p is read", (committedDate) => {
+    const readings = parse(node({ defaultBranchRef: { target: { committedDate } } }));
+    expect(readings.get("acme/bad")?.kind).toBe("read");
+  });
+
   test("a payload that is not an object leaves every repository unreadable", () => {
     const readings = parseStalenessResponse(repositories, null);
     expect([...readings.values()].map((reading) => reading.kind)).toEqual([
