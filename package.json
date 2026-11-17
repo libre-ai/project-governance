@@ -83,6 +83,7 @@
     "check:action-pins": "bun run check:bun:runtime && bun ecosystem/check-action-pins.ts",
     "check:workflow-supply-chain": "bun run check:bun:runtime && bun ecosystem/check-workflow-supply-chain.ts",
     "check:workflow-triggers": "bun run check:bun:runtime && bun ecosystem/check-workflow-triggers.ts",
+    "check:image-pins": "bun run check:bun:runtime && bun ecosystem/check-image-pins.ts",
     "check:sql-construction": "bun run check:bun:runtime && bun ecosystem/check-sql-construction.ts",
     "check:web-headers": "bun run check:bun:runtime && bun ecosystem/check-web-headers.ts",
     "check:off-code-zones": "bun run check:bun:runtime && bun ecosystem/check-off-code-zones.ts",
