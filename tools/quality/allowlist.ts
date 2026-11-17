@@ -3,10 +3,13 @@ import { join } from "node:path";
 
 // Exemption lists as verified data.
 //
-// Usage: bun tools/quality/allowlist.ts <list>
+// Usage: bun tools/quality/allowlist.ts [--admit-code] <list>
 //
-//   <list>  the exemption list, a tracked file named by its path relative to
-//           the root of the repository holding the current directory.
+//   <list>          the exemption list, a tracked file named by its path
+//                   relative to the root of the repository holding the
+//                   current directory.
+//   --admit-code    the list may exempt files that are not data files (code);
+//                   such exemptions are counted apart in the printed counters.
 //
 // Format, one exemption per line:
 //
@@ -29,8 +32,14 @@ import { join } from "node:path";
 //   - a tracked entry that is not a regular file (a symbolic link, git mode
 //     120000, whose target may sit outside the repository; a submodule, mode
 //     160000) is refused as `not-a-file`: the exemption would name a file the
-//     reviewer cannot read in the tree. Callers pass these entries as
-//     `notFiles`; without it, every tracked entry counts as a file;
+//     reviewer cannot read in the tree. Every caller passes these entries as
+//     `notFiles`; the option is required, so no caller can forget it;
+//   - by default an exemption names a DATA file (`.yaml`, `.yml`, `.json`,
+//     `.md`, lower case), and any other file is refused as `not-data`: a list
+//     that silences a check on code hides the code a reviewer most needs to
+//     see. A caller that must exempt code declares it with the named option
+//     `admitCode`; the code exemptions are then returned apart (`codePaths`)
+//     so every caller prints them as their own counter;
 //   - a duplicate is refused, so removing one line really removes the
 //     exemption;
 //   - an error names a line number and a kind, never the line's text: a list
@@ -45,11 +54,8 @@ import { join } from "node:path";
 // root; otherwise it is an unreadable source (exit 2), since reading it would
 // read a link's target, outside the repository.
 //
-// Scope, on purpose:
-//   - any regular tracked file may be exempted, code included: the consumers of
-//     `parseAllowlist` exempt code files. Narrowing to data files (yaml, json,
-//     md) is an open decision left to the owner;
-//   - the specialised line forms `l1-field` and `suspect` are not parsed here.
+// Scope, on purpose: the specialised line forms `l1-field` and `suspect` are
+// not parsed here.
 
 export type AllowlistErrorKind =
   | "missing-reason"
@@ -57,7 +63,15 @@ export type AllowlistErrorKind =
   | "wildcard"
   | "untracked"
   | "not-a-file"
+  | "not-data"
   | "duplicate";
+
+export interface AllowlistOptions {
+  /** Tracked entries that are not regular files (symbolic links, submodules). */
+  readonly notFiles: ReadonlySet<string>;
+  /** Admit exemptions naming a file that is not a data file. Off unless declared. */
+  readonly admitCode?: boolean;
+}
 
 export interface AllowlistError {
   /** 1-based, counting blank and comment lines. */
@@ -69,6 +83,8 @@ export type AllowlistResult =
   | {
       readonly ok: true;
       readonly paths: ReadonlySet<string>;
+      /** The subset of `paths` that are not data files; empty unless `admitCode`. */
+      readonly codePaths: ReadonlySet<string>;
       /** Lines read; `lines - paths.size` were blank or comment lines. */
       readonly lines: number;
     }
@@ -76,6 +92,7 @@ export type AllowlistResult =
 
 const SEPARATOR = " # ";
 const REGULAR_MODES: ReadonlySet<string> = new Set(["100644", "100755"]);
+const DATA_EXTENSIONS: ReadonlySet<string> = new Set([".yaml", ".yml", ".json", ".md"]);
 const WILDCARD = /[*?[]/;
 // Control characters and surrounding blanks make two different files look the
 // same to a reviewer; a path holding them is refused rather than trusted.
@@ -93,6 +110,13 @@ function pathDefect(path: string): AllowlistErrorKind | null {
   return null;
 }
 
+/** A data file by its extension; a dot file (`.md`) has no extension. */
+export function isDataFile(path: string): boolean {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && DATA_EXTENSIONS.has(name.slice(dot));
+}
+
 function splitLines(text: string): string[] {
   if (text === "") return [];
   const lines = text.split(/\r?\n/);
@@ -102,17 +126,20 @@ function splitLines(text: string): string[] {
 }
 
 /**
- * Parse an exemption list against the repository's tracked entries. `notFiles`
- * holds the tracked entries that are not regular files (symbolic links,
- * submodules). Stops at the first error.
+ * Parse an exemption list against the repository's tracked entries.
+ * `options.notFiles` holds the tracked entries that are not regular files
+ * (symbolic links, submodules); `options.admitCode` admits non-data files.
+ * Stops at the first error.
  */
 export function parseAllowlist(
   text: string,
   tracked: ReadonlySet<string>,
-  notFiles: ReadonlySet<string> = new Set(),
+  options: AllowlistOptions,
 ): AllowlistResult {
+  const { notFiles, admitCode = false } = options;
   const lines = splitLines(text);
   const paths = new Set<string>();
+  const codePaths = new Set<string>();
   for (const [index, line] of lines.entries()) {
     const number = index + 1;
     if (line.trim() === "" || line.startsWith("#")) continue;
@@ -126,9 +153,13 @@ export function parseAllowlist(
     if (paths.has(path)) return { ok: false, error: { line: number, kind: "duplicate" } };
     if (!tracked.has(path)) return { ok: false, error: { line: number, kind: "untracked" } };
     if (notFiles.has(path)) return { ok: false, error: { line: number, kind: "not-a-file" } };
+    if (!isDataFile(path)) {
+      if (!admitCode) return { ok: false, error: { line: number, kind: "not-data" } };
+      codePaths.add(path);
+    }
     paths.add(path);
   }
-  return { ok: true, paths, lines: lines.length };
+  return { ok: true, paths, codePaths, lines: lines.length };
 }
 
 function git(args: readonly string[]): string {
@@ -144,9 +175,11 @@ function git(args: readonly string[]): string {
 /** Exit codes: 0 pass, 1 the list breaks a rule, 2 usage or an unreadable source. */
 function main(argv: readonly string[]): number {
   const gate = "allowlist";
-  const listPath = argv.length === 1 ? argv[0] : undefined;
-  if (listPath === undefined) {
-    console.error(`${gate}: usage: bun tools/quality/allowlist.ts <list>`);
+  const admitCode = argv[0] === "--admit-code";
+  const operands = admitCode ? argv.slice(1) : argv;
+  const listPath = operands.length === 1 ? operands[0] : undefined;
+  if (listPath === undefined || listPath.startsWith("-")) {
+    console.error(`${gate}: usage: bun tools/quality/allowlist.ts [--admit-code] <list>`);
     return 2;
   }
   let root: string;
@@ -193,15 +226,18 @@ function main(argv: readonly string[]): number {
     console.error(`${gate}: ${listPath} is unreadable: ${(error as Error).message}`);
     return 2;
   }
-  const result = parseAllowlist(text, tracked, notFiles);
+  const result = parseAllowlist(text, tracked, { notFiles, admitCode });
   if (!result.ok) {
     console.error(`${gate}: ${listPath} line ${result.error.line}: ${result.error.kind}`);
     return 1;
   }
   const ignored = result.lines - result.paths.size;
+  const code = result.codePaths.size;
   console.log(
     `${gate} verified ${listPath}: ${result.lines} line(s) read = ${result.paths.size} exemption(s) + ` +
-      `${ignored} blank or comment; every exemption names a tracked file (${tracked.size} tracked file(s) listed)`,
+      `${ignored} blank or comment; exemptions = ${result.paths.size - code} data + ${code} code ` +
+      `(${admitCode ? "admitted by --admit-code" : "refused without --admit-code"}); ` +
+      `every exemption names a tracked file (${tracked.size} tracked file(s) listed)`,
   );
   return 0;
 }
