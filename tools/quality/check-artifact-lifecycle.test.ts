@@ -558,6 +558,41 @@ describe("code and its test", () => {
     expect(report.lines).toContain("code: checked=1 tested=0 ephemeral=0 exempted=1 untested=0");
   });
 
+  // Owner decision of 2026-11-17: a `.ephemeral` at the root covers untracked
+  // files only; a tracked file is never covered by it, tracked or not itself.
+  test.each([
+    ["untracked", { untracked: { ".ephemeral": "until=2099-01-01\n", "draft.txt": "x" } }],
+    ["tracked", { untracked: { "draft.txt": "x" }, rootTracked: true }],
+  ])("a %s root .ephemeral covers the untracked files, never a tracked script", async (_name, scene) => {
+    const tracked: Record<string, string> = { "scripts/sync.sh": "echo\n", "run.sh": "echo\n" };
+    if ("rootTracked" in scene) tracked[".ephemeral"] = "until=2099-01-01\n";
+    const report = await judge({ tracked, untracked: scene.untracked });
+    expect(report.exitCode).toBe(1);
+    expect(report.lines).not.toContain("untracked without marker: draft.txt");
+    expect(report.lines).toContain("code without test: scripts/sync.sh");
+    expect(report.lines).toContain("code without test: run.sh");
+    expect(report.lines).toContain("code: checked=2 tested=0 ephemeral=0 exempted=0 untested=2");
+  });
+
+  test("a .ephemeral below the root still covers the tracked scripts of its directory", async () => {
+    const report = await judge({
+      tracked: { "scratch/.ephemeral": "until=2099-01-01\n", "scratch/sync.sh": "echo\n" },
+    });
+    expect(report.exitCode).toBe(0);
+    expect(report.lines).toContain("code: checked=1 tested=0 ephemeral=1 exempted=0 untested=0");
+  });
+
+  test("the exemption list is counted as data and code apart", async () => {
+    const report = await judge({
+      tracked: { "scripts/sync.sh": "echo\n", "fixtures/case.json": "{}\n" },
+      exempted: ["scripts/sync.sh", "fixtures/case.json"],
+    });
+    expect(report.lines).toContain("exemptions: listed=2 data=1 code=1");
+    expect(count(report.lines, "listed")).toBe(
+      count(report.lines, "data") + count(report.lines, "code"),
+    );
+  });
+
   test("ephemeral is counted before exempted, exempted before tested", async () => {
     const report = await judge({
       tracked: {
@@ -628,6 +663,7 @@ describe("precedence, emptiness and the range", () => {
       "examined: tracked=0 untracked=0",
       "markers: total=0 valid=0 overdue=0 unavailable=0 malformed=0",
       "code: checked=0 tested=0 ephemeral=0 exempted=0 untested=0",
+      "exemptions: listed=0 data=0 code=0",
       "violations=0",
       "artifact-lifecycle: nothing to examine",
     ]);
@@ -727,7 +763,8 @@ describe("the brief", () => {
     expect(lines[0]).toStartWith("artifact-lifecycle brief: exit=1. ");
     expect(lines.slice(1, 41)).toEqual(report.lines.slice(0, 40));
     expect(lines[41]).toBe(`${report.lines.length - 40} lines not relayed`);
-    expect(report.lines.length).toBe(50);
+    // 45 violation lines and the 6 counter and verdict lines.
+    expect(report.lines.length).toBe(51);
   });
 
   test("exactly 40 report lines: no truncation line", () => {
