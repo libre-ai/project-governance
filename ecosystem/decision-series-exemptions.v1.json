@@ -1,0 +1,17 @@
+{
+  "schema_version": "libre-ai.decision-series-exemptions.v1",
+  "exemptions": [
+    {
+      "repository": "libre-ai/project-governance",
+      "directory": "docs/adr",
+      "file": "0004-agent-orchestration-option-b-specification-lock.md",
+      "because": "number collision with 0004-licensing-governance.md: both dated 2026-07-17 and accepted, each carries a collision note; renumbering is left to the numbering reset, not decided by this gate"
+    },
+    {
+      "repository": "libre-ai/project-governance",
+      "directory": "docs/adr",
+      "file": "0004-licensing-governance.md",
+      "because": "number collision with 0004-agent-orchestration-option-b-specification-lock.md: both dated 2026-07-17 and accepted, each carries a collision note; renumbering is left to the numbering reset, not decided by this gate"
+    }
+  ]
+}
