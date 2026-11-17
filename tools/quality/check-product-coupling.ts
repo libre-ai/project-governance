@@ -469,7 +469,11 @@ function main(argv: readonly string[]): number {
     console.error(`${GATE}: ${PRODUCT_COUPLING_CONFIG}: ${config.error}`);
     return 1;
   }
-  const exemptions = parseAllowlist(sources[PRODUCT_COUPLING_EXEMPTIONS] ?? "", trackedSet);
+  // The shared trees hold code: a tolerated file may be code, declared as such.
+  const exemptions = parseAllowlist(sources[PRODUCT_COUPLING_EXEMPTIONS] ?? "", trackedSet, {
+    notFiles: links,
+    admitCode: true,
+  });
   if (!exemptions.ok) {
     console.error(
       `${GATE}: ${PRODUCT_COUPLING_EXEMPTIONS} line ${exemptions.error.line}: ${exemptions.error.kind}`,
