@@ -63,6 +63,9 @@ Un « absent » nomme, dans la cellule de preuve, les **motifs cherchés** et le
 **chemins cherchés** dans le code de la référence :
 `motifs: <ce qui a été cherché> ; chemins: <où>`. Sans les deux, il est
 irrecevable : « je n'ai rien trouvé » ne dit ni ce qui a été cherché ni où.
+Chaque étiquette ouvre son propre segment (séparé par `;`), une seule fois, et
+porte un contenu qui contient au moins une lettre ou un chiffre : une étiquette
+vide, suivie de l'autre étiquette ou de ponctuation seule ne prouve rien.
 
 Un « non mesuré » se lève par lecture du code, jamais par la page de
 fonctionnalités de la référence : une page de présentation dit ce qu'un

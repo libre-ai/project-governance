@@ -34,10 +34,15 @@ const TRAILING_HEADERS = ["verdict", "décision", "source", "preuve"] as const;
 
 // A decision is cited by its identifier in one of the three registers.
 const DECISION_ID = /(?<![\w-])(?:D\d+|ADR-\d{4}|I-\d{2})(?![\w-])/;
-// An absence names BOTH what was searched and where; a label followed by
-// nothing (or by the next separator) names neither.
-const SEARCHED_PATTERNS = /motifs\s*:\s*[^;\s]/;
-const SEARCHED_PATHS = /chemins\s*:\s*[^;\s]/;
+// An absence names BOTH what was searched and where, as `;`-separated segments
+// each opening on its label. A segment opening on no label continues the one
+// before it (a searched pattern may hold a `;`).
+const PROOF_LABELS = ["motifs", "chemins"] as const;
+const LABELLED_SEGMENT = /^(motifs|chemins)\s*:(.*)$/s;
+// Content names something only if it holds a letter or a digit: `-`, `.`, `/`
+// alone name nothing. Content opening on a label is the other label, left empty.
+const NAMES_SOMETHING = /[\p{L}\p{N}]/u;
+const OPENS_ON_LABEL = /^(?:motifs|chemins)\s*:/;
 
 export interface MatrixCounts {
   /** Numbered rows that were counted. */
@@ -59,12 +64,35 @@ export interface MatrixCounts {
 
 function splitRow(line: string): string[] | null {
   const trimmed = line.trim();
-  if (!trimmed.startsWith("|") || !trimmed.endsWith("|") || trimmed.length < 2) return null;
+  // An escaped closing pipe is cell content, not the end of the row.
+  if (!trimmed.startsWith("|") || !/(?<!\\)\|$/.test(trimmed) || trimmed.length < 2) return null;
   // `\|` is a literal pipe inside a cell: searched patterns are often alternations.
   return trimmed
     .slice(1, -1)
     .split(/(?<!\\)\|/)
     .map((cell) => cell.trim());
+}
+
+/** True when the proof cell names searched patterns AND searched paths, each with content. */
+function provesAbsence(proof: string): boolean {
+  const contents = new Map<string, string>();
+  let current: string | null = null;
+  for (const segment of proof.split(";")) {
+    const match = LABELLED_SEGMENT.exec(segment.trim());
+    const label = match?.[1];
+    if (label !== undefined) {
+      // A label given twice is ambiguous: the proof is refused.
+      if (contents.has(label)) return false;
+      current = label;
+      contents.set(label, (match?.[2] ?? "").trim());
+    } else if (current !== null) {
+      contents.set(current, `${contents.get(current) ?? ""};${segment}`);
+    }
+  }
+  return PROOF_LABELS.every((label) => {
+    const content = contents.get(label);
+    return content !== undefined && !OPENS_ON_LABEL.test(content) && NAMES_SOMETHING.test(content);
+  });
 }
 
 function isStatus(value: string): value is Status {
@@ -136,7 +164,8 @@ export function countMatrix(text: string): MatrixCounts {
     const width = headerNames.length;
     statusColumns = width - fixed;
     for (const { lineNumber, cells } of table.slice(2)) {
-      const numbered = /^[0-9]+$/.test(cells[0] ?? "");
+      // `01` or `0` is not the number of a row: the suite starts at 1, unpadded.
+      const numbered = /^[1-9][0-9]*$/.test(cells[0] ?? "");
       if (cells.length !== width || !numbered) {
         rejectedRows += 1;
         structure.push(
@@ -170,12 +199,7 @@ export function countMatrix(text: string): MatrixCounts {
 
       if (verdict === "exclure" && !DECISION_ID.test(decision)) excludeWithoutDecision += 1;
       if (verdict === "exclure" && source !== "") excludeWithSource += 1;
-      if (
-        rowStatuses.includes("absent") &&
-        !(SEARCHED_PATTERNS.test(proof) && SEARCHED_PATHS.test(proof))
-      ) {
-        absentWithoutProof += 1;
-      }
+      if (rowStatuses.includes("absent") && !provesAbsence(proof)) absentWithoutProof += 1;
     }
     // A matrix with no row measures nothing: it is not a conforming zero.
     if (rows === 0) structure.push("table: no numbered row");
