@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -115,7 +115,7 @@ describe("a complete series is green, and says what it examined", () => {
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
     expect(outcome.output).toContain("series: declared=1 readable=1 unreadable=0");
     expect(outcome.output).toContain("adr: examined=2 indexed=2 missing=0");
-    expect(outcome.output).toContain("rows: read=2 matched=2 stale=0 malformed=0");
+    expect(outcome.output).toContain("rows: read=2 matched=2 duplicate=0 stale=0 malformed=0");
     expect(outcome.output).toContain("violations=0");
     expect(outcome.exitCode).toBe(0);
   });
@@ -192,7 +192,7 @@ describe("an ADR without an index row is red", () => {
       ]),
     );
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
-    expect(outcome.output).toContain("rows: read=2 matched=1 stale=1 malformed=0");
+    expect(outcome.output).toContain("rows: read=2 matched=1 duplicate=0 stale=1 malformed=0");
     expect(outcome.output).toContain("0002-gone.md");
     expect(outcome.exitCode).toBe(1);
   });
@@ -206,7 +206,7 @@ describe("an ADR without an index row is red", () => {
       ]),
     );
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
-    expect(outcome.output).toContain("rows: read=2 matched=1 stale=0 malformed=1");
+    expect(outcome.output).toContain("rows: read=2 matched=1 duplicate=0 stale=0 malformed=1");
     expect(outcome.exitCode).toBe(1);
   });
 });
@@ -315,7 +315,9 @@ describe("a declared repository that cannot be read is red", () => {
       section("grp/absent", "docs/adr", [row("0001", "First", "docs/adr/0001-first.md")]),
     );
     const outcome = gate("--index", path, "--repo", sibling.argument);
-    expect(outcome.output).toContain("rows: read=2 matched=1 stale=0 malformed=0 unjudged=1");
+    expect(outcome.output).toContain(
+      "rows: read=2 matched=1 duplicate=0 stale=0 malformed=0 unjudged=1",
+    );
     expect(outcome.exitCode).toBe(1);
   });
 });
@@ -367,7 +369,7 @@ describe("a trailing HTML comment on a row is ignored", () => {
     const marked = `${row("0001", "First", "docs/adr/0001-first.md").trimEnd()} <!-- isolation: exempt -->\n`;
     const path = index(section("grp/alpha", "docs/adr", [marked]));
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
-    expect(outcome.output).toContain("rows: read=1 matched=1 stale=0 malformed=0");
+    expect(outcome.output).toContain("rows: read=1 matched=1 duplicate=0 stale=0 malformed=0");
     expect(outcome.exitCode).toBe(0);
   });
 
@@ -382,7 +384,7 @@ describe("a trailing HTML comment on a row is ignored", () => {
     const started = performance.now();
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
     const elapsed = performance.now() - started;
-    expect(outcome.output).toContain("rows: read=2 matched=1 stale=0 malformed=1");
+    expect(outcome.output).toContain("rows: read=2 matched=1 duplicate=0 stale=0 malformed=1");
     // The quadratic form took about 30 s on this input; the bound is generous on purpose.
     expect(elapsed).toBeLessThan(10_000);
   }, 60_000);
@@ -466,7 +468,7 @@ describe("links are relative to the repository carrying the series, without a ho
     );
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
     expect(outcome.output).toContain("adr: examined=1 indexed=0 missing=1");
-    expect(outcome.output).toContain("rows: read=1 matched=0 stale=0 malformed=1");
+    expect(outcome.output).toContain("rows: read=1 matched=0 duplicate=0 stale=0 malformed=1");
     expect(outcome.exitCode).toBe(1);
   });
 
@@ -545,7 +547,7 @@ describe("the series is read from the checked-out tree, not the default branch",
       ]),
     );
     const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
-    expect(outcome.output).toContain("rows: read=2 matched=1 stale=1 malformed=0");
+    expect(outcome.output).toContain("rows: read=2 matched=1 duplicate=0 stale=1 malformed=0");
     expect(outcome.exitCode).toBe(1);
   });
 
@@ -560,6 +562,176 @@ describe("the series is read from the checked-out tree, not the default branch",
   });
 });
 
+describe("a file is indexed by one row only", () => {
+  test("two rows pointing at the same file: the second is a duplicate, red", () => {
+    const alpha = repository("alpha", ["0001-first.md", "0002-second.md"]);
+    const path = index(
+      section("grp/alpha", "docs/adr", [
+        row("0001", "First", "docs/adr/0001-first.md"),
+        row("0001", "First again", "docs/adr/0001-first.md", "other label"),
+        row("0002", "Second", "docs/adr/0002-second.md"),
+      ]),
+    );
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("rows: read=3 matched=2 duplicate=1 stale=0 malformed=0");
+    expect(outcome.output).toContain("adr: examined=2 indexed=2 missing=0");
+    expect(outcome.output).toContain("docs/adr/0001-first.md has 2 rows");
+    expect(outcome.exitCode).toBe(1);
+  });
+});
+
+describe("two ADRs of one series never share a number unless exempted by name", () => {
+  const EXEMPTIONS_SCHEMA = "libre-ai.decision-series-exemptions.v1";
+
+  function exemptions(entries: readonly object[], schema: string = EXEMPTIONS_SCHEMA): string {
+    const path = join(workspace(), "index", "exemptions.json");
+    write(path, JSON.stringify({ schema_version: schema, exemptions: entries }));
+    return path;
+  }
+
+  function sharedNumberSeries(files: readonly string[]): { index: string; alpha: string } {
+    const alpha = repository("alpha", files);
+    const rows = files.map((file) => row(file.slice(0, 4), file, `docs/adr/${file}`));
+    return { index: index(section("grp/alpha", "docs/adr", rows)), alpha };
+  }
+
+  const entry = (file: string) => ({
+    repository: "grp/alpha",
+    directory: "docs/adr",
+    file,
+    because: "both were merged before the series was gated",
+  });
+
+  test("two indexed ADRs sharing a number: red, both named", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0004-a.md", "0004-b.md", "0005-c.md"]);
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`);
+    expect(outcome.output).toContain("adr: examined=3 indexed=3 missing=0");
+    expect(outcome.output).toContain("numbers: examined=3 unique=1 shared=2 exempted=0");
+    expect(outcome.output).toContain("docs/adr/0004-a.md shares number 0004");
+    expect(outcome.output).toContain("docs/adr/0004-b.md shares number 0004");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("the same pair, each exempted by name with its reason: green, counted", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0004-a.md", "0004-b.md", "0005-c.md"]);
+    const list = exemptions([entry("0004-a.md"), entry("0004-b.md")]);
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`, "--exemptions", list);
+    expect(outcome.output).toContain("numbers: examined=3 unique=1 shared=0 exempted=2");
+    expect(outcome.output).toContain("exemptions: declared=2 applied=2 stale=0 unjudged=0");
+    expect(outcome.exitCode).toBe(0);
+  });
+
+  test("a third file on an exempted number is not covered by the others' exemption", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0004-a.md", "0004-b.md", "0004-c.md"]);
+    const list = exemptions([entry("0004-a.md"), entry("0004-b.md")]);
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`, "--exemptions", list);
+    expect(outcome.output).toContain("numbers: examined=3 unique=0 shared=1 exempted=2");
+    expect(outcome.output).toContain("docs/adr/0004-c.md shares number 0004");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an exemption for a file that no longer shares its number is stale: red", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0004-a.md", "0005-c.md"]);
+    const list = exemptions([entry("0004-a.md")]);
+    const outcome = gate("--index", path, "--repo", `grp/alpha=${alpha}`, "--exemptions", list);
+    expect(outcome.output).toContain("exemptions: declared=1 applied=0 stale=1 unjudged=0");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an exemption for an unreadable series is unjudged, and the series stays red", () => {
+    const sibling = readableSibling();
+    const path = index(sibling.section, section("grp/alpha", "docs/adr", []));
+    const list = exemptions([entry("0004-a.md")]);
+    const outcome = gate("--index", path, "--repo", sibling.argument, "--exemptions", list);
+    expect(outcome.output).toContain("exemptions: declared=1 applied=0 stale=0 unjudged=1");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an unreadable exemption list is a failure, not an empty list", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0001-a.md"]);
+    const outcome = gate(
+      "--index",
+      path,
+      "--repo",
+      `grp/alpha=${alpha}`,
+      "--exemptions",
+      join(workspace(), "absent.json"),
+    );
+    expect(outcome.output).toContain("cannot read exemptions");
+    expect(outcome.exitCode).toBe(1);
+  });
+
+  test("an exemption without its reason, or a wrong schema, is a failure", () => {
+    const { index: path, alpha } = sharedNumberSeries(["0004-a.md", "0004-b.md"]);
+    const unexplained = exemptions([{ ...entry("0004-a.md"), because: "" }, entry("0004-b.md")]);
+    const first = gate(
+      "--index",
+      path,
+      "--repo",
+      `grp/alpha=${alpha}`,
+      "--exemptions",
+      unexplained,
+    );
+    expect(first.output).toContain("cannot read exemptions");
+    expect(first.exitCode).toBe(1);
+    const foreign = exemptions([entry("0004-a.md"), entry("0004-b.md")], "other.v1");
+    const second = gate("--index", path, "--repo", `grp/alpha=${alpha}`, "--exemptions", foreign);
+    expect(second.output).toContain("cannot read exemptions");
+    expect(second.exitCode).toBe(1);
+  });
+
+  test("this repository's own series: red without its exemption list, green with it", () => {
+    // The tree this suite ships in, not a fixture: the committed list must
+    // exempt exactly the shared numbers its own docs/adr holds today.
+    const root = join(import.meta.dir, "..");
+    const files = readdirSync(join(root, "docs", "adr")).filter((name) =>
+      /^\d{4}-.+\.md$/.test(name),
+    );
+    const rows = files.map((file) => row(file.slice(0, 4), file, `docs/adr/${file}`));
+    const path = index(section("libre-ai/project-governance", "docs/adr", rows));
+    const repo = `libre-ai/project-governance=${root}`;
+    const strict = gate("--index", path, "--repo", repo);
+    expect(strict.output).toContain("shared=2 exempted=0");
+    expect(strict.exitCode).toBe(1);
+    const list = join(root, "ecosystem", "decision-series-exemptions.v1.json");
+    const exempted = gate("--index", path, "--repo", repo, "--exemptions", list);
+    expect(exempted.output).toContain("shared=0 exempted=2");
+    expect(exempted.output).toContain("exemptions: declared=2 applied=2 stale=0 unjudged=0");
+    expect(exempted.exitCode).toBe(0);
+  });
+});
+
+describe("every heading closes a series, and one shaped like a declaration is counted", () => {
+  for (const heading of [
+    "### grp/alpha — Decisions (docs/adr2)",
+    "##grp/alpha — Decisions (docs/adr2)",
+    "#grp/alpha — Decisions (docs/adr2)",
+    "#### grp/alpha (docs/adr2)",
+    "  ## grp/alpha — Decisions (docs/adr2)",
+  ]) {
+    test(`"${heading}" is a declared, unreadable series`, () => {
+      const sibling = readableSibling();
+      const path = index(sibling.section, `${heading}\n\n${HEADER}`);
+      const outcome = gate("--index", path, "--repo", sibling.argument);
+      expect(outcome.output).toContain("series: declared=2 readable=1 unreadable=1");
+      expect(outcome.output).toContain(heading.trim());
+      expect(outcome.exitCode).toBe(1);
+    });
+  }
+
+  test("a level-three heading ends the table above it: its rows are not that series'", () => {
+    const sibling = readableSibling();
+    const path = index(
+      sibling.section.trimEnd(),
+      "\n### Notes\n\n",
+      row("0002", "Elsewhere", "docs/adr/0002-elsewhere.md"),
+    );
+    const outcome = gate("--index", path, "--repo", sibling.argument);
+    expect(outcome.output).toContain("rows: read=1 matched=1");
+    expect(outcome.exitCode).toBe(0);
+  });
+});
+
 describe("usage", () => {
   test("no index argument: exit 2", () => {
     expect(gate().exitCode).toBe(2);
@@ -569,6 +741,11 @@ describe("usage", () => {
     const path = index(section("grp/alpha", "docs/adr", []));
     expect(gate("--index", path, "--repo", "alpha").exitCode).toBe(2);
     expect(gate("--index", path, "--repo", "a/b/c=/x").exitCode).toBe(2);
+  });
+
+  test("the exemption list given twice: exit 2", () => {
+    const path = index(section("grp/alpha", "docs/adr", []));
+    expect(gate("--index", path, "--exemptions", path, "--exemptions", path).exitCode).toBe(2);
   });
 
   test("the same repository given twice: exit 2", () => {

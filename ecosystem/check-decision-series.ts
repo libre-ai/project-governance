@@ -35,17 +35,39 @@
  * red: a typo in the caller's repository name must not leave a tree unread
  * without a trace.
  *
+ * Every heading of the index (any number of `#`, indented or not, with or
+ * without a space after the hashes) ends the table above it. Only an exact
+ * `## <group>/<repository> — <title> (<directory>)` declares a readable series;
+ * any other heading with the shape of a declaration, or whose first word is a
+ * `group/name`, is a declared, unreadable series — red, never dropped.
+ *
+ * A file has one row. A second row naming the same file is a duplicate and
+ * red, counted apart from `matched`, so that `matched` equals `indexed`.
+ *
+ * Two ADRs of one series sharing a number are red, each one named, unless the
+ * exemption list (`--exemptions`, JSON, schema
+ * `libre-ai.decision-series-exemptions.v1`; this repository's list is
+ * ecosystem/decision-series-exemptions.v1.json) names that file with its
+ * reason. Exemptions are per file: a third ADR on an exempted number is red.
+ * An exemption that exempts nothing is stale and red; one for an unreadable
+ * series is unjudged. An unreadable or malformed list is red, never empty.
+ * LIMIT: a gap in the numbering (0001, 0003) is not checked; it belongs to
+ * renumbering, outside this gate.
+ *
  * Counters printed on every run, and they sum:
- *   series:    declared = readable + unreadable
- *   adr:       examined = indexed + missing
- *   entries:   listed   = examined + misnamed + skipped
- *   rows:      read     = matched + stale + malformed + unjudged
- *   checkouts: supplied = used + unused
+ *   series:     declared = readable + unreadable
+ *   adr:        examined = indexed + missing
+ *   entries:    listed   = examined + misnamed + skipped
+ *   numbers:    examined = unique + shared + exempted
+ *   exemptions: declared = applied + stale + unjudged
+ *   rows:       read     = matched + duplicate + stale + malformed + unjudged
+ *   checkouts:  supplied = used + unused
  * Rows of an unreadable series are unjudged: there is no tree to judge them by.
  * A run that declares no series, or examines no ADR, is red.
  *
  * Usage:
- *   bun ecosystem/check-decision-series.ts --index <file> [--repo <group>/<name>=<checkout>]...
+ *   bun ecosystem/check-decision-series.ts --index <file> [--exemptions <file>]
+ *     [--repo <group>/<name>=<checkout>]...
  * Exit codes: 0 pass, 1 violation or unreadable source, 2 usage.
  */
 
@@ -58,6 +80,10 @@ const EXIT_USAGE = 2;
 
 const NAME_SEGMENT = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 const SERIES_HEADING = /^## (\S+) (?:—|-) (.+) \(([^()]+)\)\s*$/;
+/** The same shape on a heading's text, whatever its level and spacing. */
+const SERIES_SHAPE = /^\S+\s+(?:—|-)\s.*\([^()]+\)$/;
+const LEADING_HASHES = /^#+/;
+const EXEMPTIONS_SCHEMA = "libre-ai.decision-series-exemptions.v1";
 const ADR_FILE = /^(\d{4})-[^/\\]+\.md$/;
 /** An optional `ADR` prefix, a run of digits, a separator, a `.md` in any case. */
 const ADR_LOOKALIKE = /^(?:adr[-_]?)?\d+[-_].*\.md$/i;
@@ -85,8 +111,16 @@ interface Counters {
   listed: number;
   misnamed: number;
   skipped: number;
+  numbersUnique: number;
+  numbersShared: number;
+  numbersExempted: number;
+  exemptionsDeclared: number;
+  exemptionsApplied: number;
+  exemptionsStale: number;
+  exemptionsUnjudged: number;
   rowsRead: number;
   matched: number;
+  duplicate: number;
   stale: number;
   malformed: number;
   unjudged: number;
@@ -102,7 +136,73 @@ interface SeriesListing {
   readonly skipped: readonly string[];
 }
 
+/** One ADR file allowed to share its number with another ADR of its series. */
+interface Exemption {
+  readonly repository: string;
+  readonly directory: string;
+  readonly file: string;
+  readonly because: string;
+}
+
 class UsageError extends Error {}
+
+function exemptionKey(repository: string, directory: string, file: string): string {
+  return `${repository}\0${directory}\0${file}`;
+}
+
+function seriesKey(repository: string, directory: string): string {
+  return `${repository}\0${directory}`;
+}
+
+/**
+ * The exemption list, validated whole: a wrong schema, an unknown key, an
+ * entry without its reason or a repeated entry throws, so the gate never runs
+ * on half a list.
+ */
+function parseExemptions(text: string): readonly Exemption[] {
+  const document: unknown = JSON.parse(text);
+  if (typeof document !== "object" || document === null || Array.isArray(document)) {
+    throw new Error("not a JSON object");
+  }
+  const record = document as Record<string, unknown>;
+  const keys = Object.keys(record).sort().join(",");
+  if (keys !== "exemptions,schema_version") {
+    throw new Error(`expected exactly schema_version and exemptions, got: ${keys}`);
+  }
+  if (record.schema_version !== EXEMPTIONS_SCHEMA) {
+    throw new Error(`schema_version must be ${EXEMPTIONS_SCHEMA}`);
+  }
+  if (!Array.isArray(record.exemptions)) throw new Error("exemptions must be an array");
+  const seen = new Set<string>();
+  return record.exemptions.map((raw: unknown, position: number): Exemption => {
+    const where = `exemptions[${position}]`;
+    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+      throw new Error(`${where} is not an object`);
+    }
+    const entry = raw as Record<string, unknown>;
+    const entryKeys = Object.keys(entry).sort().join(",");
+    if (entryKeys !== "because,directory,file,repository") {
+      throw new Error(`${where}: expected repository, directory, file, because; got: ${entryKeys}`);
+    }
+    const { repository, directory, file, because } = entry;
+    if (typeof repository !== "string" || !isRepositoryName(repository)) {
+      throw new Error(`${where}: repository is not <group>/<name>`);
+    }
+    if (typeof directory !== "string" || !isPlainRelativePath(directory)) {
+      throw new Error(`${where}: directory is not a plain relative path`);
+    }
+    if (typeof file !== "string" || !ADR_FILE.test(file)) {
+      throw new Error(`${where}: file is not NNNN-<slug>.md`);
+    }
+    if (typeof because !== "string" || because.trim() === "") {
+      throw new Error(`${where}: because is empty`);
+    }
+    const key = exemptionKey(repository, directory, file);
+    if (seen.has(key)) throw new Error(`${where}: ${repository} ${directory}/${file} given twice`);
+    seen.add(key);
+    return { repository, directory, file, because };
+  });
+}
 
 function isRepositoryName(value: string): boolean {
   const parts = value.split("/");
@@ -123,9 +223,11 @@ function isPlainRelativePath(value: string): boolean {
 
 function parseArguments(argv: readonly string[]): {
   readonly index: string;
+  readonly exemptions: string | null;
   readonly checkouts: ReadonlyMap<string, string>;
 } {
   let index: string | null = null;
+  let exemptions: string | null = null;
   const checkouts = new Map<string, string>();
   for (let position = 0; position < argv.length; position += 2) {
     const flag = argv[position];
@@ -134,6 +236,9 @@ function parseArguments(argv: readonly string[]): {
     if (flag === "--index") {
       if (index !== null) throw new UsageError("--index given twice");
       index = value;
+    } else if (flag === "--exemptions") {
+      if (exemptions !== null) throw new UsageError("--exemptions given twice");
+      exemptions = value;
     } else if (flag === "--repo") {
       const separator = value.indexOf("=");
       const name = separator === -1 ? "" : value.slice(0, separator);
@@ -148,7 +253,7 @@ function parseArguments(argv: readonly string[]): {
     }
   }
   if (index === null) throw new UsageError("--index <file> is required");
-  return { index, checkouts };
+  return { index, exemptions, checkouts };
 }
 
 /**
@@ -176,17 +281,22 @@ function parseIndex(text: string): readonly SeriesDeclaration[] {
   };
   for (const raw of text.split("\n")) {
     const line = raw.trimEnd();
-    if (line.startsWith("## ") || line.startsWith("# ")) {
+    const stripped = line.trimStart();
+    if (stripped.startsWith("#")) {
+      // Every heading, whatever its level, its indentation or the space after
+      // its hashes, ends the table above it.
       close();
-      if (!line.startsWith("## ")) continue;
-      const firstToken = line.slice(3).split(" ")[0] ?? "";
+      const level = stripped.length - stripped.replace(LEADING_HASHES, "").length;
+      const headingText = stripped.slice(level).trim();
+      const firstToken = headingText.split(/\s/)[0] ?? "";
       const match = SERIES_HEADING.exec(line);
       if (match !== null && isRepositoryName(match[1] ?? "")) {
         current = { heading: line, repository: match[1] ?? null, directory: match[3] ?? null };
-      } else if (match !== null || firstToken.includes("/")) {
-        // Has the full shape of a declaration, or a group/name first word, yet
-        // does not parse (a forgotten group, a missing directory): a typo must
-        // not make a series vanish, so it is kept as a declared, unreadable series.
+      } else if (SERIES_SHAPE.test(headingText) || firstToken.includes("/")) {
+        // Has the shape of a declaration, or a group/name first word, yet is
+        // not an exact level-two declaration (another level, no space after
+        // the hashes, a forgotten group, a missing directory): a typo must not
+        // make a series vanish, so it is kept as a declared, unreadable series.
         current = { heading: line, repository: null, directory: null };
       }
       continue;
@@ -280,6 +390,7 @@ function readRow(row: string, directory: string): RowVerdict {
 function check(
   declarations: readonly SeriesDeclaration[],
   checkouts: ReadonlyMap<string, string>,
+  exemptions: readonly Exemption[],
 ): {
   readonly counters: Counters;
   readonly violations: readonly string[];
@@ -295,8 +406,16 @@ function check(
     listed: 0,
     misnamed: 0,
     skipped: 0,
+    numbersUnique: 0,
+    numbersShared: 0,
+    numbersExempted: 0,
+    exemptionsDeclared: exemptions.length,
+    exemptionsApplied: 0,
+    exemptionsStale: 0,
+    exemptionsUnjudged: 0,
     rowsRead: 0,
     matched: 0,
+    duplicate: 0,
     stale: 0,
     malformed: 0,
     unjudged: 0,
@@ -307,13 +426,18 @@ function check(
   const violations: string[] = [];
   const notes: string[] = [];
   const consumed = new Set<string>();
+  const exempted = new Set(
+    exemptions.map((entry) => exemptionKey(entry.repository, entry.directory, entry.file)),
+  );
+  const applied = new Set<string>();
+  const unreadableSeries = new Set<string>();
   for (const series of declarations) {
     if (series.repository !== null) consumed.add(series.repository);
     const label = series.repository ?? series.heading;
     const checkout = series.repository === null ? undefined : checkouts.get(series.repository);
     let listing: ReturnType<typeof listSeries>;
     if (series.repository === null || series.directory === null) {
-      listing = { error: "heading is not <group>/<repository> — <title> (<directory>)" };
+      listing = { error: "heading is not ## <group>/<repository> — <title> (<directory>)" };
     } else if (checkout === undefined) {
       listing = { error: "no checkout supplied for this declared repository" };
     } else {
@@ -324,13 +448,17 @@ function check(
       counters.unreadable += 1;
       // Rows of an unreadable series cannot be judged against a tree.
       counters.unjudged += series.rows.length;
+      if (series.repository !== null && series.directory !== null) {
+        unreadableSeries.add(seriesKey(series.repository, series.directory));
+      }
       violations.push(`${label}: unreadable series — ${listing.error}`);
       continue;
     }
     counters.readable += 1;
+    const repository = series.repository ?? "";
     const directory = series.directory ?? "";
     const present = new Set(listing.files);
-    const indexed = new Set<string>();
+    const rowsPerFile = new Map<string, number>();
     for (const row of series.rows) {
       const verdict = readRow(row, directory);
       if (verdict.kind === "malformed") {
@@ -339,9 +467,36 @@ function check(
       } else if (!present.has(verdict.file)) {
         counters.stale += 1;
         violations.push(`${label}: row names ${directory}/${verdict.file}, absent from the series`);
+      } else if (rowsPerFile.has(verdict.file)) {
+        // A second row for the same file indexes nothing more: counted apart,
+        // so that `matched` is exactly the number of files indexed.
+        counters.duplicate += 1;
+        rowsPerFile.set(verdict.file, (rowsPerFile.get(verdict.file) ?? 0) + 1);
       } else {
         counters.matched += 1;
-        indexed.add(verdict.file);
+        rowsPerFile.set(verdict.file, 1);
+      }
+    }
+    for (const [file, count] of rowsPerFile) {
+      if (count > 1) violations.push(`${label}: ${directory}/${file} has ${count} rows`);
+    }
+    const indexed = new Set(rowsPerFile.keys());
+    const filesPerNumber = new Map<string, number>();
+    for (const file of listing.files) {
+      const number = file.slice(0, 4);
+      filesPerNumber.set(number, (filesPerNumber.get(number) ?? 0) + 1);
+    }
+    for (const file of listing.files) {
+      const number = file.slice(0, 4);
+      const key = exemptionKey(repository, directory, file);
+      if ((filesPerNumber.get(number) ?? 0) === 1) {
+        counters.numbersUnique += 1;
+      } else if (exempted.has(key)) {
+        counters.numbersExempted += 1;
+        applied.add(key);
+      } else {
+        counters.numbersShared += 1;
+        violations.push(`${label}: ${directory}/${file} shares number ${number} with another ADR`);
       }
     }
     for (const file of listing.files) {
@@ -363,6 +518,20 @@ function check(
     for (const entry of listing.skipped) {
       counters.skipped += 1;
       notes.push(`${label}: skipped ${directory}/${entry}`);
+    }
+  }
+  for (const entry of exemptions) {
+    const where = `${entry.repository} ${entry.directory}/${entry.file}`;
+    if (applied.has(exemptionKey(entry.repository, entry.directory, entry.file))) {
+      counters.exemptionsApplied += 1;
+    } else if (unreadableSeries.has(seriesKey(entry.repository, entry.directory))) {
+      // No tree to judge it by; the unreadable series is already red.
+      counters.exemptionsUnjudged += 1;
+    } else {
+      // Exempts nothing: the file is gone, no longer shares its number, or
+      // names no declared series. A standing excuse waiting for another file.
+      counters.exemptionsStale += 1;
+      violations.push(`exemption ${where} is stale: it exempts no shared number`);
     }
   }
   for (const name of [...checkouts.keys()].sort()) {
@@ -396,7 +565,16 @@ function main(argv: readonly string[]): number {
     console.error(`cannot read index ${parsed.index}: ${describe(error)}`);
     return EXIT_VIOLATION;
   }
-  const { counters, violations, notes } = check(parseIndex(text), parsed.checkouts);
+  let exemptions: readonly Exemption[] = [];
+  if (parsed.exemptions !== null) {
+    try {
+      exemptions = parseExemptions(readFileSync(parsed.exemptions, "utf8"));
+    } catch (error) {
+      console.error(`cannot read exemptions ${parsed.exemptions}: ${describe(error)}`);
+      return EXIT_VIOLATION;
+    }
+  }
+  const { counters, violations, notes } = check(parseIndex(text), parsed.checkouts, exemptions);
   for (const violation of violations) console.error(`  - ${violation}`);
   for (const note of notes) console.log(`  ~ ${note}`);
   console.log(
@@ -409,7 +587,13 @@ function main(argv: readonly string[]): number {
     `entries: listed=${counters.listed} examined=${counters.examined} misnamed=${counters.misnamed} skipped=${counters.skipped}`,
   );
   console.log(
-    `rows: read=${counters.rowsRead} matched=${counters.matched} stale=${counters.stale} malformed=${counters.malformed} unjudged=${counters.unjudged}`,
+    `numbers: examined=${counters.examined} unique=${counters.numbersUnique} shared=${counters.numbersShared} exempted=${counters.numbersExempted}`,
+  );
+  console.log(
+    `exemptions: declared=${counters.exemptionsDeclared} applied=${counters.exemptionsApplied} stale=${counters.exemptionsStale} unjudged=${counters.exemptionsUnjudged}`,
+  );
+  console.log(
+    `rows: read=${counters.rowsRead} matched=${counters.matched} duplicate=${counters.duplicate} stale=${counters.stale} malformed=${counters.malformed} unjudged=${counters.unjudged}`,
   );
   console.log(
     `checkouts: supplied=${counters.supplied} used=${counters.used} unused=${counters.unused}`,
