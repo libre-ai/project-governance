@@ -1,0 +1,141 @@
+name: reusable-mutation-rust
+# Fleet gate template: Rust mutation testing per crate, with an explicit
+# threshold of surviving mutants (tools/quality/check-mutation-rust.ts).
+#
+# Consumed as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-mutation-rust.yml@<sha>
+#   with:
+#     tooling_ref: <sha>
+#     crates: "<crate> [<crate> ...]"
+#     max_missed: "<N>"
+#     max_missed_by_crate: "<crate>=<N> [<crate>=<N> ...]"
+#     timeout_seconds: "<s>"
+# with tooling_ref pinned to the SAME sha. A gate evolution is a sha bump in the
+# consuming repository (the culture of the pin, as reusable-licensing.yml).
+#
+# The trigger belongs to the CALLER (manual or scheduled: a mutation run is too
+# long for every push). This file therefore declares `workflow_call` and
+# nothing else (tools/quality/reusable-mutation-rust.test.ts asserts it).
+#
+# This file only wires the call. Every decision is taken by the script, which
+# `bun test` proves on this repository: the inputs are validated there and
+# nothing is launched on an invalid configuration (exit 2); there is no default
+# threshold, so a crate with neither its own threshold nor `max_missed` is
+# refused; zero generated mutant is a failure; every listed crate is evaluated
+# before the job fails. An optional input left out reaches the script as an
+# empty value, which the script reads as the flag left out.
+#
+# Where the tools come from. The governance tooling at tooling_ref is fetched
+# into $RUNNER_TEMP/governance-tooling, outside the workspace, and the gate runs
+# from that directory (see reusable-work-package-link.yml for what was measured
+# about Bun and its working directory). cargo-mutants is the linux-x64 archive
+# declared in toolchains/cargo-mutants.json: the URL and the digest below are
+# copied from that declaration (the structure test compares them), the archive
+# is verified before it is extracted, and the script verifies the extracted
+# binary against the same declaration. `cargo install` is never used: it
+# resolves against a mutable registry and would change the enforcing binary
+# between two runs of the same commit.
+#
+# No `env:` or `defaults:` exists above the steps: a value declared at job or
+# workflow level would reach the gate without being seen.
+
+on:
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: >-
+          Full commit (40 lowercase hexadecimal characters) of
+          libre-ai/project-governance providing tools/quality
+        required: true
+        type: string
+      crates:
+        description: Workspace crates to mutate, separated by spaces
+        required: true
+        type: string
+      max_missed:
+        description: >-
+          Surviving mutants tolerated per crate, for every crate that
+          max_missed_by_crate does not name
+        required: false
+        type: string
+        default: ""
+      max_missed_by_crate:
+        description: >-
+          Thresholds of individual crates, as crate=N separated by spaces;
+          each wins over max_missed
+        required: false
+        type: string
+        default: ""
+      timeout_seconds:
+        description: Maximum run time of each cargo command, handed to cargo-mutants
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  mutation-rust:
+    name: Rust mutation
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+        run: |
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          TOOLING_DIR="$RUNNER_TEMP/governance-tooling"
+          mkdir "$TOOLING_DIR"
+          git init --quiet "$TOOLING_DIR"
+          git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
+          git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
+      - name: Install archived Bun toolchain
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable action
+      - name: Install pinned cargo-mutants
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          CARGO_MUTANTS_ARCHIVE_URL: https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz
+          CARGO_MUTANTS_ARCHIVE_SHA256: dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/cargo-mutants.tar.gz" "$CARGO_MUTANTS_ARCHIVE_URL"
+          echo "$CARGO_MUTANTS_ARCHIVE_SHA256  $RUNNER_TEMP/cargo-mutants.tar.gz" | sha256sum --check --strict
+          mkdir "$RUNNER_TEMP/cargo-mutants"
+          tar -xzf "$RUNNER_TEMP/cargo-mutants.tar.gz" -C "$RUNNER_TEMP/cargo-mutants"
+      - name: Mutation testing per crate
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
+        env:
+          LIBRE_AI_CARGO_MUTANTS: ${{ runner.temp }}/cargo-mutants/cargo-mutants
+          CRATES: ${{ inputs.crates }}
+          MAX_MISSED: ${{ inputs.max_missed }}
+          MAX_MISSED_BY_CRATE: ${{ inputs.max_missed_by_crate }}
+          TIMEOUT_SECONDS: ${{ inputs.timeout_seconds }}
+        run: bun --no-env-file tools/quality/check-mutation-rust.ts --root="$GITHUB_WORKSPACE" --crates="$CRATES" --max-missed="$MAX_MISSED" --max-missed-by-crate="$MAX_MISSED_BY_CRATE" --timeout="$TIMEOUT_SECONDS"

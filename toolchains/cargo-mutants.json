@@ -1,0 +1,26 @@
+{
+  "tool": "cargo-mutants",
+  "version": "27.1.0",
+  "license": "MIT",
+  "releaseUrl": "https://github.com/sourcefrog/cargo-mutants/releases/tag/v27.1.0",
+  "observedAt": "2026-11-17",
+  "platforms": {
+    "darwin-x64": {
+      "triple": "x86_64-apple-darwin",
+      "archiveName": "cargo-mutants-x86_64-apple-darwin.tar.gz",
+      "archiveUrl": "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-apple-darwin.tar.gz",
+      "archiveSha256": "7109a9e9673fe0b977f622e6f32383b6d1cbbf3fbb63b7c30db3267462c74670",
+      "executableRelativePath": "cargo-mutants",
+      "executableSha256": "7675dc9fcc627488cfd9f23eafafbd5609a7a2870f7adc6b8b65f22cf1e89efb"
+    },
+    "linux-x64": {
+      "triple": "x86_64-unknown-linux-gnu",
+      "archiveName": "cargo-mutants-x86_64-unknown-linux-gnu.tar.gz",
+      "archiveUrl": "https://github.com/sourcefrog/cargo-mutants/releases/download/v27.1.0/cargo-mutants-x86_64-unknown-linux-gnu.tar.gz",
+      "archiveSha256": "dfe6dc37d0342c891d2829b5a695aa57c2d0edecef7e7d0399a30cc6e206411e",
+      "executableRelativePath": "cargo-mutants",
+      "executableSha256": "f985f265ee3ea3e453aa98b04c52134953911f692f8ce8abf137f3873202a2d0"
+    }
+  },
+  "provision": "The fleet gate template (.github/workflows/reusable-mutation-rust.yml) downloads the linux-x64 archive, verifies its digest and exports the path of the extracted binary as LIBRE_AI_CARGO_MUTANTS; tools/quality/check-mutation-rust.ts verifies that binary against this declaration (executable digest, then reported version) and never downloads or builds one. The release publishes no archive for darwin-arm64 or linux-arm64: those platforms are absent here and the gate refuses to run on them rather than accept a locally built binary. Archive digests were measured on the downloaded archives and are equal to the digests the release API reports for the same assets; executable digests were measured on the extracted binaries."
+}
