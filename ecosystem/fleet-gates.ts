@@ -1,6 +1,7 @@
 import type { Dirent } from "node:fs";
 import { lstat, readdir } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
+import { findUnreadableCharacter } from "../tools/quality/yaml-text-guard";
 
 /**
  * Discovery of the fleet detectors (idea h-plugins-flotte-02).
@@ -29,10 +30,27 @@ import { extname, join, resolve } from "node:path";
  * its target may sit outside the directory). Each is counted apart, so the
  * counters sum to the entries read.
  *
- * KNOWN GAP WITH THE BRIEF. The brief names the module
- * `ecosystem/fleet-gates.v1.yaml + vérificateur`: one declaration file checked
- * against the scripts. Here the declaration is the header of each script, so a
- * gate declared but absent cannot exist and is not checked. Owner's call.
+ * THE REGISTRY (`ecosystem/fleet-gates.v1.yaml`, the module the brief names;
+ * owner's decision of 2026-11-17). It lists the fleet's gates, each by its
+ * `identifiant` and the `fichier` that carries it in the detectors directory.
+ * The discovery reads it and checks it against the directory both ways: a
+ * gate declared in the registry with no detector at its file fails, named; a
+ * script whose header declares a gate without a registry entry fails, named;
+ * an entry whose file declares another identifier fails. The header stays the
+ * declaration of what a gate does, the registry the list of which gates exist.
+ *
+ * The registry is read through a LINE WHITELIST, then confronted with
+ * `Bun.YAML.parse`. A YAML parser resolves a repeated key silently (the last
+ * wins), so the line reader, which sees every key, refuses a key declared
+ * twice; the shapes it admits cannot quote, escape, alias or comment a value,
+ * so text equality is key equality. The whitelist:
+ *
+ *   version: 1
+ *   detecteurs: []                  or  detecteurs:  then one or more entries
+ *     - identifiant: <slug>         (indent 2; `fichier` may come first)
+ *       fichier: <file name>        (indent 4; no `/`, not hidden)
+ *
+ * plus whole-line comments (`# …`) and blank lines. Any other line is refused.
  */
 
 /** Lines of a script, from the first, in which the keys are looked for. */
@@ -84,8 +102,23 @@ export type Discovery =
       readonly ignored: number;
       readonly links: number;
       readonly folders: number;
+      /** Entries of the registry; equal to the detectors found when ok. */
+      readonly registered: number;
     }
   | { readonly ok: false; readonly errors: readonly string[] };
+
+export interface RegistryEntry {
+  readonly id: string;
+  /** A file name in the detectors directory. */
+  readonly file: string;
+}
+
+export type RegistryParse =
+  | { readonly ok: true; readonly entries: readonly RegistryEntry[] }
+  | { readonly ok: false; readonly errors: readonly string[] };
+
+/** The registry of the fleet's gates in this repository. */
+export const REGISTRY_PATH = join(import.meta.dir, "fleet-gates.v1.yaml");
 
 const KEYS = ["identifiant", "titre", "fragilite", "cible", "portee"] as const;
 type Key = (typeof KEYS)[number];
@@ -184,6 +217,150 @@ export function parseDetectorHeader(text: string): HeaderParse {
   };
 }
 
+// ------------------------------------------------------------------ registry
+
+const REGISTRY_VERSION = /^version:(?: (.*))?$/;
+const REGISTRY_LIST = /^detecteurs:( \[\])?$/;
+const REGISTRY_ENTRY = /^( {2}- | {4})(identifiant|fichier):(?: (.*))?$/;
+/** A plain file name: no directory, not hidden, nothing YAML would read as syntax. */
+const FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
+
+type EntryKey = "identifiant" | "fichier";
+
+interface EntryLines {
+  readonly line: number;
+  readonly values: Map<EntryKey, string>;
+}
+
+/** Reads the registry text; every refusal is named with its line, none stops the others. */
+export function parseRegistry(text: string): RegistryParse {
+  const unreadable = findUnreadableCharacter(text);
+  if (unreadable !== null) {
+    return {
+      ok: false,
+      errors: [`line ${unreadable.line}: unreadable character ${unreadable.codePoint}`],
+    };
+  }
+  const errors: string[] = [];
+  let version: { line: number; value: string } | null = null;
+  let list: { line: number; empty: boolean } | null = null;
+  const entries: EntryLines[] = [];
+
+  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  for (const [index, line] of lines.entries()) {
+    const number = index + 1;
+    if (line === "" || line.startsWith("#")) continue;
+    const versionMatch = REGISTRY_VERSION.exec(line);
+    if (versionMatch !== null) {
+      if (version !== null) {
+        errors.push(`line ${number}: « version » declared twice (line ${version.line})`);
+      } else version = { line: number, value: versionMatch[1] ?? "" };
+      continue;
+    }
+    const listMatch = REGISTRY_LIST.exec(line);
+    if (listMatch !== null) {
+      if (list !== null) {
+        errors.push(`line ${number}: « detecteurs » declared twice (line ${list.line})`);
+      } else list = { line: number, empty: listMatch[1] !== undefined };
+      continue;
+    }
+    const entryMatch = REGISTRY_ENTRY.exec(line);
+    if (entryMatch !== null) {
+      const [, indent, key = "", value = ""] = entryMatch;
+      if (list === null || list.empty) {
+        errors.push(`line ${number}: an entry outside a non-empty « detecteurs » list`);
+        continue;
+      }
+      const entryKey = key as EntryKey;
+      if (indent === "  - ") {
+        entries.push({ line: number, values: new Map([[entryKey, value]]) });
+        continue;
+      }
+      const current = entries.at(-1);
+      if (current === undefined) {
+        errors.push(`line ${number}: « ${entryKey} » belongs to no entry`);
+      } else if (current.values.has(entryKey)) {
+        errors.push(
+          `line ${number}: « ${entryKey} » declared twice in the entry of line ${current.line}`,
+        );
+      } else current.values.set(entryKey, value);
+      continue;
+    }
+    errors.push(
+      `line ${number}: not a line of the registry (version, detecteurs, an entry's identifiant or fichier, a comment): « ${printable(line)} »`,
+    );
+  }
+
+  if (version === null) errors.push("missing « version »");
+  else if (version.value !== "1") {
+    errors.push(`line ${version.line}: version « ${printable(version.value)} » is not 1`);
+  }
+  if (list === null) errors.push("missing « detecteurs » (write « detecteurs: [] » for none)");
+  else if (!list.empty && entries.length === 0) {
+    errors.push(`line ${list.line}: « detecteurs » without entries (write « detecteurs: [] »)`);
+  }
+
+  const result: RegistryEntry[] = [];
+  const ids = new Map<string, number>();
+  const files = new Map<string, number>();
+  for (const entry of entries) {
+    const id = entry.values.get("identifiant");
+    const file = entry.values.get("fichier");
+    const where = `entry of line ${entry.line}`;
+    if (id === undefined) errors.push(`${where}: missing « identifiant »`);
+    else if (!SLUG.test(id)) {
+      errors.push(`${where}: identifiant « ${printable(id)} » is not a lowercase slug`);
+    }
+    if (file === undefined) errors.push(`${where}: missing « fichier »`);
+    else if (!FILE_NAME.test(file)) {
+      errors.push(`${where}: fichier « ${printable(file)} » is not a plain, visible file name`);
+    }
+    if (id === undefined || file === undefined) continue;
+    const firstId = ids.get(id);
+    if (firstId !== undefined)
+      errors.push(`${where}: identifiant « ${id} » already at line ${firstId}`);
+    else ids.set(id, entry.line);
+    const firstFile = files.get(file);
+    if (firstFile !== undefined)
+      errors.push(`${where}: fichier « ${file} » already at line ${firstFile}`);
+    else files.set(file, entry.line);
+    result.push({ id, file });
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  // The whitelist admits no syntax a parser could read otherwise; confronting
+  // the two keeps that claim checked rather than assumed.
+  const expected = {
+    version: 1,
+    detecteurs: result.map((entry) => ({ identifiant: entry.id, fichier: entry.file })),
+  };
+  let parsed: unknown;
+  try {
+    parsed = Bun.YAML.parse(text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ok: false, errors: [`not YAML: ${printable(reason)}`] };
+  }
+  if (JSON.stringify(sortedEntries(parsed)) !== JSON.stringify(sortedEntries(expected))) {
+    return { ok: false, errors: ["the YAML parser reads another registry than the line reader"] };
+  }
+  return { ok: true, entries: result };
+}
+
+/** Key order is not meaning: `fichier` may precede `identifiant` in an entry. */
+function sortedEntries(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedEntries);
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([key, inner]) => [key, sortedEntries(inner)]),
+    );
+  }
+  return value;
+}
+
 /**
  * Whether a regular file is to be held to the header: a script extension of
  * any case, a shebang, or an executable bit. Anything that could run as a gate
@@ -196,8 +373,32 @@ async function looksLikeScript(path: string, name: string): Promise<boolean> {
   return (await Bun.file(path).slice(0, 2).text()) === "#!";
 }
 
-/** Discovers the detectors of one directory, ordered by file name. */
-export async function discoverDetectors(directory: string): Promise<Discovery> {
+/**
+ * Discovers the detectors of one directory, ordered by file name, and checks
+ * them against the registry at `registryPath` both ways.
+ */
+export async function discoverDetectors(
+  directory: string,
+  registryPath: string,
+): Promise<Discovery> {
+  let registryText: string;
+  try {
+    registryText = await Bun.file(registryPath).text();
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      errors: [`registry ${printable(registryPath)}: unreadable: ${printable(reason)}`],
+    };
+  }
+  const registry = parseRegistry(registryText);
+  if (!registry.ok) {
+    return {
+      ok: false,
+      errors: registry.errors.map((error) => `registry ${printable(registryPath)}: ${error}`),
+    };
+  }
+
   const root = resolve(directory);
   let entries: Dirent[];
   try {
@@ -214,6 +415,8 @@ export async function discoverDetectors(directory: string): Promise<Discovery> {
   const errors: string[] = [];
   const detectors: DetectorDescriptor[] = [];
   const seen = new Map<string, string>();
+  /** File name (raw) → identifier its header declares, for the registry check. */
+  const byFile = new Map<string, string>();
   let ignored = 0;
   let links = 0;
   let folders = 0;
@@ -265,6 +468,27 @@ export async function discoverDetectors(directory: string): Promise<Discovery> {
     }
     seen.set(parsed.header.id, name);
     detectors.push({ ...parsed.header, path });
+    byFile.set(entry.name, parsed.header.id);
+  }
+
+  // The registry against the directory, both ways.
+  const registeredIn = new Map(registry.entries.map((entry) => [entry.file, entry.id]));
+  for (const [file, id] of byFile) {
+    if (registeredIn.get(file) !== id) {
+      errors.push(
+        `${printable(file)}: declares the gate « ${id} », which has no entry for this file in the registry`,
+      );
+    }
+  }
+  for (const entry of registry.entries) {
+    const found = byFile.get(entry.file);
+    if (found === undefined) {
+      errors.push(`registry: « ${entry.id} » declared in ${entry.file}, no detector found there`);
+    } else if (found !== entry.id) {
+      errors.push(
+        `registry: « ${entry.id} » declared in ${entry.file}, which declares the gate « ${found} »`,
+      );
+    }
   }
 
   if (errors.length === 0 && detectors.length === 0) {
@@ -273,5 +497,13 @@ export async function discoverDetectors(directory: string): Promise<Discovery> {
     );
   }
   if (errors.length > 0) return { ok: false, errors };
-  return { ok: true, detectors, examined: entries.length, ignored, links, folders };
+  return {
+    ok: true,
+    detectors,
+    examined: entries.length,
+    ignored,
+    links,
+    folders,
+    registered: registry.entries.length,
+  };
 }
