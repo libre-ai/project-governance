@@ -37,11 +37,17 @@ repositories:
         enforcement: active
         conditions:
           ref_name:
-            include: [refs/heads/trunk, refs/heads/release]
+            include:
+              - refs/heads/trunk
+              - refs/heads/release
             exclude: []
         bypass_actors:
-          - { actor_id: 5, actor_type: RepositoryRole, bypass_mode: always }
-          - { actor_id: 7, actor_type: Team, bypass_mode: pull_request }
+          - actor_id: 5
+            actor_type: RepositoryRole
+            bypass_mode: always
+          - actor_id: 7
+            actor_type: Team
+            bypass_mode: pull_request
         rules:
           - type: deletion
           - type: non_fast_forward
@@ -49,14 +55,17 @@ repositories:
             parameters:
               strict_required_status_checks_policy: true
               required_status_checks:
-                - { context: first, integration_id: 1 }
-                - { context: second, integration_id: 1 }
+                - context: first
+                  integration_id: 1
+                - context: second
+                  integration_id: 1
       - name: tags
         target: tag
         enforcement: active
         conditions:
           ref_name:
-            include: ["~ALL"]
+            include:
+              - "~ALL"
             exclude: []
         bypass_actors: []
         rules:
@@ -109,6 +118,41 @@ function reconcileAlpha(rulesets: unknown): readonly RulesetFinding[] {
 
 function kinds(findings: readonly RulesetFinding[]): string[] {
   return findings.map((finding) => finding.kind);
+}
+
+/**
+ * Write a value as block-style YAML, the only style the declaration admits.
+ * Strings are double-quoted (JSON strings are valid YAML double-quoted
+ * scalars), so no scalar is left for the parser to convert.
+ */
+function blockYaml(value: Record<string, unknown>, indent = 0): string {
+  const pad = " ".repeat(indent);
+  const scalar = (item: unknown): string => JSON.stringify(item);
+  const lines: string[] = [];
+  for (const [key, member] of Object.entries(value)) {
+    if (Array.isArray(member)) {
+      if (member.length === 0) {
+        lines.push(`${pad}${key}: []`);
+        continue;
+      }
+      lines.push(`${pad}${key}:`);
+      for (const item of member) {
+        if (typeof item === "object" && item !== null && !Array.isArray(item)) {
+          const nested = blockYaml(item as Record<string, unknown>, indent + 4);
+          lines.push(`${pad}  - ${nested.trimStart()}`.trimEnd());
+        } else {
+          lines.push(`${pad}  - ${scalar(item)}`);
+        }
+      }
+    } else if (typeof member === "object" && member !== null) {
+      const record = member as Record<string, unknown>;
+      if (Object.keys(record).length === 0) lines.push(`${pad}${key}: {}`);
+      else lines.push(`${pad}${key}:`, blockYaml(record, indent + 2).trimEnd());
+    } else {
+      lines.push(`${pad}${key}: ${scalar(member)}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 /** Rebuild a value with every object's keys in reverse order. */
@@ -198,7 +242,7 @@ describe("reconcileRulesets: agreement", () => {
         },
       ],
     };
-    const declared = parseRulesetDeclaration(JSON.stringify(declaration));
+    const declared = parseRulesetDeclaration(blockYaml(declaration));
     // The whole readback object is handed over: its other keys are ignored.
     const result = reconcileRulesets(declared, [readback]);
     expect(result.findings).toEqual([]);
@@ -378,6 +422,21 @@ describe("reconcileRulesets: an unreadable readback is named, never an empty lis
     expect(findings[0]?.path).toBe(path);
   });
 
+  test("a name carrying a control character is unreadable, never printed raw", () => {
+    for (const name of [
+      "forged\nRepository rulesets verified",
+      "tab\there",
+      "bell\u{7}",
+      "nel\u{85}",
+    ]) {
+      const rulesets = alphaReadback();
+      rulesets.push({ ...first(rulesets), name });
+      const findings = reconcileAlpha(rulesets);
+      expect(kinds(findings)).toEqual(["unreadable-observation"]);
+      expect(findings[0]?.note).not.toContain(name);
+    }
+  });
+
   test("two readbacks of one repository are unreadable, neither is compared", () => {
     const result = reconcileRulesets(declaredFixture(), [
       { repository: ALPHA, rulesets: alphaReadback() },
@@ -443,7 +502,7 @@ describe("parseRulesetDeclaration", () => {
   }
 
   function declarationWith(repositories: unknown): string {
-    return JSON.stringify({ schema_version: RULESET_DECLARATION_SCHEMA_VERSION, repositories });
+    return blockYaml({ schema_version: RULESET_DECLARATION_SCHEMA_VERSION, repositories });
   }
 
   const ruleset = {
@@ -498,7 +557,7 @@ describe("parseRulesetDeclaration", () => {
   test("refuses an unknown key at the top and in a repository, and another schema", () => {
     expect(
       refusal(
-        JSON.stringify({
+        blockYaml({
           schema_version: RULESET_DECLARATION_SCHEMA_VERSION,
           repositories: [{ repository: ALPHA, rulesets: [] }],
           exemptions: [],
@@ -510,7 +569,7 @@ describe("parseRulesetDeclaration", () => {
     );
     expect(
       refusal(
-        JSON.stringify({
+        blockYaml({
           schema_version: "libre-ai.repository-rulesets.v0",
           repositories: [{ repository: ALPHA, rulesets: [] }],
         }),
@@ -531,6 +590,110 @@ describe("parseRulesetDeclaration", () => {
     expect(parseRulesetDeclaration(declarationWith([{ repository: ALPHA, rulesets: [] }]))).toEqual(
       [{ repository: ALPHA, rulesets: [] }],
     );
+  });
+});
+
+/**
+ * The YAML parser keeps the LAST of two equal keys, so a `rulesets:` written
+ * twice would silently erase the first list. The declaration is therefore
+ * also read line by line, in the block style it is written in, and every key
+ * is read once.
+ */
+describe("parseRulesetDeclaration: every key read once, in block style", () => {
+  function refusal(text: string): string {
+    try {
+      parseRulesetDeclaration(text);
+    } catch (error) {
+      return (error as Error).message;
+    }
+    throw new Error("the declaration was accepted");
+  }
+
+  const HEAD = "schema_version: libre-ai.repository-rulesets.v1\nrepositories:\n";
+  const RULESET = [
+    "      - name: one",
+    "        target: branch",
+    "        enforcement: active",
+    "        conditions:",
+    "          ref_name:",
+    "            include:",
+    '              - "~ALL"',
+    "            exclude: []",
+    "        bypass_actors: []",
+    "        rules:",
+    "          - type: required_status_checks",
+    "            parameters:",
+    "              required_status_checks:",
+    "                - context: CONTEXT",
+    "                  integration_id: 15368",
+  ];
+
+  function entry(...extra: string[]): string {
+    return `${HEAD}  - repository: ${ALPHA}\n    rulesets:\n${[...RULESET, ...extra].join("\n")}\n`;
+  }
+
+  test("a block-style declaration with quoted and typed scalars is read", () => {
+    const declared = parseRulesetDeclaration(entry().replace("CONTEXT", '"1.10"'));
+    expect(declared[0]?.rulesets[0]?.rules).toEqual([
+      {
+        type: "required_status_checks",
+        parameters: { required_status_checks: [{ context: "1.10", integration_id: 15368 }] },
+      },
+    ]);
+  });
+
+  test("rulesets written twice in a repository is refused, not read as the last list", () => {
+    const text = `${entry().replace("CONTEXT", "first")}    rulesets: []\n`;
+    expect(refusal(text)).toContain("repositories[0].rulesets: duplicate key");
+  });
+
+  test("enforcement written twice in a ruleset is refused by path", () => {
+    const text = entry()
+      .replace("CONTEXT", "first")
+      .replace(
+        "        enforcement: active\n",
+        "        enforcement: active\n        enforcement: disabled\n",
+      );
+    expect(refusal(text)).toContain("repositories[0].rulesets[0].enforcement: duplicate key");
+  });
+
+  test("a duplicate key at the root and deep in a rule is refused by path", () => {
+    expect(refusal(`schema_version: x\n${entry().replace("CONTEXT", "first")}`)).toContain(
+      ": schema_version: duplicate key",
+    );
+    const deep = entry("                  integration_id: 1").replace("CONTEXT", "first");
+    expect(refusal(deep)).toContain(
+      "repositories[0].rulesets[0].rules[0].parameters.required_status_checks[0].integration_id: duplicate key",
+    );
+  });
+
+  test("a declaration outside the block style is refused, so no key escapes the line reading", () => {
+    for (const text of [
+      JSON.stringify({ schema_version: RULESET_DECLARATION_SCHEMA_VERSION, repositories: [] }),
+      entry()
+        .replace("CONTEXT", "first")
+        .replace("        bypass_actors: []", "        bypass_actors: [{ actor_id: 1 }]"),
+      entry()
+        .replace("CONTEXT", "first")
+        .replace("        target: branch", '        "target": branch'),
+      entry()
+        .replace("CONTEXT", "first")
+        .replace("        target: branch", "        target: &t branch"),
+      entry()
+        .replace("CONTEXT", "first")
+        .replace("        target: branch", "        target: |\n          branch"),
+      `---\n${entry().replace("CONTEXT", "first")}`,
+    ]) {
+      expect(refusal(text)).toContain("block style");
+    }
+  });
+
+  test("a plain scalar the parser would convert is refused: quote it", () => {
+    for (const plain of ["1.10", "0x10", "012", "1e3", "~"]) {
+      expect(refusal(entry().replace("CONTEXT", plain))).toContain(
+        `repositories[0].rulesets[0].rules[0].parameters.required_status_checks[0].context: plain scalar ${JSON.stringify(plain)}`,
+      );
+    }
   });
 });
 
@@ -659,6 +822,41 @@ describe("the command", () => {
     );
     expect(nameless.exitCode).not.toBe(0);
     expect(nameless.stderr).toContain("no-repository.json: readback carries no non-empty string");
+  });
+
+  test("a read name or repository carrying a newline cannot forge an output line", () => {
+    const rulesets = alphaReadback();
+    rulesets.push({ ...first(rulesets), name: "x\nRepository rulesets verified: forged" });
+    writeFileSync(file("forged-name.json"), JSON.stringify({ repository: ALPHA, rulesets }));
+    const named = run(
+      "--declaration",
+      file("declaration.yaml"),
+      "--observed",
+      file("forged-name.json"),
+    );
+    expect(named.exitCode).toBe(1);
+    const output = `${named.stdout}${named.stderr}`;
+    expect(output).not.toContain("\nRepository rulesets verified");
+    expect(output).toContain(`observed.${ALPHA}.rulesets: unreadable-observation`);
+
+    writeFileSync(
+      file("forged-repository.json"),
+      JSON.stringify({
+        repository: `${ALPHA}\nRepository rulesets verified: forged`,
+        rulesets: [],
+      }),
+    );
+    const repository = run(
+      "--declaration",
+      file("declaration.yaml"),
+      "--observed",
+      file("forged-repository.json"),
+    );
+    expect(repository.exitCode).not.toBe(0);
+    expect(`${repository.stdout}${repository.stderr}`).not.toContain(
+      "\nRepository rulesets verified",
+    );
+    expect(repository.stderr).toContain("control character");
   });
 
   test("exits non-zero on a malformed declaration and on an unknown argument", () => {

@@ -21,6 +21,12 @@
  * declares none, a green result over nothing read. It is named instead, and
  * nothing else is compared for that repository.
  *
+ * Why the declaration is also read line by line. The YAML parser keeps the
+ * last of two equal keys and converts unquoted scalars (`1.10` reads 1.1), so
+ * a key written twice or an ambiguous scalar would change the baseline
+ * without a word. The declaration must be in block style, every key once,
+ * and every plain scalar must read back as itself (`checkDeclarationLayout`).
+ *
  * Usage: bun ecosystem/check-repository-rulesets.ts --observed <file.json> [--observed <file.json> ...]
  *        [--declaration <file.yaml>]   (default: the tracked declaration)
  */
@@ -192,6 +198,9 @@ function toDeclaredRepository(value: unknown, path: string): DeclaredRepository 
   );
   const names = new Set<string>();
   rulesets.forEach((ruleset, index) => {
+    if (hasControlCharacter(ruleset.name)) {
+      refuse(`${path}.rulesets[${index}].name`, "a ruleset name carries a control character");
+    }
     if (names.has(ruleset.name)) {
       refuse(`${path}.rulesets[${index}].name`, `duplicate ruleset name ${ruleset.name}`);
     }
@@ -200,11 +209,153 @@ function toDeclaredRepository(value: unknown, path: string): DeclaredRepository 
   return { repository, rulesets };
 }
 
+/** C0, DEL, C1 and the two Unicode line separators: each can break an output line. */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: refusing control characters is the point.
+const CONTROL_CHARACTER = /[\u{0}-\u{1f}\u{7f}-\u{9f}\u{2028}\u{2029}]/u;
+
+function hasControlCharacter(text: string): boolean {
+  return CONTROL_CHARACTER.test(text);
+}
+
+/** A text from outside, safe to put in one output line. */
+function printable(text: string): string {
+  return hasControlCharacter(text) ? JSON.stringify(text) : text;
+}
+
+const BLOCK_KEY = /^([A-Za-z_][A-Za-z0-9_]*):(?:\s+(.*))?$/;
+const DOUBLE_QUOTED = /^"(?:[^"\\]|\\.)*"(?:\s+#.*)?$/;
+const SINGLE_QUOTED = /^'(?:[^']|'')*'(?:\s+#.*)?$/;
+/** Characters YAML gives a meaning to at the start of a plain scalar. */
+const PLAIN_INDICATOR = /^[-?:,[\]{}#&*!|>'"%@`]/;
+
+interface LayoutFrame {
+  readonly indent: number;
+  readonly kind: "mapping" | "sequence";
+  readonly path: string;
+  readonly keys: Set<string>;
+  items: number;
+}
+
+function outsideBlockStyle(line: number, reason: string): never {
+  refuse(`line ${line}`, `not in the block style this declaration is written in (${reason})`);
+}
+
+/**
+ * Check one scalar value written after a key or an item marker. Quoted
+ * scalars are strings; `[]` and `{}` are the empty collections; a plain
+ * scalar must read back as itself, so `1.10` (read 1.1), `0x10`, `012` or
+ * `~` are refused and must be quoted.
+ */
+function checkScalar(raw: string, path: string, line: number): void {
+  if (DOUBLE_QUOTED.test(raw) || SINGLE_QUOTED.test(raw)) return;
+  const commentAt = raw.search(/\s#/);
+  const plain = (commentAt === -1 ? raw : raw.slice(0, commentAt)).trimEnd();
+  if (plain === "[]" || plain === "{}") return;
+  if (PLAIN_INDICATOR.test(plain) || /:\s|:$/.test(plain)) {
+    outsideBlockStyle(line, `value ${JSON.stringify(plain)} is not a plain scalar`);
+  }
+  let read: unknown;
+  try {
+    read = (yamlApi.parse(`v: ${plain}`) as { v: unknown }).v;
+  } catch {
+    outsideBlockStyle(line, `value ${JSON.stringify(plain)} does not parse alone`);
+  }
+  if (typeof read === "string" || JSON.stringify(read) === plain) return;
+  refuse(path, `plain scalar ${JSON.stringify(plain)} reads as ${JSON.stringify(read)}; quote it`);
+}
+
+/**
+ * Independent, line-by-line reading of the declaration's keys.
+ *
+ * Why. The YAML parser keeps the last of two equal keys: `rulesets:` written
+ * twice would erase the first list and the gate would compare nothing. Every
+ * key is therefore read here once, by field path, and a second one is
+ * refused. The reading only works on the block style the declaration is
+ * written in — a flow collection, a quoted or explicit key, an anchor, a tag,
+ * a block scalar or a document marker would hide keys from it — so any line
+ * outside that style is refused rather than skipped. Same method as
+ * `scanBlockLayout` in tools/quality/check-refusals.ts, extended to any depth.
+ */
+function checkDeclarationLayout(text: string): void {
+  const stack: LayoutFrame[] = [
+    { indent: 0, kind: "mapping", path: "", keys: new Set(), items: 0 },
+  ];
+  let pending: { readonly path: string; readonly indent: number } | null = null;
+
+  const openChild = (indent: number, kind: LayoutFrame["kind"]): void => {
+    if (pending !== null && indent > pending.indent) {
+      stack.push({ indent, kind, path: pending.path, keys: new Set(), items: 0 });
+    } else {
+      while ((stack.at(-1)?.indent ?? 0) > indent) stack.pop();
+    }
+    pending = null;
+  };
+
+  const readKey = (frame: LayoutFrame, match: RegExpExecArray, line: number): void => {
+    const key = match[1] ?? "";
+    const path = frame.path.length === 0 ? key : `${frame.path}.${key}`;
+    if (frame.keys.has(key)) refuse(path, "duplicate key");
+    frame.keys.add(key);
+    const value = match[2] ?? "";
+    if (value.length === 0 || value.startsWith("#")) {
+      pending = { path, indent: frame.indent };
+      return;
+    }
+    checkScalar(value, path, line);
+  };
+
+  text
+    .replaceAll("\r\n", "\n")
+    .split("\n")
+    .forEach((content, index) => {
+      const line = index + 1;
+      if (content.trim() === "" || content.trimStart().startsWith("#")) return;
+      const indent = content.length - content.trimStart().length;
+      const rest = content.slice(indent);
+      if (content.slice(0, indent).includes("\t")) outsideBlockStyle(line, "tab indentation");
+      if (rest === "-" || rest.startsWith("- ")) {
+        openChild(indent, "sequence");
+        const sequence = stack.at(-1);
+        if (sequence?.kind !== "sequence" || sequence.indent !== indent) {
+          outsideBlockStyle(line, "sequence item where none is open");
+        }
+        const itemPath = `${sequence.path}[${sequence.items}]`;
+        sequence.items += 1;
+        const item = rest.slice(2);
+        if (item.trim().length === 0) outsideBlockStyle(line, "item opened on its own line");
+        const key = BLOCK_KEY.exec(item);
+        if (key !== null) {
+          const mapping: LayoutFrame = {
+            indent: indent + 2,
+            kind: "mapping",
+            path: itemPath,
+            keys: new Set(),
+            items: 0,
+          };
+          stack.push(mapping);
+          readKey(mapping, key, line);
+          return;
+        }
+        checkScalar(item, itemPath, line);
+        return;
+      }
+      const key = BLOCK_KEY.exec(rest);
+      if (key === null) outsideBlockStyle(line, "neither a bare key nor a sequence item");
+      openChild(indent, "mapping");
+      const mapping = stack.at(-1);
+      if (mapping?.kind !== "mapping" || mapping.indent !== indent) {
+        outsideBlockStyle(line, "key at an indentation no mapping is open at");
+      }
+      readKey(mapping, key, line);
+    });
+}
+
 /**
  * Read the declaration. Throws an error naming the field path on any
  * malformed input: a declaration that is half understood is not a baseline.
  */
 export function parseRulesetDeclaration(yamlText: string): DeclaredRepository[] {
+  checkDeclarationLayout(yamlText);
   const document = asRecord(yamlApi.parse(yamlText), "document");
   requireExactKeys(document, ["schema_version", "repositories"], "");
   if (document.schema_version !== RULESET_DECLARATION_SCHEMA_VERSION) {
@@ -274,8 +425,18 @@ function readRulesets(rulesets: unknown): ReadRulesets {
     if (!isRecord(entry) || typeof entry.name !== "string" || entry.name.length === 0) {
       return { readable: false, reason: `rulesets[${index}] carries no non-empty string name` };
     }
+    // The name becomes part of an output line: a newline in it would forge one.
+    if (hasControlCharacter(entry.name)) {
+      return {
+        readable: false,
+        reason: `rulesets[${index}] carries a name with a control character`,
+      };
+    }
     if (byName.has(entry.name)) {
-      return { readable: false, reason: `ruleset name ${entry.name} is read more than once` };
+      return {
+        readable: false,
+        reason: `ruleset name ${JSON.stringify(entry.name)} is read more than once`,
+      };
     }
     byName.set(entry.name, entry);
   }
@@ -314,7 +475,7 @@ export function reconcileRulesets(
     if (!declaredNames.has(repository)) {
       findings.push({
         kind: "undeclared-repository",
-        path: `observed.${repository}`,
+        path: `observed.${printable(repository)}`,
         note: "a readback was supplied for a repository the declaration does not list",
       });
     }
@@ -471,6 +632,11 @@ async function readObservation(path: string): Promise<RulesetObservation> {
     parsed.repository.length === 0
   ) {
     throw new InputError(`${path}: readback carries no non-empty string \`repository\``);
+  }
+  if (hasControlCharacter(parsed.repository)) {
+    throw new InputError(
+      `${path}: readback repository ${JSON.stringify(parsed.repository)} carries a control character`,
+    );
   }
   return { repository: parsed.repository, rulesets: parsed.rulesets };
 }
