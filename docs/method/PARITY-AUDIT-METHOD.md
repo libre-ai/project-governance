@@ -138,3 +138,75 @@ les deux nombres sont imprimés côte à côte.
 Ce que la commande ne mesure pas : qu'un « absent » l'était vraiment (il faut
 le code de la référence), et qu'une décision citée justifie l'exclusion. Les
 deux relèvent de la revue de la première matrice qui adopte cette méthode.
+
+## Fiches de ligne et complétude
+
+Chaque ligne de la matrice est argumentée dans **une fiche**, un fichier
+`<NN>.md` ou `<NN>-<intitulé>.md` d'un répertoire de fiches, `NN` étant le
+numéro de la ligne sur deux chiffres au moins (`01`, `12`, `103`). Un fichier
+`.md` nommé autrement est une fiche mal nommée ; un fichier caché ou d'une
+autre extension est ignoré, et compté comme tel.
+
+La fiche ouvre sur ses champs, dans cet ordre, entre deux lignes `---` :
+
+```
+---
+format: 1
+ligne: <N>
+verdict: <le verdict de la ligne N dans la matrice>
+depot: <un des dépôts cibles de la carte>
+source: <copie>@<révision>:<chemin>[:<ligne>[-<ligne>]]
+decision: <D<n>, ADR-<nnnn> ou I-<nn>>
+---
+```
+
+`source` se répète pour plusieurs sources ; elle vaut `aucune`, seule, pour un
+« réécrire » sans source autorisée. Une ligne « exclure » n'a ni `source` ni
+`depot`, et porte `decision` ; aucune autre ligne ne porte `decision`.
+
+Viennent ensuite ses sections `## `, exactement et dans cet ordre : une par
+colonne de statut de la matrice, titrée par l'en-tête de cette colonne, puis
+`Retenu` et `Test d'acceptation` pour une ligne gardée, ou `Motif` pour une
+ligne exclue. Dans chaque section, ce qui est mesuré porte sa citation, et ce
+qui est inféré ou non mesuré est marqué comme tel.
+
+Une **citation** a la forme `<copie>@<révision>:<chemin>[:<ligne>[-<ligne>]]`.
+La **carte des dépôts** (JSON) liste les copies figées des références, chacune
+à la révision complète où elle se cite, et les dépôts cibles :
+
+```
+{ "format": 1, "copies": { "<copie>": "<40 chiffres hexadécimaux minuscules>" }, "depots": ["<dépôt>", …] }
+```
+
+Tout jeton `<nom>@<réf>:<suite>` d'une fiche est une citation, quelle que
+soit la suite : elle n'est admise que si la carte liste cette copie à cette
+révision exactement et qu'un chemin nu suit. Une branche, une étiquette, une
+révision abrégée ou en majuscules, une suite vide ou décorée (accent grave,
+guillemet, espace) est comptée et refusée. Une ligne `## ` dans un bloc de code
+délimité n'est pas une section.
+
+La complétude se recopie de la sortie de :
+
+```
+bun tools/parity/check-parity-audit.ts --matrix <fichier-matrice> --map <carte.json> --fiches <répertoire> [--lines N|A-B]
+```
+
+La commande s'appuie sur le comptage de la matrice ci-dessus et imprime deux
+lignes : `lines`, `fiches`, `source`, `verdict` (fiches dont le verdict est
+celui de la matrice), `depot`, `source_sha_allowed`, `excluded` ; puis le
+volume examiné, `files` = `ignored` + `misnamed` + `unplaced` +
+`out_of_range` + `in_range`, avec `malformed`, `citations`,
+`citations_allowed`, `copies_allowed` et `matrix_lines`. Le compte tient si
+`fiches` = `lines`, `verdict` = `fiches`, `source` + `excluded` = `fiches`,
+`depot` = `source`, `source_sha_allowed` = `source`, `citations_allowed` =
+`citations`, et aucune fiche n'est hors matrice.
+
+| Code | Sens                                                                                                                                            |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | le compte tient                                                                                                                                 |
+| 1    | écart : fiche manquante, verdict différent de la matrice, source ou dépôt manquant, fiche d'une ligne que la matrice n'a pas                    |
+| 4    | fiche mal formée — champ, ordre, section, citation non admise, nom, fichier vide, deux fiches pour une ligne ; l'emporte sur 1                  |
+| 2    | compte non atteint, rien sur la sortie standard : usage, source absente ou illisible (y compris un lien, cassé ou non, ou un répertoire nommé comme une fiche), plage inversée ou sans ligne, matrice sans ligne ou à défaut de structure, carte sans copie |
+
+Elle ne contrôle pas le fond : ni que l'argument tient, ni que le chemin
+cité existe à sa révision, ni le marquage mesuré, inféré, non mesuré.

@@ -1,0 +1,275 @@
+{
+  "schema": "mutants.v1",
+  "mutants": [
+    {
+      "id": "parity-removed-fiche-count",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "counts.fiches === counts.lines &&",
+      "substitution": "counts.fiches >= 0 &&",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a gap in the count exits 1 > a removed fiche: fiches=L-1"
+      }
+    },
+    {
+      "id": "parity-removed-fiche-gap",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (missing.length > 0) gaps.push(",
+      "substitution": "if (missing.length < 0) gaps.push(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a gap in the count exits 1 > a removed fiche: fiches=L-1"
+      }
+    },
+    {
+      "id": "parity-verdict-agreement",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (reading.verdict !== null && reading.verdict === matrix.rowVerdicts[kind.line - 1]) {",
+      "substitution": "if (reading.verdict !== null) {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a gap in the count exits 1 > a fiche whose verdict disagrees with the matrix"
+      }
+    },
+    {
+      "id": "parity-depot-count",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "counts.depot === counts.source &&",
+      "substitution": "counts.depot >= 0 &&",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a gap in the count exits 1 > a kept row without a target repository"
+      }
+    },
+    {
+      "id": "parity-unplaced-fiche",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "counts.unplaced === 0",
+      "substitution": "counts.unplaced >= 0",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a gap in the count exits 1 > a fiche for a row the matrix does not have"
+      }
+    },
+    {
+      "id": "parity-unallowed-citation",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (!citation.allowed) defects.push(",
+      "substitution": "if (citation.allowed && false) defects.push(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > an unallowed citation in a section"
+      }
+    },
+    {
+      "id": "parity-citation-any-rest",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "([^\\s`'\"()<>]*)/g",
+      "substitution": "([^\\s`'\"()<>]+)/g",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > a citation at a branch with a back-quoted path is counted and refused"
+      }
+    },
+    {
+      "id": "parity-citation-quoted-ref",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "@([^\\s:@]+):",
+      "substitution": "@([^\\s:@`]+):",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > a citation at a branch with a back-quoted ref is counted and refused"
+      }
+    },
+    {
+      "id": "parity-section-order",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (compared.join(\"\\n\") !== expected.join(\"\\n\")) {",
+      "substitution": "if (compared.length !== expected.length) {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > a section out of order"
+      }
+    },
+    {
+      "id": "parity-fence-opens",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (fence !== null) open = fence;",
+      "substitution": "if (fence === \"\") open = fence;",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a fenced code block is not a section > a `## ` line inside a ``` fence"
+      }
+    },
+    {
+      "id": "parity-fence-length",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "fence.length >= open.length &&",
+      "substitution": "fence.length >= 0 &&",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a fenced code block is not a section > a shorter fence does not close a longer one"
+      }
+    },
+    {
+      "id": "parity-unknown-verdict",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "else if (!isVerdict(verdict)) defects.push(",
+      "substitution": "else if (isVerdict(\"\")) defects.push(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > an unknown verdict"
+      }
+    },
+    {
+      "id": "parity-field-order",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (rank < lastRank || (rank === lastRank && name !== \"source\")) {",
+      "substitution": "if (rank === lastRank && name !== \"source\") {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > fields out of order"
+      }
+    },
+    {
+      "id": "parity-aucune-with-reecrire",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (verdict !== \"réécrire\") defects.push(",
+      "substitution": "if (verdict === \"\") defects.push(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > aucune with another verdict than réécrire"
+      }
+    },
+    {
+      "id": "parity-aucune-alone",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (sources.length !== 1) defects.push(",
+      "substitution": "if (sources.length < 1) defects.push(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > aucune beside a citation"
+      }
+    },
+    {
+      "id": "parity-excluded-no-source",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (sources.length > 0) defects.push(\"source: an excluded row has no source\");",
+      "substitution": "if (sources.length < 0) defects.push(\"source: an excluded row has no source\");",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > an excluded row with a source"
+      }
+    },
+    {
+      "id": "parity-exclusion-decision",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (decision === null || !DECISION_ID.test(decision)) {",
+      "substitution": "if (decision === \"\") {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > an excluded row without a decision"
+      }
+    },
+    {
+      "id": "parity-misnamed-file",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "malformedFiles.add(name);\n      defects.push(`${name}: a fiche is named",
+      "substitution": "void name;\n      void (`${name}: a fiche is named",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > a name without two digits"
+      }
+    },
+    {
+      "id": "parity-duplicate-line",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (names.length > 1) {",
+      "substitution": "if (names.length > 2) {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > two fiches for the same line"
+      }
+    },
+    {
+      "id": "parity-four-over-one",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (report.defects.length > 0 || report.counts.malformed > 0) return 4;",
+      "substitution": "if ((report.defects.length > 0 || report.counts.malformed > 0) && countHolds(report.counts)) return 4;",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a malformed fiche exits 4 > 4 wins over 1"
+      }
+    },
+    {
+      "id": "parity-unreadable-matrix",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "unreached(`cannot read the matrix: ${reason(error)}`);",
+      "substitution": "console.error(`cannot read the matrix: ${reason(error)}`);",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > an absent matrix"
+      }
+    },
+    {
+      "id": "parity-matrix-structure",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (matrix.structure.length > 0) {",
+      "substitution": "if (matrix.structure.length < 0) {",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > a matrix without a row, or with a repeated row number"
+      }
+    },
+    {
+      "id": "parity-map-without-copy",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (copies.size === 0) return",
+      "substitution": "if (copies.size < 0) return",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > an absent or unreadable map, or a map without a copy"
+      }
+    },
+    {
+      "id": "parity-range-inverted",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "return from <= to ? { from, to } : null;",
+      "substitution": "return from > 0 ? { from, to } : null;",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > the range 3-2"
+      }
+    },
+    {
+      "id": "parity-range-without-row",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (range.from > matrix.rows) unreached(",
+      "substitution": "if (range.from < 0) unreached(",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > the range 5"
+      }
+    },
+    {
+      "id": "parity-link-not-followed",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "if (!lstatSync(path).isFile())",
+      "substitution": "if (!lstatSync(path).isFile() && !lstatSync(path).isSymbolicLink())",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > a link to a valid fiche outside the directory"
+      }
+    },
+    {
+      "id": "parity-unlistable-directory",
+      "file": "tools/parity/check-parity-audit.ts",
+      "anchor": "unreached(`cannot read the fiche directory: ${reason(error)}`);",
+      "substitution": "names = [];",
+      "oracle": {
+        "tests": ["tools/parity/check-parity-audit.test.ts"],
+        "trace": "(fail) a count not reached exits 2 with nothing on stdout > an unlistable fiche directory"
+      }
+    }
+  ]
+}
