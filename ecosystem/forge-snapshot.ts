@@ -16,18 +16,35 @@
  * missing field or unexpected type therefore interrupts the run, and no file
  * is written until every repository has been read.
  *
+ * HOW IT IS PUBLISHED. The whole snapshot is written to a staging directory
+ * beside the output directory, then published by renaming. The output
+ * directory is the snapshot: a previous one is replaced whole, never merged.
+ * Replacing an existing directory takes two renames (previous aside, staging
+ * in); between them the output path is absent for a moment, never partial. If
+ * the second rename fails the first is undone; if the process dies between
+ * them, the previous snapshot stays beside the output, named
+ * `.<output>.forge-snapshot-*.previous`. On any write failure the output is
+ * left as it was and the staging directory is removed.
+ *
+ * WHY NO LINK. The output directory must be absent, or hold a previous
+ * snapshot only: real owner directories holding regular `.json` files. A
+ * symbolic link at or below it would make a write land outside it, and
+ * anything else would be deleted by the replacement, so both are refused
+ * before any network call. Links above it (the parent, resolved by realpath,
+ * such as /var on macOS) are where the caller chose to put it, and are kept.
+ *
  * WHY THE PERIMETER FIRST. Only repositories of `ecosystem/repositories.v1.yaml`
  * may be read, and a private one is refused: the CI token cannot read it, so a
  * cross-repository read would either fail or require more authority than the
  * gates hold. Both refusals happen before any network call.
  *
- * Exit codes: 0 written, 1 read failed (nothing written) or write failed (the
- * output says how many files were written), 2 usage, 3 repository outside the
+ * Exit codes: 0 written, 1 read or write failed (the output is unchanged),
+ * 2 usage (including a refused output directory), 3 repository outside the
  * perimeter.
  */
 
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { lstat, mkdir, mkdtemp, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { buildIndex, type Visibility } from "./build-index";
 
 export interface ForgeResult {
@@ -107,6 +124,45 @@ export function mergePages(text: string): unknown {
   throw new ForgeReadError("forge pages are neither all arrays nor a single object");
 }
 
+const ON_KEY = /^(?:on|"on"|'on')\s*:/;
+const SCHEDULE_KEY = /^(?:schedule|"schedule"|'schedule')\s*:/;
+
+/**
+ * Bun.YAML.parse keeps the last of two equal keys without saying so: a second
+ * top-level `on`, or a second `schedule` directly under `on`, would hide the
+ * cron entries of the first. Both are refused.
+ *
+ * shortcut: block style only — a duplicate inside a flow mapping
+ * (`on: {schedule: [...], schedule: [...]}`) is not seen. Upgrade trigger: a
+ * YAML parser in the toolchain that reports duplicate keys.
+ */
+function refuseDuplicatedTriggers(workflowText: string): void {
+  let onKeys = 0;
+  let insideOn = false;
+  let childIndent: number | null = null;
+  let scheduleKeys = 0;
+  for (const line of workflowText.split("\n")) {
+    const content = line.trimStart();
+    if (content === "" || content.startsWith("#")) continue;
+    const indent = line.length - content.length;
+    if (indent === 0) {
+      insideOn = ON_KEY.test(content);
+      if (insideOn) {
+        onKeys += 1;
+        childIndent = null;
+        if (onKeys > 1) throw new ForgeReadError("workflow has a duplicated `on` key");
+      }
+      continue;
+    }
+    if (!insideOn) continue;
+    childIndent ??= indent;
+    if (indent === childIndent && SCHEDULE_KEY.test(content)) {
+      scheduleKeys += 1;
+      if (scheduleKeys > 1) throw new ForgeReadError("workflow has a duplicated `on.schedule` key");
+    }
+  }
+}
+
 /**
  * Cron entries of one workflow's `schedule` trigger. `on` may be a string or
  * a list of event names (no schedule then); a `schedule` that is not a list,
@@ -131,6 +187,7 @@ export function countSchedules(workflowText: string): number {
     throw new ForgeReadError("workflow is not valid YAML");
   }
   if (!isRecord(document)) throw new ForgeReadError("workflow is not a mapping");
+  refuseDuplicatedTriggers(workflowText);
   const trigger = document.on;
   if (typeof trigger === "string" || Array.isArray(trigger)) return 0;
   if (!isRecord(trigger)) throw new ForgeReadError("workflow has no readable `on` trigger");
@@ -272,14 +329,141 @@ async function collectRepository(
   };
 }
 
-function outputPath(outputDir: string, repository: string): string {
-  const root = resolve(outputDir);
-  const target = resolve(root, `${repository}.json`);
+/** Any reason the output directory cannot receive a snapshot. */
+class OutputError extends Error {}
+
+/** Where the snapshot is published: `target` sits in the real path of its parent. */
+interface OutputTarget {
+  readonly parent: string;
+  readonly base: string;
+  readonly target: string;
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isMissing(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
+}
+
+/**
+ * The output directory is absent, or holds a previous snapshot and nothing
+ * else: real owner directories holding regular `.json` files. A link at or
+ * below it, or any other entry, is refused (see the header).
+ */
+async function inspectOutput(target: string): Promise<"absent" | "snapshot"> {
+  let stat: Awaited<ReturnType<typeof lstat>>;
+  try {
+    stat = await lstat(target);
+  } catch (error) {
+    if (isMissing(error)) return "absent";
+    throw new OutputError(`output directory is not readable: ${errorText(error)}`);
+  }
+  if (stat.isSymbolicLink()) throw new OutputError("output directory is a symbolic link");
+  if (!stat.isDirectory()) throw new OutputError("output path is not a directory");
+  try {
+    // Dirent types come from lstat: a link is neither a directory nor a file.
+    for (const owner of await readdir(target, { withFileTypes: true })) {
+      if (owner.isSymbolicLink()) {
+        throw new OutputError(`output entry ${owner.name} is a symbolic link`);
+      }
+      if (!owner.isDirectory()) {
+        throw new OutputError(`output entry ${owner.name} is not part of a previous snapshot`);
+      }
+      for (const file of await readdir(join(target, owner.name), { withFileTypes: true })) {
+        const entry = `${owner.name}/${file.name}`;
+        if (file.isSymbolicLink()) {
+          throw new OutputError(`output entry ${entry} is a symbolic link`);
+        }
+        if (!file.isFile() || !file.name.endsWith(".json")) {
+          throw new OutputError(`output entry ${entry} is not part of a previous snapshot`);
+        }
+      }
+    }
+  } catch (error) {
+    if (error instanceof OutputError) throw error;
+    throw new OutputError(`output directory is not readable: ${errorText(error)}`);
+  }
+  return "snapshot";
+}
+
+async function settleOutput(outputDir: string): Promise<OutputTarget> {
+  const absolute = resolve(outputDir);
+  const base = basename(absolute);
+  if (base === "" || dirname(absolute) === absolute) {
+    throw new OutputError("output directory cannot be the file system root");
+  }
+  let parent: string;
+  try {
+    parent = await realpath(dirname(absolute));
+  } catch (error) {
+    throw new OutputError(`output parent directory is not readable: ${errorText(error)}`);
+  }
+  const target = join(parent, base);
+  await inspectOutput(target);
+  return { parent, base, target };
+}
+
+function stagedPath(staging: string, repository: string): string {
+  const target = resolve(staging, `${repository}.json`);
   // Names are validated above; this is the last line that refuses an escape.
-  if (!target.startsWith(root + sep)) {
+  if (!target.startsWith(staging + sep)) {
     throw new Error(`output path escapes the output directory: ${repository}`);
   }
   return target;
+}
+
+/**
+ * Writes every file into a fresh staging directory beside the output, then
+ * publishes it by renaming. Throws with the output unchanged, except in the
+ * documented window between the two renames of a replacement. Returns the
+ * notices of a published snapshot (a previous one that could not be removed).
+ */
+async function publish(
+  output: OutputTarget,
+  snapshots: readonly RepositorySnapshot[],
+): Promise<string[]> {
+  const staging = await mkdtemp(join(output.parent, `.${output.base}.forge-snapshot-`));
+  let published = false;
+  try {
+    for (const snapshot of snapshots) {
+      const target = stagedPath(staging, snapshot.repository);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, `${JSON.stringify(snapshot, null, 2)}\n`, { flag: "wx" });
+    }
+    // The reads took time: the output is inspected again just before it is replaced.
+    if ((await inspectOutput(output.target)) === "absent") {
+      await rename(staging, output.target);
+      published = true;
+      return [];
+    }
+    const previous = `${staging}.previous`;
+    await rename(output.target, previous);
+    try {
+      await rename(staging, output.target);
+    } catch (error) {
+      try {
+        await rename(previous, output.target);
+      } catch (restore) {
+        throw new Error(
+          `${errorText(error)}; the previous snapshot could not be put back and is at ${previous}: ${errorText(restore)}`,
+        );
+      }
+      throw error;
+    }
+    published = true;
+    try {
+      await rm(previous, { recursive: true });
+    } catch (error) {
+      return [`previous snapshot could not be removed, left at ${previous}: ${errorText(error)}`];
+    }
+    return [];
+  } finally {
+    if (!published) {
+      await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
 }
 
 export async function runSnapshot(
@@ -315,6 +499,14 @@ export async function runSnapshot(
     };
   }
 
+  let output: OutputTarget;
+  try {
+    output = await settleOutput(outputDir);
+  } catch (error) {
+    if (!(error instanceof OutputError)) throw error;
+    return { code: 2, stdout: [], stderr: [`${outputDir}: ${error.message}`, USAGE] };
+  }
+
   const snapshots: RepositorySnapshot[] = [];
   for (const repository of repositories) {
     try {
@@ -332,37 +524,24 @@ export async function runSnapshot(
     }
   }
 
-  // shortcut: files are written one by one after every read succeeded; a disk
-  // failure in this loop can leave some written, and the outcome then says how
-  // many rather than claiming none. Upgrade trigger: a consumer that reads the
-  // directory while it is being written.
-  let written = 0;
-  for (const snapshot of snapshots) {
-    try {
-      const target = outputPath(outputDir, snapshot.repository);
-      await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, `${JSON.stringify(snapshot, null, 2)}\n`);
-    } catch (error) {
-      return {
-        code: 1,
-        stdout: [
-          `forge snapshot: requested=${repositories.length} collected=${snapshots.length} written=${written}`,
-        ],
-        stderr: [
-          `${snapshot.repository}: write failed after ${written} file(s) written: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        ],
-      };
-    }
-    written += 1;
+  let notices: string[];
+  try {
+    notices = await publish(output, snapshots);
+  } catch (error) {
+    return {
+      code: 1,
+      stdout: [
+        `forge snapshot: requested=${repositories.length} collected=${snapshots.length} written=0`,
+      ],
+      stderr: [`write failed: ${errorText(error)}`],
+    };
   }
   return {
     code: 0,
     stdout: [
       `forge snapshot: requested=${repositories.length} collected=${snapshots.length} written=${snapshots.length}`,
     ],
-    stderr: [],
+    stderr: notices,
   };
 }
 
