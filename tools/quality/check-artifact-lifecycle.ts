@@ -1,6 +1,6 @@
 import { closeSync, constants, lstatSync, openSync, readSync } from "node:fs";
 import { join } from "node:path";
-import { parseAllowlist } from "./allowlist";
+import { isDataFile, parseAllowlist } from "./allowlist";
 import { parseRawDiff, readGit } from "./git-diff";
 
 // Artifact lifecycle gate.
@@ -33,16 +33,21 @@ import { parseRawDiff, readGit } from "./git-diff";
 // or cites its base name as a whole word of a path (start of text or a
 // character outside [A-Za-z0-9._-] before it; `data.sh` does not cite `a.sh`).
 //
-// KNOWN LIMIT, left to the owner: a `.ephemeral` covers tracked files as well
-// as untracked ones. An untracked `.ephemeral` at the root therefore makes
-// every tracked code file ephemeral and silences rule 2 before a push (the
-// pull request run sees only tracked files). Narrowing it to untracked files
-// would change which tracked files the brief declares ephemeral.
+// The `.ephemeral` at the ROOT covers untracked files only, never a tracked one,
+// whether it is tracked itself or not (owner decision of 2026-11-17): an
+// untracked root marker would otherwise make every tracked code file ephemeral
+// and silence rule 2 before a push. A `.ephemeral` below the root covers its
+// directory, tracked files included, as the brief says. KNOWN LIMIT: an
+// UNTRACKED `.ephemeral` below the root still covers the tracked files of its
+// directory before a push (the pull request run sees only tracked files).
 //
 // Exemptions live in `.artifact-lifecycle-exemptions` at the root of the
 // examined repository, in the format of tools/quality/allowlist.ts: one tracked
-// path and its mandatory reason per line, no wildcard. A list that breaks a
-// rule of that format is an unreadable source (exit 2), not an empty list.
+// path and its mandatory reason per line, no wildcard. Rule 2 judges code, so
+// the list is parsed with code admitted (`admitCode`), and the report counts
+// the listed paths as `exemptions: listed=N data=D code=C`. A symbolic link or
+// a submodule is refused. A list that breaks a rule of that format is an
+// unreadable source (exit 2), not an empty list.
 //
 // `--range <a>..<b>` narrows rule 2 to the code files ADDED between the merge
 // base of a and b, and b; markers of the whole repository stay evaluated.
@@ -401,11 +406,15 @@ export async function evaluateLifecycle(
     );
   }
 
-  const isEphemeral = (path: string): boolean =>
+  // The root marker covers untracked files only: an untracked `.ephemeral` at
+  // the root would otherwise make every tracked script ephemeral before a push.
+  const isEphemeral = (path: string, tracked: boolean): boolean =>
     inlineMarked.has(path) ||
-    ancestors(path).some((directory) => coveredDirectories.has(directory));
+    ancestors(path).some(
+      (directory) => coveredDirectories.has(directory) && (directory !== "" || !tracked),
+    );
 
-  const unmarked = inventory.untracked.filter((path) => !isEphemeral(path));
+  const unmarked = inventory.untracked.filter((path) => !isEphemeral(path, false));
 
   // Rule 2. Test files are read whole, once, and only if a citation is looked for.
   const trackedBaseNames = new Set(inventory.tracked.map((file) => baseName(file.path)));
@@ -428,7 +437,7 @@ export async function evaluateLifecycle(
   for (const path of regularTracked) {
     if (inventory.added !== null && !inventory.added.has(path)) continue;
     if (isTestPath(path) || !isCodePath(path, heads.get(path) ?? new Uint8Array())) continue;
-    if (isEphemeral(path)) tally.ephemeral += 1;
+    if (isEphemeral(path, true)) tally.ephemeral += 1;
     else if (inventory.exempted.has(path)) tally.exempted += 1;
     else if (
       conventionalTestNames(path).some((name) => trackedBaseNames.has(name)) ||
@@ -448,6 +457,7 @@ export async function evaluateLifecycle(
   const unavailable = inState("unavailable");
   const violations = unmarked.length + overdue.length + untested.length;
   const examined = inventory.tracked.length + inventory.untracked.length;
+  const exemptedData = [...inventory.exempted].filter(isDataFile).length;
 
   let exitCode: LifecycleReport["exitCode"] = 0;
   if (malformed.length > 0) exitCode = 4;
@@ -469,6 +479,7 @@ export async function evaluateLifecycle(
     `examined: tracked=${inventory.tracked.length} untracked=${inventory.untracked.length}`,
     `markers: total=${markers.length} valid=${inState("valid").length} overdue=${overdue.length} unavailable=${unavailable.length} malformed=${malformed.length}`,
     `code: checked=${tally.tested + tally.ephemeral + tally.exempted + tally.untested} tested=${tally.tested} ephemeral=${tally.ephemeral} exempted=${tally.exempted} untested=${tally.untested}`,
+    `exemptions: listed=${inventory.exempted.size} data=${exemptedData} code=${inventory.exempted.size - exemptedData}`,
     `violations=${violations}`,
     `${GATE}: ${verdict[exitCode]}`,
   ].map(printable);
@@ -709,7 +720,15 @@ async function inspect(
   if (pathExists(join(root, EXEMPTIONS_FILE))) {
     const bytes = readRegularFile(join(root, EXEMPTIONS_FILE), Number.MAX_SAFE_INTEGER);
     if (bytes === null) return unreadable(`${EXEMPTIONS_FILE} is not a regular file`);
-    const list = parseAllowlist(decoder.decode(bytes), new Set(modes.keys()));
+    // Rule 2 judges code files, so the list exempts code: declared, and counted
+    // apart from the data it may name. A link or a submodule is never exempted.
+    const notFiles = new Set(
+      [...modes].filter(([, mode]) => !REGULAR_MODES.has(mode)).map(([path]) => path),
+    );
+    const list = parseAllowlist(decoder.decode(bytes), new Set(modes.keys()), {
+      notFiles,
+      admitCode: true,
+    });
     // The line number and the kind, never the text of the line (allowlist.ts).
     if (!list.ok) {
       return unreadable(`${EXEMPTIONS_FILE} line ${list.error.line}: ${list.error.kind}`);

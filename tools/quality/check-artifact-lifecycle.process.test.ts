@@ -120,6 +120,7 @@ describe("check on a real repository", () => {
       "examined: tracked=3 untracked=1",
       "markers: total=1 valid=1 overdue=0 unavailable=0 malformed=0",
       "code: checked=1 tested=1 ephemeral=0 exempted=0 untested=0",
+      "exemptions: listed=0 data=0 code=0",
       "violations=0",
       "artifact-lifecycle: pass",
     ]);
@@ -258,6 +259,49 @@ describe("the exemptions file", () => {
     const run = gate(["check", path, "--no-untracked"]);
     expect(run.exitCode).toBe(2);
     expect(run.stderr).toContain(".artifact-lifecycle-exemptions is not a regular file");
+  });
+
+  test("an exemption naming a tracked symbolic link is refused: exit 2, not-a-file", () => {
+    const path = repository({
+      "sync.sh": "echo\n",
+      ".artifact-lifecycle-exemptions": "tool.sh # looks like a script\n",
+    });
+    symlinkSync("/etc/hosts", join(path, "tool.sh"));
+    commit(path, {});
+    const run = gate(["check", path, "--no-untracked"]);
+    expect(run.exitCode).toBe(2);
+    expect(run.stdout).toBe("");
+    expect(run.stderr.trim()).toBe(
+      "artifact-lifecycle: .artifact-lifecycle-exemptions line 1: not-a-file",
+    );
+  });
+
+  test("a listed script and a listed data file are counted apart", () => {
+    const run = gate([
+      "check",
+      repository({
+        "sync.sh": "echo\n",
+        "fixture.json": "{}\n",
+        ".artifact-lifecycle-exemptions": "sync.sh # generated\nfixture.json # generated\n",
+      }),
+    ]);
+    expect(run.exitCode).toBe(0);
+    expect(run.lines).toContain("exemptions: listed=2 data=1 code=1");
+  });
+});
+
+describe("the root .ephemeral", () => {
+  test("an untracked root .ephemeral covers the untracked files, not a tracked script", () => {
+    const run = gate([
+      "check",
+      repository(
+        { "sync.sh": "echo\n" },
+        { ".ephemeral": "until=2099-01-01\n", "draft.txt": "x\n" },
+      ),
+    ]);
+    expect(run.exitCode).toBe(1);
+    expect(run.lines).toContain("code without test: sync.sh");
+    expect(run.lines).not.toContain("untracked without marker: draft.txt");
   });
 });
 
@@ -428,7 +472,8 @@ describe("brief", () => {
     expect(brief.lines.slice(1, 41)).toEqual(check.lines.slice(0, 40));
     const dropped = /^(\d+) lines not relayed$/.exec(brief.lines[41] ?? "");
     expect(40 + Number(dropped?.[1])).toBe(check.lines.length);
-    expect(check.lines).toHaveLength(50);
+    // 45 violation lines and the 6 counter and verdict lines.
+    expect(check.lines).toHaveLength(51);
   });
 
   test("no line exceeds 200 characters with a file name of 240", () => {
