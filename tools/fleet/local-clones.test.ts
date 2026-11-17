@@ -339,6 +339,18 @@ describe("clone", () => {
     );
   });
 
+  test("a .git segment is unsafe in any case: a folding file system makes .Git the same directory", async () => {
+    const root = freshDirectory();
+    const slugs = ["t/.Git", "t/.GIT", ".gIt/alpha"];
+    const result = await run(["clone", "--root", root], inventory(slugs.map((slug) => ({ slug }))));
+    expect(result.code).toBe(1);
+    expect(result.calls).toEqual([]);
+    expect(readdirSync(root)).toEqual([]);
+    expect(result.out.at(-1)).toBe(
+      `declared=${slugs.length} cloned=0 present=0 occupied=0 archived=0 private=0 unsafe=${slugs.length} failed=0`,
+    );
+  });
+
   test("a path holding a .git file (a worktree) is occupied and left as it is", async () => {
     const root = freshDirectory();
     mkdirSync(join(root, "alpha"));
@@ -604,6 +616,35 @@ describe("audit through a fake door", () => {
     );
   });
 
+  test("a branch name holding a control character is never printed raw and gets no command", async () => {
+    const root = freshDirectory();
+    fakeClone(root, "alpha");
+    const stdout = `${STATUS_HEAD}# branch.head a\u{9b}31mb\n`;
+    const result = await run(
+      ["audit", "--root", root],
+      inventory([{ slug: "t/alpha" }]),
+      async () => ({ code: 0, stdout, stderr: "" }),
+    );
+    expect(result.code).toBe(1);
+    expect(result.out.concat(result.err).filter((line) => /[^\P{Cc}\t]/u.test(line))).toEqual([]);
+    expect(result.out).toContain(
+      "alpha\ta?31mb\tmodified=0\tuntracked=0\tahead=0\tbehind=0\tunreadable\t-",
+    );
+    expect(result.err).toEqual(["cause=unreadable-state alpha: the state read is not coherent"]);
+  });
+
+  test("a clone outside the inventory is matched to the inventory without regard to case", async () => {
+    const root = freshDirectory();
+    fakeClone(root, "Alpha");
+    const stdout = `${STATUS_HEAD}# branch.head topic\n# branch.upstream origin/topic\n# branch.ab +0 -0\n`;
+    const result = await run(
+      ["audit", "--root", root],
+      inventory([{ slug: "t/alpha" }]),
+      async () => ({ code: 0, stdout, stderr: "" }),
+    );
+    expect(result.out.at(-1)).toBe("outside-inventory=0");
+  });
+
   test("a door that answers neither success nor failure: counters-mismatch, no report", async () => {
     const root = freshDirectory();
     fakeClone(root, "alpha");
@@ -767,6 +808,47 @@ describe("audit on real repositories", () => {
     }
     expect(after.size).toBeGreaterThan(NAMES.length * 10);
     expect(after).toEqual(before);
+  });
+
+  test("a clone whose .git is empty is unreadable, never read as the repository around the root", async () => {
+    const base = freshDirectory();
+    fixtureGit(base, "init", "-q", "--initial-branch=outerbranch");
+    const auditRoot = join(base, "root");
+    mkdirSync(join(auditRoot, "alpha", ".git"), { recursive: true });
+    const audited = await run(
+      ["audit", "--root", auditRoot],
+      inventory([{ slug: "t/alpha" }]),
+      runGitProcess,
+    );
+    expect(audited.code).toBe(1);
+    expect(audited.out.concat(audited.err).join("\n")).not.toContain("outerbranch");
+    expect(audited.out).toContain(
+      "categories: unreadable=1 detached=0 no-upstream=0 up-to-date=0 behind-dirty=0 diverged=0 fast-forwardable=0",
+    );
+    expect(audited.err).toHaveLength(1);
+    expect(audited.err[0]).toStartWith("cause=unreadable-state alpha: git exited ");
+  });
+
+  test("a clone whose configuration names another work tree is read on its own directory", async () => {
+    const base = freshDirectory();
+    const auditRoot = join(base, "root");
+    const clone = join(auditRoot, "alpha");
+    const elsewhere = join(base, "elsewhere");
+    mkdirSync(clone, { recursive: true });
+    mkdirSync(elsewhere);
+    writeFileSync(join(elsewhere, "stray.txt"), "not in the clone\n");
+    fixtureGit(clone, "init", "-q", "--initial-branch=served");
+    identify(clone);
+    commitFile(clone, "a.txt", "one\n");
+    fixtureGit(clone, "config", "core.worktree", elsewhere);
+    const audited = await run(
+      ["audit", "--root", auditRoot],
+      inventory([{ slug: "t/alpha" }]),
+      runGitProcess,
+    );
+    expect(audited.out).toContain(
+      `alpha\tserved\tmodified=0\tuntracked=0\tahead=0\tbehind=0\tno-upstream\tgit -C ${clone} branch --set-upstream-to=origin/served`,
+    );
   });
 
   test("reading a state does not run the command a clone's configuration names", async () => {

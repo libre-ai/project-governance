@@ -117,6 +117,7 @@ function readRoot(root: string): readonly string[] | string {
 }
 
 const PLAIN_SEGMENT = /^[A-Za-z0-9._-]+$/;
+/** Compared in lower case: a file system that folds case makes `.Git` the `.git` directory. */
 const RESERVED_SEGMENTS: readonly string[] = [".", "..", ".git"];
 
 /**
@@ -128,7 +129,9 @@ function directoryName(slug: string): string | null {
   const segments = slug.split("/");
   if (segments.length !== 2) return null;
   for (const segment of segments) {
-    if (!PLAIN_SEGMENT.test(segment) || RESERVED_SEGMENTS.includes(segment)) return null;
+    if (!PLAIN_SEGMENT.test(segment) || RESERVED_SEGMENTS.includes(segment.toLowerCase())) {
+      return null;
+    }
   }
   return segments[1] as string;
 }
@@ -172,12 +175,17 @@ const sumsTo = (total: number, parts: readonly number[]): boolean =>
   parts.reduce((sum, part) => sum + part, 0) === total;
 
 /**
- * Global options first. `--no-optional-locks` keeps `status` from refreshing
- * the index on disk, and `core.fsmonitor=false` keeps it from running the
- * command a clone's own configuration may name there: reading a state must
- * neither write nor execute.
+ * Global options first. `--git-dir` and `--work-tree` name the clone itself:
+ * started from its directory alone, git walks up to the first repository it
+ * finds, and a `.git` that is not a repository would be read as the one that
+ * encloses the root. `--no-optional-locks` keeps `status` from refreshing the
+ * index on disk, and `core.fsmonitor=false` keeps it from running the command a
+ * clone's own configuration may name there: reading a state must neither write
+ * nor execute.
  */
-const STATUS_ARGS: readonly string[] = [
+const statusArgs = (clone: string): readonly string[] => [
+  `--git-dir=${join(clone, ".git")}`,
+  `--work-tree=${clone}`,
   "--no-optional-locks",
   "-c",
   "core.fsmonitor=false",
@@ -284,10 +292,12 @@ export async function runLocalClones(argv: readonly string[], io: LocalClonesIo)
   }
 
   const declared = entries.length;
+  // Folded like `claimed` below: on a file system that folds case, `Alpha` on
+  // disk is the path of the entry `alpha`, not a clone outside the inventory.
   const inventoryNames = new Set<string>();
   for (const entry of entries) {
     const name = directoryName(entry.repository);
-    if (name !== null) inventoryNames.add(name);
+    if (name !== null) inventoryNames.add(name.toLowerCase());
   }
 
   let archived = 0;
@@ -398,7 +408,7 @@ export async function runLocalClones(argv: readonly string[], io: LocalClonesIo)
     let reading: Reading;
     let failure: string | null = null;
     try {
-      const result = await io.runGit(STATUS_ARGS, path);
+      const result = await io.runGit(statusArgs(path), path);
       const outcome = outcomeOf(result);
       if (outcome === null) continue;
       if (outcome === "ok") {
@@ -421,7 +431,9 @@ export async function runLocalClones(argv: readonly string[], io: LocalClonesIo)
     io.say(
       [
         name,
-        reading.state.head === "branch" ? (reading.state.branch ?? "-") : `(${reading.state.head})`,
+        reading.state.head === "branch"
+          ? printable(reading.state.branch ?? "-")
+          : `(${reading.state.head})`,
         `modified=${reading.modified}`,
         `untracked=${reading.untracked}`,
         `ahead=${reading.state.ahead}`,
@@ -461,7 +473,7 @@ export async function runLocalClones(argv: readonly string[], io: LocalClonesIo)
   // Counted, never named: a clone outside the inventory may be one the
   // inventory keeps unnamed on purpose.
   const outside = children.filter(
-    (child) => !inventoryNames.has(child) && shapeOf(join(root, child)) === "clone",
+    (child) => !inventoryNames.has(child.toLowerCase()) && shapeOf(join(root, child)) === "clone",
   ).length;
   io.say(
     `declared=${declared} examined=${examined} absent=${absent} occupied=${occupied} ` +

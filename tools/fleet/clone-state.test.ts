@@ -41,6 +41,15 @@ describe("classifyClone, one test per row of the table", () => {
     });
   });
 
+  test("row 1: a branch name holding a control character (C0, DEL or C1) is unreadable", () => {
+    for (const branch of ["a\u{9b}b", "a\u{1b}[31mb", "a\u{7f}b", "a\nb"]) {
+      expect(classifyClone(state({ branch, upstream: false }), PATH)).toEqual({
+        category: "unreadable",
+        command: null,
+      });
+    }
+  });
+
   test("row 4: behind = 0 is up to date and has no command", () => {
     expect(classifyClone(state(), PATH)).toEqual({ category: "up-to-date", command: null });
   });
