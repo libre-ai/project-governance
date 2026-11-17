@@ -182,6 +182,11 @@ export const NOT_GATED: readonly NotGated[] = [
     because:
       "the product packages and forbidden modules check-import-boundaries.ts refuses, empty today; that gate is not in `bun run check`, so no aggregate verdict depends on this table yet. Removing an entry lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
   },
+  {
+    path: "tools/quality/identifier-fingerprints.v1.json",
+    because:
+      "the fingerprints and exempt paths check-identifier-fingerprints.ts reads; that gate is not in `bun run check` nor in a workflow, so no aggregate verdict depends on this file yet. Removing an entry or adding an exemption lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
