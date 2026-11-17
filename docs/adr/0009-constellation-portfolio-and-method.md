@@ -1,6 +1,6 @@
 # ADR-0009 — La constellation comme portefeuille total, gérée par la méthode
 
-- **Statut :** accepted — la ratification est le merge propriétaire de cette pull request
+- **Statut :** accepted — la ratification est le merge propriétaire de cette pull request. **Supersédé en partie par :** ADR-0020 (§8, ordre de migration en vagues ; loi de couverture du §4 ; clause « états d'exposition » du §7, détail en ADR-0020 §2.2). **Amendé par :** ADR-0023 (séquencement résiduel, ADR-0023 §2.2), ADR-0038 (§9 : un distant privé temporaire de prépublication), ADR-0039 (périmètre du portfolio, ADR-0039 D1 : `product-research`, exception nominative privée hors portfolio).
 - **Date :** 2026-07-19
 - **Arbitrage :** propriétaire, session source-de-vérité du 2026-07-19. Direction constellation quatre couches énoncée par le propriétaire ; but énoncé : « le défi reste de créer cette nouvelle méthode de gestion de tous ces projets en automatisation agentique, c'est mon goal » ; couches reconnues comme produits à part entière ; après passage d'un panel adversarial à trois lentilles (architecture des systèmes, sécurité des boucles, économie/preuve), arbitrage final « reco partout », traceur = la méthode elle-même.
 - **Portée :** écosystème — but du projet, topologie finale, doctrine du portefeuille, lois de croissance, sécurité des boucles, ordre de migration, visibilité
