@@ -114,6 +114,13 @@ describe("countMatrix — proven absence", () => {
     ["searched paths only", "chemins: src/io"],
     ["labels naming nothing", "motifs: ; chemins: "],
     ["prose", "rien trouvé dans le dépôt"],
+    ["an empty patterns label followed by the paths label", "motifs: chemins: src/"],
+    ["an empty paths label followed by the patterns label", "chemins: motifs: x"],
+    ["an empty label followed by the other, given again", "motifs: chemins: a ; chemins: src/"],
+    ["both labels in one segment", "motifs: x chemins: src/"],
+    ["punctuation only", "motifs: - ; chemins: -"],
+    ["punctuation only on one side", "motifs: export ; chemins: ./"],
+    ["the same label twice", "motifs: export ; chemins: ; chemins: src/"],
   ])("absent with %s is an absence without proof", (_label, proof) => {
     const counts = countMatrix(matrix(`| 1 | a | natif | absent | réécrire | | | ${proof} |`));
     expect(counts.absentWithoutProof).toBe(1);
@@ -124,6 +131,15 @@ describe("countMatrix — proven absence", () => {
     const counts = countMatrix(matrix(`| 1 | a | natif | absent | réécrire | | | ${PROOF} |`));
     expect(counts.absentWithoutProof).toBe(0);
     expect(counts.rows).toBe(1);
+    expect(exitCode(counts)).toBe(0);
+  });
+
+  test.each([
+    "chemins: src/io ; motifs: export",
+    "motifs: a;b ; chemins: src/",
+  ])("absent proven by %s, in either order or with a ; in a pattern, is proven", (proof) => {
+    const counts = countMatrix(matrix(`| 1 | a | natif | absent | réécrire | | | ${proof} |`));
+    expect(counts.absentWithoutProof).toBe(0);
     expect(exitCode(counts)).toBe(0);
   });
 
@@ -162,6 +178,23 @@ describe("countMatrix — the file holds its table and nothing else", () => {
     expect(counts.rows).toBe(1);
     expect(counts.rejectedRows).toBe(2);
     expect(renderCounts(counts).split("\n")).toContain("lignes_ecartees=2");
+    expect(exitCode(counts)).toBe(1);
+  });
+
+  test("a row whose closing pipe is escaped is not a table row", () => {
+    const counts = countMatrix(
+      matrix(row(1), "| 2 | b | natif | absent | réécrire | | | motifs: x ; chemins: y \\|"),
+    );
+    expect(counts.rows).toBe(1);
+    expect(counts.structure).toHaveLength(1);
+    expect(counts.structure[0]).toStartWith("line 4: not a table row");
+    expect(exitCode(counts)).toBe(1);
+  });
+
+  test.each(["01", "0", "+1"])("a row number written %s is not a row number", (number) => {
+    const counts = countMatrix(matrix(`| ${number} | f | natif | natif | reprendre | | s | |`));
+    expect(counts.rows).toBe(0);
+    expect(counts.rejectedRows).toBe(1);
     expect(exitCode(counts)).toBe(1);
   });
 
