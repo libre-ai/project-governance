@@ -1,7 +1,6 @@
 # ADR-0011 — Décisions d'exécution des vagues (moteur pilote, Polaris, politiques de gate, environnement D01)
 
-- **Statut :** accepted
-- **Supersédé en partie par :** ADR-0020 (séquencement D1, vagues 4a/4b, détail en ADR-0020 §2.2 ; D3, D4 et D6 restent en vigueur).
+- **Statut :** accepted. **Supersédé en partie par :** ADR-0020 (séquencement D1, vagues 4a/4b, détail en ADR-0020 §2.2 ; D3, D4 et D6 restent en vigueur).
 - **Date :** 2026-07-20
 - **Arbitrage :** propriétaire, session du 2026-07-20 (décisions forcées par questionnaire pour armer l'exécution autonome des vagues 1-4).
 - **Portée :** exécution — séquencement des vagues, politiques de gate en run autonome, environnement de développement de D01, nom de la couche 2.

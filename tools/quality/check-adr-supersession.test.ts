@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   type AdrHeader,
+  buildReport,
   EXEMPT_NON_ADR_FIELDS,
   EXEMPT_NOT_AMENDMENTS,
   forwardRelations,
@@ -70,6 +71,16 @@ describe("parseHeader", () => {
       "- **Statut :** accepted\n- **Amende :**\n  - ADR-0042 §1 ;\n  - ADR-0055 D1.",
     );
     expect(forwardRelations(header)[0]?.targets).toEqual(["0042", "0055"]);
+  });
+
+  test("a blank line or a quote closes the bullet: what follows is not its value", () => {
+    for (const closer of ["", "> Collision de numéro : ADR-0018"]) {
+      const header = adr(
+        "docs/adr/0004-x.md",
+        `- **Statut :** accepted\n- **Amende :** un document\n${closer}\nADR-0018 est cité ici, hors en-tête.`,
+      );
+      expect(forwardRelations(header)[0]?.targets).toEqual([]);
+    }
   });
 
   test("stops at the first section heading: a body bullet is not a header field", () => {
@@ -142,6 +153,14 @@ describe("inverseReferences", () => {
       "- **Statut :** accepted\n- **Amendé :** 2026-07-23 (décision propriétaire), cf. ADR-0020",
     );
     expect(inverseReferences(header).size).toBe(0);
+  });
+
+  test("an ADR named inside the clauses of an inverse field is a mention (ADR-0064 form)", () => {
+    const header = adr(
+      "docs/adr/0064-x.md",
+      "- **Statut :** proposé. **Amendé par :** ADR-0067 (sa cellule, dans le catalogue d'ADR-0042 §1)",
+    );
+    expect([...inverseReferences(header)]).toEqual(["0067"]);
   });
 
   test("a mention in prose is not an inverse marker", () => {
@@ -286,6 +305,39 @@ describe("scanSupersession", () => {
     );
     expect(scan.undeclaredNonAdr).toEqual([]);
     expect(scan.unmarked.map((pair) => pair.target)).toEqual(["0018"]);
+  });
+});
+
+describe("buildReport", () => {
+  test("every defect category is a failed check, and only those", () => {
+    const headers = [
+      adr("docs/adr/0058-x.md", "- **Statut :** accepted\n- **Amende :** ADR-0032 D1 ; ADR-0077"),
+      adr("docs/adr/0032-x.md", "- **Statut :** accepted"),
+      adr("docs/adr/0030-x.md", "- **Statut :** accepted\n- **Amende :** un contrat"),
+    ];
+    const scan = scanSupersession(
+      headers,
+      [{ source: "0001", target: "0033", because: "stale pair" }],
+      [{ source: "0008", label: "Remplace", because: "stale field" }],
+    );
+    const report = buildReport(scan, []);
+    expect(report.outcome).toBe("violations");
+    const failed = report.checks.filter((check) => !check.ok).map((check) => check.item);
+    // unmarked 0032, dangling 0077 (reported on its source), undeclared field
+    // of 0030, stale pair 0001, stale field 0008.
+    expect(failed.sort()).toEqual(["ADR-0001", "ADR-0008", "ADR-0030", "ADR-0032", "ADR-0058"]);
+  });
+
+  test("a corpus where every amendment is marked passes and says what it read", () => {
+    const headers = [
+      adr("docs/adr/0058-x.md", "- **Statut :** accepted\n- **Amende :** ADR-0032 D1"),
+      adr("docs/adr/0032-x.md", "- **Statut :** accepted. **Amendé par :** ADR-0058 (D1)"),
+    ];
+    const report = buildReport(scanSupersession(headers, [], []), ["docs/adr/2026-09-29-x.md"]);
+    expect(report.outcome).toBe("pass");
+    expect(report.asserted).toBe(1);
+    expect(report.volumeSummary).toContain("2 numbered ADR(s) read");
+    expect(report.volumeSummary).toContain("docs/adr/2026-09-29-x.md");
   });
 });
 

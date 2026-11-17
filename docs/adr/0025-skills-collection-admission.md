@@ -1,8 +1,7 @@
 # ADR-0025 — Une collection de skills gouvernée, admise et testée, jamais recopiée
 
 - **Statut :** accepted — la ratification est le merge propriétaire de cette
-  pull request.
-- **Amendé par :** ADR-0050 (D2 et D6), ADR-0053 (D6, emplacement de `status`).
+  pull request. **Amendé par :** ADR-0050 (D2 et D6), ADR-0053 (D6, emplacement de `status`).
 - **Arbitrage :** propriétaire, remise à plat du 2026-08-18 (domaine E —
   Skills & collection) — le présent ADR, le nouveau bucket `skills/**` de
   `REUSE.toml`, l'outillage `tools/skills/` et les six skills admis sont la

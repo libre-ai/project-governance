@@ -1,8 +1,7 @@
 # ADR-0056 — Méthode : origine du problème déclarée, dispositions de revue, installation live, registre des refus, négative par tranche
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-23 en chat ; D1 à
-  D5, I-38 et D95 sont en vigueur à la fusion.
-- **Amendé par :** ADR-0059 (D1, forme de la ligne `Origin:` remplacée par le bloc de déclaration ; D5, précisé ; « Ce qui n'est pas décidé ici », trois premiers points tranchés).
+  D5, I-38 et D95 sont en vigueur à la fusion. **Amendé par :** ADR-0059 (D1, forme de la ligne `Origin:` remplacée par le bloc de déclaration ; D5, « un gate les confrontera au diff » et l'absence de déclaration précisés, la gravité `blocking` d'une négative démentie inchangée ; « Ce qui n'est pas décidé ici », trois premiers points tranchés).
 - **Arbitrage :** la consigne « go all » du propriétaire du 2026-10-22, sur les
   options recommandées du drill `tt-a1i/archify`, a engagé la rédaction. Le
   2026-10-23, en question structurée, le propriétaire a retenu l'option A de

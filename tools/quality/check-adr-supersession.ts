@@ -6,10 +6,10 @@ import { concludeGate, GateReport } from "./gate-report";
 // `Statut : accepted`, and act on it. Nothing in that file told them that
 // ADR-0020 §2.2 superseded its wave framework: the forward declaration lives in
 // the newer ADR, which the agent has no reason to open. Measured on 2026-11-17,
-// on the served branch before this gate: one ADR out of 69 carried a
-// supersession in its header (ADR-0005), and this gate failed there on 17 of
-// 30 assertions: 14 amendments (over 11 ADRs) not visible from the amended
-// ADR, plus 3 forward declarations that named no ADR
+// on the served branch before this gate: 9 of 69 ADRs already carried an
+// inverse marker, and this gate failed there on 17 of 30 assertions: 14
+// amendments (over 11 ADRs) not visible from the amended ADR, plus 3 forward
+// declarations that named no ADR
 // (`bun tools/quality/check-adr-supersession.ts` on that tree).
 //
 // Google measured the cost of this class on coding agents
@@ -18,11 +18,15 @@ import { concludeGate, GateReport } from "./gate-report";
 // stale doctrine document is the same defect, read by the same agents, with a
 // doctrine authority attached.
 //
-// So the relation is checked in both directions. A forward declaration in an
-// accepted ADR (`**Amende :**`, `**Supersède… :**`, `**Remplace :**`,
-// `**Lève :**`, `**Rend caduque :**`) names its targets; each target carries the inverse in its own header, in the form
-// ADR-0042 and ADR-0055 already used: `**Amendé par :** ADR-NNNN (clauses)`
-// (or `Supersédé en partie par`, `Remplacé par`). A forward declaration that
+// So every forward declaration must be matched on the other side. A forward
+// declaration in an accepted ADR (`**Amende :**`, `**Supersède… :**`,
+// `**Remplace :**`, `**Lève :**`, `**Rend caduque :**`) names its targets;
+// each target carries the inverse in its own header, in the form ADR-0042 and
+// ADR-0055 already used: `**Amendé par :** ADR-NNNN (clauses)` (or `Supersédé
+// en partie par`, `Remplacé par`), written on the status line so that no line
+// of the ADR moves: other ADRs cite these files by line number. The converse
+// is not required: an inverse marker without a forward declaration, or naming
+// a proposed ADR, is not checked. A forward declaration that
 // names no ADR fails unless it is declared below: it may amend an invariant or
 // a document, and it may also hide an ADR it amends (ADR-0030 did, for
 // ADR-0018 D2), which only a reader can tell apart.
@@ -206,12 +210,29 @@ export function forwardRelations(header: AdrHeader): ForwardRelation[] {
     }));
 }
 
+/**
+ * Drop every parenthesised span. In an inverse field the parentheses carry the
+ * clauses (`ADR-0067 (D1 : … ADR-0042 §1 …)`); an ADR named inside them is a
+ * mention, not the ADR that made the change. An unclosed parenthesis drops the
+ * rest of the value, which can only make the gate stricter.
+ */
+function outsideParentheses(value: string): string {
+  let depth = 0;
+  let kept = "";
+  for (const character of value) {
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+    else if (depth === 0) kept += character;
+  }
+  return kept;
+}
+
 /** The ADR numbers a header names as having changed it. */
 export function inverseReferences(header: AdrHeader): Set<string> {
   const found = new Set<string>();
   for (const field of header.fields) {
     if (INVERSE_LABEL.test(field.label))
-      for (const number of referencedAdrs(field.value)) found.add(number);
+      for (const number of referencedAdrs(outsideParentheses(field.value))) found.add(number);
   }
   for (const match of header.status.matchAll(LEGACY_STATUS_INVERSE)) found.add(match[1] ?? "");
   return found;
@@ -307,17 +328,12 @@ export function scanSupersession(
   };
 }
 
-if (import.meta.main) {
-  const headers: AdrHeader[] = [];
-  const unnumbered: string[] = [];
-  for await (const path of new Bun.Glob("docs/adr/*.md").scan({ cwd: ".", onlyFiles: true })) {
-    const header = parseHeader(path, await Bun.file(path).text());
-    if (header === null) unnumbered.push(path);
-    else headers.push(header);
-  }
-  headers.sort((a, b) => a.file.localeCompare(b.file));
-
-  const scan = scanSupersession(headers);
+/**
+ * The verdict a scan prints. Pure, so that a test can hold every failing
+ * category to a failed check: a category reported as passing would turn the
+ * gate green over the defect it found.
+ */
+export function buildReport(scan: SupersessionScan, unnumbered: readonly string[]): GateReport {
   const report = new GateReport();
 
   for (const relation of scan.undeclaredNonAdr) {
@@ -379,6 +395,18 @@ if (import.meta.main) {
       `${scan.declaredNotAmendments.length} declared non-amendment pair(s), ${scan.declaredNonAdr.length} declared field(s) amending no ADR; ` +
       `${unnumbered.length} file(s) without an NNNN- number, not checked: ${unnumbered.join(", ") || "none"}`,
   );
+  return report;
+}
 
-  concludeGate("ADR supersession", report);
+if (import.meta.main) {
+  const headers: AdrHeader[] = [];
+  const unnumbered: string[] = [];
+  for await (const path of new Bun.Glob("docs/adr/*.md").scan({ cwd: ".", onlyFiles: true })) {
+    const header = parseHeader(path, await Bun.file(path).text());
+    if (header === null) unnumbered.push(path);
+    else headers.push(header);
+  }
+  headers.sort((a, b) => a.file.localeCompare(b.file));
+
+  concludeGate("ADR supersession", buildReport(scanSupersession(headers), unnumbered));
 }

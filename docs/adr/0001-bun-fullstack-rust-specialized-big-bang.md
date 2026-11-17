@@ -1,7 +1,6 @@
 # ADR-0001 — Bun fullstack, React 19, Rust spécialisé et migration Big Bang
 
-- **Statut :** accepted
-- **Supersédé en partie par :** ADR-0020 (clause de topologie : le nouveau monorepo et l'intégration continue obligatoire dans le monorepo, détail en ADR-0020 §2.2). **Amendé par :** ADR-0035 (décision 11).
+- **Statut :** accepted. **Supersédé en partie par :** ADR-0020 (clause de topologie : le nouveau monorepo et l'intégration continue obligatoire dans le monorepo, détail en ADR-0020 §2.2). **Amendé par :** ADR-0035 (décision 11).
 - **Portée :** écosystème
 - **Remplace :** doctrine Rust-first/Dioxus et ADR-0033 historique
 

@@ -1,7 +1,6 @@
 # ADR-0008 — Topologie cible multi-repository et posture de marque Libre AI
 
-- **Statut :** accepted
-- **Supersédé en partie par :** ADR-0020 (§5 ; points 3 et 4 pour le seul `website`, détail en ADR-0020 §2.2). **Amendé par :** ADR-0039 (ADR-0039 D1 : `product-research`, exception nominative privée hors portfolio).
+- **Statut :** accepted. **Supersédé en partie par :** ADR-0020 (point 5 ; points 3 et 4 pour le seul `website`, détail en ADR-0020 §2.2). **Amendé par :** ADR-0039 (ADR-0039 D1 : `product-research`, exception nominative privée hors portfolio).
 - **Date :** 2026-07-19
 - **Arbitrage :** propriétaire (session de consolidation source-de-vérité du 2026-07-19)
 - **Portée :** écosystème — topologie GitHub, doctrine de distribution, marque
