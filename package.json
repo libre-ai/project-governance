@@ -51,6 +51,7 @@
     "check:data-inventory": "bun run check:bun:runtime && bun tools/quality/check-data-inventory.ts",
     "check:kernel-status-authority": "bun run check:bun:runtime && bun tools/quality/check-kernel-status-authority.ts",
     "check:threat-model-citations": "bun run check:bun:runtime && bun tools/quality/check-threat-model-citations.ts",
+    "check:threat-model-evidence": "bun run check:bun:runtime && bun tools/quality/check-threat-model-evidence.ts",
     "check:pinned-citations": "bun run check:bun:runtime && bun tools/quality/check-pinned-citations.ts",
     "check:skills": "bun run check:bun:runtime && bun tools/skills/check-skills.ts",
     "check:skills-routing": "bun run check:bun:runtime && bun tools/skills/check-skills-routing.ts",
