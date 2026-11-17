@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AllowlistResult, parseAllowlist } from "./allowlist";
@@ -126,6 +126,14 @@ describe("parseAllowlist refuses", () => {
     });
   });
 
+  test("a tracked entry that is not a regular file (symbolic link or submodule)", () => {
+    const notFiles = new Set(["docs/b.yaml"]);
+    expect(parseAllowlist("docs/a.md # fixture\n", TRACKED, notFiles).ok).toBe(true);
+    expect(
+      errorOf(parseAllowlist("docs/a.md # fixture\ndocs/b.yaml # link\n", TRACKED, notFiles)),
+    ).toEqual({ line: 2, kind: "not-a-file" });
+  });
+
   test("an empty path", () => {
     expect(errorOf(parseAllowlist(" # reason only\n", TRACKED))).toEqual({
       line: 1,
@@ -179,6 +187,11 @@ function repository(files: Record<string, string>): string {
   return root;
 }
 
+function stage(root: string, path: string): void {
+  const add = Bun.spawnSync(["git", "-C", root, "add", "--", path], { env: cleanEnv() });
+  if (add.exitCode !== 0) throw new Error("git add failed");
+}
+
 function cleanEnv(): Record<string, string> {
   // A git hook or a CI run exports GIT_DIR / GIT_INDEX_FILE; the probe must
   // measure its own repository, not the ambient one.
@@ -228,6 +241,98 @@ describe("bun tools/quality/allowlist.ts <list>", () => {
     const root = repository({ "data/b.md": "b\n" });
     expect(run(root, ["../outside.list"]).code).toBe(2);
     expect(run(root, ["/etc/hosts"]).code).toBe(2);
+  });
+
+  // A list that is a link reads its target, outside the repository and outside
+  // review. Each variant below keeps a target that WOULD pass if it were read.
+
+  test("exits 2 when the list is a tracked symbolic link", () => {
+    const outside = scratchDirectory("allowlist-outside-");
+    writeFileSync(join(outside, "target.list"), "data/b.md # generated\n");
+    const root = repository({ "data/b.md": "b\n" });
+    symlinkSync(join(outside, "target.list"), join(root, "exempt.list"));
+    stage(root, "exempt.list");
+    const { code, out } = run(root, ["exempt.list"]);
+    expect(code).toBe(2);
+    expect(out).not.toContain("verified");
+  });
+
+  test("exits 2 when the tracked list was replaced on disk by a symbolic link", () => {
+    const outside = scratchDirectory("allowlist-outside-");
+    writeFileSync(join(outside, "target.list"), "data/b.md # generated\n");
+    const root = repository({ "data/b.md": "b\n", "exempt.list": "data/b.md # generated\n" });
+    rmSync(join(root, "exempt.list"));
+    symlinkSync(join(outside, "target.list"), join(root, "exempt.list"));
+    expect(run(root, ["exempt.list"]).code).toBe(2);
+  });
+
+  test("exits 2 when a directory on the way to the list is a symbolic link", () => {
+    const outside = scratchDirectory("allowlist-outside-");
+    writeFileSync(join(outside, "exempt.list"), "data/b.md # generated\n");
+    const root = repository({ "data/b.md": "b\n", "lists/exempt.list": "data/b.md # generated\n" });
+    rmSync(join(root, "lists"), { recursive: true });
+    symlinkSync(outside, join(root, "lists"));
+    expect(run(root, ["lists/exempt.list"]).code).toBe(2);
+  });
+
+  test("exits 2 when the index records the list as a link, whatever the disk holds", () => {
+    // core.symlinks=false checks a link out as a plain file holding its target.
+    const root = repository({ "data/b.md": "b\n", "exempt.list": "data/b.md # generated\n" });
+    const blob = Bun.spawnSync(["git", "-C", root, "rev-parse", ":exempt.list"], {
+      env: cleanEnv(),
+    });
+    const object = new TextDecoder().decode(blob.stdout).trim();
+    const relink = Bun.spawnSync(
+      ["git", "-C", root, "update-index", "--cacheinfo", `120000,${object},exempt.list`],
+      { env: cleanEnv() },
+    );
+    if (relink.exitCode !== 0) throw new Error("git update-index failed");
+    expect(run(root, ["exempt.list"]).code).toBe(2);
+  });
+
+  test("exits 2 when the tracked list is not a regular file on disk", () => {
+    const root = repository({ "data/b.md": "b\n", "exempt.list": "data/b.md # generated\n" });
+    rmSync(join(root, "exempt.list"));
+    const fifo = Bun.spawnSync(["mkfifo", join(root, "exempt.list")], { env: cleanEnv() });
+    if (fifo.exitCode !== 0) throw new Error("mkfifo failed");
+    // Reading a FIFO blocks: a gate that reads it hangs instead of refusing.
+    const result = Bun.spawnSync([process.execPath, MODULE, "exempt.list"], {
+      cwd: root,
+      env: cleanEnv(),
+      // Below bun's 5 s test timeout, so a hang fails this assertion, not the runner.
+      timeout: 3000,
+    });
+    expect(result.exitCode).toBe(2);
+  });
+
+  test("exits 1 on an exemption naming a tracked symbolic link", () => {
+    const root = repository({ "exempt.list": "data/hosts # looks like a file\n" });
+    mkdirSync(join(root, "data"));
+    symlinkSync("/etc/hosts", join(root, "data", "hosts"));
+    stage(root, "data/hosts");
+    const { code, err } = run(root, ["exempt.list"]);
+    expect(code).toBe(1);
+    expect(err).toContain("line 1: not-a-file");
+  });
+
+  test("exits 1 on an exemption naming a submodule", () => {
+    const root = repository({ "exempt.list": "vendor/sub # looks like a file\n" });
+    const gitlink = Bun.spawnSync(
+      [
+        "git",
+        "-C",
+        root,
+        "update-index",
+        "--add",
+        "--cacheinfo",
+        `160000,${"1".repeat(40)},vendor/sub`,
+      ],
+      { env: cleanEnv() },
+    );
+    if (gitlink.exitCode !== 0) throw new Error("git update-index failed");
+    const { code, err } = run(root, ["exempt.list"]);
+    expect(code).toBe(1);
+    expect(err).toContain("line 1: not-a-file");
   });
 
   test("exits 2 on a wrong argument count", () => {

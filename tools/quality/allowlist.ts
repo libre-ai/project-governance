@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 // Exemption lists as verified data.
@@ -26,20 +26,37 @@ import { join } from "node:path";
 //     covers nothing any more, and an exemption that covers nothing is an
 //     error: otherwise stale entries accumulate silently and wait for the next
 //     file to reuse the name;
+//   - a tracked entry that is not a regular file (a symbolic link, git mode
+//     120000, whose target may sit outside the repository; a submodule, mode
+//     160000) is refused as `not-a-file`: the exemption would name a file the
+//     reviewer cannot read in the tree. Callers pass these entries as
+//     `notFiles`; without it, every tracked entry counts as a file;
 //   - a duplicate is refused, so removing one line really removes the
 //     exemption;
 //   - an error names a line number and a kind, never the line's text: a list
 //     may name paths that must not be echoed into a CI log.
 //
-// The tracked set comes from `git ls-files -z`: NUL-separated output is never
-// quoted, so a non-ASCII name arrives exactly as written in the list, neither
-// escaped nor split.
+// The tracked set comes from `git ls-files -s -z`: NUL-separated output is
+// never quoted, so a non-ASCII name arrives exactly as written in the list,
+// neither escaped nor split, and each entry carries its mode.
+//
+// The list itself must be a regular tracked file (mode 100644 or 100755) that
+// is still a regular file on disk with no symbolic link on its way from the
+// root; otherwise it is an unreadable source (exit 2), since reading it would
+// read a link's target, outside the repository.
+//
+// Scope, on purpose:
+//   - any regular tracked file may be exempted, code included: the consumers of
+//     `parseAllowlist` exempt code files. Narrowing to data files (yaml, json,
+//     md) is an open decision left to the owner;
+//   - the specialised line forms `l1-field` and `suspect` are not parsed here.
 
 export type AllowlistErrorKind =
   | "missing-reason"
   | "invalid-path"
   | "wildcard"
   | "untracked"
+  | "not-a-file"
   | "duplicate";
 
 export interface AllowlistError {
@@ -58,6 +75,7 @@ export type AllowlistResult =
   | { readonly ok: false; readonly error: AllowlistError };
 
 const SEPARATOR = " # ";
+const REGULAR_MODES: ReadonlySet<string> = new Set(["100644", "100755"]);
 const WILDCARD = /[*?[]/;
 // Control characters and surrounding blanks make two different files look the
 // same to a reviewer; a path holding them is refused rather than trusted.
@@ -83,8 +101,16 @@ function splitLines(text: string): string[] {
   return lines;
 }
 
-/** Parse an exemption list against the repository's tracked files. Stops at the first error. */
-export function parseAllowlist(text: string, tracked: ReadonlySet<string>): AllowlistResult {
+/**
+ * Parse an exemption list against the repository's tracked entries. `notFiles`
+ * holds the tracked entries that are not regular files (symbolic links,
+ * submodules). Stops at the first error.
+ */
+export function parseAllowlist(
+  text: string,
+  tracked: ReadonlySet<string>,
+  notFiles: ReadonlySet<string> = new Set(),
+): AllowlistResult {
   const lines = splitLines(text);
   const paths = new Set<string>();
   for (const [index, line] of lines.entries()) {
@@ -99,6 +125,7 @@ export function parseAllowlist(text: string, tracked: ReadonlySet<string>): Allo
     if (defect !== null) return { ok: false, error: { line: number, kind: defect } };
     if (paths.has(path)) return { ok: false, error: { line: number, kind: "duplicate" } };
     if (!tracked.has(path)) return { ok: false, error: { line: number, kind: "untracked" } };
+    if (notFiles.has(path)) return { ok: false, error: { line: number, kind: "not-a-file" } };
     paths.add(path);
   }
   return { ok: true, paths, lines: lines.length };
@@ -123,14 +150,19 @@ function main(argv: readonly string[]): number {
     return 2;
   }
   let root: string;
-  let tracked: Set<string>;
+  const tracked = new Set<string>();
+  const notFiles = new Set<string>();
   try {
     root = git(["rev-parse", "--show-toplevel"]).trim();
-    tracked = new Set(
-      git(["-C", root, "ls-files", "-z"])
-        .split("\0")
-        .filter((path) => path !== ""),
-    );
+    for (const record of git(["-C", root, "ls-files", "-s", "-z"]).split("\0")) {
+      if (record === "") continue;
+      // `<mode> <object> <stage>\t<path>`; the path may hold any byte but NUL.
+      const match = /^(\d{6}) [0-9a-f]+ \d\t(.+)$/s.exec(record);
+      if (match === null) throw new Error("git ls-files printed a record it does not document");
+      const [, mode = "", path = ""] = match;
+      tracked.add(path);
+      if (!REGULAR_MODES.has(mode)) notFiles.add(path);
+    }
   } catch (error) {
     console.error(`${gate}: ${(error as Error).message}`);
     return 2;
@@ -140,21 +172,28 @@ function main(argv: readonly string[]): number {
     console.error(`${gate}: git listed no tracked file; the list cannot be verified`);
     return 2;
   }
-  // The list itself obeys the rule it enforces: a tracked file inside the root.
-  if (pathDefect(listPath) !== null || !tracked.has(listPath)) {
+  // The list itself obeys the rule it enforces: a regular tracked file inside the root.
+  if (pathDefect(listPath) !== null || !tracked.has(listPath) || notFiles.has(listPath)) {
     console.error(
-      `${gate}: the list must be a tracked file, named relative to the repository root`,
+      `${gate}: the list must be a regular tracked file, named relative to the repository root`,
     );
     return 2;
   }
   let text: string;
   try {
-    text = readFileSync(join(root, listPath), "utf8");
+    // The index says what was committed, not what is on disk now: a working
+    // tree may have swapped the file, or a directory on its way, for a link.
+    const absolute = join(root, listPath);
+    if (realpathSync(absolute) !== join(realpathSync(root), listPath)) {
+      throw new Error("a symbolic link lies on its way from the repository root");
+    }
+    if (!lstatSync(absolute).isFile()) throw new Error("it is not a regular file on disk");
+    text = readFileSync(absolute, "utf8");
   } catch (error) {
     console.error(`${gate}: ${listPath} is unreadable: ${(error as Error).message}`);
     return 2;
   }
-  const result = parseAllowlist(text, tracked);
+  const result = parseAllowlist(text, tracked, notFiles);
   if (!result.ok) {
     console.error(`${gate}: ${listPath} line ${result.error.line}: ${result.error.kind}`);
     return 1;
