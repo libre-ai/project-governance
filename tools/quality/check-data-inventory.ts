@@ -352,6 +352,11 @@ export const NOT_GATED: readonly NotGated[] = [
       "the cargo-deny version with its digests, verified by install-toolchains.sh before use",
   },
   {
+    path: "toolchains/cargo-mutants.json",
+    because:
+      "the cargo-mutants version with its digests, verified by check-mutation-rust.ts before use; reusable-mutation-rust.test.ts checks its shape",
+  },
+  {
     path: "toolchains/osv-scanner.json",
     because:
       "the osv-scanner version with its digests, verified by install-toolchains.sh before use",
