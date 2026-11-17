@@ -37,16 +37,28 @@
  * dependency (exact version, git revision, workspace protocol) is a fleet
  * contract no gate of this repository holds today; this gate does not decide it.
  *
+ * A PATH STAYS IN ITS PACKAGE. A relative specifier is resolved against its
+ * file; one that lands outside the package directory, and any absolute path or
+ * `file:` URL, is a violation: another package is reached by its name, which
+ * rule 1 can judge, never by a path, which it cannot.
+ *
  * WHAT THIS READER CANNOT SEE. Comments are blanked out before reading,
- * wherever they open on a line, and string literals are stepped over so that a
- * `/*` or `//` inside one opens nothing. Still out of reach by construction:
- *   - a specifier written on another line than its keyword;
+ * wherever they open on a line; string, template and regular-expression
+ * literals are stepped over so that a `/*`, `//` or backquote inside one opens
+ * nothing. The search runs on the whole text, so a specifier on another line
+ * than its keyword is read. A block comment or template literal still open at
+ * the end of a file is a violation, never an empty remainder. Still out of
+ * reach by construction:
  *   - a dynamic import built from a variable or from a template literal with a
  *     substitution (a template literal without one is read);
- *   - a regular-expression literal holding an unbalanced quote blinds the rest
- *     of its line.
+ *   - aliases resolved outside the source: `paths` of a tsconfig and `#…`
+ *     sub-path imports of a manifest are read as bare specifiers, so an alias
+ *     mapped to another package or a product is not seen;
+ *   - regex or division is decided as a JavaScript lexer does, from what
+ *     precedes the `/`; where that rule errs (`a++ / b`, an object literal
+ *     `{…} / b`), the misread ends at the line break, never later.
  * And one false positive: text shaped like `from "@scope/x"` inside a string
- * literal is read as an import.
+ * or template literal is read as an import.
  *
  * THE PACKAGE IS NAMED BY ITS MANIFEST, not by its directory, so a directory
  * renamed without its manifest does not change what "itself" means. A symbolic
@@ -54,7 +66,7 @@
  */
 
 import { type Dirent, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 
 /** The table of products and forbidden modules, relative to the root examined. */
 export const TABLE_PATH = "tools/quality/import-boundaries.v1.json";
@@ -203,40 +215,136 @@ function internalPackageOf(specifier: string): string {
   return specifier.split("/").slice(0, 2).join("/");
 }
 
-type LexState = "code" | "line-comment" | "block-comment" | "'" | '"' | "`";
+type LexState = "code" | "line-comment" | "block-comment" | "regex" | "'" | '"' | "`";
+
+// After one of these, a `/` starts a regular-expression literal; after an
+// operand (identifier, number, closing quote, `)` or `]`) it is a division.
+// This is the rule of a JavaScript lexer, short of a parser.
+const REGEX_AFTER_CHARACTER = new Set("(,=:[!&|?{};+-*%<>~^");
+const REGEX_AFTER_KEYWORD = new Set([
+  "return",
+  "typeof",
+  "instanceof",
+  "in",
+  "of",
+  "new",
+  "delete",
+  "void",
+  "throw",
+  "case",
+  "do",
+  "else",
+  "yield",
+  "await",
+]);
+// `if (x) /re/` : a `)` closing the condition of one of these opens a regex.
+const CONDITION_KEYWORDS = new Set(["if", "while", "for", "with"]);
+const IDENTIFIER_CHARACTER = /[\w$]/;
+
+interface LexedSource {
+  /** The source, comments replaced by spaces, line breaks kept. */
+  readonly text: string;
+  /** Offset of a block comment or template literal that never closes, or null. */
+  readonly unclosedAt: number | null;
+}
 
 /**
  * The source with every comment replaced by spaces, line breaks kept so that
- * line numbers hold. String and template literals are stepped over, so `"/*"`
- * or `"http://x"` opens no comment; a backslash in code escapes the next
- * character, so the literal `/a\/*b/` opens none either. A quoted string ends at its line
- * break at the latest: an unbalanced quote blinds the rest of its line, never
- * the rest of the file.
+ * offsets and line numbers hold. String, template and regular-expression
+ * literals are stepped over, so `"/*"`, `"http://x"` or `/[/*]/` opens no
+ * comment and a backquote in a regex opens no template. Template substitutions
+ * are read as code, nested templates included. A quoted string and a regex end
+ * at their line break at the latest: a misread blinds the rest of its line,
+ * never the rest of the file. A block comment or template literal still open at
+ * the end of the file is reported, never read as an empty remainder.
  */
-function blankComments(content: string): string {
+function lexSource(content: string): LexedSource {
   const out: string[] = [];
   let state: LexState = "code";
+  // What precedes a `/` in code decides regex or division.
+  let lastCharacter = "";
+  let lastWord = "";
+  let wordOpen = false;
+  let parenAfterCondition = false;
+  const parens: boolean[] = [];
+  // `{` of code, or `${` of a template whose literal resumes at the matching `}`.
+  const braces: ("code" | "template")[] = [];
+  const templateOpenings: number[] = [];
+  let blockOpening = 0;
+  let regexInClass = false;
+
   for (let index = 0; index < content.length; index += 1) {
     const char = content[index] ?? "";
     const next = content[index + 1] ?? "";
     switch (state) {
-      case "code":
+      case "code": {
         if (char === "/" && next === "/") {
           state = "line-comment";
+          wordOpen = false;
           out.push("  ");
           index += 1;
-        } else if (char === "/" && next === "*") {
+          break;
+        }
+        if (char === "/" && next === "*") {
           state = "block-comment";
+          blockOpening = index;
+          wordOpen = false;
           out.push("  ");
           index += 1;
-        } else if (char === "\\") {
+          break;
+        }
+        if (/\s/.test(char)) {
+          wordOpen = false;
+          out.push(char);
+          break;
+        }
+        if (char === "/") {
+          const regexAllowed =
+            lastCharacter === "" ||
+            REGEX_AFTER_CHARACTER.has(lastCharacter) ||
+            (lastCharacter === ")" && parenAfterCondition) ||
+            (IDENTIFIER_CHARACTER.test(lastCharacter) && REGEX_AFTER_KEYWORD.has(lastWord));
+          if (regexAllowed) {
+            state = "regex";
+            regexInClass = false;
+          }
+          lastCharacter = char;
+          lastWord = "";
+          wordOpen = false;
+          out.push(char);
+          break;
+        }
+        if (char === "\\") {
           out.push(char, next);
           index += 1;
-        } else {
-          if (char === "'" || char === '"' || char === "`") state = char;
-          out.push(char);
+          lastCharacter = next;
+          wordOpen = false;
+          break;
         }
+        if (char === "(") parens.push(CONDITION_KEYWORDS.has(lastWord) && lastCharacter !== ".");
+        if (char === ")") parenAfterCondition = parens.pop() ?? false;
+        if (char === "{") braces.push("code");
+        if (char === "}" && braces.pop() === "template") {
+          state = "`";
+          out.push(char);
+          break;
+        }
+        if (char === "'" || char === '"') state = char;
+        if (char === "`") {
+          state = "`";
+          templateOpenings.push(index);
+        }
+        if (IDENTIFIER_CHARACTER.test(char)) {
+          lastWord = wordOpen ? lastWord + char : char;
+          wordOpen = true;
+        } else {
+          lastWord = "";
+          wordOpen = false;
+        }
+        lastCharacter = char;
+        out.push(char);
         break;
+      }
       case "line-comment":
         if (char === "\n") state = "code";
         out.push(char === "\n" ? "\n" : " ");
@@ -250,34 +358,110 @@ function blankComments(content: string): string {
           out.push(char === "\n" ? "\n" : " ");
         }
         break;
+      case "regex":
+        if (char === "\\" && next !== "\n") {
+          out.push(char, next);
+          index += 1;
+          break;
+        }
+        if (char === "\n" || (char === "/" && !regexInClass)) state = "code";
+        else if (char === "[") regexInClass = true;
+        else if (char === "]") regexInClass = false;
+        // A regex is an operand: a `/` after it divides.
+        lastCharacter = char === "\n" ? lastCharacter : "x";
+        out.push(char);
+        break;
+      case "`":
+        if (char === "\\") {
+          out.push(char, next);
+          index += 1;
+        } else if (char === "$" && next === "{") {
+          braces.push("template");
+          state = "code";
+          lastCharacter = "{";
+          lastWord = "";
+          wordOpen = false;
+          out.push(char, next);
+          index += 1;
+        } else {
+          if (char === "`") {
+            state = "code";
+            templateOpenings.pop();
+            lastCharacter = char;
+            lastWord = "";
+          }
+          out.push(char);
+        }
+        break;
       default:
-        // Inside a literal whose opening quote is `state`.
+        // Inside a quoted string whose opening quote is `state`.
         if (char === "\\" && next !== "\n") {
           out.push(char, next);
           index += 1;
         } else {
-          if (char === state || (char === "\n" && state !== "`")) state = "code";
+          if (char === state) lastCharacter = char;
+          if (char === state || char === "\n") state = "code";
           out.push(char);
         }
     }
   }
-  return out.join("");
+  let unclosedAt: number | null = null;
+  if (state === "block-comment") unclosedAt = blockOpening;
+  else if (templateOpenings.length > 0) unclosedAt = templateOpenings[0] ?? null;
+  return { text: out.join(""), unclosedAt };
 }
 
-/** Each import specifier of a source, with its 1-based line, comments blanked out. */
-function specifiersOf(content: string): { line: number; specifier: string }[] {
-  const found: { line: number; specifier: string }[] = [];
-  const lines = blankComments(content).split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    for (const match of (lines[index] ?? "").matchAll(SPECIFIER)) {
-      const [, quote, specifier] = match;
-      if (specifier === undefined) continue;
-      // A substitution makes the specifier a runtime value this reader cannot know.
-      if (quote === "`" && specifier.includes("${")) continue;
-      found.push({ line: index + 1, specifier });
-    }
+interface SourceReading {
+  readonly specifiers: readonly { line: number; specifier: string }[];
+  /** 1-based line of a block comment or template literal that never closes, or null. */
+  readonly unclosedLine: number | null;
+}
+
+/** 1-based line of `offset`, counting from a known (offset, line) pair before it. */
+function lineAt(text: string, from: { offset: number; line: number }, offset: number): number {
+  let line = from.line;
+  for (let index = from.offset; index < offset; index += 1) if (text[index] === "\n") line += 1;
+  return line;
+}
+
+/**
+ * Each import specifier of a source, with the 1-based line of the specifier,
+ * comments blanked out. The search runs on the whole text, so a specifier on
+ * another line than its keyword (`import(⏎"x"⏎)`, `} from⏎"x"`) is read.
+ */
+function readSource(content: string): SourceReading {
+  const { text, unclosedAt } = lexSource(content);
+  const specifiers: { line: number; specifier: string }[] = [];
+  let cursor = { offset: 0, line: 1 };
+  for (const match of text.matchAll(SPECIFIER)) {
+    const [whole, quote, specifier] = match;
+    if (specifier === undefined) continue;
+    // A substitution makes the specifier a runtime value this reader cannot know.
+    if (quote === "`" && specifier.includes("${")) continue;
+    const offset = match.index + whole.length - 1 - specifier.length;
+    cursor = { offset, line: lineAt(text, cursor, offset) };
+    specifiers.push({ line: cursor.line, specifier });
   }
-  return found;
+  const unclosedLine =
+    unclosedAt === null ? null : lineAt(text, { offset: 0, line: 1 }, unclosedAt);
+  return { specifiers, unclosedLine };
+}
+
+/**
+ * Where a path-shaped specifier lands when it leaves the package directory
+ * `dir`; null for a bare specifier or a path that stays inside. Another package
+ * is reached by its name, so rule 1 can judge it; a path cannot be.
+ */
+function landingOutside(specifier: string, file: string, dir: string): string | null {
+  if (specifier.startsWith("/") || specifier.startsWith("file:")) return specifier;
+  const relative =
+    specifier === "." ||
+    specifier === ".." ||
+    specifier.startsWith("./") ||
+    specifier.startsWith("../");
+  if (!relative) return null;
+  const landing = posix.normalize(posix.join(posix.dirname(file), specifier));
+  return landing === dir || landing.startsWith(`${dir}/`) ? null : landing;
 }
 
 /** Pure: hold every package of the workspace to the three rules. */
@@ -311,13 +495,35 @@ export function checkImportBoundaries(
 
     for (const file of entry.files) {
       files += 1;
-      for (const { line, specifier } of specifiersOf(file.content)) {
+      const reading = readSource(file.content);
+      if (reading.unclosedLine !== null) {
+        violations.push({
+          package: name,
+          file: file.path,
+          line: reading.unclosedLine,
+          target: "(source)",
+          reason:
+            "a block comment or template literal opened here never closes: the rest of the " +
+            "file cannot be read",
+        });
+      }
+      for (const { line, specifier } of reading.specifiers) {
         imports += 1;
         const internal = specifier.startsWith(INTERNAL_SCOPE);
         if (internal) internalImports += 1;
         if (manifest !== null && matchesModule(specifier, manifest.name)) continue;
 
         const at = { package: name, file: file.path, line, target: specifier };
+        const landing = landingOutside(specifier, file.path, entry.dir);
+        if (landing !== null) {
+          violations.push({
+            ...at,
+            reason:
+              `a path that leaves its package ${entry.dir} (lands on ${landing}): ` +
+              "another package is imported by its name",
+          });
+          continue;
+        }
         const product = table.products.find((module) => matchesModule(specifier, module));
         if (product !== undefined) {
           violations.push({ ...at, reason: `targets the product package ${product}` });
