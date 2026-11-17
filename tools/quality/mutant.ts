@@ -18,7 +18,9 @@
  * writes the original bytes back and checks them byte for byte.
  *
  * Verdicts, read from the JUnit report bun writes:
- *   killed    the oracle failed BY ASSERTION, and printed the declared trace if one is declared;
+ *   killed    the oracle failed BY ASSERTION (a test case typed `AssertionError` that ran at
+ *             least one assertion, see `assertionFailures`), and printed the declared trace if
+ *             one is declared;
  *   survived  the oracle stayed green with at least one test run;
  *   invalid   anything else: a load or syntax error, a thrown error, no report, no test run,
  *             a red run without the trace. A crash proves the mutant breaks the program, not
@@ -30,6 +32,11 @@
  * Confinement: every `file` and oracle test must be tracked, a regular file (never a symbolic
  * link, which a write would follow) and resolve inside the repository; the mutated file is
  * checked again on the copy right before each write. Otherwise the site is invalid (exit 3).
+ * Writes and the byte-for-byte read-back open the file with O_NOFOLLOW. After the oracle ran,
+ * confinement is checked once more before restoring: an entry the oracle replaced (by a link, or
+ * under a directory now leading out of the copy) is reported as `restore id=… tampered (…)` and
+ * counted as a restoration that differs; it is removed and recreated only when its directory is
+ * still inside the copy, and nothing is ever written through it.
  *
  * Interruption (SIGINT, SIGTERM) kills the oracle the launcher started, not the processes that
  * oracle started itself: an oracle that spawns children (this repository's own catalogue relaunches
@@ -42,11 +49,14 @@
  */
 
 import {
+  closeSync,
   cpSync,
   existsSync,
+  constants as fsConstants,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -180,8 +190,87 @@ export function confinementProblem(base: string, path: string): string | null {
   return null;
 }
 
+/** Why the directory holding `base/path` is not inside `base`, or null when it is. */
+function directoryProblem(base: string, path: string): string | null {
+  const root = realpathSync(base);
+  let real: string;
+  try {
+    real = realpathSync(dirname(join(base, path)));
+  } catch {
+    return `${dirname(path)} is unreadable`;
+  }
+  return real === root || real.startsWith(`${root}${sep}`)
+    ? null
+    : `${dirname(path)} resolves outside the repository`;
+}
+
+/** Every position where `anchor` starts, overlapping ones included (`aa` is twice in `aaa`). */
 export function occurrences(source: string, anchor: string): number {
-  return source.split(anchor).length - 1;
+  // An empty anchor marks no site; indexOf("", n) never returns -1, so it would not terminate.
+  if (anchor.length === 0) return 0;
+  let count = 0;
+  for (let at = source.indexOf(anchor); at !== -1; at = source.indexOf(anchor, at + 1)) count += 1;
+  return count;
+}
+
+/** Open an existing regular file for writing, truncated, refusing a link as the last component. */
+function writeNoFollow(full: string, bytes: Buffer | string): void {
+  const fd = openSync(full, fsConstants.O_WRONLY | fsConstants.O_TRUNC | fsConstants.O_NOFOLLOW);
+  try {
+    writeFileSync(fd, bytes);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function readNoFollow(full: string): Buffer {
+  const fd = openSync(full, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW);
+  try {
+    return readFileSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export interface Restoration {
+  /** The copy holds the original bytes and the oracle left the entry as it found it. */
+  readonly identical: boolean;
+  /** What the oracle left in place of the regular file, or null when it left one. */
+  readonly tampered: string | null;
+}
+
+/**
+ * Put the original bytes back at `tree/path` after an oracle ran, without trusting what the
+ * oracle left: it is code running in the copy and may have replaced the file, or a directory on
+ * its way, by a link leading out of it. Confinement is checked again first. A tampered entry
+ * whose directory is still inside the copy is removed (never followed) and recreated; one whose
+ * directory leads outside is not touched at all. Either way the restoration is not identical.
+ */
+export function restore(tree: string, path: string, original: Buffer, mode: number): Restoration {
+  const full = join(tree, path);
+  const tampered = confinementProblem(tree, path);
+  try {
+    if (tampered === null) {
+      writeNoFollow(full, original);
+      return { identical: readNoFollow(full).equals(original), tampered };
+    }
+    if (directoryProblem(tree, path) !== null) return { identical: false, tampered };
+    // rmSync removes a link itself, never its target; O_EXCL refuses anything recreated meanwhile.
+    rmSync(full, { recursive: true, force: true });
+    const flags =
+      fsConstants.O_WRONLY | fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_NOFOLLOW;
+    const fd = openSync(full, flags, mode);
+    try {
+      writeFileSync(fd, original);
+    } finally {
+      closeSync(fd);
+    }
+    return { identical: false, tampered };
+  } catch (error) {
+    // A race that swapped the entry again between the check and the open (ELOOP, EEXIST): the
+    // bytes are not where they belong, and nothing was written through a link.
+    return { identical: false, tampered: tampered ?? `${path}: ${String(error)}` };
+  }
 }
 
 /** Replace the single occurrence of `anchor`. Throws SiteError when that proves nothing. */
@@ -206,6 +295,34 @@ export interface Verdict {
   readonly assertions: number;
 }
 
+// A `<testcase>` element, self-closing or with a body. Attribute values are matched as quoted
+// strings so a `>` inside one (a test name) cannot end the tag early.
+const TESTCASE = /<testcase\b((?:[^>"]|"[^"]*")*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+const TESTCASE_ASSERTIONS = /\bassertions="(\d+)"/;
+
+/**
+ * Count the test cases that failed BY ASSERTION: the case records a failure typed
+ * `AssertionError` AND at least one assertion run before it failed.
+ *
+ * Why both: the `type` alone is not a runtime-independent signal. Bun 1.4.0 (the pinned
+ * toolchain) writes `<failure type="AssertionError" />` for every failure, a thrown `Error` or a
+ * `TypeError` included, while 1.4.4 writes the real error type. The per-case `assertions` count
+ * is written by both, and a case that failed with zero assertions failed before any assertion,
+ * which is invalid by definition. Residual limit on 1.4.0 only: a case that passes an assertion
+ * and then throws a non-assertion error is indistinguishable, in the report, from an assertion
+ * failure; 1.4.4 tells them apart by `type`.
+ */
+function assertionFailures(report: string): number {
+  let count = 0;
+  for (const match of report.matchAll(TESTCASE)) {
+    const attributes = match[1] ?? "";
+    const body = match[2] ?? "";
+    const ran = Number(TESTCASE_ASSERTIONS.exec(attributes)?.[1] ?? "0");
+    if (ran > 0 && body.includes('<failure type="AssertionError"')) count += 1;
+  }
+  return count;
+}
+
 /** Classify one oracle run. Pure: takes the exit code, the JUnit report (or null) and the output. */
 export function classify(
   exitCode: number,
@@ -216,7 +333,7 @@ export function classify(
   const header = report === null ? null : /<testsuites\b[^>]*\btests="(\d+)"[^>]*>/.exec(report);
   if (report === null || header === null) return { verdict: "invalid", tests: 0, assertions: 0 };
   const tests = Number(header[1]);
-  const assertions = report.split('<failure type="AssertionError"').length - 1;
+  const assertions = assertionFailures(report);
   if (exitCode === 0)
     return {
       verdict: tests > 0 && !report.includes("<failure") ? "survived" : "invalid",
@@ -460,16 +577,20 @@ export async function main(argv: readonly string[]): Promise<number> {
       const confinement = confinementProblem(copy.tree, mutant.file);
       if (confinement !== null) throw new SiteError(confinement);
       const target = join(copy.tree, mutant.file);
-      const original = readFileSync(target);
+      const original = readNoFollow(target);
+      const mode = lstatSync(target).mode & 0o777;
       const mutated = applyMutant(original.toString("utf8"), mutant.anchor, mutant.substitution);
       let result: OracleRun;
+      let restoration: Restoration;
       try {
-        writeFileSync(target, mutated);
+        writeNoFollow(target, mutated);
         result = await runOracle(work, copy.tree, mutant.oracle);
       } finally {
-        writeFileSync(target, original);
+        restoration = restore(copy.tree, mutant.file, original, mode);
       }
-      const restored = readFileSync(target).equals(original);
+      if (restoration.tampered !== null)
+        console.log(`restore id=${mutant.id} tampered (${restoration.tampered})`);
+      const restored = restoration.identical;
       if (restored) identical += 1;
       const verdict = classify(result.code, result.report, result.output, mutant.oracle.trace);
       if (verdict.verdict === "killed") killed += 1;
