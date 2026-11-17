@@ -219,13 +219,22 @@ describe("the gate on a fixture repository", () => {
   });
 });
 
+// Folding every tracked line of the whole repository takes about 3 s on a
+// developer laptop and more than the 5 s default on a CI runner, where the
+// timeout killed the child and read as exit 1.
+const WHOLE_REPOSITORY_TIMEOUT_MS = 60_000;
+
 describe("the gate on this repository", () => {
-  test("exits 0 with the delivered data file", () => {
-    const result = run(ROOT);
-    expect(result.stderr).toBe("");
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(`${GATE_NAME} verified:`);
-  });
+  test(
+    "exits 0 with the delivered data file",
+    () => {
+      const result = run(ROOT);
+      expect(result.stderr).toBe("");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain(`${GATE_NAME} verified:`);
+    },
+    WHOLE_REPOSITORY_TIMEOUT_MS,
+  );
 });
 
 describe("--derive", () => {
