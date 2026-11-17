@@ -181,11 +181,21 @@ describe("planPush", () => {
   });
 });
 
-/** A runner whose work tree is commit `checkedOut`: only there are untracked files examined. */
+/** The counter line check-artifact-lifecycle.ts prints on every verdict it reaches. */
+const counters = (unavailable: number): string =>
+  `markers: total=${unavailable} valid=0 overdue=0 unavailable=${unavailable} malformed=0`;
+
+/**
+ * A runner whose work tree is commit `checkedOut`: only there are untracked
+ * files examined. Each run prints the gate's counter line, with `unavailable[i]`
+ * unavailable markers (default 0); `output[i]`, when given, replaces the output.
+ */
 function runner(
   codes: readonly (number | null)[],
   available = true,
   checkedOut = LOCAL,
+  unavailable: readonly number[] = [],
+  output: readonly (string | undefined)[] = [],
 ): Runner & { calls: unknown[] } {
   const calls: unknown[] = [];
   return {
@@ -197,7 +207,7 @@ function runner(
       const exitCode = index < codes.length ? (codes[index] as number | null) : 0;
       return {
         exitCode,
-        output: `gate run ${calls.length}\n`,
+        output: output[index] ?? `gate run ${calls.length}\n${counters(unavailable[index] ?? 0)}\n`,
         untrackedExamined: untracked && sha === checkedOut,
       };
     },
@@ -243,14 +253,53 @@ describe("guard", () => {
     );
   });
 
-  test("a refusal of the guard itself names the override, which lets it through", () => {
-    const refused = refuse("unexpected line 1 on the standard input", false);
-    expect(refused.exitCode).toBe(2);
-    expect(refused.lines.at(-1)).toContain("push REFUSED");
-    expect(refused.lines.at(-1)).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
-    const overridden = refuse("unexpected line 1 on the standard input", true);
-    expect(overridden.exitCode).toBe(0);
-    expect(overridden.lines.at(-1)).toContain("OVERRIDE ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 active");
+  test("a refusal of the guard itself says the override does not lift it, and blocks under it", () => {
+    for (const override of [false, true]) {
+      const refused = refuse("unexpected line 1 on the standard input", override);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.lines.at(-1)).toContain("push REFUSED (exit 2)");
+      expect(refused.lines.at(-1)).toContain(
+        "ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 lifts violations only (exit 1)",
+      );
+      expect(refused.lines.join("\n")).not.toContain("OVERRIDE");
+    }
+  });
+
+  test.each([
+    ["an unreadable source or a usage error", 2, 2],
+    ["a malformed marker", 4, 4],
+    ["an unevaluable merged() marker", 3, 3],
+    ["a gate that cannot start", null, 2],
+    ["a code outside the gate's contract", 7, 7],
+  ])("under the override, %s still blocks with its code", (_name, code, expected) => {
+    const outcome = guard([GATED], runner([code]), true);
+    expect(outcome.exitCode).toBe(expected);
+    expect(outcome.lines.at(-1)).toContain(`push REFUSED (exit ${expected})`);
+    expect(outcome.lines.at(-1)).toContain("lifts violations only (exit 1)");
+    expect(outcome.lines.join("\n")).not.toContain("OVERRIDE");
+  });
+
+  test("under the override, a violation on one ref does not lift a guard refusal on another", () => {
+    expect(guard([GATED, OTHER], runner([1, 4]), true).exitCode).toBe(4);
+    expect(guard([GATED, OTHER], runner([3, 1]), true).exitCode).toBe(3);
+  });
+
+  test("an exit 1 whose counters report an unavailable marker blocks under the override with 3", () => {
+    const outcome = guard([GATED], runner([1], true, LOCAL, [1]), true);
+    expect(outcome.exitCode).toBe(3);
+    expect(outcome.lines.at(-1)).toContain("push REFUSED (exit 3)");
+    // Without an unavailable marker the same exit 1 is lifted.
+    expect(guard([GATED], runner([1], true, LOCAL, [0]), true).exitCode).toBe(0);
+  });
+
+  test.each([
+    ["no counter line", "gate run 1\n"],
+    ["two counter lines", `${counters(0)}\n${counters(0)}\n`],
+    ["a counter line of another shape", "markers: total=1 unavailable=0\n"],
+  ])("an exit 1 with %s is an unreadable report: exit 2, under the override too", (_name, out) => {
+    const outcome = guard([GATED], runner([1], true, LOCAL, [], [out]), true);
+    expect(outcome.exitCode).toBe(2);
+    expect(outcome.lines.at(-1)).toContain("push REFUSED (exit 2)");
   });
 
   test("a red gate refuses with the gate's code and names the override", () => {

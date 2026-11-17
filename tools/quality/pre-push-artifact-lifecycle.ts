@@ -36,12 +36,20 @@ import { runGit } from "./git-diff";
 // to no pushed commit; when no pushed ref is that commit, the guard prints
 // that the untracked files were not examined.
 //
-// A red gate refuses the push (exit: the code of the gate) and prints how to
-// override. Every refusal of the guard itself (usage, unreadable input, no work
-// tree) names the override too, which lets it through the same way. ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 lets a red push through, saying so
-// and saying that the CI job (reusable-artifact-lifecycle.yml) replays the same
-// gate: this hook is the fast layer, the CI is the layer that enforces. A gate
-// that cannot run is a skipped gate, printed on every push, never silence.
+// A red gate refuses the push and prints why. ARTIFACT_LIFECYCLE_ALLOW_PUSH=1
+// lifts VIOLATIONS only (gate exit 1): the push passes, saying so and saying
+// that the CI job (reusable-artifact-lifecycle.yml) replays the same gate; this
+// hook is the fast layer, the CI is the layer that enforces. Every other refusal
+// blocks the push with its own code, override or not, and says the override
+// does not lift it: a refusal of the guard itself (usage, unreadable input, no
+// work tree: 2), and of the gate (unreadable source or malformed exemptions
+// entry: 2, malformed marker: 4, unevaluable merged() marker: 3, a gate that
+// cannot start: 2, a code outside its contract: that code). The gate ranks a
+// violation above an unavailable marker, so its exit 1 can hide one: the guard
+// reads the gate's counter line and blocks with 3 when it reports one; an exit 1
+// without exactly one counter line is an unreadable report, 2. Across refs, a
+// code the override cannot lift wins over a violation. A gate that is not found
+// is a skipped gate, printed on every push, never silence.
 //
 // Every line goes to the standard error, which git relays to the pusher.
 // Installing the hook is an act of the owner of each work tree; nothing here
@@ -53,8 +61,13 @@ export const OVERRIDE_VARIABLE = "ARTIFACT_LIFECYCLE_ALLOW_PUSH";
 const CI_JOB = "reusable-artifact-lifecycle.yml";
 const USAGE = `usage: bun tools/quality/pre-push-artifact-lifecycle.ts <remote> [<url>] < refs`;
 
-/** Exit codes of the gate, most severe first (check-artifact-lifecycle.ts). */
-const GATE_PRECEDENCE: readonly number[] = [2, 4, 1, 3];
+/** The only gate code the override lifts (check-artifact-lifecycle.ts). */
+const VIOLATIONS = 1;
+/** Gate codes the override never lifts, most severe first. */
+const BLOCKING_PRECEDENCE: readonly number[] = [2, 4, 3];
+/** The counter line the gate prints with every verdict it reaches. */
+const MARKER_COUNTERS =
+  /^markers: total=\d+ valid=\d+ overdue=\d+ unavailable=(\d+) malformed=\d+$/;
 
 export interface PushedRef {
   readonly localRef: string;
@@ -216,8 +229,17 @@ export interface Outcome {
   readonly lines: string[];
 }
 
-/** A red verdict: refused with `code` and the override named, or let through by the override. */
+/**
+ * A red verdict. Violations (exit 1): refused with the override named, or let
+ * through by it. Any other code: refused with that code, override or not.
+ */
 function conclude(code: number, override: boolean, say: (text: string) => void): number {
+  if (code !== VIOLATIONS) {
+    say(
+      `push REFUSED (exit ${code}): not a violation; ${OVERRIDE_VARIABLE}=1 lifts violations only (exit 1)${override ? ", it is set and does not apply" : ""}`,
+    );
+    return code;
+  }
   if (override) {
     say(
       `OVERRIDE ${OVERRIDE_VARIABLE}=1 active: push allowed despite exit ${code}; the CI job ${CI_JOB} replays the same gate`,
@@ -230,7 +252,23 @@ function conclude(code: number, override: boolean, say: (text: string) => void):
   return code;
 }
 
-/** A refusal of the guard itself (usage, unreadable input): same override, same wording. */
+/**
+ * The codes one gate run stands for. An exit 1 also stands for 3 when the
+ * gate's counter line reports an unavailable marker, and for 2 when that line
+ * is not there exactly once.
+ */
+function runCodes(exitCode: number, output: string): number[] {
+  if (exitCode !== VIOLATIONS) return [exitCode];
+  const counters = output
+    .split("\n")
+    .map((line) => MARKER_COUNTERS.exec(line))
+    .filter((match): match is RegExpExecArray => match !== null);
+  const [only] = counters;
+  if (counters.length !== 1 || only === undefined) return [VIOLATIONS, 2];
+  return Number(only[1]) > 0 ? [VIOLATIONS, 3] : [VIOLATIONS];
+}
+
+/** A refusal of the guard itself (usage, unreadable input): exit 2, never lifted by the override. */
 export function refuse(reason: string, override: boolean): Outcome {
   const lines: string[] = [];
   const say = (text: string): void => {
@@ -259,6 +297,7 @@ export function guard(plans: readonly Plan[], runner: Runner, override: boolean)
     return { exitCode: 0, lines };
   }
   const codes: number[] = [];
+  let redRuns = 0;
   // The untracked files belong to the work tree, not to a ref: examined once,
   // with the first ref whose commit the work tree is.
   let untrackedExamined = false;
@@ -266,22 +305,33 @@ export function guard(plans: readonly Plan[], runner: Runner, override: boolean)
     const run = runner.runGate(plan.sha, plan.range, !untrackedExamined);
     untrackedExamined ||= run.untrackedExamined;
     lines.push(...run.output.split("\n").filter((line) => line !== ""));
+    if (run.exitCode !== 0) redRuns += 1;
     if (run.exitCode === null) {
       say(`${plan.ref}: the gate could not be started`);
       codes.push(2);
-    } else codes.push(run.exitCode);
+      continue;
+    }
+    const stood = runCodes(run.exitCode, run.output);
+    if (stood.includes(3) && run.exitCode === VIOLATIONS) {
+      say(`${plan.ref}: exit 1 with an unavailable marker, which the override does not lift`);
+    }
+    if (stood.includes(2) && run.exitCode === VIOLATIONS) {
+      say(`${plan.ref}: exit 1 without exactly one marker counter line: unreadable report`);
+    }
+    codes.push(...stood);
   }
   if (!untrackedExamined) {
     say(
       "untracked files of the work tree NOT examined: no pushed ref is the checked-out commit with an index and tracked files equal to it",
     );
   }
-  // A code outside the gate's contract is red too, after the known ones.
+  // A code the override cannot lift wins over a violation; a code outside the
+  // gate's contract is one of them, after the known ones.
   const red =
-    GATE_PRECEDENCE.find((code) => codes.includes(code)) ?? codes.find((code) => code !== 0) ?? 0;
-  say(
-    `refs=${plans.length} examined=${gated.length} red=${codes.filter((code) => code !== 0).length}`,
-  );
+    BLOCKING_PRECEDENCE.find((code) => codes.includes(code)) ??
+    codes.find((code) => code !== 0 && code !== VIOLATIONS) ??
+    (codes.includes(VIOLATIONS) ? VIOLATIONS : 0);
+  say(`refs=${plans.length} examined=${gated.length} red=${redRuns}`);
   if (red === 0) {
     say("pass");
     return { exitCode: 0, lines };
