@@ -187,6 +187,54 @@ describe("buildInvariantMatrix — gates and tests are tracked files", () => {
     expect(violation).toContain("does not cite `check-thing`");
   });
 
+  test("a gate declared as its own test is a violation, even when it names itself", () => {
+    const violation = soleViolation(
+      build(
+        mappingText([
+          ["I-01", [{ gate: GATE, test: GATE }]],
+          ["I-03", []],
+        ]),
+        { tracked: tree({ [GATE]: "// check-thing: the gate\n" }) },
+      ),
+    );
+    expect(violation).toContain(GATE);
+    expect(violation).toContain("the gate itself");
+  });
+
+  // The base name is a word of a path, not a substring of any text: a short
+  // stem is found inside unrelated words, a long one inside a longer name.
+  const looseCitations: readonly (readonly [string, string, string])[] = [
+    ["a one-letter stem inside an unrelated word", "tools/a.ts", "// unrelated content\n"],
+    ["a stem inside a longer name", GATE, 'import { x } from "./check-things";\n'],
+    ["a stem prefixed by another word", GATE, 'import { x } from "./precheck-thing";\n'],
+  ];
+  for (const [name, gate, body] of looseCitations) {
+    test(`a test does not cite its gate through ${name}`, () => {
+      const violation = soleViolation(
+        build(
+          mappingText([
+            ["I-01", [{ gate, test: TEST }]],
+            ["I-03", []],
+          ]),
+          { tracked: tree({ [gate]: "// the gate\n", [TEST]: body }) },
+        ),
+      );
+      expect(violation).toContain(TEST);
+      expect(violation).toContain("does not cite");
+    });
+  }
+
+  test("a test citing its gate between path delimiters is accepted", () => {
+    for (const body of [
+      'import { x } from "./check-thing";\n',
+      "// covers tools/check-thing.ts\n",
+      "describe(`check-thing`, () => {});\n",
+    ]) {
+      const { report } = build(GREEN, { tracked: tree({ [GATE]: "// the gate\n", [TEST]: body }) });
+      expect(report.violations).toEqual([]);
+    }
+  });
+
   test("a tracked test that cannot be read is a violation, not a citation", () => {
     const violation = soleViolation(
       build(GREEN, { tracked: tree({ [GATE]: "// the gate\n", [TEST]: null }) }),
@@ -285,6 +333,33 @@ describe("buildInvariantMatrix — a register that says nothing is red, never an
     expect(result.matrix).toBeNull();
     expect(result.report.violations.join("\n")).toContain("zero `| I-nn |` rows");
   });
+
+  // Two readers are composed; a row only one of them sees has no agreed state,
+  // so it is refused rather than defaulted to « en vigueur ».
+  const halfRead: readonly (readonly [string, string, string])[] = [
+    [
+      "an id past the digits one reader accepts",
+      "| I-1000 | Retiré le 2026-03-03. | D02 | x |",
+      "I-1000",
+    ],
+    ["a row without its closing cell delimiter", "| I-04 | **Retiré** sans barre finale", "I-04"],
+  ];
+  for (const [name, line, id] of halfRead) {
+    test(`a row only one reader sees is a violation: ${name}`, () => {
+      const result = build(
+        mappingText([
+          ["I-01", []],
+          ["I-03", []],
+          [id, []],
+        ]),
+        { register: `${REGISTER}${line}\n` },
+      );
+      expect(result.matrix).toBeNull();
+      expect(result.report.violations.join("\n")).toContain(
+        `${id}: read by only one of the two register readers`,
+      );
+    });
+  }
 
   test("a register carrying a duplicate id names it", () => {
     const result = build(GREEN, { register: `${REGISTER}| I-03 | Encore | ADR-0003 | x |\n` });
@@ -415,16 +490,23 @@ describe("render-invariant-matrix as a process", () => {
   test("--check on a tree without the projection exits 1, names it, and writes nothing", () => {
     const outcome = run(["bun", SCRIPT, "--check"], root);
     expect(outcome.exitCode).toBe(1);
-    expect(outcome.output).toContain(`${PROJECTION_PATH}: absent`);
+    expect(outcome.output).toContain(`${PROJECTION_PATH}: not tracked by git`);
     expect(() => readFileSync(join(root, PROJECTION_PATH))).toThrow();
   });
 
-  test("generation writes the projection, then --check exits 0 and prints the volume", () => {
+  test("a projection generated on disk but never indexed is not the committed one: exit 1", () => {
     const generated = run(["bun", SCRIPT], root);
     expect(generated.exitCode).toBe(0);
     const written = readFileSync(join(root, PROJECTION_PATH), "utf8");
     expect(JSON.parse(written).rows).toHaveLength(3);
 
+    const checked = run(["bun", SCRIPT, "--check"], root);
+    expect(checked.exitCode).toBe(1);
+    expect(checked.output).toContain(`${PROJECTION_PATH}: not tracked by git`);
+  });
+
+  test("once indexed, --check exits 0 and prints the volume", () => {
+    git(root, "add", PROJECTION_PATH);
     const checked = run(["bun", SCRIPT, "--check"], root);
     expect(checked.exitCode).toBe(0);
     expect(checked.output).toContain("register: 3 row(s) read, 2 in force, 1 retired");
@@ -432,14 +514,36 @@ describe("render-invariant-matrix as a process", () => {
     expect(checked.output).toContain("in force: 1 without gate");
   });
 
-  test("--check on a projection differing from the regeneration exits 1 and names the file", () => {
+  test("--check on an indexed projection differing from the regeneration exits 1 and names it", () => {
     const path = join(root, PROJECTION_PATH);
     const conforming = readFileSync(path, "utf8");
     writeFileSync(path, conforming.replace("imposé et testé", "sans gate"));
+    git(root, "add", PROJECTION_PATH);
     const outcome = run(["bun", SCRIPT, "--check"], root);
     writeFileSync(path, conforming);
+    git(root, "add", PROJECTION_PATH);
     expect(outcome.exitCode).toBe(1);
     expect(outcome.output).toContain(`${PROJECTION_PATH}: differs from the regeneration`);
+  });
+
+  test("--check judges the indexed sources, not edits left on the disk", () => {
+    const projection = join(root, PROJECTION_PATH);
+    const mapping = join(root, MAPPING_PATH);
+    const conformingProjection = readFileSync(projection, "utf8");
+    const conformingMapping = readFileSync(mapping, "utf8");
+    // A conforming disk over a red index: the index is what --check judges.
+    writeFileSync(projection, conformingProjection.replace("imposé et testé", "sans gate"));
+    git(root, "add", PROJECTION_PATH);
+    writeFileSync(projection, conformingProjection);
+    const staleIndex = run(["bun", SCRIPT, "--check"], root);
+    git(root, "add", PROJECTION_PATH);
+    // A mapping edited on disk and never staged does not change the verdict.
+    writeFileSync(mapping, conformingMapping.replace("  - invariant: I-03\n    gates: []\n", ""));
+    const unstagedMapping = run(["bun", SCRIPT, "--check"], root);
+    writeFileSync(mapping, conformingMapping);
+    expect(staleIndex.exitCode).toBe(1);
+    expect(staleIndex.output).toContain(`${PROJECTION_PATH}: differs from the regeneration`);
+    expect(unstagedMapping.exitCode).toBe(0);
   });
 
   test("a gate present on disk but not tracked is a violation, and nothing is generated", () => {
