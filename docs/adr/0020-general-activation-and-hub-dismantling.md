@@ -1,10 +1,10 @@
 # ADR-0020 — Activation générale multi-repo et démantèlement du hub
 
-- **Statut :** accepted — le merge de la pull request qui porte cet ADR est la signature propriétaire (arrêt dur du jalon γ, §5.1 du prompt de mission).
+- **Statut :** accepted — le merge de la pull request qui porte cet ADR est la signature propriétaire (arrêt dur du jalon γ, §5.1 du prompt de mission). **Amendé par :** ADR-0023 (séquencement résiduel, ADR-0023 §2.2), ADR-0031 (§2.5, la seule clause de localisation du patch vendorisé), ADR-0039 (ADR-0039 D1 : `product-research`, exception nominative privée hors portfolio).
 - **Date :** 2026-07-28
 - **Arbitrage :** propriétaire — quatre décisions prises explicitement en session le 2026-07-28 (D1–D4), enregistrées au design d'activation (`docs/superpowers/specs/2026-07-28-multi-repo-activation-design.md`, mergé par #268 après un cycle K4 à cinq révisions et deux relecteurs indépendants) ; le présent ADR en est l'acte doctrinal.
 - **Portée :** écosystème entier — topologie, invariants, séquencement, LEXICON, autorités documentaires, mécanique de migration, sécurité de la chaîne d'approvisionnement.
-- **Étend :** ADR-0008 (topologie multi-repository). **Supersède de manière bornée :** voir §2 — chaque supersession est nominative et bornée à la clause près.
+- **Étend :** ADR-0008 (topologie multi-repository). **Supersède de manière bornée :** ADR-0001 (clause de topologie), ADR-0008 (§5 ; points 3 et 4 pour le seul `website`), ADR-0009 (§8 ; loi de couverture du §4 ; clause « états d'exposition » du §7), ADR-0011 (séquencement D1), ADR-0018 (cadre de vagues ; D3) — chaque supersession est nominative et bornée à la clause près au §2.2.
 
 ## 1. Contexte
 
