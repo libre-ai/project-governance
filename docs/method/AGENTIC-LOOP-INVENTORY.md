@@ -78,7 +78,7 @@ l'URL du run vert ; idempotent). Les deux étapes ne comptent que les runs
 propres à la boucle (`schedule`, `workflow_dispatch`) : un run `push` ou
 `pull_request` d'un workflow mixte appartient au garde-fou de CI, jamais à la
 boucle. Câblés : `adoption-proof`, `context-conformance`, `fleet-advisories`,
-`inventory-drift`, `org-readme-drift`, `sovereignty-report`, `truth-drift`.
+`fleet-staleness`, `inventory-drift`, `org-readme-drift`, `sovereignty-report`, `truth-drift`.
 Le garde-fou contre le retour de la dérive est
 `tools/security/scheduled-loop-alerting.test.ts` : il énumère lui-même les
 workflows à `schedule` et échoue si l'un d'eux n'a pas les deux étapes, la
