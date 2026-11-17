@@ -6,6 +6,7 @@ import {
   type Citation,
   CONFIG_PATH,
   classifyCitation,
+  countRawCitations,
   type EvaluateInput,
   evaluate,
   findCitations,
@@ -13,6 +14,7 @@ import {
   patternMatches,
   readScope,
   type Scope,
+  sumViolation,
 } from "./check-adr-citations";
 
 const SCOPE: Scope = {
@@ -132,8 +134,70 @@ describe("qualified citations (F1, F2)", () => {
   });
 
   test("the hyphen form is never read as foreign, and a space form is never local", () => {
-    expect(classifyCitation(citation("control-plane ADR-0047"), LOCAL, FOREIGN)).toBe("local");
     expect(classifyCitation(citation("ADR-0048"), LOCAL, FOREIGN)).toBe("unknown-local");
+    expect(classifyCitation(citation("ADR 0047"), LOCAL, FOREIGN)).toBe("bare");
+  });
+
+  test("a repository name before the hyphen form is a qualifier, and the pair is a violation", () => {
+    // `control-plane ADR-0047` would otherwise be checked against the local 0047:
+    // the very collision this gate exists to keep apart.
+    for (const text of [
+      "control-plane ADR-0047",
+      "`inconnu` ADR-0047",
+      "project-governance ADR-0047",
+      "libre-ai/control-plane ADR-0047",
+    ]) {
+      expect(classifyCitation(citation(text), LOCAL, FOREIGN)).toBe("bare");
+    }
+    const { violations, counters } = evaluate(withDocument("Per control-plane ADR-0047.\n"));
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toStartWith(`${DOC}:1: bare ADR citation \`ADR-0047\``);
+    expect(violations[0]).toContain('"control-plane" before it names a repository');
+    expect(counters.local).toBe(0);
+  });
+
+  test("a prose word before the hyphen form is not a qualifier", () => {
+    for (const text of ["par ADR-0047", "amende ADR-0047", "the ADR-0047", "I-23, ADR-0047"]) {
+      expect(classifyCitation(citation(text), LOCAL, FOREIGN)).toBe("local");
+    }
+  });
+});
+
+describe("separators and lists", () => {
+  test("any non-alphanumeric run between `ADR` and the digits is read, and is bare", () => {
+    for (const text of [
+      "ADR #0047",
+      "ADR_0047",
+      "ADR:0047",
+      "ADR.0047",
+      "ADR\u{200b}0047",
+      "ADR\u{00ad}0047",
+      "ADR - 0047",
+      "ADR/0047",
+    ]) {
+      expect(classifyCitation(citation(text), LOCAL, FOREIGN)).toBe("bare");
+      const { violations, counters } = evaluate(withDocument(`See ${text}.\n`));
+      expect(violations).toHaveLength(1);
+      expect(counters.bare).toBe(1);
+    }
+  });
+
+  test("every number of a slash list is read", () => {
+    const found = findCitations(DOC, "(ADR-0047/9999/0048)");
+    expect(found.map((c) => c.digits)).toEqual(["0047", "9999", "0048"]);
+    const { violations, counters } = evaluate(withDocument("See ADR-0047/9999.\n"));
+    expect(violations).toEqual([
+      `${DOC}:1: \`ADR-0047/9999\` cites this repository's series, and no tracked docs/adr/9999-*.md exists`,
+    ]);
+    expect(counters.citations).toBe(2);
+  });
+
+  test("the plural list form `ADRs 0047 and 9999` is read and is bare", () => {
+    const { violations, counters } = evaluate(withDocument("See ADRs 0047 and 9999.\n"));
+    expect(violations).toHaveLength(1);
+    expect(violations[0]).toContain("bare ADR citation `ADRs 0047`");
+    expect(violations[0]).toContain("cite each decision");
+    expect(counters.bare).toBe(1);
   });
 });
 
@@ -211,6 +275,10 @@ describe("redirection pages", () => {
       "- **Statut :** Accepted",
       "- **Arbitrage :** owner",
       "Status: accepted",
+      "## Statut",
+      "### Status — accepted",
+      "| Statut | accepted |",
+      "| **Arbitrage** | owner |",
     ]) {
       const { violations } = evaluate(
         withDocument("Per ADR-0047.\n", {
@@ -324,6 +392,26 @@ describe("counters", () => {
       deadRedirects: 1,
     });
     expect(counters.citations).toBe(counters.local + counters.foreign + counters.bare);
+  });
+
+  test("citations are counted from the raw matches of the whole text, not from the classified list", () => {
+    expect(countRawCitations("ADR-0047/0048\nADR 0001 and ADR\u{200b}12\nadr-1 XADR-1\n")).toBe(4);
+  });
+
+  test("the sum check fails when the classified citations do not add up to the raw count", () => {
+    const counters = {
+      documents: 1,
+      citations: 3,
+      local: 1,
+      foreign: 1,
+      bare: 0,
+      redirects: 0,
+      deadRedirects: 0,
+    };
+    expect(sumViolation(counters)).toBe(
+      "internal: citations=3 (raw matches) differs from local+foreign+bare=2",
+    );
+    expect(sumViolation({ ...counters, bare: 1 })).toBeNull();
   });
 });
 
