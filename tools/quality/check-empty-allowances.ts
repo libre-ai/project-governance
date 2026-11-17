@@ -67,6 +67,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     because:
       "same absence as check-pr-door.ts: the Not-added line lives in a pull request description, and the diff it is confronted to is the pull request's. On a pull_request run an absent or unreadable event payload, data file or diff fails instead of reading as empty",
   },
+  {
+    file: "tools/quality/check-volatile-values.ts",
+    because:
+      "the guard reads the tracked root documents (README.md, README.<lang>.md, AGENTS.md, CLAUDE.md); a repository tracking none of them has no line to read, and the empty run says so with the count of tracked files it listed. A tracked root document that cannot be read exits 2 instead of reading as empty",
+  },
 ];
 
 const SCANNED_DIRECTORIES = ["tools", "ecosystem"];
