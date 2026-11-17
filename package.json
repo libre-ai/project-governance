@@ -62,6 +62,7 @@
     "check:work-package-link": "bun run check:bun:runtime && bun tools/quality/check-work-package-link.ts",
     "check:doctrine": "bun run check:bun:runtime && bash tools/quality/check-doctrine-governance.sh",
     "check:context-hygiene": "bun run check:bun:runtime && bash tools/quality/check-context-hygiene.sh",
+    "check:identifier-fingerprints": "bun run check:bun:runtime && bun tools/quality/check-identifier-fingerprints.ts",
     "check:reuse": "bun run check:bun:runtime && uv run --no-project --with-requirements tools/licensing/requirements.txt reuse lint",
     "check:full": "bun run check:bun:runtime && bun run check && bun run check:reuse",
     "build:brand": "bun run check:bun:runtime && bun brand/build-public-projection.ts",
