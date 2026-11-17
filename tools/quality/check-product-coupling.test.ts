@@ -342,7 +342,24 @@ describe("evaluateCoupling — tolerance", () => {
     expect(rendered.ok).toBe(true);
     const text = rendered.lines.join("\n");
     expect(text).toContain("tolerated: packages/shared/src/a.ts:1: product-name");
-    expect(text).toContain("2 tolerated match(es) in 1 exempted file(s)");
+    expect(text).toContain("2 tolerated match(es) in 1 exempted file(s) (0 data + 1 code)");
+  });
+
+  test("the exempted files are counted as data and code apart", () => {
+    const result = evaluateCoupling(
+      input(
+        {
+          "packages/shared/package.json": "{}\n",
+          "packages/shared/src/a.ts": "widgetor\n",
+          "packages/shared/notes.md": "widgetor\n",
+        },
+        { exempted: new Set(["packages/shared/src/a.ts", "packages/shared/notes.md"]) },
+      ),
+    );
+    expect(result.exemptedCodeFiles).toBe(1);
+    expect(renderCoupling(result).lines.join("\n")).toContain(
+      "2 tolerated match(es) in 2 exempted file(s) (1 data + 1 code)",
+    );
   });
 
   test("an exemption that tolerates nothing is a failure", () => {

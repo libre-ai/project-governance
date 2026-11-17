@@ -94,7 +94,24 @@ describe("check-product-coupling as a process", () => {
     const outcome = run(root);
     expect(outcome.code).toBe(0);
     expect(outcome.stderr).toContain("tolerated: packages/shared/src/a.ts:1: product-name");
-    expect(outcome.stdout).toContain("1 tolerated match(es) in 1 exempted file(s)");
+    // A code file: admitted because the guard declares code (owner decision of 2026-11-17).
+    expect(outcome.stdout).toContain(
+      "1 tolerated match(es) in 1 exempted file(s) (0 data + 1 code)",
+    );
+  });
+
+  test("an exemption naming a tracked symbolic link exits 1: not-a-file", () => {
+    const root = repository({
+      "packages/shared/src/a.ts": "const p = 'widgetor';\n",
+      "tools/quality/product-coupling-exemptions.txt": "packages/shared/src/link.ts # a link\n",
+    });
+    symlinkSync("a.ts", join(root, "packages/shared/src/link.ts"));
+    git(root, ["add", "-A"]);
+    const outcome = run(root);
+    expect(outcome.code).toBe(1);
+    expect(outcome.stderr).toContain(
+      "product-coupling: tools/quality/product-coupling-exemptions.txt line 1: not-a-file",
+    );
   });
 
   test("an exemption without a reason exits 1", () => {
