@@ -94,17 +94,19 @@ avant de s'en servir. Une cellule vaut `conforme`, `écart` ou `sans objet`.
 
 | Outil | R1 | R2 | R3 | R4 | R5 | R6 | R7 | R8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `tools/fleet/bump-generation.ts` | conforme | écart | écart | conforme | écart | conforme | écart | écart |
+| `tools/fleet/bump-generation.ts` | écart | écart | écart | conforme | écart | écart | écart | écart |
 | `tools/fleet/sync-labels.ts` | conforme | sans objet | sans objet | conforme | conforme | conforme | conforme | conforme |
 | `tools/presentation/heal-card-status.ts` | écart | écart | sans objet | sans objet | sans objet | sans objet | conforme | conforme |
 | `tools/presentation/heal-org-readme.ts` | écart | écart | écart | conforme | sans objet | écart | écart | conforme |
-| `tools/security/check-branch-protection.ts` | conforme | écart | écart | conforme | écart | conforme | conforme | conforme |
+| `tools/security/check-branch-protection.ts` | conforme | écart | écart | conforme | écart | écart | conforme | conforme |
 
 Chaque écart, nommé :
 
+- **R1** · `tools/fleet/bump-generation.ts` : le mode par défaut ne touche pas la forge, mais `--summary <fichier>` y ajoute le plan au fichier nommé ; la règle ne fait pas d'exception pour un fichier demandé par l'opérateur.
 - **R2** · `tools/fleet/bump-generation.ts` : le plan ne cite le drapeau d'application que lorsque la cible n'est pas déclarée, pour dire qu'il serait refusé ; il n'imprime jamais la commande qui appliquerait.
 - **R3** · `tools/fleet/bump-generation.ts` : après la poussée de la branche et l'ouverture de la pull request, l'outil se fie au code de retour des deux commandes et ne relit ni la branche ni la pull request.
 - **R5** · `tools/fleet/bump-generation.ts` : la ligne de bilan imprime les compteurs par statut et le nombre de cibles, mais aucun contrôle ne refuse un bilan dont la somme ne tient pas.
+- **R6** · `tools/fleet/bump-generation.ts` : un nom passé à `--only` n'est pas confronté à l'inventaire, un nom inconnu est écarté sans signal ; le chemin de `--summary` n'est validé nulle part, et la valeur d'une option peut être un autre drapeau.
 - **R7** · `tools/fleet/bump-generation.ts` : l'URL de clonage des consommateurs et l'URL de l'archive de l'autorité portent le nom d'hôte de la forge en littéral.
 - **R8** · `tools/fleet/bump-generation.ts` : l'en-tête dit que le mode par défaut n'écrit rien nulle part, alors que `--summary <fichier>` ajoute le plan à ce fichier dans les deux modes.
 - **R1** · `tools/presentation/heal-card-status.ts` : sans drapeau, l'outil écrit la section d'état dans le README du checkout ; la lecture seule est l'option (`--check`), à l'inverse de la règle.
@@ -117,6 +119,7 @@ Chaque écart, nommé :
 - **R2** · `tools/security/check-branch-protection.ts` : sans `--fix`, l'outil liste les écarts de protection sans imprimer la commande de correction.
 - **R3** · `tools/security/check-branch-protection.ts` : après la modification des contrôles requis, l'outil annonce « fixed » d'après son propre plan, sans relire la protection.
 - **R5** · `tools/security/check-branch-protection.ts` : le volume imprimé somme les check-runs, mais les dépôts ne sont pas répartis en compteurs exclusifs et aucune somme n'est vérifiée.
+- **R6** · `tools/security/check-branch-protection.ts` : `--repo` sans valeur retombe sur l'absence de filtre, et l'outil traite toute la flotte (avec `--fix`, toutes les protections) ; `--ref` sans valeur retombe sur la référence par défaut ; un argument inconnu est ignoré.
 
 Les cellules `sans objet` tiennent à la nature de l'outil :
 `tools/fleet/sync-labels.ts` refuse d'écrire, il n'a donc ni commande

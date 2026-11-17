@@ -23,6 +23,41 @@ const TOOLS_IN_SERVICE = [
 ] as const;
 const CELL_VALUES = ["conforme", "écart", "sans objet"] as const;
 type CellValue = (typeof CELL_VALUES)[number];
+const SECTIONS = [
+  "Les huit règles",
+  "Codes de sortie",
+  "État des outils en service",
+  "Ce que ce document ne change pas",
+] as const;
+
+// Gaps the brief measured by reading the five tools (its `comportement_actuel`),
+// fixed here so the table cannot turn them « conforme » by editing its text:
+// (1) heal-card-status writes without a flag, heal-org-readme's write path opens
+// on a token; (2) no read-back after writing in bump-generation, heal-org-readme,
+// check-branch-protection; (4) only bump-generation mentions how to apply.
+const BRIEF_GAPS: readonly { readonly tool: string; readonly rule: string }[] = [
+  { tool: "tools/presentation/heal-card-status.ts", rule: "R1" },
+  { tool: "tools/presentation/heal-org-readme.ts", rule: "R1" },
+  { tool: "tools/presentation/heal-card-status.ts", rule: "R2" },
+  { tool: "tools/presentation/heal-org-readme.ts", rule: "R2" },
+  { tool: "tools/security/check-branch-protection.ts", rule: "R2" },
+  { tool: "tools/fleet/bump-generation.ts", rule: "R3" },
+  { tool: "tools/presentation/heal-org-readme.ts", rule: "R3" },
+  { tool: "tools/security/check-branch-protection.ts", rule: "R3" },
+];
+
+// Gaps measured by reading the code after review, not in the brief:
+// bump-generation R1 (`--summary <file>` appends to that file in the default
+// mode), bump-generation R6 (`--only` names are never checked against the
+// inventory, `--summary` is not validated), check-branch-protection R6
+// (`--repo` or `--ref` without a value fall back to the whole fleet or the
+// default ref).
+const READ_GAPS: readonly { readonly tool: string; readonly rule: string }[] = [
+  { tool: "tools/fleet/bump-generation.ts", rule: "R1" },
+  { tool: "tools/fleet/bump-generation.ts", rule: "R6" },
+  { tool: "tools/security/check-branch-protection.ts", rule: "R6" },
+];
+const MEASURED_GAPS = [...BRIEF_GAPS, ...READ_GAPS];
 
 const HYGIENE_EXEMPTION = "allow-local-path";
 
@@ -74,8 +109,10 @@ function hygienePatterns(script: string): Patterns {
 // the shapes of real credentials. None may appear in the document.
 const FORGE_HOST =
   /\b(?:[a-z0-9-]+\.)*(?:github|githubusercontent|gitlab|bitbucket|codeberg|gitea)\.(?:com|org|io)\b/i;
+// The prose forms bind the branch word to its name (« la branche main »,
+// "main branch") so the French « à la main » stays readable.
 const BRANCH_LITERAL =
-  /`(?:main|master|develop|trunk)`|\b(?:main|master):|ref=(?:main|master)\b|refs\/heads\/|origin\/(?:main|master)\b|--(?:branch|base)\s+\S|branch(?:es)?:\s*\[?\s*(?:main|master)\b/;
+  /`(?:main|master|develop|trunk)`|\b(?:main|master):|ref=(?:main|master)\b|refs\/heads\/|origin\/(?:main|master)\b|--(?:branch|base)\s+\S|branch(?:es)?:\s*\[?\s*(?:main|master)\b|\bbranches?\s+(?:main|master|develop|trunk)\b|\b(?:main|master|develop|trunk)\s+branch/i;
 const TOKEN_SHAPE =
   /\bgh[pousr]_[A-Za-z0-9]{16,}|\bgithub_pat_[A-Za-z0-9_]{10,}|\bglpat-[A-Za-z0-9_-]{10,}|\bBearer\s+[A-Za-z0-9._-]{8,}|\bxox[abp]-[A-Za-z0-9-]{8,}|\bAKIA[0-9A-Z]{16}\b/;
 
@@ -143,6 +180,20 @@ function inspect(input: Input): Report {
     problems.push("the first bullet under the title is not « Portée »");
   if (!(bullets[1] ?? "").startsWith("- **Statut :**"))
     problems.push("the second bullet under the title is not « Statut »");
+  else if (!/^- \*\*Statut :\*\* proposé(?:\s|$)/.test(bullets[1] ?? ""))
+    problems.push("the Statut bullet does not say « proposé »");
+  const headerText = flat(header);
+  if (!headerText.includes("Méthode, pas doctrine"))
+    problems.push("the header does not carry « Méthode, pas doctrine »");
+  for (const reference of ["`AGENTS.md`", `\`${HYGIENE_SCRIPT_PATH}\``])
+    if (!headerText.includes(reference)) problems.push(`the header does not refer to ${reference}`);
+
+  // --- level-2 sections, in the order of the brief ---------------------------
+  const sections = lines.filter((line) => line.startsWith("## ")).map((line) => line.slice(3));
+  if (sections.join(" | ") !== SECTIONS.join(" | "))
+    problems.push(
+      `level-2 sections are [${sections.join(" | ")}], expected [${SECTIONS.join(" | ")}]`,
+    );
 
   // --- the eight rules -------------------------------------------------------
   const headings = lines
@@ -164,10 +215,16 @@ function inspect(input: Input): Report {
 
   // --- exit codes ------------------------------------------------------------
   const codesSection = section(lines, "Codes de sortie");
-  const codes = codesSection === null ? [] : tableRows(codesSection).map((row) => row[0] ?? "");
+  const codeRows = codesSection === null ? [] : tableRows(codesSection);
+  const codes = codeRows.map((row) => row[0] ?? "");
   if (codesSection === null) problems.push("section « Codes de sortie » is missing");
   else if (codes.join(" ") !== EXIT_CODES.join(" "))
     problems.push(`exit codes are [${codes.join(" ")}], expected [${EXIT_CODES.join(" ")}]`);
+  for (const row of codeRows) {
+    if (row.length !== 2)
+      problems.push(`exit code ${row[0] ?? ""}: ${row.length} cell(s), expected 2`);
+    else if ((row[1] ?? "") === "") problems.push(`exit code ${row[0] ?? ""} has an empty meaning`);
+  }
 
   // --- state of the tools in service -----------------------------------------
   const stateSection = section(lines, "État des outils en service");
@@ -205,6 +262,15 @@ function inspect(input: Input): Report {
     problems.push(
       `the table lists [${tools.join(" ")}], expected the five tools in service [${TOOLS_IN_SERVICE.join(" ")}]`,
     );
+  for (const expected of MEASURED_GAPS) {
+    const row = rows.find((candidate) => candidate[0] === `\`${expected.tool}\``);
+    if (row === undefined) continue; // already reported: the tool is missing from the table
+    const cell = row[RULES.findIndex((rule) => rule === expected.rule) + 1] ?? "";
+    if (cell !== "écart")
+      problems.push(`${expected.tool} ${expected.rule}: a measured gap, the cell says « ${cell} »`);
+  }
+  if (!/Aucun des cinq outils ne rend le code 3/.test(flat(stateSection ?? [])))
+    problems.push("no sentence says that none of the tools in service returns exit code 3");
 
   // --- every gap is named, with its rule and its path -------------------------
   const items = (stateSection ?? [])
@@ -504,6 +570,76 @@ describe("the lock goes red on each defect it exists for", () => {
     expect(hygieneScript).not.toBe(REAL.hygieneScript);
     expect(problemsOf({ hygieneScript })).toContain(
       `${HYGIENE_SCRIPT_PATH}: expected 2 encoded deny patterns and 1 generic one, found 0 and 1`,
+    );
+  });
+
+  test("every gap turned « conforme » with its sentence removed (reviewer's input)", () => {
+    const document = mutated((text) => {
+      const lines = text.split("\n").filter((line) => !/^- \*\*R\d+\*\* · `/.test(line));
+      return lines
+        .map((line) => (line.startsWith("| `tools/") ? line.replaceAll("écart", "conforme") : line))
+        .join("\n");
+    });
+    const problems = problemsOf({ document });
+    for (const { tool, rule } of MEASURED_GAPS)
+      expect(problems).toContain(`${tool} ${rule}: a measured gap, the cell says « conforme »`);
+  });
+
+  test("the sentence that no tool returns exit code 3 removed", () => {
+    const document = mutated((text) =>
+      text.replace("Aucun des cinq outils ne rend le code 3", "Les outils rendent le code 3"),
+    );
+    expect(problemsOf({ document })).toContain(
+      "no sentence says that none of the tools in service returns exit code 3",
+    );
+  });
+
+  test("an exit code with an empty meaning", () => {
+    const document = mutated((text) => text.replace(/\n\| 3 \| [^\n]*/, "\n| 3 |  |"));
+    expect(problemsOf({ document })).toContain("exit code 3 has an empty meaning");
+  });
+
+  test("a branch named in prose", () => {
+    const document = appended(`Les outils lisent la branche ${"ma"}in.`);
+    expect(problemsOf({ document })).toContain(`line ${lastLine}: hardcoded branch name`);
+  });
+
+  test("the French « à la main » is not a branch name", () => {
+    const document = appended("La commande se reconstruit à la main.");
+    expect(problemsOf({ document })).toEqual([]);
+  });
+
+  test("a Statut that is not « proposé »", () => {
+    const document = mutated((text) => text.replace("proposé le", "adopté le"));
+    expect(problemsOf({ document })).toContain("the Statut bullet does not say « proposé »");
+  });
+
+  test("the Portée without « Méthode, pas doctrine »", () => {
+    const document = mutated((text) => text.replace("Méthode, pas\n  doctrine", "Règle"));
+    expect(problemsOf({ document })).toContain(
+      "the header does not carry « Méthode, pas doctrine »",
+    );
+  });
+
+  test("the Portée without its reference to AGENTS.md", () => {
+    const document = mutated((text) => text.replace("d'`AGENTS.md`", "du dépôt"));
+    expect(problemsOf({ document })).toContain("the header does not refer to `AGENTS.md`");
+  });
+
+  test("two sections out of order", () => {
+    const document = mutated((text) => {
+      const codesStart = text.indexOf("## Codes de sortie");
+      const stateStart = text.indexOf("## État des outils en service");
+      const unchangedStart = text.indexOf("## Ce que ce document ne change pas");
+      return (
+        text.slice(0, codesStart) +
+        text.slice(stateStart, unchangedStart) +
+        text.slice(codesStart, stateStart) +
+        text.slice(unchangedStart)
+      );
+    });
+    expect(problemsOf({ document })).toContain(
+      `level-2 sections are [Les huit règles | État des outils en service | Codes de sortie | Ce que ce document ne change pas], expected [${SECTIONS.join(" | ")}]`,
     );
   });
 
