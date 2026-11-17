@@ -26,6 +26,18 @@ import { parseRawDiff, readGit } from "./git-diff";
 // once the repository-relative path is gone), `merged(<owner>/<repo>#<n>)`
 // (overdue once that pull request is merged; unreadable is UNAVAILABLE, never
 // valid). A TODO, a date in prose or a promise is not a marker: nothing reads it.
+// An `absent()` path whose directories on the way hold a symbolic link is
+// malformed: behind the link is the host, not the repository.
+//
+// A code file is tested when a tracked test carries a conventional test name,
+// or cites its base name as a whole word of a path (start of text or a
+// character outside [A-Za-z0-9._-] before it; `data.sh` does not cite `a.sh`).
+//
+// KNOWN LIMIT, left to the owner: a `.ephemeral` covers tracked files as well
+// as untracked ones. An untracked `.ephemeral` at the root therefore makes
+// every tracked code file ephemeral and silences rule 2 before a push (the
+// pull request run sees only tracked files). Narrowing it to untracked files
+// would change which tracked files the brief declares ephemeral.
 //
 // Exemptions live in `.artifact-lifecycle-exemptions` at the root of the
 // examined repository, in the format of tools/quality/allowlist.ts: one tracked
@@ -91,8 +103,12 @@ export type MergedRead =
 export interface Ports {
   /** Today as an ISO date, UTC. */
   today(): string;
-  /** Whether a repository-relative path exists, without following a final link. */
-  pathExists(relative: string): boolean;
+  /**
+   * Whether a repository-relative path exists, without following a final link.
+   * Refused when a directory on the way is a link: what lies behind it is not
+   * the repository, and answering would probe the host.
+   */
+  pathExists(relative: string): boolean | { readonly refused: string };
   pullRequestMerged(owner: string, repo: string, number: number): Promise<MergedRead>;
   /** At most `limit` first bytes of a regular file; null when the path is absent or not a regular file. */
   readFile(relative: string, limit: number): Uint8Array | null;
@@ -193,12 +209,18 @@ export function parseCondition(raw: string): Condition | { readonly malformed: s
 export async function evaluateCondition(
   condition: Condition,
   ports: Pick<Ports, "today" | "pathExists" | "pullRequestMerged">,
-): Promise<"valid" | "overdue" | { readonly unavailable: string }> {
+): Promise<
+  "valid" | "overdue" | { readonly unavailable: string } | { readonly malformed: string }
+> {
   if (condition.kind === "date") {
     // ISO dates order as strings; the marker is still valid on its own day.
     return ports.today() > condition.date ? "overdue" : "valid";
   }
-  if (condition.kind === "absent") return ports.pathExists(condition.path) ? "valid" : "overdue";
+  if (condition.kind === "absent") {
+    const exists = ports.pathExists(condition.path);
+    if (typeof exists !== "boolean") return { malformed: exists.refused };
+    return exists ? "valid" : "overdue";
+  }
   const read = await ports.pullRequestMerged(condition.owner, condition.repo, condition.number);
   if (!read.ok) return { unavailable: read.reason };
   return read.merged ? "overdue" : "valid";
@@ -258,6 +280,19 @@ export function conventionalTestNames(path: string): string[] {
   return names;
 }
 
+/**
+ * A citation of `name` in a test: the base name as a whole word of a path. A
+ * plain substring would let `data.sh` or `ba.sh` cite `a.sh`, and `a.shx` cite
+ * it too. Before the name: the start of the text or a character outside
+ * `[A-Za-z0-9._-]` (a `/` is one). After it: the end or a character outside
+ * `[A-Za-z0-9_-]`, so that a sentence ending on `a.sh.` still cites it.
+ */
+function citationPattern(name: string): RegExp {
+  // Only the syntax characters: under the `u` flag an escaped `-` is an error.
+  const escaped = name.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
+  return new RegExp(`(?:^|[^A-Za-z0-9._-])${escaped}(?![A-Za-z0-9_-])`, "u");
+}
+
 // ---------------------------------------------------------------------- report
 
 // A path or a condition is text of the examined repository: a line break in a
@@ -281,6 +316,7 @@ async function judgeMarker(path: string, condition: string, ports: Ports): Promi
   const verdict = await evaluateCondition(parsed, ports);
   if (verdict === "valid") return { path, state: "valid", detail: "" };
   if (verdict === "overdue") return { path, state: "overdue", detail: condition };
+  if ("malformed" in verdict) return { path, state: "malformed", detail: verdict.malformed };
   return { path, state: "unavailable", detail: verdict.unavailable };
 }
 
@@ -349,8 +385,12 @@ export async function evaluateLifecycle(
     heads.set(path, bytes.subarray(0, 2));
     if (bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)) continue;
     let text = decoder.decode(bytes);
-    // A head cut by the limit ends on a partial line, which is not a line of the file.
-    if (bytes.length === HEAD_BYTES) text = text.slice(0, text.lastIndexOf("\n") + 1);
+    // A head cut by the limit ends on a partial line, which is not a line of the
+    // file, unless it is the first line: nothing precedes it, and dropping it
+    // would lose a marker it carries. Read as far as it goes, it is judged.
+    if (bytes.length === HEAD_BYTES && text.includes("\n")) {
+      text = text.slice(0, text.lastIndexOf("\n") + 1);
+    }
     const found = readMarkerLine(text);
     if (found === null) continue;
     inlineMarked.add(path);
@@ -379,7 +419,8 @@ export async function evaluateLifecycle(
         if (bytes !== null) testTexts.push(decoder.decode(bytes));
       }
     }
-    return testTexts.some((text) => text.includes(name));
+    const citation = citationPattern(name);
+    return testTexts.some((text) => citation.test(text));
   };
 
   const tally = { tested: 0, ephemeral: 0, exempted: 0, untested: 0 };
@@ -543,6 +584,32 @@ function pathExists(path: string): boolean {
   }
 }
 
+/**
+ * Whether `relative` exists under `root`, every directory on the way checked
+ * with lstat: `lstat` alone protects the final component only, and a link
+ * among the ancestors (`host -> /`) would answer for a path of the host.
+ */
+function repositoryPathExists(
+  root: string,
+  relative: string,
+): boolean | { readonly refused: string } {
+  const segments = relative.split("/");
+  let current = root;
+  for (const segment of segments.slice(0, -1)) {
+    current = join(current, segment);
+    let stat: ReturnType<typeof lstatSync>;
+    try {
+      stat = lstatSync(current);
+    } catch (error) {
+      if (isMissing(error)) return false;
+      throw error;
+    }
+    if (stat.isSymbolicLink()) return { refused: "absent() crosses a symbolic link" };
+    if (!stat.isDirectory()) return false;
+  }
+  return pathExists(join(root, relative));
+}
+
 // --------------------------------------------------------------------- command
 
 interface Arguments {
@@ -685,7 +752,7 @@ async function inspect(
     { tracked, untracked, exempted, added },
     {
       today: () => today,
-      pathExists: (relative) => pathExists(join(root, relative)),
+      pathExists: (relative) => repositoryPathExists(root, relative),
       pullRequestMerged: realPullRequestPort(env.GITHUB_TOKEN ?? null, fetch),
       readFile: (relative, limit) => readRegularFile(join(root, relative), limit),
     },

@@ -205,6 +205,14 @@ describe("conditions", () => {
     expect(await evaluateCondition(absent, ports(TODAY, false, unused))).toBe("overdue");
   });
 
+  test("absent() through a symbolic link is malformed, whatever lies behind it", async () => {
+    const verdict = await evaluateCondition(absent, {
+      ...ports(TODAY, true, unused),
+      pathExists: () => ({ refused: "absent() crosses a symbolic link" }),
+    });
+    expect(verdict).toEqual({ malformed: "absent() crosses a symbolic link" });
+  });
+
   test("merged() is overdue when merged, valid when open, unavailable when unreadable", async () => {
     expect(await evaluateCondition(merged, ports(TODAY, true, { ok: true, merged: true }))).toBe(
       "overdue",
@@ -289,6 +297,21 @@ describe("markers in a report", () => {
     expect(count(report.lines, "total")).toBe(0);
     expect(report.exitCode).toBe(1);
     expect(report.lines).toContain("untracked without marker: big.txt");
+  });
+
+  // The first line has no earlier line to stop at: cut by the limit, it is
+  // still where a marker lives, so it is read as far as it goes.
+  test("a first line longer than the first mebibyte still carries its marker", async () => {
+    const valid = await judge({
+      untracked: { "big.txt": `# ephemeral: until=2099-01-01${" ".repeat(1_048_576)}` },
+    });
+    expect(valid.exitCode).toBe(0);
+    expect(count(valid.lines, "valid")).toBe(1);
+    const malformed = await judge({
+      untracked: { "big.txt": `# ephemeral: until=never${"a".repeat(1_048_576)}` },
+    });
+    expect(malformed.exitCode).toBe(4);
+    expect(count(malformed.lines, "malformed")).toBe(1);
   });
 
   test("absent(): valid while the path exists, overdue once it is gone", async () => {
@@ -462,6 +485,55 @@ describe("code and its test", () => {
     });
     expect(report.exitCode).toBe(0);
     expect(count(report.lines, "tested")).toBe(1);
+  });
+
+  // A citation is the base name as a whole word of a path: `data.sh` or `ba.sh`
+  // in a test does not cite `a.sh`, nor does `a.shx`. A directory separator,
+  // a quote, a blank or a bracket before it, and a sentence end after it, do.
+  test("its base name inside a longer name is not a citation", async () => {
+    for (const citation of [
+      "run data.sh\n",
+      "run ba.sh\n",
+      "run a.shx\n",
+      "run a.sh_old\n",
+      "run x-a.sh\n",
+    ]) {
+      const report = await judge({ tracked: { "a.sh": "echo\n", "tests/x.bats": citation } });
+      expect({
+        citation,
+        exitCode: report.exitCode,
+        tested: count(report.lines, "tested"),
+      }).toEqual({
+        citation,
+        exitCode: 1,
+        tested: 0,
+      });
+    }
+  });
+
+  test("its base name bounded by a separator, a quote or a sentence end is a citation", async () => {
+    for (const citation of [
+      "a.sh\n",
+      "run ./scripts/a.sh\n",
+      'run "a.sh"\n',
+      "(a.sh)\n",
+      "run a.sh.\n",
+    ]) {
+      const report = await judge({ tracked: { "a.sh": "echo\n", "tests/x.bats": citation } });
+      expect({ citation, tested: count(report.lines, "tested") }).toEqual({ citation, tested: 1 });
+    }
+  });
+
+  test("a base name holding a dash or a regular expression character is cited literally", async () => {
+    const cited = await judge({
+      tracked: { "sync-all+(1).sh": "echo\n", "tests/x.bats": "run sync-all+(1).sh\n" },
+    });
+    expect(cited.exitCode).toBe(0);
+    expect(count(cited.lines, "tested")).toBe(1);
+    const lookalike = await judge({
+      tracked: { "sync-all+(1).sh": "echo\n", "tests/x.bats": "run sync-alll(1).sh\n" },
+    });
+    expect(count(lookalike.lines, "untested")).toBe(1);
   });
 
   test("its base name cited in a file that is not a test does not", async () => {
