@@ -26,8 +26,13 @@
  *   5. a `push` without `branches` is admitted only with `tags` or
  *      `tags-ignore` (tag runs only); `paths` alone is refused;
  *   6. in a workflow triggered by a pull request, a job whose `if:` reads the
- *      event name or the ref can opt out of pull-request runs: refused. Step
- *      conditions are not judged.
+ *      event name or the ref can opt out of pull-request runs: refused, in any
+ *      case and through the index syntax (`github['ref']`). Step conditions are
+ *      not judged, nor other contexts (`github.ref_name`): the brief fixes the
+ *      list at these two reads.
+ *
+ * A key written twice in one mapping (`on`, `branches`, …) makes the workflow
+ * unreadable, never judged on the occurrence the parser happened to keep.
  *
  * The gate writes nothing and is wired into no workflow.
  */
@@ -180,10 +185,22 @@ function describeBranchFilter(branches: unknown, servedBranch: string): string[]
   return failures;
 }
 
+/**
+ * A read of `github.<property>` as GitHub evaluates it: context and property
+ * names compare without regard to case, and the index syntax
+ * (`github['ref']`, `github["ref"]`) reaches the same value as the dot.
+ */
+function contextRead(property: string): RegExp {
+  return new RegExp(
+    `\\bgithub\\s*(?:\\.\\s*${property}(?![\\w-])|\\[\\s*(['"])${property}\\1\\s*\\])`,
+    "i",
+  );
+}
+
 /** The two contexts a job condition reads to tell a pull-request run from another one. */
 const EVENT_READS: readonly { readonly name: string; readonly pattern: RegExp }[] = [
-  { name: "github.event_name", pattern: /\bgithub\.event_name(?![\w])/ },
-  { name: "github.ref", pattern: /\bgithub\.ref(?![\w])/ },
+  { name: "github.event_name", pattern: contextRead("event_name") },
+  { name: "github.ref", pattern: contextRead("ref") },
 ];
 
 function reviewJobConditions(jobs: unknown): string[] {
@@ -203,6 +220,237 @@ function reviewJobConditions(jobs: unknown): string[] {
   return failures;
 }
 
+/*
+ * Duplicate keys. `Bun.YAML.parse` keeps the last of two equal keys in
+ * silence, so `push: branches: [other]` followed by `branches: [served]` reads
+ * green. The text is therefore read a second time, line by line, for every
+ * mapping it writes — block style by indentation, flow style (`{ … }`, also
+ * inside `[ … ]`) on its line — and any key written twice in one mapping makes
+ * the workflow unreadable. What this reading cannot follow is refused rather
+ * than skipped: a flow collection continued past its line, an explicit `? `
+ * key, a merge key `<<`.
+ */
+
+type LayoutProblem = string | null;
+
+/** `"…"` (backslash escapes) or `'…'` (`''` escape) starting at `start`; the index after it, or -1. */
+function quotedEnd(text: string, start: number): number {
+  const quote = text[start];
+  for (let i = start + 1; i < text.length; i++) {
+    const c = text[i];
+    if (quote === '"' && c === "\\") {
+      i++;
+    } else if (c === quote) {
+      if (quote === "'" && text[i + 1] === "'") i++;
+      else return i + 1;
+    }
+  }
+  return -1;
+}
+
+type FlowScan =
+  | { readonly kind: "read"; readonly end: number }
+  | { readonly kind: "problem"; readonly reason: string };
+
+function skipSpaces(text: string, i: number): number {
+  let at = i;
+  while (text[at] === " " || text[at] === "\t") at++;
+  return at;
+}
+
+/** A plain scalar in flow context ends at `,`, a closing bracket, or a `:` followed by a space. */
+function plainFlowEnd(text: string, start: number): number {
+  let i = start;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === "," || c === "]" || c === "}" || c === "[" || c === "{") break;
+    if (c === ":" && /[\s,\]}]/.test(text[i + 1] ?? " ")) break;
+    if (c === "#" && (text[i - 1] === " " || text[i - 1] === "\t")) break;
+    i++;
+  }
+  return i;
+}
+
+/** One flow node (collection or scalar) at `start`; nested mappings are checked for duplicates. */
+function scanFlowNode(text: string, start: number, line: number): FlowScan & { key?: string } {
+  const i = skipSpaces(text, start);
+  const c = text[i];
+  if (c === "{" || c === "[") return scanFlowCollection(text, i, line);
+  if (c === '"' || c === "'") {
+    const end = quotedEnd(text, i);
+    if (end < 0)
+      return {
+        kind: "problem",
+        reason: `a quoted scalar inside a flow collection is continued past line ${line}, which this reading does not follow`,
+      };
+    return { kind: "read", end, key: text.slice(i + 1, end - 1) };
+  }
+  const end = plainFlowEnd(text, i);
+  return { kind: "read", end, key: text.slice(i, end).trim() };
+}
+
+function scanFlowCollection(text: string, open: number, line: number): FlowScan {
+  const mapping = text[open] === "{";
+  const close = mapping ? "}" : "]";
+  const keys = new Set<string>();
+  let i = skipSpaces(text, open + 1);
+  while (i < text.length) {
+    if (text[i] === close) return { kind: "read", end: i + 1 };
+    const first = scanFlowNode(text, i, line);
+    if (first.kind === "problem") return first;
+    i = skipSpaces(text, first.end);
+    let isPair = false;
+    if (text[i] === ":") {
+      isPair = true;
+      const value = scanFlowNode(text, i + 1, line);
+      if (value.kind === "problem") return value;
+      i = skipSpaces(text, value.end);
+    }
+    if (mapping || isPair) {
+      const key = first.key;
+      if (key === undefined) {
+        return {
+          kind: "problem",
+          reason: `a flow mapping on line ${line} has a collection as a key, which this reading does not follow`,
+        };
+      }
+      if (mapping && keys.has(key)) {
+        return {
+          kind: "problem",
+          reason: `key \`${key}\` is written twice in one mapping (line ${line}): YAML keeps one of them in silence`,
+        };
+      }
+      keys.add(key);
+    }
+    if (text[i] === ",") i = skipSpaces(text, i + 1);
+    else if (text[i] !== close) break;
+  }
+  return {
+    kind: "problem",
+    reason: `a flow collection opened on line ${line} is not closed on its line, or holds a form this reading does not follow`,
+  };
+}
+
+/** A flow collection standing as a whole value at `start`; only a comment may follow it. */
+function flowValueProblem(text: string, start: number, line: number): LayoutProblem {
+  const scan = scanFlowCollection(text, start, line);
+  if (scan.kind === "problem") return scan.reason;
+  const rest = text.slice(scan.end).trim();
+  if (rest !== "" && !rest.startsWith("#")) {
+    return `text follows a flow collection on line ${line}, which this reading does not follow`;
+  }
+  return null;
+}
+
+const PLAIN_KEY = /^([^\s#'"{}[\],&*!|>%@`?:](?:[^:\s]|[ \t]+(?=[^\s#])|:(?=\S))*?)[ \t]*:(?=\s|$)/;
+const BLOCK_SCALAR = /^[|>][-+0-9]*[ \t]*(?:#.*)?$/;
+const PROPERTIES = /^(?:[&!]\S*[ \t]+)*/;
+
+/** The key written at the start of `rest`, and the text after its colon; null when `rest` is not a key. */
+function splitKey(rest: string): { readonly key: string; readonly value: string } | null {
+  if (rest.startsWith('"') || rest.startsWith("'")) {
+    const end = quotedEnd(rest, 0);
+    if (end < 0) return null;
+    const after = rest.slice(end);
+    const colon = /^[ \t]*:(?=\s|$)/.exec(after);
+    if (colon === null) return null;
+    return { key: rest.slice(1, end - 1), value: after.slice(colon[0].length).trim() };
+  }
+  const plain = PLAIN_KEY.exec(rest);
+  if (plain?.[1] === undefined) return null;
+  return { key: plain[1], value: rest.slice(plain[0].length).trim() };
+}
+
+interface Frame {
+  readonly indent: number;
+  readonly keys: Set<string>;
+}
+
+/** The first key written twice in one mapping, or the first construct this reading refuses. */
+function findLayoutProblem(text: string): LayoutProblem {
+  const lines = text.replaceAll("\r\n", "\n").split("\n");
+  let frames: Frame[] = [];
+  /** Lines indented deeper than this belong to a block scalar. */
+  let blockScalarParent: number | null = null;
+  /** A quoted scalar opened on an earlier line and not closed yet. */
+  let openQuote: string | null = null;
+
+  for (const [index, line] of lines.entries()) {
+    const number = index + 1;
+    const indent = line.length - line.trimStart().length;
+    const content = line.trim();
+    if (openQuote !== null) {
+      const closing = quotedEnd(`${openQuote}${line}`, 0);
+      if (closing >= 0) openQuote = null;
+      continue;
+    }
+    if (blockScalarParent !== null) {
+      if (content === "" || indent > blockScalarParent) continue;
+      blockScalarParent = null;
+    }
+    if (content === "" || content.startsWith("#")) continue;
+    if (/^(?:---|\.\.\.)(?:\s|$)/.test(line)) {
+      frames = [];
+      continue;
+    }
+    frames = frames.filter((frame) => frame.indent <= indent);
+
+    // Sequence entries: each `- ` opens a new item; a key after them opens its mapping.
+    let column = indent;
+    let rest = content;
+    let entry = false;
+    for (
+      let dash = /^-(?:[ \t]+|$)/.exec(rest);
+      dash !== null;
+      dash = /^-(?:[ \t]+|$)/.exec(rest)
+    ) {
+      entry = true;
+      column += dash[0].length;
+      rest = rest.slice(dash[0].length);
+    }
+    if (rest === "" || rest.startsWith("#")) continue;
+    if (rest.startsWith("? ") || rest === "?") {
+      return `an explicit \`?\` key on line ${number} is not read`;
+    }
+    const body = rest.replace(PROPERTIES, "");
+    const pair = splitKey(body);
+    if (pair === null) {
+      if (BLOCK_SCALAR.test(body)) {
+        blockScalarParent = indent;
+      } else if (body.startsWith("{") || body.startsWith("[")) {
+        const problem = flowValueProblem(body, 0, number);
+        if (problem !== null) return problem;
+      } else if ((body.startsWith('"') || body.startsWith("'")) && quotedEnd(body, 0) < 0) {
+        openQuote = body[0] ?? null;
+      }
+      continue;
+    }
+    if (pair.key === "<<") return `a merge key \`<<\` on line ${number} is not read`;
+
+    const top = frames.at(-1);
+    if (!entry && top !== undefined && top.indent === column) {
+      if (top.keys.has(pair.key)) {
+        return `key \`${pair.key}\` is written twice in one mapping (line ${number}): YAML keeps one of them in silence`;
+      }
+      top.keys.add(pair.key);
+    } else {
+      frames = frames.filter((frame) => frame.indent < column);
+      frames.push({ indent: column, keys: new Set([pair.key]) });
+    }
+
+    const value = pair.value.replace(PROPERTIES, "");
+    if (BLOCK_SCALAR.test(value)) {
+      blockScalarParent = column;
+    } else if (value.startsWith("{") || value.startsWith("[")) {
+      const problem = flowValueProblem(value, 0, number);
+      if (problem !== null) return problem;
+    } else if ((value.startsWith('"') || value.startsWith("'")) && quotedEnd(value, 0) < 0) {
+      openQuote = value[0] ?? null;
+    }
+  }
+  return null;
+}
+
 /** Pure review of one workflow text against the branch its repository serves. */
 export function reviewTriggers(text: string, servedBranch: string): TriggerReview {
   let document: unknown;
@@ -212,6 +460,8 @@ export function reviewTriggers(text: string, servedBranch: string): TriggerRevie
     return unreadableReview(`YAML parse failed: ${(error as Error).message}`);
   }
   if (!isTable(document)) return unreadableReview("the workflow is not a YAML mapping");
+  const layout = findLayoutProblem(text);
+  if (layout !== null) return unreadableReview(layout);
   const triggers = readTriggers(triggerNode(document));
   if (typeof triggers === "string") return unreadableReview(triggers);
   if (triggers.events.length === 0) return unreadableReview("`on` declares no event");

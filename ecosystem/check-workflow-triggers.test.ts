@@ -200,6 +200,92 @@ describe("reviewTriggers: events", () => {
   });
 });
 
+describe("reviewTriggers: a key written twice makes the workflow unreadable", () => {
+  // Bun.YAML.parse keeps the last of two equal keys in silence: judging that
+  // reading would pass a workflow whose first filter GitHub may read instead.
+  test.each([
+    [
+      "push.branches in block style",
+      `on:\n  push:\n    branches: [${OTHER}]\n    branches: [${SERVED}]`,
+    ],
+    ["on at the root", `on: push\non:\n  push:\n    branches: [${SERVED}]`],
+    ["an event under on", `on:\n  push:\n  push:\n    branches: [${SERVED}]`],
+    ["an event in a flow mapping", `on: { push: null, push: { branches: [${SERVED}] } }`],
+    [
+      "branches in a nested flow mapping",
+      `on:\n  push: { branches: [${OTHER}], branches: [${SERVED}] }`,
+    ],
+    [
+      "branches in a flow mapping inside a flow sequence",
+      `on:\n  push:\n    branches: [${SERVED}]\n  schedule: [{ cron: '1 * * * *', cron: '2 * * * *' }]`,
+    ],
+    [
+      "a quoted key next to the bare one",
+      `on:\n  push:\n    branches: [${OTHER}]\n    "branches": [${SERVED}]`,
+    ],
+    [
+      "a key of a sequence entry",
+      `on:\n  push:\n    branches: [${SERVED}]\njobs:\n  build:\n    steps:\n      - run: a\n        run: b`,
+    ],
+  ])("%s", (_label, on) => {
+    const review = reviewTriggers(`name: sample\n${on}\n${JOBS}`, SERVED);
+    expect(review.unreadable).toContain("written twice");
+  });
+
+  test("the duplicate is named with its line", () => {
+    const review = reviewTriggers(
+      workflow(`on:\n  push:\n    branches: [${OTHER}]\n    branches: [${SERVED}]`),
+      SERVED,
+    );
+    expect(review.unreadable).toContain("`branches`");
+    expect(review.unreadable).toContain("line 5");
+  });
+
+  test("a flow collection continued past its line is refused, not read", () => {
+    const review = reviewTriggers(
+      workflow(`on:\n  push: { branches: [${SERVED}],\n    tags: ['v*'] }`),
+      SERVED,
+    );
+    expect(review.unreadable).toContain("flow collection");
+  });
+
+  test.each([
+    [
+      "sequence entries repeating their keys",
+      `on:\n  push:\n    branches: [${SERVED}]\njobs:\n  a:\n    steps:\n      - run: x\n      - run: y\n  b:\n    steps:\n      -\n        run: x\n      -\n        run: y`,
+    ],
+    [
+      "the same key at two depths",
+      `on:\n  push:\n    branches: [${SERVED}]\n  pull_request:\n    branches: [${SERVED}]\njobs:\n  a:\n    steps:\n      - run: x`,
+    ],
+    [
+      "a block scalar whose lines look like keys",
+      `on:\n  push:\n    branches: [${SERVED}]\njobs:\n  a:\n    steps:\n      - run: |\n          a: 1\n          a: 1\n        name: x`,
+    ],
+    [
+      "a quoted scalar spread over lines",
+      `on:\n  push:\n    branches: [${SERVED}]\njobs:\n  a:\n    steps:\n      - run: "echo a: 1\n          a: 1"\n        name: x`,
+    ],
+    [
+      "flow mappings without a repeated key",
+      `on: { push: { branches: [${SERVED}], tags: ['v*'] }, pull_request: null }\njobs: {}`,
+    ],
+  ])("%s stay readable", (_label, text) => {
+    expect(reviewTriggers(`name: sample\n${text}\n`, SERVED).unreadable).toBeNull();
+  });
+
+  test("every workflow of this repository stays readable", async () => {
+    const paths = [...new Bun.Glob(".github/workflows/*.{yml,yaml}").scanSync(".")];
+    expect(paths.length).toBeGreaterThan(0);
+    const unreadable: string[] = [];
+    for (const path of paths) {
+      const review = reviewTriggers(await Bun.file(path).text(), SERVED);
+      if (review.unreadable !== null) unreadable.push(`${path}: ${review.unreadable}`);
+    }
+    expect(unreadable).toEqual([]);
+  });
+});
+
 describe("reviewTriggers: job conditions", () => {
   const guarded = (indent: "job" | "step", expression: string, on: string): string =>
     indent === "job"
@@ -240,7 +326,34 @@ describe("reviewTriggers: job conditions", () => {
     expect(review.failures).toEqual([]);
   });
 
-  test("a job condition reading another context is green", () => {
+  // GitHub reads context names without regard to case, and through the index
+  // syntax as well as the dot: every spelling reaches the same value.
+  test.each([
+    ["github.event_name", "github['event_name'] == 'push'"],
+    ["github.event_name", `github["event_name"] == 'push'`],
+    ["github.event_name", "github[ 'event_name' ] == 'push'"],
+    ["github.event_name", "GITHUB.EVENT_NAME == 'push'"],
+    ["github.event_name", `\${{ GitHub['Event_Name'] != 'pull_request' }}`],
+    ["github.ref", "github['ref'] == 'refs/heads/x'"],
+    ["github.ref", `github["ref"] == 'refs/heads/x'`],
+    ["github.ref", "GITHUB.REF == 'refs/heads/x'"],
+  ])("a job if: reading %s as `%s` is rejected under pull_request", (name, expression) => {
+    const review = reviewTriggers(guarded("job", expression, "on: pull_request"), SERVED);
+    expect(review.unreadable).toBeNull();
+    expect(review.failures).toHaveLength(1);
+    expect(review.failures[0]).toContain(`\`${name}\``);
+  });
+
+  test.each([
+    ["github['ref_name'] == 'x'"],
+    ["GITHUB.REF_TYPE == 'tag'"],
+    ["github.event_name_x == 'push'"],
+  ])("a neighbouring context `%s` is not one of the two judged reads", (expression) => {
+    const review = reviewTriggers(guarded("job", expression, "on: pull_request"), SERVED);
+    expect(review.failures).toEqual([]);
+  });
+
+  test("a job condition reading github.ref_name stays green: the brief limits the rule to github.event_name and github.ref", () => {
     const review = reviewTriggers(
       guarded(
         "job",
