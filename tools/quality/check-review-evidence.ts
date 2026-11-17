@@ -144,10 +144,14 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^\.github\/composition\/ref-monotonicity-exemptions\.json$/,
   // check-release-age.ts: packages admitted younger than the release-age floor.
   /^ecosystem\/release-age-exceptions\.v1\.yaml$/,
+  // check-fleet-staleness.ts: dormant repositories and old pull requests excepted from the monthly report.
+  /^ecosystem\/staleness-exceptions\.v1\.yaml$/,
   // check-sql-construction.ts: raw-SQL construction sites admitted as safe.
   /^ecosystem\/sql-construction-allowlist\.v1\.yaml$/,
   // check-web-headers.ts: header relaxations, raw HTML sinks, servers outside surfaces.
   /^ecosystem\/web-headers-allowlist\.v1\.yaml$/,
+  // check-decision-series.ts: ADRs allowed to share their number within a series.
+  /^ecosystem\/decision-series-exemptions\.v1\.json$/,
   // check-work-package-link.ts: exempt classes, approving owners, maturity floor.
   /^ecosystem\/work-package-policy\.v1\.yaml$/,
   // bump-generation.ts: historical sites a bump leaves, commit identity, token secret.
@@ -194,8 +198,10 @@ export const GATED_PATHSPECS: readonly string[] = [
   "tools/quality/threat-model-citations.v1.json",
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
+  "ecosystem/staleness-exceptions.v1.yaml",
   "ecosystem/sql-construction-allowlist.v1.yaml",
   "ecosystem/web-headers-allowlist.v1.yaml",
+  "ecosystem/decision-series-exemptions.v1.json",
   "ecosystem/work-package-policy.v1.yaml",
   "tools/fleet/bump-generation.v1.yaml",
   "deny.toml",

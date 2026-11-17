@@ -1,0 +1,27 @@
+schema_version: libre-ai.off-code-zones.v1
+# Off-code zones: the parts of the infrastructure this repository cannot
+# describe in code (a proprietary tool fleet that cannot be scripted, the
+# firmware of a hardware signing module). Read by
+# ecosystem/check-off-code-zones.ts.
+#
+# Why a register. An exception to "the repository describes the
+# infrastructure" that nobody names is an exception nobody reviews. Each zone
+# here carries an owner, a version, a fingerprint and the date of its last
+# review; a review that is missing, malformed, in the future or older than
+# `review_max_age_days` is a violation reported by that command
+# (`bun run check:off-code-zones`). No chain runs it today: it is not a step of
+# `bun run check` nor of a workflow. The threshold is inclusive: a review
+# exactly `review_max_age_days` old still holds, and the code caps it at 365.
+# Each key is written once, bare, in block form: a doubled key is refused.
+#
+# Entry shape (every field required; any other key is ignored):
+#   - id: off-code.<name>
+#     owner: <who answers for the zone>
+#     version: <version of the tool or firmware in service>
+#     fingerprint: <digest or identifier of what is in service>
+#     reviewed_on: YYYY-MM-DD
+#
+# No zone is declared today: adding one is the owner's statement that this
+# part of the infrastructure stays outside the code.
+review_max_age_days: 365
+zones: []

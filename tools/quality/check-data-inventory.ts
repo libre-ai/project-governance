@@ -169,6 +169,47 @@ export const NOT_GATED: readonly NotGated[] = [
     because: `a [lints] table here, or \`[lints] workspace = true\` with the workspace table, sets the lint levels clippy applies to the crate; ${AWAITING}`,
     awaitingOwnerArbitration: true,
   },
+  {
+    path: "tools/quality/product-coupling.v1.json",
+    because: `check-product-coupling.ts reads its shared trees and forbidden patterns: removing one narrows the scan; the guard is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
+    awaitingOwnerArbitration: true,
+  },
+  {
+    path: "tools/quality/product-coupling-exemptions.txt",
+    because: `check-product-coupling.ts tolerates the matches of every file it lists; the guard is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
+    awaitingOwnerArbitration: true,
+  },
+  {
+    path: "tools/skills/skills-security-patterns.v1.json",
+    because: `check-skills-security.ts refuses the lines its patterns match: removing a pattern loosens the gate; the gate is wired in no chain yet, and activating it is the owner's decision; ${AWAITING}`,
+    awaitingOwnerArbitration: true,
+  },
+  // The table of a gate that is outside the aggregate: it delimits no verdict yet.
+  {
+    path: "tools/quality/import-boundaries.v1.json",
+    because:
+      "the product packages and forbidden modules check-import-boundaries.ts refuses, empty today; that gate is not in `bun run check`, so no aggregate verdict depends on this table yet. Removing an entry lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
+  },
+  {
+    path: "tools/quality/adr-citations.v1.json",
+    because:
+      "the authority documents and foreign repositories check-adr-citations.ts reads; that gate is run by hand and is in no chain, so no aggregate verdict depends on this table yet. Removing a document or adding a repository loosens it: gate this path in check-review-evidence.ts when the gate is activated",
+  },
+  {
+    path: "ecosystem/invariant-gates.v1.yaml",
+    because:
+      "the invariant → gate → test correspondence read by ecosystem/render-invariant-matrix.ts; that script is not in `bun run check`, so no aggregate verdict depends on this file yet, and an entry exempts nothing: it only changes what the generated matrix displays. Adding a pair asserts that a gate holds an invariant: whether that belongs in check-review-evidence.ts is an open owner question",
+  },
+  {
+    path: "tools/quality/identifier-fingerprints.v1.json",
+    because:
+      "the fingerprints and exempt paths check-identifier-fingerprints.ts reads; that gate is not in `bun run check` nor in a workflow, so no aggregate verdict depends on this file yet. Removing an entry or adding an exemption lifts a refusal: gate this path in check-review-evidence.ts when the gate is activated",
+  },
+  {
+    path: "tools/quality/identifier-confusables.v1.json",
+    because:
+      "the homoglyph table check-identifier-fingerprints.ts folds with, verified when read; same gate, not in `bun run check` nor in a workflow. Removing a pair lets a homoglyph through: gate this path in check-review-evidence.ts when the gate is activated",
+  },
   // Gate definitions: the gates themselves, LIMIT 3 of the header.
   {
     path: ".github/workflows/",
@@ -193,9 +234,19 @@ export const NOT_GATED: readonly NotGated[] = [
       "the register of governance generations: each sha it admits is a governance commit, and generation-coherence.yml replays every generation added",
   },
   {
+    path: "ecosystem/fleet-gates.v1.yaml",
+    because:
+      "the registry of fleet detectors: check-fleet-gates confronts it with the detectors directory both ways, so an entry dropped while its script stays fails as an undeclared gate; that check runs on a directory the owner names, outside bun run check",
+  },
+  {
     path: "ecosystem/repositories.v1.yaml",
     because:
       "the fleet inventory: inventory-drift reconciles it with the GitHub organization in both directions, so a repository dropped from it fails the same day",
+  },
+  {
+    path: "ecosystem/repository-rulesets.v1.yaml",
+    because:
+      "the declared rulesets: the provider enforces the rulesets themselves, not this file; check-repository-rulesets compares it to a readback in both directions and no workflow calls that comparison yet",
   },
   {
     path: "ecosystem/LEGACY-MANIFEST.yaml",
@@ -206,12 +257,37 @@ export const NOT_GATED: readonly NotGated[] = [
     because: "the record of what migrated where; no gate reads it as an exemption",
   },
   {
+    path: "ecosystem/off-code-zones.v1.yaml",
+    because:
+      "the off-code zones register and its review threshold, read by ecosystem/check-off-code-zones.ts; that command is not a step of `bun run check`, so the file delimits no gate today, and making it one (then gating this file) is the owner's decision",
+  },
+  {
+    path: "ecosystem/open-points.v1.yaml",
+    because:
+      "the governance open points, checked by check-open-points.ts; no gate reads it as an exemption",
+  },
+  {
     path: "ecosystem/portfolio.v1.json",
     because: "the portfolio as published; no gate reads it as an exemption",
   },
   {
     path: "ecosystem/portfolio.v1.yaml",
     because: "the portfolio source; no gate reads it as an exemption",
+  },
+  {
+    path: "ecosystem/remote-execution-forms.v1.yaml",
+    because:
+      "the patterns of four rules of check-workflow-supply-chain, each replayed against its red and green examples by that gate's test; the gate is a fleet gate outside `bun run check`, and gating this file is the owner's decision",
+  },
+  {
+    path: "tools/quality/mutants.v1.json",
+    because:
+      "the mutant catalogue of tools/quality/mutant.ts, which refuses an invalid site; the launcher is not a step of `bun run check`, so the file delimits no gate today, and making it one (then gating this file) is the owner's decision",
+  },
+  {
+    path: "tools/parity/mutants.v1.json",
+    because:
+      "the mutant catalogue of tools/parity/check-parity-audit.ts, run on demand by tools/quality/mutant.ts; tools/parity/mutants.test.ts validates its sites, and no gate reads it as an exemption",
   },
   {
     path: "ecosystem/cards/",
@@ -322,6 +398,11 @@ export const NOT_GATED: readonly NotGated[] = [
     path: "toolchains/cargo-deny.json",
     because:
       "the cargo-deny version with its digests, verified by install-toolchains.sh before use",
+  },
+  {
+    path: "toolchains/cargo-mutants.json",
+    because:
+      "the cargo-mutants version with its digests, verified by check-mutation-rust.ts before use; reusable-mutation-rust.test.ts checks its shape",
   },
   {
     path: "toolchains/osv-scanner.json",

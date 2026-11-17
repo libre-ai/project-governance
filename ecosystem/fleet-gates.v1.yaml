@@ -1,0 +1,19 @@
+# Registry of the fleet's gates (lot L091, idea h-plugins-flotte-02).
+#
+# One entry per detector: its `identifiant` and the `fichier` that carries it
+# in the detectors directory. What a gate does stays in the header of its
+# script; this file says which gates exist. `bun ecosystem/check-fleet-gates.ts
+# <directory>` checks it against the directory both ways: an entry with no
+# detector at its file fails, and so does a script declaring a gate without an
+# entry here. The format is a closed line whitelist, read by
+# ecosystem/fleet-gates.ts (parseRegistry); a key written twice is refused.
+#
+# No detector is registered yet: until one is, every discovery fails, on an
+# undeclared script or on a fleet audited by zero detectors.
+#
+#   detecteurs:
+#     - identifiant: <lowercase slug>
+#       fichier: <file name in the detectors directory>
+
+version: 1
+detecteurs: []

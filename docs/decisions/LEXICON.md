@@ -161,7 +161,7 @@ Marques d'écosystème héritées : `rumble`, `bolt`, `wrench`, `gear`, `portal`
 
 ### 6.2 État constaté (inventaire du 2026-07-20)
 
-Aucune occurrence de marque morte dans le code vivant (crates, packages, apps, contracts, workflows CI). Les occurrences restantes sont des **traces historiques légitimes** : registres d'archive (`ecosystem/LEGACY-MANIFEST.yaml`, `docs/transformation/G0-FREEZE-EVIDENCE.md`, `REPOSITORY-MAP.md`, `PROGRAM.md`), tableaux de migration (`docs/architecture/DETAILED-TARGET.md`), registre de décisions (`DECISION-REGISTER.md`), contexte d'ADR (`0008`), énumération de vision (`vision.md`) et une mention de migration dans `crates/artifact/README.md`.
+Aucune occurrence de marque morte dans le code vivant (crates, packages, apps, contracts, workflows CI). Les occurrences restantes sont des **traces historiques légitimes** : registres d'archive (`ecosystem/LEGACY-MANIFEST.yaml`, `docs/transformation/G0-FREEZE-EVIDENCE.md`, `REPOSITORY-MAP.md`, `PROGRAM.md`), tableaux de migration (`docs/architecture/DETAILED-TARGET.md`), registre de décisions (`DECISION-REGISTER.md`), contexte de l'ADR-0008, énumération de vision (`vision.md`) et une mention de migration dans `crates/artifact/README.md`.
 
 ### 6.3 Extension du gate (à implémenter après signature)
 

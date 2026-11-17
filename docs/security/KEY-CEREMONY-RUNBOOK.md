@@ -43,19 +43,20 @@ Ce runbook vous guide pas-à-pas pour générer, sceller et enregistrer une clé
 
 ### Étape 1 : Préparer le clone du dépôt
 
-1. Sur votre machine air-gappée, clonez le dépôt libre-ai en lecture seule (pas de SSH, pas de prise d'authentification).
+1. Sur votre machine air-gappée, clonez le dépôt de gouvernance en lecture seule (pas de SSH, pas de prise d'authentification). C'est lui qui porte l'outil et le registre `config/signing-keys.v1.json`.
 
    ```bash
-   # Via USB ou copie locale
-   # (ex. git clone depuis un clone préalable sur USB, ou rsync)
-   git clone --depth 1 https://github.com/libre-ai/libre-ai.git libre-ai-repo
-   cd libre-ai-repo
+   # Clone préparé avant la coupure réseau, puis copié par USB (ou rsync local)
+   git clone --depth 1 https://github.com/libre-ai/project-governance.git project-governance
+   cd project-governance
    ```
 
-2. Vérifiez la présence du script `tools/security/keygen-ceremony.ts` et du runtime Bun.
+   Le support de sortie (`--out`) ne doit pas se trouver dans ce clone ni dans aucun dépôt git : l'outil remonte les parents du répertoire de sortie et refuse (code 4) s'il y trouve une entrée `.git`.
+
+2. Vérifiez la présence du script `tools/security/keygen-ceremony.ts` et du Bun épinglé (voir Dépannage, « Quel runtime pour la cérémonie ? »).
    ```bash
    ls tools/security/keygen-ceremony.ts
-   which bun || echo "Bun non trouvé: installer https://bun.sh"
+   bun --revision   # doit être égal à : jq -r .revision toolchains/bun.json
    ```
 
 ### Étape 2 : Vérifier l'isolation réseau avant chaque étape
@@ -68,105 +69,120 @@ netstat -an 2>/dev/null | grep -E 'ESTABLISHED|LISTEN' && echo "ERREUR: connexio
 
 ### Étape 3 : Générer la paire de clés Ed25519
 
-Le script `keygen-ceremony.ts` génère une paire Ed25519, dérive un identifiant de clé déterministe à partir de la clé publique, et prépare le scellement de la clé privée.
+L'outil génère une paire Ed25519, dérive l'identifiant de clé, lit la phrase de passe, scelle la clé privée et écrit deux fichiers dans le répertoire `--out`, qui est obligatoire. Lancez-le depuis la racine du clone, avec `--out` sur le support amovible :
 
 ```bash
-cd tools/security
-# Exécuter le script de génération
-bun keygen-ceremony.ts
+entry="$(bun tools/security/keygen-ceremony.ts --out /mnt/usb/offline-keys)" \
+  && printf '%s\n' "$entry" > /mnt/usb/offline-keys/registry-entry.json
 ```
 
-**Avertissements attendus du script :**
+La sortie standard est capturée dans une variable et n'est écrite qu'en cas de succès : une redirection directe (`> …/registry-entry.json`) créerait ce fichier, vide, dans `--out` même quand l'outil refuse. Les invites de saisie passent par le terminal, pas par la sortie standard : la capture ne les masque pas.
 
-- ⚠️ Vérification qu'on n'est PAS en CI (refuse si `CI=true` ou variables GitLab/GitHub détectées).
-- ⚠️ Rappel que cette machine DOIT être air-gappée et que la clé privée ne doit PAS traverser le réseau.
+**Refus attendus de l'outil (code 4, rien d'écrit) :**
 
-**Output du script :**
+- une variable de CI posée (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `TRAVIS`, `BUILDKITE`) ;
+- un répertoire `--out` situé dans un dépôt git (entrée `.git` dans lui ou l'un de ses parents) ;
+- un fichier `<identifiant>.sealed`, `<identifiant>.pub.pem` ou `<identifiant>.partial` déjà présent dans `--out` ;
+- une phrase de passe de moins de 32 caractères, ou deux saisies différentes.
 
-1. **Clé publique** (format SPKI PEM) → affichée sur stdout, à copier vers votre dépôt.
-2. **KeyID** (dérivé déterministe de la clé publique) → affiché sur stdout, à mémoriser/noter.
-3. **Instructions de scellement** → le script génère un payload scellé (chiffré + empreinte) à sauvegarder hors-ligne.
+Un `<identifiant>.partial` ne subsiste qu'après une interruption brutale (coupure de courant, arrêt forcé) entre l'écriture de l'enveloppe et son contrôle : l'outil le supprime lui-même sur tout échec qu'il traite. Ce fichier n'a pas été vérifié : supprimez-le. Il ne bloque pas une nouvelle cérémonie, dont la clé et donc le nom sont neufs ; le refus ne vise que la même clé, rejouée.
 
-### Étape 4 : Examiner les outputs du script
+Une phrase de passe en argument (`--passphrase …`) est refusée en usage (code 2) : elle serait visible dans la liste des processus et l'historique du shell.
 
-Le script affiche en stdout (et optionnellement écrit dans des fichiers indiqués) :
+### Étape 4 : Examiner les sorties de l'outil
 
-```
-===============================================
-🔑 Ed25519 Key Pair Generated Successfully
-===============================================
-⚠️  CRITICAL: You are responsible for the private key custody.
-⚠️  CRITICAL: Air-gap compliance required — no network until sealing is complete.
+Les messages pour l'opérateur vont sur la sortie d'erreur. La sortie standard ne porte que l'entrée de registre, en JSON, capturée ci-dessus puis écrite dans `registry-entry.json` :
 
-Public Key (SPKI PEM, for repo registration):
------BEGIN PUBLIC KEY-----
-<... base64 encoded public key ...>
------END PUBLIC KEY-----
-
-KeyID (deterministic, derived from public key):
-prod_key_20260722_<hash>
-
-Next: Use the sealed private key path below to secure your private key offline.
-Sealed Private Key Envelope: /tmp/private-key-sealed-<date>.bin
-Sealing Instructions: Follow KEY-CEREMONY-RUNBOOK.md Step 5.
-===============================================
+```json
+{
+  "id": "<64 caractères hexadécimaux>",
+  "algorithm": "Ed25519",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
+  "purpose": "AgentContributorLineage v1, Proof v1 origin signatures",
+  "activatedAt": "<date ISO 8601 de la cérémonie>",
+  "revokedAt": null
+}
 ```
 
-**À copier :**
+L'identifiant est le SHA-256, en hexadécimal minuscule, des 32 octets bruts de la clé publique. Il ne dépend ni de la date ni de l'encodage PEM : tout vérificateur le recalcule depuis la clé.
 
-- La clé publique (bloc PEM complet).
-- Le keyID (pour la suite).
-- Le chemin du fichier scellé `/tmp/private-key-sealed-<date>.bin`.
+Fichiers écrits dans `--out`, dans cet ordre :
 
-### Étape 5 : Sceller la clé privée avec un mot de passe maître
+1. `<identifiant>.sealed`, créé avec le mode 0600 (sur un système de fichiers qui conserve les permissions Unix ; FAT32 ne les conserve pas et affiche celles des options de montage, la confidentialité de l'enveloppe y repose sur son scellement et sur la garde physique du support) : l'enveloppe scellée. L'outil l'écrit d'abord sous un nom temporaire, la relit, la descelle en mémoire et compare la clé publique qu'elle contient à celle générée ; il ne lui donne son nom final qu'après ce contrôle.
+2. `<identifiant>.pub.pem` : la clé publique, écrite seulement après l'enveloppe.
 
-La clé privée est pré-scellée par le script (chiffrement AEAD Chacha20-Poly1305 + clé dérivée via scrypt), mais vous devez fournir un **mot de passe maître** fort pour le scrypt.
+Un échec à n'importe quelle étape supprime ce que l'outil a écrit et sort en code 1, sans fichier public.
 
-1. **Choisir un mot de passe maître** (minimum 32 caractères, mélange alphanumériques + symboles) :
+### Étape 5 : Saisir la phrase de passe maître
+
+L'enveloppe est scellée par scrypt (N=16384, r=8, p=1) puis AES-256-GCM, sous la phrase de passe maître que vous saisissez pendant l'étape 3.
+
+#### Format de l'enveloppe
+
+Version `0x01`, la seule que l'outil écrit :
+
+```
+version (1 octet, 0x01) || sel (16) || nonce (12) || chiffré || étiquette (16)
+```
+
+- clé de 32 octets dérivée par scrypt (N=16384, r=8, p=1) de la phrase de passe et du sel ;
+- AES-256-GCM, nonce aléatoire de 12 octets tiré à chaque scellement, étiquette de 16 octets ;
+- les 29 octets d'en-tête (version, sel, nonce) sont authentifiés comme données associées ;
+- le clair est la clé privée Ed25519 en PEM PKCS#8 (119 octets) : une enveloppe fait 164 octets.
+
+À la lecture (`--verify-sealed`, et le contrôle que fait l'outil avant de nommer l'enveloppe), un refus porte un code nommé sur la sortie d'erreur, toujours en code de sortie 1 :
+
+| Code | Cause |
+| --- | --- |
+| `SEAL_UNKNOWN_VERSION` | premier octet autre que `0x01` |
+| `SEAL_AUTH_FAILED` | mauvaise phrase de passe, ou octet altéré (en-tête, chiffré ou étiquette) |
+| `SEAL_TOO_SHORT` | fichier plus court que l'en-tête et l'étiquette |
+| `SEAL_LEGACY_CIPHER_UNAVAILABLE` | ancienne enveloppe, chiffrement indisponible dans ce runtime (voir Dépannage) |
+
+**Ancienne enveloppe.** La première version de l'outil écrivait `sel (16) || nonce (12) || chiffré || étiquette (16)` en ChaCha20-Poly1305, sans octet de version. Elle se reconnaît à sa longueur, 163 octets (le même PEM de 119 octets, sans l'octet de version). L'outil n'en produit plus ; il la lit encore là où le runtime fournit `chacha20-poly1305`, et la refuse ailleurs avec `SEAL_LEGACY_CIPHER_UNAVAILABLE`.
+
+1. **Choisir une phrase de passe maître** (minimum 32 caractères, mélange alphanumériques + symboles) :
 
    ```bash
    # Exemple (à adapter, NE PAS copier) :
    # "Librarie-42!Chiffre~Mur|Soleil(Zèbre)2026"
    ```
 
-2. **Re-sceller manuellement** (optionnel, ou fourni par le script) :
+2. **La saisir au terminal :** l'outil la demande deux fois sur le terminal de contrôle, sans écho. Elle ne passe jamais en argument ni dans l'environnement. Pour un usage scripté, `--passphrase-fd <n>` la lit sur un descripteur hérité (par exemple `3< fichier-sur-support-chiffré`) ; c'est aussi ce que font les tests.
 
-   ```bash
-   # Si le script offre une réparation interactive :
-   bun keygen-ceremony.ts --reseal-with-passphrase "votre-mot-de-passe-maître"
-   ```
+3. **Sauvegarder la phrase de passe** :
+   - **Sur papier chiffré :** Écrivez la phrase de passe sur du papier, enfermez-la dans une enveloppe cachée (ex. coffre-fort domestique, zone sécurisée).
+   - **Divisé (Shamir) :** Optionnel, distribuez 3 parts de la phrase de passe à 3 personnes de confiance, exigez 2 signatures pour reconstituer (scheme 3-de-5).
+   - **Jamais en clair électroniquement,** jamais en plaintext sur le disque.
 
-3. **Sauvegarder le mot de passe** :
-   - **Sur papier chiffré :** Écrivez le mot de passe sur du papier, enfermez-le dans une enveloppe cachée (ex. coffre-fort domestique, zone sécurisée).
-   - **Divisé (Shamir) :** Optionnel, distribuez 3 parts du mot de passe à 3 personnes de confiance, exigez 2 signatures pour reconstituer (scheme 3-de-5).
-   - **Jamais en clair électroniquement,** jamais en plaintext sur le disque (sauf écran temporaire du script).
+### Étape 6 : Vérifier le scellé avant de quitter la machine hors ligne
 
-4. **Vérifier le scellement :**
-   ```bash
-   # Le fichier scellé doit être opaque (binaire, non-lisible)
-   ls -l /tmp/private-key-sealed-*.bin
-   file /tmp/private-key-sealed-*.bin  # Doit indiquer "data"
-   ```
+L'outil a déjà descellé l'enveloppe une fois avant de la nommer. Refaites la vérification vous-même, sur le fichier tel qu'il est sur le support, avant de quitter la machine hors ligne :
 
-### Étape 6 : Sauvegarder hors-ligne et vérifier l'intégrité
+```bash
+bun tools/security/keygen-ceremony.ts \
+  --verify-sealed /mnt/usb/offline-keys/<identifiant>.sealed \
+  --public-key /mnt/usb/offline-keys/<identifiant>.pub.pem
+```
 
-1. **Copier le fichier scellé sur USB :**
+L'outil redemande la phrase de passe (une fois, sans écho), descelle en mémoire et compare la clé publique dérivée au fichier `--public-key`. Code 0 : l'enveloppe contient bien cette clé et la phrase de passe est la bonne. Code 1 : mauvaise phrase de passe, enveloppe altérée ou clé différente ; ne quittez pas la machine, recommencez la cérémonie. La clé privée n'est jamais affichée.
 
-   ```bash
-   cp /tmp/private-key-sealed-*.bin /mnt/usb/offline-keys/private-key-sealed-prod-2026-07-22.bin
-   ```
+### Étape 7 : Sauvegarder hors-ligne et vérifier l'intégrité
+
+1. **Le fichier scellé est déjà sur le support** (`--out`) : aucune copie depuis un répertoire temporaire.
 
 2. **Vérifier l'intégrité (checksum SHA-256) :**
 
    ```bash
-   sha256sum /tmp/private-key-sealed-*.bin > /mnt/usb/offline-keys/private-key-sealed-prod-2026-07-22.bin.sha256
-   # Plus tard (après ejection/réinsertion) :
-   sha256sum -c private-key-sealed-prod-2026-07-22.bin.sha256
+   cd /mnt/usb/offline-keys
+   sha256sum <identifiant>.sealed > <identifiant>.sealed.sha256
+   # Plus tard (après éjection/réinsertion) :
+   sha256sum -c <identifiant>.sealed.sha256
    ```
 
-3. **Sauvegarder aussi :**
-   - Copie du **keyID** sur papier ou USB (à titre informatif, non-critique).
-   - Copie du **Public Key PEM** sur USB (pour reconstruction post-disaster).
+3. **Le support porte aussi :**
+   - `<identifiant>.pub.pem` (pour reconstruction post-disaster) ;
+   - `registry-entry.json`, l'entrée à recopier dans le registre.
 
 4. **Éjecter l'USB et stocker hors-ligne :**
    ```bash
@@ -174,9 +190,9 @@ La clé privée est pré-scellée par le script (chiffrement AEAD Chacha20-Poly1
    # Rangez l'USB dans un coffre-fort, une zone sécurisée, avec duplication géographique si needed.
    ```
 
-### Étape 7 : Enregistrer la clé publique dans le dépôt
+### Étape 8 : Enregistrer la clé publique dans le dépôt
 
-Retour sur votre machine de développement (connectée, post-cérémonial) :
+Retour sur votre machine de développement (connectée, post-cérémonial). L'outil n'écrit jamais ce registre : recopiez l'entrée de `registry-entry.json` dans `keys`, puis ajoutez le témoin.
 
 1. **Créer le fichier de manifest des clés publiques** (ou le mettre à jour) :
 
@@ -191,7 +207,7 @@ Retour sur votre machine de développement (connectée, post-cérémonial) :
      "schemaVersion": "libre-ai.signing-keys.v1",
      "keys": [
        {
-         "id": "prod_key_20260722_<hash>",
+         "id": "<SHA-256 hex des 32 octets bruts de la clé publique>",
          "algorithm": "Ed25519",
          "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
          "purpose": "AgentContributorLineage v1, Proof v1 origin signatures",
@@ -218,7 +234,7 @@ Retour sur votre machine de développement (connectée, post-cérémonial) :
    git add config/signing-keys.v1.json
    git commit -s -m "feat(security): register initial Ed25519 signing key (WP-G2-Z01)
 
-   - keyId: prod_key_20260722_<hash>
+   - keyId: <identifiant>
    - Algorithm: Ed25519
    - Purpose: origin signature for AgentContributorLineage v1
    - Generated via air-gapped key ceremony 2026-07-22
@@ -238,7 +254,7 @@ Retour sur votre machine de développement (connectée, post-cérémonial) :
 
 ### Processus de rotation :
 
-1. **Générer une nouvelle paire** en reprenant la cérémonial complète (Étapes 1-6).
+1. **Générer une nouvelle paire** en reprenant la cérémonial complète (Étapes 1-7).
 2. **Ajouter la nouvelle clé** au manifest `config/signing-keys.v1.json` avec `activatedAt` et marquer l'ancienne avec `revokedAt`.
 3. **Décommissionner l'ancienne clé scellée** (effacer les copies, garder UNE copie archivée chiffre hors-ligne pendant 7 ans pour audit).
 4. **Migrer les nouveaux signings** vers la nouvelle clé immédiatement.
@@ -271,7 +287,7 @@ Si vous découvrez un accès non autorisé à la clé privée :
 
 - [ ] Pas d'interface réseau active au moment de la génération.
 - [ ] Pas de SSH, pas de partage de fichiers réseau (Samba, NFS).
-- [ ] Pas de disque externe connecté jusqu'à l'étape 6 (sauvegarde).
+- [ ] Pas de disque externe connecté sauf le support de sortie (`--out`) de l'étape 3.
 
 ### ✓ Clé privée
 
@@ -298,17 +314,17 @@ Si vous découvrez un accès non autorisé à la clé privée :
 
 ### Où la clé publique est-elle consommée ?
 
-Le manifest `config/signing-keys.v1.json` est lu par :
+Le manifest `config/signing-keys.v1.json` est lu par le **consommateur** qui vérifie, jamais par une bibliothèque de vérification. Le consommateur charge le registre, choisit les clés actives (non révoquées) et les passe à la bibliothèque :
 
-1. **`packages/provenance/src/index.ts`** — `verifyLineage()` charge la clé publique depuis le manifest et vérifie la signature Ed25519 du digest de lignage.
-2. **`packages/proof/src/index.ts`** (future) — `verifyProof()` chargera la même clé pour vérifier les preuves signées.
-3. **`tools/review/fanout.ts`** (consommateur initial) — enveloppe les preuves de revue via `guardEvidence()`, qui utilisera à terme la clé publique pour la signature.
+1. **Paquet provenance d'`artifact-verification`** (`packages/provenance/src/index.ts`) — prend la clé publique **en paramètre** et ne lit aucun registre ; ce dépôt réserve le choix des clés au consommateur (son `AGENTS.md`). Aucune bibliothèque d'`artifact-verification` ne lit `config/signing-keys.v1.json` elle-même.
+2. **Vérification des preuves** (future) — même contrat : la clé arrive en paramètre, chargée par le consommateur.
+3. **`tools/review/fanout.ts`** (consommateur initial) — enveloppe les preuves de revue via `guardEvidence()` ; c'est à ce niveau, consommateur, que le registre sera lu.
 
 ### Intégration (WP-G2-Z02, after key ceremony acceptance)
 
 Une fois le manifest enregistré et le workflow de cérémonial approuvé :
 
-1. **Mise à jour de `packages/provenance/`** pour charger les clés publiques depuis `config/signing-keys.v1.json` plutôt que de les passer en paramètres.
+1. **Chargement côté consommateur** : chaque consommateur lit `config/signing-keys.v1.json` et passe les clés à la bibliothèque de vérification, qui garde la clé en paramètre.
 2. **Activation du signing** dans `tools/review/fanout.ts` : appel au runtime propriétaire pour signer (ex. via API HSM distante, ou appel système sécurisé).
 3. **Vérification renforcée** : toute enveloppe générée après WP-G2-Z02 doit être signée ; les anciennes HMAC sont tolérées (migration progressive).
 
@@ -318,11 +334,29 @@ Une fois le manifest enregistré et le workflow de cérémonial approuvé :
 
 ### Q : Le script refuse de s'exécuter ("CI detected")
 
-**R :** Vérifiez que vous n'êtes pas en environment CI (GitHub Actions, GitLab CI, etc.). Le script détecte `CI=true`, `GITHUB_ACTIONS`, `GITLAB_CI`. Exécutez localement sur votre machine air-gappée.
+**R :** Vérifiez que vous n'êtes pas en environment CI (GitHub Actions, GitLab CI, etc.). Le script détecte `CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `TRAVIS`, `BUILDKITE` et sort en code 4. Exécutez localement sur votre machine air-gappée.
+
+### Q : Quel runtime pour la cérémonie ?
+
+**R :** Le Bun épinglé par ce dépôt suffit (`toolchains/bun.json`, champs `version` et `revision`). Le scellement n'emploie que scrypt et AES-256-GCM de `node:crypto`, présents dans ce Bun (décision du propriétaire du 2026-11-17). Vérification avant la cérémonie, qui doit afficher `true` :
+
+```bash
+bun -e 'console.log(require("node:crypto").getCiphers().includes("aes-256-gcm"))'
+```
+
+Les tests de scellement de `tools/security/keygen-ceremony.test.ts` tournent sous ce Bun. Un seul cas dépend du runtime : la lecture d'une ancienne enveloppe ChaCha20-Poly1305, sautée là où ce chiffrement manque, ce que `bun test` imprime nommément (`legacy envelope read skipped: 1, cipher chacha20-poly1305 unavailable in this runtime`) ; le cas inverse, le refus nommé, tourne alors à sa place.
+
+### Q : `--verify-sealed` refuse avec `SEAL_LEGACY_CIPHER_UNAVAILABLE`
+
+**R :** Le fichier est une ancienne enveloppe (163 octets, sans octet de version), scellée en ChaCha20-Poly1305, et le runtime n'a pas ce chiffrement. Mesure du 2026-11-17 : Bun 1.4.0 (épinglé) et 1.4.4 (BoringSSL) ne l'ont pas, Node 26 (OpenSSL) l'a. Aucune clé n'a été enregistrée avec ce format ; s'il en existe une, la vérifier sous un runtime qui fournit `chacha20-poly1305`, puis refaire la cérémonie pour obtenir une enveloppe de version `0x01`.
+
+### Q : `--verify-sealed` refuse avec `SEAL_UNKNOWN_VERSION`
+
+**R :** Le premier octet du fichier n'est pas `0x01` : fichier d'un autre outil, d'une version plus récente, ou altéré. Ne pas réessayer avec une autre phrase de passe ; comparer l'empreinte SHA-256 du fichier à celle notée à l'étape 7.
 
 ### Q : Je n'ai pas de Bun installé
 
-**R :** Téléchargez Bun via `https://bun.sh` sur une autre machine, transférez le binaire sur USB, puis copiez-le sur votre machine air-gappée avant la cérémonial.
+**R :** Sur une machine connectée, téléchargez l'archive du Bun épinglé depuis la release durable nommée dans `toolchains/bun.json` (`durableRelease.tag`), vérifiez son SHA-256 contre `assets.<plateforme>.sha256` du même fichier, transférez-la sur USB, puis contrôlez `bun --revision` contre le champ `revision` sur la machine air-gappée avant la cérémonie.
 
 ### Q : J'ai perdu le mot de passe maître
 
@@ -334,10 +368,12 @@ Une fois le manifest enregistré et le workflow de cérémonial approuvé :
 
 ### Q : Comment puis-je vérifier que la clé publique dans le repo est la bonne ?
 
-**R :** Comparez le fingerprint public-key en base64 avec une copie papier ou USB de la cérémonial. Utilisez OpenSSL pour extraire le fingerprint :
+**R :** L'identifiant est l'empreinte : le SHA-256 des 32 octets bruts de la clé publique. Extrayez le PEM de l'entrée du registre (OpenSSL ne lit pas le JSON), recalculez l'empreinte et comparez-la à l'identifiant de l'entrée et à la copie papier ou USB de la cérémonie :
 
 ```bash
-openssl pkey -in config/signing-keys.v1.json -pubout -text -noout | grep -A 4 "pub:"
+jq -r --arg id "<identifiant>" '.keys[] | select(.id == $id) | .publicKey' config/signing-keys.v1.json \
+  | openssl pkey -pubin -outform DER | tail -c 32 | sha256sum
+# Doit afficher <identifiant>. Le PEM se compare aussi octet pour octet à <identifiant>.pub.pem du support.
 ```
 
 ---

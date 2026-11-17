@@ -1,0 +1,118 @@
+name: reusable-artifact-lifecycle
+# Fleet gate template: every file a pull request ADDS as code is tested,
+# marked ephemeral or exempted as data, and no ephemerality marker of the
+# repository is overdue (tools/quality/check-artifact-lifecycle.ts, whose
+# header states the marker syntax, the conditions and the exit codes).
+#
+# Published, not wired: no workflow of this repository calls it.
+#
+# Consumed as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-artifact-lifecycle.yml@<sha>
+#   with:
+#     tooling_ref: <sha>
+# with tooling_ref pinned to the SAME sha. A gate evolution is a sha bump in
+# the consuming repository.
+#
+# The trigger belongs to the CALLER, and is exactly
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened]
+# Never `pull_request_target`: it would run this job with the secrets and the
+# write token of the base repository over a head its author controls. This file
+# therefore declares `workflow_call` and nothing else
+# (tools/quality/reusable-artifact-lifecycle.test.ts asserts it). On any other
+# event of the caller the two commits below are empty, the range is invalid and
+# the gate fails closed (exit 2).
+#
+# Prerequisites on the caller, none of them optional:
+#   - the calling job must grant `contents: read` and `pull-requests: read`
+#     (the called workflow cannot exceed the caller's grant). The second one
+#     serves the `merged(<owner>/<repo>#<n>)` condition only: without it such a
+#     marker is UNAVAILABLE, never valid, and the gate exits 3;
+#   - no `container:` on the calling job: git refuses a repository whose owner
+#     differs from the user running it;
+#   - the checkout below is `fetch-depth: 0`: the gate needs the merge base of
+#     the two commits of the pull request;
+#   - no step that executes code of the pull request runs before this job: the
+#     pull request is the input the gate judges, never the program that judges it.
+#
+# Where the gate comes from, and where it runs: the governance repository at
+# tooling_ref is fetched into $RUNNER_TEMP/governance-tooling, outside the
+# workspace of the pull request, and the gate RUNS FROM THAT DIRECTORY (Bun
+# reads `bunfig.toml` and `.env` from its working directory; the measurements
+# are in reusable-work-package-link.yml). The gate reads the pull request only
+# through the absolute GITHUB_WORKSPACE it is given as an argument, and writes
+# nothing. No file is untracked in a fresh checkout, so the untracked rule
+# examines nothing here: it is the rule of the pre-push hook.
+#
+# Every step is pinned to exactly these lines by the structure test, and no
+# `env:` or `defaults:` exists above the steps.
+
+on:
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: >-
+          Full commit (40 lowercase hexadecimal characters) of
+          libre-ai/project-governance providing tools/quality
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  artifact-lifecycle:
+    name: Artifact lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+        run: |
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          TOOLING_DIR="$RUNNER_TEMP/governance-tooling"
+          mkdir "$TOOLING_DIR"
+          git init --quiet "$TOOLING_DIR"
+          git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
+          git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
+      - name: Install archived Bun toolchain
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Verify the artifact lifecycle
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          bun --no-env-file tools/quality/check-bun-minimum.ts
+          bun --no-env-file tools/quality/check-artifact-lifecycle.ts check "$GITHUB_WORKSPACE" --range "$BASE_SHA..$HEAD_SHA"
