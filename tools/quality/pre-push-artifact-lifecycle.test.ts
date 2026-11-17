@@ -8,6 +8,7 @@ import {
   parseServedBranch,
   planPush,
   type Runner,
+  refuse,
 } from "./pre-push-artifact-lifecycle";
 
 // The pre-push guard without git: its stdin contract, the choice of interval
@@ -108,6 +109,7 @@ describe("planPush", () => {
       {
         kind: "gate",
         ref: "refs/heads/feature",
+        sha: LOCAL,
         range: `${REMOTE}..${LOCAL}`,
         why: "what the remote does not have",
       },
@@ -125,6 +127,7 @@ describe("planPush", () => {
     expect(plan).toEqual({
       kind: "gate",
       ref: "refs/heads/feature",
+      sha: LOCAL,
       range: `${BASE}..${LOCAL}`,
       why: "from the merge base with the served branch trunk-served",
     });
@@ -156,7 +159,13 @@ describe("planPush", () => {
 
   test("no served branch: the whole gate, with the reason", () => {
     expect(planPush("origin", [pushed(LOCAL, ZERO)], ports())).toEqual([
-      { kind: "gate", ref: "refs/heads/feature", range: null, why: "no answer: whole gate" },
+      {
+        kind: "gate",
+        ref: "refs/heads/feature",
+        sha: LOCAL,
+        range: null,
+        why: "no answer: whole gate",
+      },
     ]);
   });
 
@@ -165,30 +174,44 @@ describe("planPush", () => {
     expect(planPush("origin", [pushed(LOCAL, ZERO)], p)[0]).toEqual({
       kind: "gate",
       ref: "refs/heads/feature",
+      sha: LOCAL,
       range: null,
       why: "no merge base with the served branch trunk-served is known here: whole gate",
     });
   });
 });
 
+/** A runner whose work tree is commit `checkedOut`: only there are untracked files examined. */
 function runner(
   codes: readonly (number | null)[],
   available = true,
+  checkedOut = LOCAL,
 ): Runner & { calls: unknown[] } {
   const calls: unknown[] = [];
   return {
     calls,
     gateAvailable: () => available,
-    runGate: (range, untracked) => {
-      calls.push([range, untracked]);
+    runGate: (sha, range, untracked) => {
+      calls.push([sha, range, untracked]);
       const index = calls.length - 1;
       const exitCode = index < codes.length ? (codes[index] as number | null) : 0;
-      return { exitCode, output: `gate run ${calls.length}\n` };
+      return {
+        exitCode,
+        output: `gate run ${calls.length}\n`,
+        untrackedExamined: untracked && sha === checkedOut,
+      };
     },
   };
 }
 
-const GATED: Plan = { kind: "gate", ref: "refs/heads/feature", range: "x..y", why: "why" };
+const GATED: Plan = {
+  kind: "gate",
+  ref: "refs/heads/feature",
+  sha: LOCAL,
+  range: "x..y",
+  why: "why",
+};
+const OTHER: Plan = { ...GATED, ref: "refs/heads/other", sha: REMOTE, range: null };
 const SKIPPED: Plan = { kind: "skip", ref: "refs/heads/old", why: "deleted, nothing to examine" };
 
 describe("guard", () => {
@@ -200,13 +223,34 @@ describe("guard", () => {
     expect(outcome.lines.at(-1)).toBe("artifact-lifecycle pre-push: refs=1 examined=0: pass");
   });
 
-  test("the untracked files are examined with the first gated ref only", () => {
-    const r = runner([0, 0]);
-    expect(guard([GATED, SKIPPED, { ...GATED, range: null }], r, false).exitCode).toBe(0);
+  test("each gated ref is judged on its own commit; the untracked files once, where examined", () => {
+    const r = runner([0, 0, 0]);
+    const outcome = guard([OTHER, GATED, SKIPPED, { ...GATED, range: null }], r, false);
+    expect(outcome.exitCode).toBe(0);
     expect(r.calls).toEqual([
-      ["x..y", true],
-      [null, false],
+      [REMOTE, null, true],
+      [LOCAL, "x..y", true],
+      [LOCAL, null, false],
     ]);
+    expect(outcome.lines.join("\n")).not.toContain("NOT examined");
+  });
+
+  test("no pushed ref is the checked-out commit: the untracked files are said NOT examined", () => {
+    const outcome = guard([OTHER], runner([0]), false);
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines).toContain(
+      "artifact-lifecycle pre-push: untracked files of the work tree NOT examined: no pushed ref is the checked-out commit with an index and tracked files equal to it",
+    );
+  });
+
+  test("a refusal of the guard itself names the override, which lets it through", () => {
+    const refused = refuse("unexpected line 1 on the standard input", false);
+    expect(refused.exitCode).toBe(2);
+    expect(refused.lines.at(-1)).toContain("push REFUSED");
+    expect(refused.lines.at(-1)).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
+    const overridden = refuse("unexpected line 1 on the standard input", true);
+    expect(overridden.exitCode).toBe(0);
+    expect(overridden.lines.at(-1)).toContain("OVERRIDE ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 active");
   });
 
   test("a red gate refuses with the gate's code and names the override", () => {
