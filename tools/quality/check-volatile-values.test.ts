@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -75,6 +75,16 @@ describe("version-literal", () => {
     expect(result.linesRead).toBe(1);
   });
 
+  test.each([
+    "**Version** : 1.2.3",
+    "**Version :** 1.2.3",
+    "Version : `1.2.3`",
+    "_Version_: v1.2.3",
+    "Version: **`v1.2.3`**",
+  ])("markdown emphasis or code around the parts does not hide a version: %p", (line) => {
+    expect(ids(scan("README.md", line).findings)).toEqual(["version-literal"]);
+  });
+
   test("a word that merely ends in `version` is not a version", () => {
     expect(scan("README.md", "conversion 3.2.1").findings).toEqual([]);
     expect(scan("README.md", "conversion : 3.2.1").findings).toEqual([]);
@@ -102,6 +112,15 @@ describe("the derivation marker", () => {
     "see below derived:",
     "see below derived:   ",
     "Version : 1.2.3 <!-- derived: -->",
+    // The closing token is not a command, wherever the line goes on after it.
+    "Version : 1.2.3 <!-- derived: --> voir la doc",
+    "Version : 1.2.3 <!-- derived:--> <!-- other -->",
+    "Version : 1.2.3 <!--derived:   -->.",
+    // Outside an HTML comment, prose after the marker is not a declaration.
+    "Version : 1.2.3, derived: from the manifest",
+    "Version : 1.2.3 <!-- derived: bun x",
+    // One declared marker does not cover a second, bare one on the same line.
+    "Version : 1.2.3 <!-- derived: bun x --> 24 dépôts derived:",
   ])("a marker without a command is malformed: %p", (line) => {
     const result = scan("AGENTS.md", `first line\n${line}`);
     expect(result.malformedMarkers).toEqual([{ file: "AGENTS.md", line: 2 }]);
@@ -111,6 +130,19 @@ describe("the derivation marker", () => {
   test("a bare marker does not exempt the value on its line", () => {
     const result = scan("README.md", "Version : 1.2.3 derived:");
     expect(ids(result.findings)).toEqual(["version-literal"]);
+  });
+
+  test("a marker in prose, outside its comment form, exempts nothing", () => {
+    const result = scan("README.md", "Version : 1.2.3, derived: from the manifest");
+    expect(ids(result.findings)).toEqual(["version-literal"]);
+    expect(result.derived).toEqual([]);
+  });
+
+  test("text after a well-formed comment does not undo the declaration", () => {
+    const result = scan("README.md", "Version : 1.2.3 <!-- derived: bun x --> see the manifest");
+    expect(result.findings).toEqual([]);
+    expect(ids(result.derived)).toEqual(["version-literal"]);
+    expect(result.malformedMarkers).toEqual([]);
   });
 });
 
@@ -127,6 +159,15 @@ describe("review-date", () => {
     "Dernière revue : 2026-10-08",
     "Mis à jour le 2026-10-08",
   ])("%p is one finding", (line) => {
+    expect(ids(scan("README.md", line).findings)).toEqual(["review-date"]);
+  });
+
+  test.each([
+    "Last-updated: 2026-10-08",
+    "last_reviewed: 2026-10-08",
+    "**Last updated**: `2026-10-08`",
+    "Dernière-mise-à-jour : 2026-10-08",
+  ])("a hyphen, underscore or emphasis in the phrase does not hide a date: %p", (line) => {
     expect(ids(scan("README.md", line).findings)).toEqual(["review-date"]);
   });
 
@@ -168,6 +209,15 @@ describe("hand-count", () => {
     expect(result.findings).toEqual([
       { file: "README.md", line: 1, id: "hand-count", text: `3 ${unit}` },
     ]);
+  });
+
+  test.each([
+    "**24** dépôts",
+    "`24` files",
+    "24 **dépôts**",
+    "_24_ `tests`",
+  ])("markdown emphasis or code around the parts does not hide a count: %p", (line) => {
+    expect(ids(scan("README.md", line).findings)).toEqual(["hand-count"]);
   });
 
   test("a longer word that starts with a unit is not that unit", () => {
@@ -299,6 +349,30 @@ describe("the command", () => {
     expect(run.stderr).toContain("AGENTS.md: tracked root document is unreadable");
   });
 
+  test("run from a subdirectory, the command still reads the root documents", () => {
+    const repository = fixture("from-subdirectory", {
+      "README.md": "# Title\n\nThe fleet holds 24 dépôts déclarés.\n",
+      "docs/x.md": "Notes.\n",
+    });
+    const run = runGate(join(repository, "docs"));
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain("README.md:3: hand-count: 24 dépôts");
+    expect(run.stdout).not.toContain("verified nothing");
+  });
+
+  test("a tracked root document that is a symbolic link exits 2, unfollowed", () => {
+    const outsideFile = join(workspace, "outside-target.md");
+    writeFileSync(outsideFile, "Version : 9.9.9 outside-secret\n");
+    const repository = fixture("symlink", { "AGENTS.md": "Rules.\n" });
+    symlinkSync(outsideFile, join(repository, "README.md"));
+    git(repository, ["add", "--", "README.md"]);
+    const run = runGate(repository);
+    expect(run.exitCode).toBe(2);
+    expect(run.stderr).toContain("README.md: tracked root document is a symbolic link");
+    expect(`${run.stdout}${run.stderr}`).not.toContain("outside-secret");
+    expect(`${run.stdout}${run.stderr}`).not.toContain("9.9.9");
+  });
+
   test("no root document is declared empty with its reason, never a silent green", () => {
     const repository = fixture("empty", { "docs/x.md": "Version : 1.2.3\n" });
     const run = runGate(repository);
@@ -314,11 +388,11 @@ describe("the command", () => {
     expect(run.stderr).toContain("usage:");
   });
 
-  test("outside a repository the listing fails, and so does the command", () => {
+  test("outside a repository the root cannot be resolved, and the command fails", () => {
     const outside = join(workspace, "not-a-repository");
     mkdirSync(outside);
     const run = runGate(outside);
     expect(run.exitCode).toBe(2);
-    expect(run.stderr).toContain("git ls-files failed");
+    expect(run.stderr).toContain("git rev-parse --show-toplevel failed");
   });
 });

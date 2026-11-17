@@ -8,21 +8,33 @@
  * documents against the patterns below and reports every hit, unless the line
  * declares where its value comes from.
  *
- * THE DECLARATION, and its form: a line may carry `derived: <command>`. The
- * command is required, because a marker without one says "trust me" where the
- * point is to name what regenerates the value. A bare marker is therefore an
- * error (exit 2), not a finding and not an exemption. Derived lines are counted
- * and printed on every run, never hidden.
+ * THE DECLARATION, and its form: a line may carry `<!-- derived: <command> -->`,
+ * an HTML comment that renders as nothing. The command is required, because a
+ * marker without one says "trust me" where the point is to name what
+ * regenerates the value. Every `derived:` on a line must open such a comment
+ * with a non-empty command: a bare marker, an empty comment or the word in
+ * prose ("derived: from the manifest") is an error (exit 2), not a finding and
+ * not an exemption — prose would otherwise exempt its whole line. This is
+ * stricter than the brief, which accepted `derived: <command>` anywhere on the
+ * line. Derived lines are counted and printed on every run, never hidden.
  *
- * SCOPE is narrow on purpose: root level only, tracked files only. A document
- * under a directory has other owners and other gates, and an untracked file is
- * not what the repository ships.
+ * MARKDOWN does not hide a value: emphasis and code spans (`*`, `_`, a
+ * backtick) around the parts of a version or a count, and a hyphen or an
+ * underscore between the words of a review phrase, still match.
+ *
+ * SCOPE is narrow on purpose: root level of the repository (resolved by
+ * `git rev-parse --show-toplevel`, whatever the working directory), tracked
+ * files only. A document under a directory has other owners and other gates,
+ * and an untracked file is not what the repository ships. A root document that
+ * is a symbolic link is an error and is never followed: the repository ships
+ * the link, not its target.
  *
  * Exit codes: 0 no finding, 1 finding(s), 2 error (malformed marker, tracked
- * root document unreadable, usage).
+ * root document unreadable or a symbolic link, usage).
  */
 
-import { readFileSync } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 export interface VolatilePattern {
   readonly id: string;
@@ -74,6 +86,9 @@ const REVIEW_PHRASES = [
   "mis à jour le",
 ] as const;
 
+/** Markdown emphasis and code-span delimiters, tolerated around the parts of a value. */
+const MARKUP = "[*_`]*";
+
 /**
  * Case-insensitive and Unicode-aware. The left boundaries are the argument of
  * each pattern: without them "conversion : 3.2.1" reads as a version and
@@ -82,13 +97,16 @@ const REVIEW_PHRASES = [
 export const VOLATILE_PATTERNS: readonly VolatilePattern[] = [
   {
     id: "version-literal",
-    pattern: /(?<![\p{L}\p{N}])version\s*:\s*v?\d+\.\d+\.\d+/iu,
+    pattern: new RegExp(
+      String.raw`(?<![\p{L}\p{N}])version${MARKUP}\s*:[\s*_${"`"}]*v?\d+\.\d+\.\d+`,
+      "iu",
+    ),
     says: "a version number is read from the manifest that carries it",
   },
   {
     id: "review-date",
     pattern: new RegExp(
-      String.raw`(?:${REVIEW_PHRASES.join("|")})[^\d]{0,20}\d{4}-\d{2}-\d{2}`,
+      String.raw`(?:${REVIEW_PHRASES.map((phrase) => phrase.split(" ").join(String.raw`[\s_-]+`)).join("|")})[^\d]{0,20}\d{4}-\d{2}-\d{2}`,
       "iu",
     ),
     says: "a review date is read from the history of the file",
@@ -96,7 +114,7 @@ export const VOLATILE_PATTERNS: readonly VolatilePattern[] = [
   {
     id: "hand-count",
     pattern: new RegExp(
-      String.raw`(?<![\p{L}\p{N}.,])\d+\s+(?:${COUNTED_UNITS.join("|")})(?![\p{L}])`,
+      String.raw`(?<![\p{L}\p{N}.,])\d+${MARKUP}\s+${MARKUP}(?:${COUNTED_UNITS.join("|")})(?![\p{L}])`,
       "iu",
     ),
     says: "a count is produced by the command that enumerates what it counts",
@@ -126,16 +144,20 @@ export function isRootDocument(path: string): boolean {
 
 type MarkerState = "absent" | "declared" | "malformed";
 
+/** `<!-- derived: <command> -->`; the command is bounded by the comment that carries it. */
+const DECLARATION = new RegExp(String.raw`<!--\s*${DERIVATION_MARKER}(.*?)-->`, "gu");
+
 function markerState(line: string): MarkerState {
-  const at = line.indexOf(DERIVATION_MARKER);
-  if (at === -1) return "absent";
-  // The marker usually sits in an HTML comment: its closing token is not a
-  // command, so `<!-- derived: -->` is as bare as `derived:` alone.
-  const command = line
-    .slice(at + DERIVATION_MARKER.length)
-    .replace(/-->\s*$/, "")
-    .trim();
-  return command.length > 0 ? "declared" : "malformed";
+  const occurrences = line.split(DERIVATION_MARKER).length - 1;
+  if (occurrences === 0) return "absent";
+  let declarations = 0;
+  for (const [, command = ""] of line.matchAll(DECLARATION)) {
+    if (command.trim().length === 0) return "malformed";
+    declarations += 1;
+  }
+  // A marker outside its comment (bare, in prose, or in a comment left open)
+  // would otherwise ride on a well-formed one elsewhere on the line.
+  return declarations === occurrences ? "declared" : "malformed";
 }
 
 function linesOf(text: string): string[] {
@@ -190,7 +212,24 @@ if (import.meta.main) {
     fail(["usage: bun tools/quality/check-volatile-values.ts (no argument)"]);
   }
 
-  const listed = Bun.spawnSync(["git", "ls-files", "-z"], { stdout: "pipe", stderr: "pipe" });
+  // From a subdirectory, `git ls-files` lists that subdirectory only, and the
+  // root documents would vanish into an empty-but-declared green.
+  const toplevel = Bun.spawnSync(["git", "rev-parse", "--show-toplevel"], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if (toplevel.exitCode !== 0) {
+    fail([
+      `git rev-parse --show-toplevel failed: ${new TextDecoder().decode(toplevel.stderr).trim()}`,
+    ]);
+  }
+  const root = new TextDecoder().decode(toplevel.stdout).trim();
+
+  const listed = Bun.spawnSync(["git", "ls-files", "-z"], {
+    cwd: root,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
   if (listed.exitCode !== 0) {
     fail([`git ls-files failed: ${new TextDecoder().decode(listed.stderr).trim()}`]);
   }
@@ -201,8 +240,19 @@ if (import.meta.main) {
   const files: { path: string; text: string }[] = [];
   const unreadable: string[] = [];
   for (const path of tracked.filter(isRootDocument)) {
+    const absolute = join(root, path);
     try {
-      files.push({ path, text: readFileSync(path, "utf8") });
+      if (lstatSync(absolute).isSymbolicLink()) {
+        unreadable.push(`${path}: tracked root document is a symbolic link — not followed`);
+        continue;
+      }
+      // O_NOFOLLOW closes the window between the lstat and the read.
+      const descriptor = openSync(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        files.push({ path, text: readFileSync(descriptor, "utf8") });
+      } finally {
+        closeSync(descriptor);
+      }
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       unreadable.push(`${path}: tracked root document is unreadable — ${reason}`);
@@ -215,7 +265,7 @@ if (import.meta.main) {
     fail(
       scan.malformedMarkers.map(
         ({ file, line }) =>
-          `${file}:${line}: \`${DERIVATION_MARKER}\` names no command — write \`${DERIVATION_MARKER} <command>\``,
+          `${file}:${line}: \`${DERIVATION_MARKER}\` names no command in its own comment — write \`<!-- ${DERIVATION_MARKER} <command> -->\``,
       ),
     );
   }
@@ -227,7 +277,7 @@ if (import.meta.main) {
     report.check(
       `${finding.file}:${finding.line}`,
       false,
-      `${finding.id}: ${finding.text} — ${says.get(finding.id) ?? ""} (or annotate the line \`${DERIVATION_MARKER} <command>\`)`,
+      `${finding.id}: ${finding.text} — ${says.get(finding.id) ?? ""} (or annotate the line \`<!-- ${DERIVATION_MARKER} <command> -->\`)`,
     );
   }
   if (scan.findings.length === 0) {
