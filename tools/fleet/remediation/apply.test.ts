@@ -18,7 +18,9 @@ import {
   changedSetProblem,
   childEnvironment,
   EXIT,
+  gitEnvironment,
   type Manifest,
+  originProblem,
   parseArguments,
   prBody,
   readManifest,
@@ -77,6 +79,8 @@ interface Bench {
   readonly parasiteFlag: string;
   /** Present: the fake gh exits 1. */
   readonly ghFailFlag: string;
+  /** Present: the work branch appears at origin right before the tool's push. */
+  readonly raceFlag: string;
   readonly git: (cwd: string, ...args: string[]) => string;
   readonly writeKit: (patch: string, line?: Partial<ManifestFields>) => void;
 }
@@ -106,15 +110,21 @@ function bench(): Bench {
   const ghBody = join(root, "gh-body.md");
   const parasiteFlag = join(root, "parasite.flag");
   const ghFailFlag = join(root, "gh-fail.flag");
+  const raceFlag = join(root, "race.flag");
   // Only shell builtins: the child's PATH holds nothing but this directory.
   script(join(bin, "git"), [
     "#!/bin/sh",
     `printf '[%s]' "$@" >> '${gitLog}'`,
     `printf '\\n' >> '${gitLog}'`,
-    `if [ "$1" = apply ] && [ "$2" != --check ] && [ "$2" != --numstat ] && [ -f '${parasiteFlag}' ]; then`,
+    `if [ "$1" = apply ] && [ "$2" != --check ] && [ "$2" != --numstat ] && [ "$2" != --summary ] && [ -f '${parasiteFlag}' ]; then`,
     `  '${REAL_GIT}' "$@" || exit $?`,
     "  : > parasite.txt",
     "  exit 0",
+    "fi",
+    // Someone creates the work branch at origin, on an ancestor of the commit,
+    // between the tool's check and its push: a plain push would fast-forward it.
+    `if [ "$1" = push ] && [ -f '${raceFlag}' ]; then`,
+    `  '${REAL_GIT}' push --quiet origin 'HEAD~1:refs/heads/${BRANCH}' || exit 99`,
     "fi",
     `exec '${REAL_GIT}' "$@"`,
   ]);
@@ -146,7 +156,8 @@ function bench(): Bench {
 
   // A served branch that is not main, named at run time.
   const served = `served-${Math.random().toString(36).slice(2, 10)}`;
-  const bare = join(root, "forge", "alpha.git");
+  // `<owner>/<name>.git`: the origin of the clone designates REPOSITORY.
+  const bare = join(root, "forge", "o", "alpha.git");
   mkdirSync(bare, { recursive: true });
   git(bare, "init", "--bare", "-q", `--initial-branch=${served}`);
   const seed = join(root, "seed");
@@ -156,6 +167,7 @@ function bench(): Bench {
   git(seed, "config", "user.email", "seed@example.invalid");
   writeFileSync(join(seed, "a.txt"), "one\nBAD\nthree\n");
   writeFileSync(join(seed, "b.txt"), "untouched\n");
+  writeFileSync(join(seed, ".gitignore"), "generated/\n");
   git(seed, "add", "-A");
   git(seed, "commit", "-q", "-m", "seed");
   git(seed, "push", "-q", `file://${bare}`, `HEAD:refs/heads/${served}`);
@@ -206,20 +218,28 @@ function bench(): Bench {
     ghBody,
     parasiteFlag,
     ghFailFlag,
+    raceFlag,
     git,
     writeKit,
   };
 }
 
-/** The patch of the kit: one line replaced in a.txt and a new file in a new directory. */
-function remediationPatch(b: Bench): string {
+/** A patch made by `edit` on a fresh clone of the base, everything staged by force. */
+function patchFrom(b: Bench, edit: (work: string) => void): string {
   const work = join(b.root, `patch-${Math.random().toString(36).slice(2, 8)}`);
   b.git(b.root, "clone", "-q", `file://${b.bare}`, work);
-  writeFileSync(join(work, "a.txt"), "one\nGOOD\nthree\n");
-  mkdirSync(join(work, "dir"));
-  writeFileSync(join(work, "dir", "new.txt"), "created\n");
-  b.git(work, "add", "-A");
+  edit(work);
+  b.git(work, "add", "-A", "-f");
   return b.git(work, "diff", "--cached", "--binary");
+}
+
+/** The patch of the kit: one line replaced in a.txt and a new file in a new directory. */
+function remediationPatch(b: Bench): string {
+  return patchFrom(b, (work) => {
+    writeFileSync(join(work, "a.txt"), "one\nGOOD\nthree\n");
+    mkdirSync(join(work, "dir"));
+    writeFileSync(join(work, "dir", "new.txt"), "created\n");
+  });
 }
 
 interface Run {
@@ -401,6 +421,136 @@ describe("patch refused", () => {
   });
 });
 
+describe("patch content refused (git apply --summary)", () => {
+  test("a symbolic link created by the patch: 5, no commit", () => {
+    const b = bench();
+    b.writeKit(patchFrom(b, (work) => symlinkSync("../../etc/passwd", join(work, "link"))));
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.code).toBe(EXIT.patch);
+    expect(run.stderr).toContain("120000");
+    expect(b.git(b.clone, "rev-parse", `refs/heads/${BRANCH}`).trim()).toBe(b.base);
+  });
+
+  test("a rename: 5, no commit", () => {
+    const b = bench();
+    b.writeKit(
+      patchFrom(b, (work) => {
+        writeFileSync(join(work, "c.txt"), readFileSync(join(work, "b.txt")));
+        rmSync(join(work, "b.txt"));
+      }),
+    );
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.code).toBe(EXIT.patch);
+    expect(b.git(b.clone, "rev-parse", `refs/heads/${BRANCH}`).trim()).toBe(b.base);
+  });
+});
+
+describe("ignored paths", () => {
+  test("a file the patch creates under an ignored path is committed, and only it", () => {
+    const b = bench();
+    b.writeKit(
+      patchFrom(b, (work) => {
+        mkdirSync(join(work, "generated"));
+        writeFileSync(join(work, "generated", "x.txt"), "kept\n");
+      }),
+    );
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.stderr).toBe("");
+    expect(run.code).toBe(EXIT.ok);
+    const names = b
+      .git(worktreeOf(run.stdout), "show", "--name-only", "--format=", "HEAD")
+      .trim()
+      .split("\n");
+    expect(names).toEqual(["generated/x.txt"]);
+  });
+
+  test("an ignored parasite appearing after apply is refused: 5", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    // The wrapper's parasite matches an exclude pattern of the clone.
+    writeFileSync(join(b.clone, ".git", "info", "exclude"), "parasite.txt\n");
+    writeFileSync(b.parasiteFlag, "");
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.code).toBe(EXIT.patch);
+    expect(run.stderr).toContain("parasite.txt");
+  });
+});
+
+describe("the clone's configuration and hooks", () => {
+  /** Executable marker scripts: each writes its name into `<root>/ran/`. */
+  function marker(b: Bench, path: string, name: string, extra: readonly string[] = []): void {
+    mkdirSync(join(b.root, "ran"), { recursive: true });
+    mkdirSync(dirname(path), { recursive: true });
+    script(path, ["#!/bin/sh", `: > '${join(b.root, "ran", name)}'`, ...extra]);
+  }
+  const ran = (b: Bench): string[] =>
+    existsSync(join(b.root, "ran")) ? readdirSync(join(b.root, "ran")).sort() : [];
+
+  test("core.fsmonitor never runs; the clone's hooks run for the commit only", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    const hooks = join(b.clone, ".git", "hooks");
+    marker(b, join(b.root, "fsmonitor.sh"), "fsmonitor", ["exit 1"]);
+    b.git(b.clone, "config", "core.fsmonitor", join(b.root, "fsmonitor.sh"));
+    // post-checkout runs on `worktree add` only; reference-transaction would
+    // run for the commit as well, so it cannot tell the two apart.
+    for (const hook of ["post-checkout", "pre-commit", "commit-msg"]) {
+      marker(b, join(hooks, hook), hook);
+    }
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.stderr).toBe("");
+    expect(run.code).toBe(EXIT.ok);
+    expect(ran(b)).toEqual(["commit-msg", "pre-commit"]);
+  });
+
+  test("a pre-commit hook adding a file: the commit is not the patch, 5", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    script(join(b.clone, ".git", "hooks", "pre-commit"), [
+      "#!/bin/sh",
+      ": > hooked.txt",
+      "exec git add hooked.txt",
+    ]);
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE]);
+    expect(run.code).toBe(EXIT.patch);
+    expect(run.stderr).toContain("the commit is not the patch");
+    expect(run.stderr).toContain("hooked.txt");
+  });
+});
+
+describe("origin of the clone", () => {
+  /** A second forge repository, o/beta, at the same base. */
+  function beta(b: Bench): string {
+    const other = join(b.root, "forge", "o", "beta.git");
+    b.git(b.root, "clone", "-q", "--bare", `file://${b.bare}`, other);
+    return other;
+  }
+
+  test("origin designating another repository: 3, nothing pushed anywhere, gh never called", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    const other = beta(b);
+    b.git(b.clone, "remote", "set-url", "origin", `file://${other}`);
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE, "--apply"]);
+    expect(run.code).toBe(EXIT.input);
+    expect(run.stderr).toContain("does not designate o/alpha");
+    expect(ghCalls(b)).toEqual([]);
+    expect(b.git(b.root, "ls-remote", "--heads", `file://${other}`)).not.toContain(BRANCH);
+  });
+
+  test("a push URL designating another repository: 3, nothing pushed anywhere", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    const other = beta(b);
+    b.git(b.clone, "remote", "set-url", "--push", "origin", `file://${other}`);
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE, "--apply"]);
+    expect(run.code).toBe(EXIT.input);
+    expect(ghCalls(b)).toEqual([]);
+    expect(b.git(b.root, "ls-remote", "--heads", `file://${other}`)).not.toContain(BRANCH);
+    expect(remoteHeads(b)).not.toContain(BRANCH);
+  });
+});
+
 describe("input refused", () => {
   test("the work branch already exists at origin: 3, gh never called", () => {
     const b = bench();
@@ -486,7 +636,20 @@ describe("--apply", () => {
     const pushes = readFileSync(b.gitLog, "utf8")
       .split("\n")
       .filter((line) => line.startsWith("[push]"));
-    expect(pushes).toEqual([`[push][--quiet][origin][HEAD:refs/heads/${BRANCH}]`]);
+    expect(pushes).toEqual([
+      `[push][--quiet][--force-with-lease=refs/heads/${BRANCH}:][origin][HEAD:refs/heads/${BRANCH}]`,
+    ]);
+  });
+
+  test("the work branch created at origin after the check: 7, the branch not moved, gh never called", () => {
+    const b = bench();
+    b.writeKit(remediationPatch(b));
+    writeFileSync(b.raceFlag, "");
+    const run = runTool(b, [TICKET, REPOSITORY, BRANCH, TITLE, "--apply"]);
+    expect(run.code).toBe(EXIT.write);
+    expect(ghCalls(b)).toEqual([]);
+    // The branch someone else created stays where they put it.
+    expect(remoteHeads(b)).toContain(`${b.base}\trefs/heads/${BRANCH}`);
   });
 
   test("a remote refusing the push: 7, gh never called", () => {
@@ -653,17 +816,116 @@ describe("prBody", () => {
     expect(body).toContain("- `a.txt`\n- `b.txt`");
     expect(body).toContain(MANIFEST.replay);
   });
+
+  test("a path holding backticks keeps its code span: the fence is longer than its longest run", () => {
+    const body = prBody(MANIFEST, ["a``b", "`c"]);
+    expect(body).toContain("- ```a``b```");
+    // A leading backtick is padded, the padding is stripped by the renderer.
+    expect(body).toContain("- `` `c ``");
+  });
+
+  test("a replay holding a fence is closed by a longer fence", () => {
+    const body = prBody({ ...MANIFEST, replay: "echo ``` && echo ````" }, ["a"]);
+    expect(body).toContain("`````sh\necho ``` && echo ````\n`````");
+  });
 });
 
-describe("childEnvironment", () => {
-  test("passes PASSED_VARIABLES only, never a GIT_* variable or a token", () => {
+describe("readManifest refuses a control character in the replay", () => {
+  for (const [label, character] of [
+    ["carriage return", "\r"],
+    ["escape", "\u{1b}"],
+    ["delete", "\u{7f}"],
+    ["C1 control", "\u{85}"],
+    ["bidi override", "\u{202e}"],
+    ["line separator", "\u{2028}"],
+  ] as const) {
+    test(label, () => {
+      const read = readManifest(manifestText({ replay: `bun x${character}y` }), TICKET, REPOSITORY);
+      expect(read.ok).toBe(false);
+    });
+  }
+});
+
+describe("originProblem", () => {
+  test("the forms that designate o/alpha", () => {
+    for (const url of [
+      "https://github.com/o/alpha",
+      "https://github.com/o/alpha.git",
+      "https://github.com/O/Alpha.git",
+      "ssh://git@github.com/o/alpha.git",
+      "git@github.com:o/alpha.git",
+      "git@github.com:o/alpha",
+      "file:///srv/forge/o/alpha.git",
+    ]) {
+      expect([url, originProblem(url, REPOSITORY)]).toEqual([url, null]);
+    }
+  });
+
+  test("the forms that do not", () => {
+    for (const url of [
+      "https://github.com/o/beta.git",
+      "https://github.com/x/alpha.git",
+      "https://github.com/x/o/alpha.git",
+      "https://github.com/o/alpha.git/",
+      "https://github.com/o/alpha.git?x=1",
+      "https://github.com/o/%61lpha.git",
+      "http://github.com/o/alpha.git",
+      "git://github.com/o/alpha.git",
+      "ext::sh -c touch% /tmp/x",
+      "git@github.com:x/o/alpha.git",
+      "git@github.com:/o/alpha.git",
+      "/srv/forge/o/alpha.git",
+      "file:///srv/forge/alpha.git",
+      "",
+    ]) {
+      expect([url, originProblem(url, REPOSITORY)]).not.toEqual([url, null]);
+    }
+  });
+
+  test("the refusal never prints the URL: it may hold a credential", () => {
+    const problem = originProblem("https://user:s3cret@github.com/o/beta.git", REPOSITORY) ?? "";
+    expect(problem).not.toContain("s3cret");
+    expect(problem).toContain("does not designate o/alpha");
+  });
+});
+
+describe("childEnvironment and gitEnvironment", () => {
+  test("children receive PASSED_VARIABLES only, never a GIT_* variable or a token", () => {
     const built = childEnvironment({
       PATH: "/p",
       HOME: "/h",
       GIT_DIR: "/elsewhere",
       GIT_INDEX_FILE: "/i",
       GH_TOKEN: "secret",
+      SSH_AUTH_SOCK: "/agent",
     });
     expect(built).toEqual({ PATH: "/p", HOME: "/h", GIT_TERMINAL_PROMPT: "0" });
+  });
+
+  test("git also receives SSH_AUTH_SOCK, fsmonitor off and, outside commit and push, an empty hooks path", () => {
+    const environment = {
+      PATH: "/p",
+      GIT_CONFIG_PARAMETERS: "'core.fsmonitor'='x'",
+      GH_TOKEN: "secret",
+      SSH_AUTH_SOCK: "/agent",
+    };
+    expect(gitEnvironment(environment, "/empty", false)).toEqual({
+      PATH: "/p",
+      GIT_TERMINAL_PROMPT: "0",
+      SSH_AUTH_SOCK: "/agent",
+      GIT_CONFIG_COUNT: "2",
+      GIT_CONFIG_KEY_0: "core.fsmonitor",
+      GIT_CONFIG_VALUE_0: "false",
+      GIT_CONFIG_KEY_1: "core.hooksPath",
+      GIT_CONFIG_VALUE_1: "/empty",
+    });
+    expect(gitEnvironment(environment, "/empty", true)).toEqual({
+      PATH: "/p",
+      GIT_TERMINAL_PROMPT: "0",
+      SSH_AUTH_SOCK: "/agent",
+      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_KEY_0: "core.fsmonitor",
+      GIT_CONFIG_VALUE_0: "false",
+    });
   });
 });
