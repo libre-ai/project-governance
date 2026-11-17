@@ -211,6 +211,11 @@ export const NOT_GATED: readonly NotGated[] = [
       "the fleet inventory: inventory-drift reconciles it with the GitHub organization in both directions, so a repository dropped from it fails the same day",
   },
   {
+    path: "ecosystem/repository-rulesets.v1.yaml",
+    because:
+      "the declared rulesets: the provider enforces the rulesets themselves, not this file; check-repository-rulesets compares it to a readback in both directions and no workflow calls that comparison yet",
+  },
+  {
     path: "ecosystem/LEGACY-MANIFEST.yaml",
     because: "the register of legacy repositories, audited weekly by truth-drift against GitHub",
   },

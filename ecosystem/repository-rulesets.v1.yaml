@@ -1,0 +1,124 @@
+# Declared rulesets of the fleet's repositories (brick EXE-05, GOV-15).
+#
+# One entry per declared repository, carrying the COMPLETE list of its
+# rulesets: a repository listed here declares all of them, and `rulesets: []`
+# means "this repository has no ruleset". There is no exemption list.
+#
+# `bun ecosystem/check-repository-rulesets.ts --observed <readback.json>`
+# reconciles this file with a readback (`{ repository, rulesets }`, the shape
+# tools/attestation/provider-policy.sh already produces) in both directions,
+# on five fields per ruleset: target, enforcement, conditions, bypass_actors,
+# rules. The name is the key. The gate reads files only; it never calls the
+# provider and never proposes a correction — changing a ruleset stays a human
+# act (I-17, ADR-0029 §2.8).
+#
+# Dated measurement, to replay before relying on it: the entry below
+# transcribes the rulesets read on 2026-11-17 (list with parents included,
+# then each ruleset in full). It records the state as read, taken as the
+# expected state; no concordance with a later readback has been asserted in
+# continuous integration yet.
+schema_version: libre-ai.repository-rulesets.v1
+repositories:
+  - repository: libre-ai/project-governance
+    rulesets:
+      - name: consolidation-candidate-no-rewrite
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - refs/heads/docs/forge-portfolio-consolidation
+            exclude: []
+        bypass_actors: []
+        rules:
+          - type: deletion
+          - type: non_fast_forward
+      - name: forge-realization-branch-integrity
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - refs/heads/feat/forge-realization
+            exclude: []
+        bypass_actors: []
+        rules:
+          - type: deletion
+          - type: non_fast_forward
+      - name: forge-reviewed-recovery-admission
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - refs/heads/migrate/recover-code
+            exclude: []
+        bypass_actors: []
+        rules:
+          - type: deletion
+          - type: non_fast_forward
+          - type: pull_request
+            parameters:
+              required_approving_review_count: 0
+              dismiss_stale_reviews_on_push: true
+              required_reviewers: []
+              require_code_owner_review: false
+              dismissal_restriction:
+                enabled: false
+                allowed_actors: []
+              require_last_push_approval: false
+              required_review_thread_resolution: true
+              require_extra_approval_for_unattributed_changes: true
+              allowed_merge_methods:
+                - merge
+                - squash
+                - rebase
+          - type: required_status_checks
+            parameters:
+              strict_required_status_checks_policy: true
+              do_not_enforce_on_create: false
+              required_status_checks:
+                - context: composition / validate
+                  integration_id: 15368
+                - context: Composed targets pass the manifest gates of their composed governance
+                  integration_id: 15368
+                - context: Door declaration
+                  integration_id: 15368
+                - context: Bun quality
+                  integration_id: 15368
+                - context: Every pinned code citation of the documents resolves
+                  integration_id: 15368
+                - context: Negatives declaration
+                  integration_id: 15368
+                - context: Licensing and contribution governance
+                  integration_id: 15368
+      - name: refoundation-no-bypass-branch
+        target: branch
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - "~ALL"
+            exclude:
+              - refs/heads/migrate/recover-code
+              - refs/heads/feat/forge-realization
+              - refs/heads/doctrine/owner-signature
+              - refs/heads/work/**
+        bypass_actors: []
+        rules:
+          - type: creation
+          - type: deletion
+          - type: update
+      - name: refoundation-no-bypass-tag
+        target: tag
+        enforcement: active
+        conditions:
+          ref_name:
+            include:
+              - "~ALL"
+            exclude: []
+        bypass_actors: []
+        rules:
+          - type: creation
+          - type: update
+          - type: deletion
