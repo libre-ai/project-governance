@@ -7,13 +7,14 @@ import {
   classifyDocument,
   compareArchiveParity,
   countLines,
+  type GitProcess,
+  parseBlobBatch,
   parseUsefulEditLog,
   readArchiveLayout,
   STALENESS_POLICY,
   type StalenessPolicy,
   validatePolicy,
 } from "./check-document-staleness";
-import type { GitRead } from "./git-diff";
 
 // The thresholds below come from the brief, not from the code: "more than 500
 // lines" and "no useful edit for more than 60 days", ADRs out of the policy.
@@ -27,6 +28,7 @@ const POLICY: StalenessPolicy = {
   excludedPrefixes: ["docs/adr/"],
   nonUsefulCommits: [],
   migrationIndexFileName: "migration-index.v1.yaml",
+  futureToleranceSeconds: DAY,
 };
 
 const scratch = mkdtempSync(join(tmpdir(), "document-staleness-test-"));
@@ -57,28 +59,28 @@ function git(dir: string, args: readonly string[], when?: number): string {
 }
 
 /**
- * The reader handed to auditDocuments: the purged environment above, never the
+ * The runner handed to auditDocuments: the purged environment above, never the
  * one this process inherited. Under a git hook, GIT_DIR is already set and
  * points at the hook's repository; `git -C <fixture>` would then read it, and
  * the test would measure the ambient run instead of its own case. Removing it
  * from `process.env` is not enough: measured on Bun 1.4.4, `Bun.spawnSync`
  * without `env` does not see a `delete process.env.X`.
  */
-function fixtureGit(argv: readonly string[], what: string): GitRead {
+function fixtureGit(argv: readonly string[], stdin?: Uint8Array): GitProcess {
   const result = Bun.spawnSync(["git", ...argv], {
     env: gitEnvironment,
+    stdin: stdin ?? "ignore",
     stdout: "pipe",
     stderr: "pipe",
   });
-  const stdout = new TextDecoder().decode(result.stdout);
-  if (result.exitCode !== 0) {
-    return {
-      ok: false,
-      reason: `could not ${what}: ${new TextDecoder().decode(result.stderr).trim()}`,
-    };
-  }
-  return { ok: true, stdout };
+  return {
+    exitCode: result.exitCode ?? 1,
+    stdout: result.stdout,
+    stderr: new TextDecoder().decode(result.stderr),
+  };
 }
+
+const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 let repositoryCount = 0;
 function newRepository(): string {
@@ -149,9 +151,28 @@ describe("classifyDocument: both criteria must hold", () => {
 
 describe("countLines", () => {
   test("counts a final line without a newline", () => {
-    expect(countLines("")).toBe(0);
-    expect(countLines("a\nb\n")).toBe(2);
-    expect(countLines("a\nb")).toBe(2);
+    expect(countLines(bytes(""))).toBe(0);
+    expect(countLines(bytes("a\nb\n"))).toBe(2);
+    expect(countLines(bytes("a\nb"))).toBe(2);
+  });
+});
+
+describe("parseBlobBatch", () => {
+  const id = "a".repeat(40);
+  const other = "b".repeat(40);
+
+  test("reads each blob by its byte size, multi-byte content included", () => {
+    // "é" is two bytes: a size read as characters would cut the next record.
+    const output = bytes(`${id} blob 4\né\nx\n${other} blob 0\n\n`);
+    const read = parseBlobBatch(output, [id, other]);
+    expect(read.ok && Object.fromEntries(read.lines)).toEqual({ [id]: 2, [other]: 0 });
+  });
+
+  test("a missing object, a truncated body or trailing bytes are failures", () => {
+    expect(parseBlobBatch(bytes(`${id} missing\n`), [id]).ok).toBe(false);
+    expect(parseBlobBatch(bytes(`${id} blob 10\nshort\n`), [id]).ok).toBe(false);
+    expect(parseBlobBatch(bytes(`${id} blob 2\nx\n\nextra`), [id]).ok).toBe(false);
+    expect(parseBlobBatch(bytes(`${id} tree 2\nx\n\n`), [id]).ok).toBe(false);
   });
 });
 
@@ -206,11 +227,13 @@ describe("validatePolicy", () => {
     const problems = validatePolicy({
       ...POLICY,
       maxLines: 0,
+      futureToleranceSeconds: -1,
       excludedPrefixes: ["../outside/"],
       nonUsefulCommits: [{ sha: "abc", because: "" }],
     });
     expect(problems).toEqual([
       "maxLines must be a positive integer, got 0",
+      "futureToleranceSeconds must be a non-negative integer, got -1",
       'excluded prefix "../outside/" must be a repository-relative directory ending with /',
       'non-useful commit "abc" is not a full commit id',
       'non-useful commit "abc" has no reason',
@@ -241,6 +264,7 @@ describe("auditDocuments on a real history", () => {
       triggered: 1,
       below: 2,
       uncommitted: 0,
+      future: 0,
     });
   });
 
@@ -288,12 +312,97 @@ describe("auditDocuments on a real history", () => {
     if (!audit.ok) expect(audit.reason).toContain("shallow");
   });
 
-  test("a tracked document missing from the working tree is a failure, not a zero", () => {
+  test("a tracked blob missing from the object store is a failure, not a zero", () => {
     const dir = newRepository();
     writeLines(dir, "docs/a.md", 3);
     commitAll(dir, "one", NOW - 100 * DAY);
-    rmSync(join(dir, "docs/a.md"));
-    expect(auditDocuments(dir, POLICY, NOW, fixtureGit).ok).toBe(false);
+    const blob = git(dir, ["rev-parse", ":docs/a.md"]).trim();
+    rmSync(join(dir, ".git/objects", blob.slice(0, 2), blob.slice(2)), { force: true });
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    expect(audit.ok).toBe(false);
+    if (!audit.ok) expect(audit.reason).toContain(blob);
+  });
+
+  test("a document deleted from the working tree is still read from the index", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "one", NOW - 100 * DAY);
+    rmSync(join(dir, "docs/old-long.md"));
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.triggered.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
+  });
+
+  test("lines are counted from the tracked blob: a parent directory swapped for a link to a short copy does not hide the long document", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "old", NOW - 200 * DAY);
+    const decoy = join(scratch, `decoy-${repositoryCount}`);
+    writeLines(decoy, "old-long.md", 3);
+    rmSync(join(dir, "docs"), { recursive: true });
+    symlinkSync(decoy, join(dir, "docs"));
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.triggered.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
+    expect(audit.triggered[0]?.lines).toBe(600);
+  });
+
+  test("an unstaged shortening on disk does not hide the long tracked document", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "old", NOW - 200 * DAY);
+    writeLines(dir, "docs/old-long.md", 3);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.triggered.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
+  });
+
+  test("a last useful edit dated in the future beyond the tolerance is a named failure, never a negative age", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "from the future", NOW + 30 * DAY);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.future.map((entry) => entry.path)).toEqual(["docs/old-long.md"]);
+    expect(audit.counts.future).toBe(1);
+    expect(audit.counts.below).toBe(0);
+  });
+
+  test("a last useful edit a little ahead of the clock, within the tolerance, is an ordinary recent edit", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/old-long.md", 600);
+    commitAll(dir, "clock skew", NOW + 3600);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.future).toEqual([]);
+    expect(audit.counts.below).toBe(1);
+  });
+
+  test("an index in a merge conflict is refused, never a path counted once per stage", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/a.md", 3);
+    commitAll(dir, "base", NOW - 100 * DAY);
+    git(dir, ["switch", "-q", "-c", "side"]);
+    writeFileSync(join(dir, "docs/a.md"), "side\n");
+    commitAll(dir, "side", NOW - 90 * DAY);
+    git(dir, ["switch", "-q", "-"]);
+    writeFileSync(join(dir, "docs/a.md"), "main\n");
+    commitAll(dir, "main", NOW - 80 * DAY);
+    Bun.spawnSync(["git", "-C", dir, "merge", "-q", "side"], { env: gitEnvironment });
+    expect(git(dir, ["ls-files", "-u"])).not.toBe("");
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    expect(audit.ok).toBe(false);
+    if (!audit.ok) expect(audit.reason).toContain("unmerged");
+  });
+
+  test("the ADR exclusion ignores case, like the document selection", () => {
+    const dir = newRepository();
+    writeLines(dir, "DOCS/ADR/0001-old-long.md", 2000);
+    commitAll(dir, "old", NOW - 200 * DAY);
+    const audit = auditDocuments(dir, POLICY, NOW, fixtureGit);
+    if (!audit.ok) throw new Error(audit.reason);
+    expect(audit.triggered).toEqual([]);
+    expect(audit.counts.excluded).toBe(1);
   });
 
   test("a root below the top of the repository is refused, never a green over unmatched paths", () => {
@@ -458,6 +567,16 @@ describe("command", () => {
     const result = run(dir);
     expect(result.code).toBe(1);
     expect(result.err).toContain("no tracked document matches");
+  });
+
+  test("fails and names a document whose last useful edit is dated months ahead", () => {
+    const dir = newRepository();
+    writeLines(dir, "docs/ahead.md", 600);
+    commitAll(dir, "from the future", Math.floor(Date.now() / 1000) + 90 * DAY);
+    const result = run(dir);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain("docs/ahead.md");
+    expect(result.err).toContain("ahead of now");
   });
 
   test("a document whose extension is upper case is examined like any other", () => {
