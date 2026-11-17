@@ -22,7 +22,9 @@ import {
   listHistoryBlobs,
   parseNameRules,
   parseThreshold,
+  printable,
   run,
+  UNREACHABLE_PATH,
 } from "./check-history-blobs";
 
 /**
@@ -47,6 +49,14 @@ describe("auditNames — whole word, by segment", () => {
     expect(report.violations).toEqual([
       { path: "a/My_Postgres_Backup", tool: "postgres" },
       { path: "b/Rust", tool: "rust" },
+    ]);
+  });
+
+  test("a dot separates segments too, a word containing the tool still does not match", () => {
+    const report = auditNames(["infra/terraform.modules", "a/postgres.d", "b/rustacean.io"], RULES);
+    expect(report.violations).toEqual([
+      { path: "infra/terraform.modules", tool: "terraform" },
+      { path: "a/postgres.d", tool: "postgres" },
     ]);
   });
 
@@ -99,6 +109,32 @@ describe("DEFAULT_NAME_RULES", () => {
     for (const tool of ["kubernetes", "postgres", "gitlab", "rust", "grafana"]) {
       expect(rules.tools).toContain(tool);
     }
+  });
+});
+
+describe("printable — nothing in a path may drive a terminal", () => {
+  test.each([
+    ["C0 escape", "a\u{1b}[31mb", "a?[31mb"],
+    ["DEL", "a\u{7f}b", "a?b"],
+    ["C1 CSI", "a\u{9b}31mb", "a?31mb"],
+    ["C1 next line", "a\u{85}b", "a?b"],
+    ["right-to-left override", "a\u{202e}b", "a?b"],
+    ["left-to-right embedding", "a\u{202a}b", "a?b"],
+    ["first strong isolate", "a\u{2068}b", "a?b"],
+    ["pop directional isolate", "a\u{2069}b", "a?b"],
+    ["right-to-left mark", "a\u{200f}b", "a?b"],
+    ["left-to-right mark", "a\u{200e}b", "a?b"],
+    ["arabic letter mark", "a\u{61c}b", "a?b"],
+    ["zero-width space", "a\u{200b}b", "a?b"],
+    ["line separator", "a\u{2028}b", "a?b"],
+    ["paragraph separator", "a\u{2029}b", "a?b"],
+  ])("replaces a %s", (_name, text, expected) => {
+    expect(printable(text)).toBe(expected);
+  });
+
+  test("leaves letters, accents and punctuation of a path alone", () => {
+    const path = "\u{e9}quipe/donn\u{e9}es_2024.v1-ok";
+    expect(printable(path)).toBe(path);
   });
 });
 
@@ -230,6 +266,60 @@ describe("listHistoryBlobs — against a real repository", () => {
     expect(report.bySegment).toEqual([{ segment: "assets", count: 2, bytes: 7000 }]);
   });
 
+  test("every object of the store is counted, and the counters sum", async () => {
+    const { coverage } = await listHistoryBlobs(repo, 1000, work);
+    // Blobs: two versions of assets/big.bin and small.txt.
+    expect(coverage.examined).toBeGreaterThan(coverage.blobs);
+    expect(coverage.reachable + coverage.unreachable).toBe(coverage.examined);
+    expect(coverage.unreachable).toBe(0);
+    expect(coverage.blobs).toBe(3);
+    expect(coverage.lfsAttributes).toBe(0);
+  });
+
+  test("a blob that no ref reaches is examined and listed as unreachable", async () => {
+    const source = join(scratch, "orphan-source");
+    mkdirSync(source);
+    git(source, "init", "-q");
+    git(source, "config", "user.name", "t");
+    git(source, "config", "user.email", "t@t");
+    git(source, "config", "commit.gpgsign", "false");
+    writeFileSync(join(source, "small.txt"), "tiny");
+    git(source, "add", "-A");
+    git(source, "commit", "-q", "-m", "one");
+    const orphan = join(scratch, "orphan.bin");
+    writeFileSync(orphan, "o".repeat(5000));
+    git(source, "hash-object", "-w", orphan);
+
+    const report = await listHistoryBlobs(source, 1000, work);
+    expect(report.top.map((b) => [b.path, b.size])).toEqual([[UNREACHABLE_PATH, 5000]]);
+    expect(report.bySegment).toEqual([{ segment: UNREACHABLE_PATH, count: 1, bytes: 5000 }]);
+    expect(report.coverage.unreachable).toBe(1);
+    expect(report.coverage.reachable + report.coverage.unreachable).toBe(report.coverage.examined);
+  });
+
+  test("a .gitattributes of history declaring filter=lfs is reported", async () => {
+    const source = join(scratch, "lfs-source");
+    mkdirSync(join(source, "design"), { recursive: true });
+    git(source, "init", "-q");
+    git(source, "config", "user.name", "t");
+    git(source, "config", "user.email", "t@t");
+    git(source, "config", "commit.gpgsign", "false");
+    // The declaration lives in a deleted version of a nested file: history, not the tip.
+    writeFileSync(
+      join(source, "design", ".gitattributes"),
+      "# art\n*.psd filter=lfs diff=lfs -text\n",
+    );
+    writeFileSync(join(source, ".gitattributes"), "# *.bin filter=lfs\n*.txt text\n");
+    git(source, "add", "-A");
+    git(source, "commit", "-q", "-m", "one");
+    git(source, "rm", "-q", "design/.gitattributes");
+    git(source, "commit", "-q", "-m", "two");
+
+    const report = await listHistoryBlobs(source, 1000, work);
+    // The commented-out line of the root file is not a declaration.
+    expect(report.coverage.lfsAttributes).toBe(1);
+  });
+
   test("a repository without a large object: empty list", async () => {
     const report = await listHistoryBlobs(repo, 10 * MIB, work);
     expect(report.top).toEqual([]);
@@ -354,6 +444,8 @@ describe("as a process", () => {
       git(dir, "config", "user.email", "t@t");
       git(dir, "config", "commit.gpgsign", "false");
       writeFileSync(join(dir, "esc\u001b[31mred.bin"), "x".repeat(50));
+      writeFileSync(join(dir, "csi\u{9b}31mred.bin"), "y".repeat(50));
+      writeFileSync(join(dir, "txt.\u{202e}exe.bin"), "z".repeat(50));
       git(dir, "add", "-A");
       git(dir, "commit", "-q", "-m", "one");
       const done = Bun.spawnSync(["bun", script, "blobs", dir, "10"], {
@@ -361,8 +453,50 @@ describe("as a process", () => {
         stderr: "pipe",
       });
       expect(done.exitCode).toBe(0);
-      expect(done.stdout.toString()).not.toContain("\u001b");
-      expect(done.stdout.toString()).toContain("esc?[31mred.bin");
+      const out = done.stdout.toString();
+      expect(out).not.toContain("\u001b");
+      expect(out).not.toContain("\u{9b}");
+      expect(out).not.toContain("\u{202e}");
+      expect(out).toContain("esc?[31mred.bin");
+      expect(out).toContain("csi?31mred.bin");
+      expect(out).toContain("txt.?exe.bin");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a blobs report prints the volume examined and the coverage of large file storage", () => {
+    const dir = mkdtempSync(join(tmpdir(), "history-blobs-cov-"));
+    try {
+      git(dir, "init", "-q");
+      git(dir, "config", "user.name", "t");
+      git(dir, "config", "user.email", "t@t");
+      git(dir, "config", "commit.gpgsign", "false");
+      writeFileSync(join(dir, ".gitattributes"), "*.psd filter=lfs diff=lfs merge=lfs -text\n");
+      git(dir, "add", "-A");
+      git(dir, "commit", "-q", "-m", "one");
+      const done = Bun.spawnSync(["bun", script, "blobs", dir, "10"], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(done.exitCode).toBe(0);
+      const out = done.stdout.toString();
+      // commit, tree, blob
+      expect(out).toContain("objects examined=3 reachable=3 unreachable=0 blobs=1");
+      expect(out).toContain("large file storage content is not covered");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a repository with no object is exit 2, never the green of a clean one", () => {
+    const dir = mkdtempSync(join(tmpdir(), "history-blobs-empty-"));
+    try {
+      git(dir, "init", "-q");
+      const done = Bun.spawnSync(["bun", script, "blobs", dir], { stdout: "pipe", stderr: "pipe" });
+      expect(done.exitCode).toBe(2);
+      expect(done.stdout.toString()).toBe("");
+      expect(done.stderr.toString()).toContain("objects examined=0");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
