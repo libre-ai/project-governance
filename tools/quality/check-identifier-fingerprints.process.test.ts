@@ -244,6 +244,19 @@ describe("--derive", () => {
     expect(result.stdout).toBe("");
   });
 
+  test("a source list inside another repository than the current one is refused", () => {
+    // The current directory is outside every repository, and the list lives in
+    // a repository that is neither this one nor the current directory's.
+    const other = repository("derive-other", {});
+    mkdirSync(join(other, "nested"), { recursive: true });
+    const list = join(other, "nested", "list.txt");
+    writeFileSync(list, `${IDENTIFIER}\n`);
+    const result = run(workspace, ["--derive", "tenant", list]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("refuses a source list inside a repository tree");
+  });
+
   test("a refused identifier is named by its line number, nothing on stdout", () => {
     const list = join(workspace, "short-list.txt");
     writeFileSync(list, `${IDENTIFIER}\nzz\n`);

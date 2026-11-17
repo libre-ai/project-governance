@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readlinkSync, realpathSync } from "node:fs";
-import { join, sep } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { parseAllowlist } from "./allowlist";
 import { parseStagedEntries, type StagedEntry, SYMLINK_MODE } from "./check-data-inventory";
 import { concludeGate, GateReport } from "./gate-report";
@@ -19,8 +19,13 @@ import { readGit } from "./git-diff";
  *
  * FINGERPRINT, fixed here so that derivation and scan agree:
  *
- * - a text is normalised NFKC, then lower-cased; a token is a maximal run of
- *   `\p{L}` or `\p{N}` characters, and any other character separates;
+ * - a line loses its default-ignorable characters (`\p{Default_Ignorable_Code_Point}`:
+ *   zero width space and joiner, soft hyphen...), then the WHOLE line is
+ *   normalised NFKC, then lower-cased; a token is a maximal run of `\p{L}`,
+ *   `\p{N}` or `\p{M}` characters, and any other character separates. Marks
+ *   belong to the token because lower case can produce one (U+0130 gives
+ *   i + U+0307), and invisible characters are removed because they would
+ *   otherwise cut an identifier in two without changing how it reads;
  * - the fingerprint of n tokens is the SHA-256, lower-case hexadecimal over 64
  *   characters, of the UTF-8 bytes of the tokens joined by one space (U+0020);
  * - window: for each line of a file, and for each token count n present in the
@@ -30,9 +35,11 @@ import { readGit } from "./git-diff";
  *   it would match everywhere. Derivation refuses it and names it by its line
  *   number in the source list, never by its text.
  *
- * Normalisation runs cluster by cluster (a base character with its combining
- * marks) so that a column can be given in the original line. It is the same
- * function for derivation and for the scan, so the two always agree.
+ * Normalisation runs on the whole line, never piece by piece: lower case
+ * depends on context (a final sigma) and NFKC composes across characters
+ * (Hangul jamo, a base and its marks). A separate map gives each normalised
+ * character its column in the original line. `tokenize` is the one function
+ * both derivation and the scan call, so the two always agree.
  *
  * DATA, `identifier-fingerprints.v1.json`: `because`, `entries` (objects
  * `{ class, tokens, sha256 }`) and `exemptPaths` (objects `{ path, because }`,
@@ -60,16 +67,24 @@ import { readGit } from "./git-diff";
  * - an identifier glued inside a longer token (no separator) is not seen.
  *   `check-context-hygiene.sh` searches by substring and does see it: that is
  *   a reason to keep that script in service next to this module;
- * - file paths are not searched, only contents and symlink targets;
+ * - confusables are not folded: a Cyrillic o (U+043E) in place of a Latin o
+ *   gives other tokens, so another fingerprint, and the identifier is not seen;
+ * - diacritics are not folded: an identifier written with an accent or a
+ *   diaeresis it does not carry in the list is another identifier here.
+ *   Folding either would change the fingerprint function the data file is
+ *   derived with, which is the owner's decision, not this module's;
+ * - file paths are not searched, only contents and symlink targets: an
+ *   identifier that only appears in a file name is not seen;
  * - a binary file is not read;
  * - the scan reads the working tree for the paths the index lists.
  *
  * Not wired into `bun run check` nor into a workflow: run it with
  * `bun run check:identifier-fingerprints`. Derive entries with
  * `bun tools/quality/check-identifier-fingerprints.ts --derive <class> <file>`,
- * from a plain list kept OUTSIDE this repository (one identifier per line);
- * a list inside the repository tree is refused, so it cannot be committed by
- * mistake.
+ * from a plain list kept OUTSIDE every repository (one identifier per line);
+ * a list under this repository, or in any directory where
+ * `git rev-parse --show-toplevel` finds a repository, is refused, so it cannot
+ * be committed by mistake.
  */
 
 export const IDENTIFIER_CLASSES = {
@@ -112,33 +127,76 @@ const DATA_PATH = "tools/quality/identifier-fingerprints.v1.json";
 const LINE_MARKER = "allow-identifier-fingerprint";
 const MINIMUM_CHARACTERS = 4;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-// A base character with its combining marks, or marks with no base.
-const CLUSTER = /\P{M}\p{M}*|\p{M}+/gu;
-const TOKEN_CHARACTER = /^[\p{L}\p{N}]$/u;
+const IGNORABLE = /^\p{Default_Ignorable_Code_Point}$/u;
+const MARK = /^\p{M}$/u;
+const TOKEN_CHARACTER = /^[\p{L}\p{N}\p{M}]$/u;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching control characters is the point.
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
 /**
- * The tokens of one line, normalised, each with the 1-based column (in code
- * points) where it starts in the ORIGINAL line.
+ * Map each code point of `NFKC(line).toLowerCase()` back to a 1-based column
+ * of the original line. The line is cut into pieces that NFKC treats
+ * independently: a new piece starts only at a character that is not a mark
+ * and does not compose with the piece before it. Every code point a piece
+ * normalises to takes the column where the piece starts. Lower case maps each
+ * code point to a fixed number of code points (the only contextual rule,
+ * final sigma, keeps the count), so the columns follow it unchanged. The map
+ * is only for the printed column; the tokens always come from the whole line.
+ */
+function columnsOf(kept: readonly { character: string; column: number }[]): number[] {
+  const pieces: { text: string; column: number }[] = [];
+  for (const { character, column } of kept) {
+    const last = pieces[pieces.length - 1];
+    const joins =
+      last !== undefined &&
+      (MARK.test(character) ||
+        (last.text + character).normalize("NFKC") !==
+          last.text.normalize("NFKC") + character.normalize("NFKC"));
+    if (last !== undefined && joins) last.text += character;
+    else pieces.push({ text: character, column });
+  }
+  const columns: number[] = [];
+  for (const piece of pieces) {
+    for (const normalised of piece.text.normalize("NFKC")) {
+      for (const _ of normalised.toLowerCase()) columns.push(piece.column);
+    }
+  }
+  return columns;
+}
+
+/**
+ * The tokens of one line, each with the 1-based column (in code points) where
+ * it starts in the ORIGINAL line. Default-ignorable characters are removed
+ * first, then the whole line is normalised NFKC and lower-cased, then cut.
  */
 export function tokenize(line: string): { token: string; column: number }[] {
+  const kept: { character: string; column: number }[] = [];
+  let position = 0;
+  for (const character of line) {
+    position += 1;
+    if (!IGNORABLE.test(character)) kept.push({ character, column: position });
+  }
+  const text = kept
+    .map((item) => item.character)
+    .join("")
+    .normalize("NFKC")
+    .toLowerCase();
+  const columns = columnsOf(kept);
   const tokens: { token: string; column: number }[] = [];
   let current = "";
   let start = 0;
-  let column = 1;
-  for (const match of line.matchAll(CLUSTER)) {
-    const cluster = match[0];
-    for (const character of cluster.normalize("NFKC").toLowerCase()) {
-      if (TOKEN_CHARACTER.test(character)) {
-        if (current === "") start = column;
-        current += character;
-      } else if (current !== "") {
-        tokens.push({ token: current, column: start });
-        current = "";
-      }
+  let index = 0;
+  for (const character of text) {
+    if (TOKEN_CHARACTER.test(character)) {
+      // Should the map ever come out shorter than the text, the last known
+      // column stands in: the column is a pointer, the token stays exact.
+      if (current === "") start = columns[index] ?? columns[columns.length - 1] ?? 1;
+      current += character;
+    } else if (current !== "") {
+      tokens.push({ token: current, column: start });
+      current = "";
     }
-    column += [...cluster].length;
+    index += 1;
   }
   if (current !== "") tokens.push({ token: current, column: start });
   return tokens;
@@ -487,10 +545,16 @@ function derive(className: string, file: string): number {
     console.error(`${GATE}: --derive: the source list cannot be read`);
     return 1;
   }
-  const roots = [readOrNull(() => realpathSync(join(import.meta.dir, "..", "..")))];
-  const top = readGit(["rev-parse", "--show-toplevel"], "find the repository root");
-  if (top.ok) roots.push(readOrNull(() => realpathSync(top.stdout.trim())));
-  if (roots.some((root) => root !== null && isInside(root, source))) {
+  // Two tests, either of which refuses: the list sits under this module's
+  // repository, or git finds a repository from the list's own directory (any
+  // repository, not only the current one).
+  const moduleRoot = readOrNull(() => realpathSync(join(import.meta.dir, "..", "..")));
+  const insideModuleRoot = moduleRoot !== null && isInside(moduleRoot, source);
+  const listRepository = readGit(
+    ["-C", dirname(source), "rev-parse", "--show-toplevel"],
+    "find a repository around the source list",
+  );
+  if (insideModuleRoot || listRepository.ok) {
     console.error(
       `${GATE}: --derive refuses a source list inside a repository tree: keep the plain list outside, where it cannot be committed`,
     );
