@@ -227,6 +227,11 @@ export const NOT_GATED: readonly NotGated[] = [
     because: "the portfolio source; no gate reads it as an exemption",
   },
   {
+    path: "ecosystem/staleness-exceptions.v1.yaml",
+    because:
+      "the exceptions of the monthly fleet staleness report (check-fleet-staleness.ts), which is not a step of `bun run check` nor of a pull request gate: an entry silences one named finding of a scheduled report, prints EXCEPTED on every run and fails as stale once it covers nothing",
+  },
+  {
     path: "tools/quality/mutants.v1.json",
     because:
       "the mutant catalogue of tools/quality/mutant.ts, which refuses an invalid site; the launcher is not a step of `bun run check`, so the file delimits no gate today, and making it one (then gating this file) is the owner's decision",
