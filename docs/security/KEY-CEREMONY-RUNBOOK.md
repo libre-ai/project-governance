@@ -78,6 +78,12 @@ entry="$(bun tools/security/keygen-ceremony.ts --out /mnt/usb/offline-keys)" \
 
 La sortie standard est capturée dans une variable et n'est écrite qu'en cas de succès : une redirection directe (`> …/registry-entry.json`) créerait ce fichier, vide, dans `--out` même quand l'outil refuse. Les invites de saisie passent par le terminal, pas par la sortie standard : la capture ne les masque pas.
 
+Options de l'entrée de registre, toutes facultatives :
+
+- `--purpose <texte>` : l'usage de la clé, 1 à 256 caractères ; il décrit la clé, jamais une personne. Défaut : `AgentContributorLineage v1, Proof v1 origin signatures`.
+- `--artifact-types <type,…>` : les types de manifeste d'artefact que la clé peut signer, parmi `build`, `dataset`, `export`, `release`, `evidence`, séparés par des virgules, sans répétition, 5 au plus. Défaut : aucun. Une clé sans type est admise au registre mais n'autorise aucun manifeste (règle S7 du contrat) : c'est le cas des clés de lignage et de preuve.
+- `--signatory <rôle>` : l'identifiant de rôle du témoin (`^[a-z][a-z0-9-]{0,63}$`). Défaut : `key-custodian`. Un nom ou une adresse est refusé en usage (code 2, la valeur n'est pas recopiée) : l'identité de la personne vit dans le trailer `Signed-off-by` du commit qui enregistre la clé (règle K7), jamais dans le registre.
+
 **Refus attendus de l'outil (code 4, rien d'écrit) :**
 
 - une variable de CI posée (`CI`, `GITHUB_ACTIONS`, `GITLAB_CI`, `CIRCLECI`, `TRAVIS`, `BUILDKITE`) ;
@@ -95,16 +101,26 @@ Les messages pour l'opérateur vont sur la sortie d'erreur. La sortie standard n
 
 ```json
 {
-  "id": "<64 caractères hexadécimaux>",
+  "signingKeyId": "ed25519-<64 caractères hexadécimaux>",
   "algorithm": "Ed25519",
   "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
   "purpose": "AgentContributorLineage v1, Proof v1 origin signatures",
-  "activatedAt": "<date ISO 8601 de la cérémonie>",
-  "revokedAt": null
+  "artifactTypes": [],
+  "activatedAt": "<instant de la cérémonie, AAAA-MM-JJTHH:MM:SS.sssZ>",
+  "revokedAt": null,
+  "witness": {
+    "signatory": "key-custodian",
+    "attestedAt": "<même instant>",
+    "comment": "Offline key ceremony; the sealed envelope was unsealed and checked against this public key before it was named."
+  }
 }
 ```
 
-L'identifiant est le SHA-256, en hexadécimal minuscule, des 32 octets bruts de la clé publique. Il ne dépend ni de la date ni de l'encodage PEM : tout vérificateur le recalcule depuis la clé.
+C'est une clé du contrat `signing-keys.v1` du dépôt des contrats (`contracts/schemas/signing-keys.v1.schema.json`, sémantique et règles K0 à K7 dans `contracts/artifact-manifest-signatures-v1/SEMANTICS.md`). Le test de l'outil valide l'entrée imprimée contre une copie octet pour octet de ce schéma (`tools/security/fixtures/signing-keys-v1/`, dont `origin.json` nomme le commit lu).
+
+L'identifiant `signingKeyId` est `ed25519-` suivi du SHA-256, en hexadécimal minuscule, des 32 octets bruts de la clé publique (règle K3). Il ne dépend ni de la date ni de l'encodage PEM : tout vérificateur le recalcule depuis la clé. Il nomme aussi les deux fichiers écrits dans `--out`.
+
+`revokedAt` vaut `null` pour une clé en vigueur et ne s'omet pas. `witness.attestedAt` reçoit l'instant de la cérémonie ; si le témoin atteste plus tard, à la revue de l'enregistrement, mettez-y l'instant de son attestation.
 
 Fichiers écrits dans `--out`, dans cet ordre :
 
@@ -192,7 +208,7 @@ L'outil redemande la phrase de passe (une fois, sans écho), descelle en mémoir
 
 ### Étape 8 : Enregistrer la clé publique dans le dépôt
 
-Retour sur votre machine de développement (connectée, post-cérémonial). L'outil n'écrit jamais ce registre : recopiez l'entrée de `registry-entry.json` dans `keys`, puis ajoutez le témoin.
+Retour sur votre machine de développement (connectée, post-cérémonial). L'outil n'écrit jamais ce registre : recopiez l'entrée de `registry-entry.json`, telle quelle, dans `keys`. Elle porte déjà le témoin, sous un identifiant de rôle.
 
 1. **Créer le fichier de manifest des clés publiques** (ou le mettre à jour) :
 
@@ -207,26 +223,29 @@ Retour sur votre machine de développement (connectée, post-cérémonial). L'ou
      "schemaVersion": "libre-ai.signing-keys.v1",
      "keys": [
        {
-         "id": "<SHA-256 hex des 32 octets bruts de la clé publique>",
+         "signingKeyId": "ed25519-<SHA-256 hex des 32 octets bruts de la clé publique>",
          "algorithm": "Ed25519",
          "publicKey": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----",
          "purpose": "AgentContributorLineage v1, Proof v1 origin signatures",
-         "activatedAt": "2026-07-22T00:00:00.000Z",
+         "artifactTypes": [],
+         "activatedAt": "2026-07-22T10:00:00.000Z",
          "revokedAt": null,
          "witness": {
-           "signatory": "owner@libre-ai.example",
+           "signatory": "key-custodian",
            "attestedAt": "2026-07-22T12:00:00.000Z",
-           "comment": "Initial key ceremony, air-gapped generation, HSM-backed"
+           "comment": "Initial key ceremony, air-gapped generation"
          }
        }
      ]
    }
    ```
 
-3. **Valider le format :**
+   Aucun membre ne porte de donnée personnelle (règle K7) : `signatory` est un rôle (`key-custodian`, `security-reviewer`…), jamais un nom ni une adresse ; `purpose` et `comment` décrivent la clé. L'identité de qui enregistre et atteste est celle du trailer `Signed-off-by` du commit ci-dessous. Le contrat refuse en bloc un registre qui enfreint une règle K (`key-set-invalid`) : 1 à 64 clés, aucun membre inconnu, deux entrées jamais sous le même `signingKeyId` (K4).
+
+3. **Valider le format :** le registre se valide contre `contracts/schemas/signing-keys.v1.schema.json` du dépôt des contrats. Aucun contrôle de ce dépôt ne lit encore `config/signing-keys.v1.json` (`bun run check:source` ne le lit pas). Avant le commit, recalculez au moins chaque identifiant (règle K3, commande de la section Dépannage) et vérifiez qu'aucun ne se répète (K4) :
 
    ```bash
-   bun run check:source  # Inclut une validation du JSON
+   jq -r '.keys[].signingKeyId' config/signing-keys.v1.json | sort | uniq -d   # doit ne rien afficher
    ```
 
 4. **Committer avec DCO signoff :**
@@ -234,7 +253,7 @@ Retour sur votre machine de développement (connectée, post-cérémonial). L'ou
    git add config/signing-keys.v1.json
    git commit -s -m "feat(security): register initial Ed25519 signing key (WP-G2-Z01)
 
-   - keyId: <identifiant>
+   - signingKeyId: <identifiant>
    - Algorithm: Ed25519
    - Purpose: origin signature for AgentContributorLineage v1
    - Generated via air-gapped key ceremony 2026-07-22
@@ -244,40 +263,47 @@ Retour sur votre machine de développement (connectée, post-cérémonial). L'ou
 
 ---
 
-## Protocole de rotation (futur, clé compromise)
+## Protocole de rotation (retrait ordinaire)
 
-### Quand générer une nouvelle clé ?
+Le contrat `signing-keys.v1` distingue deux fins de vie (SEMANTICS.md, « Key lifecycle ») : la **rotation retire l'entrée** du registre ; `revokedAt` est **réservé à la compromission** (section suivante). Une clé tournée n'est jamais marquée `revokedAt`.
 
-- **Rotation programmée :** Tous les 2 ans (bonne hygiène cryptographique).
-- **Compromise suspecte :** Si la clé privée est potentiellement exposée (ex. machine compromise, accès non autorisé au HSM), générer immédiatement.
-- **Algorithme périmé :** Si la recherche cryptographique découvre une faiblesse en Ed25519 (très unlikely, mais à surveiller).
+### Quand faire tourner une clé ?
 
-### Processus de rotation :
+- **Rotation programmée :** tous les 2 ans (hygiène cryptographique).
+- **Changement de gardien ou fin d'usage :** la clé n'a plus de détenteur ou plus d'objet.
+- **Algorithme périmé :** si la recherche cryptographique découvre une faiblesse en Ed25519.
 
-1. **Générer une nouvelle paire** en reprenant la cérémonial complète (Étapes 1-7).
-2. **Ajouter la nouvelle clé** au manifest `config/signing-keys.v1.json` avec `activatedAt` et marquer l'ancienne avec `revokedAt`.
-3. **Décommissionner l'ancienne clé scellée** (effacer les copies, garder UNE copie archivée chiffre hors-ligne pendant 7 ans pour audit).
-4. **Migrer les nouveaux signings** vers la nouvelle clé immédiatement.
-5. **Vérifier** que les systèmes de vérification acceptent les deux clés (période de transition).
+Une clé possiblement exposée (machine compromise, accès non autorisé au support) ne tourne pas : elle se **révoque** (section suivante).
+
+### Processus de rotation
+
+1. **Générer une nouvelle paire** en reprenant la cérémonie complète (étapes 1 à 8) ; la nouvelle entrée entre au registre à côté de l'ancienne.
+2. **Re-signer avec la nouvelle clé**, avant tout retrait, chaque manifeste qui doit continuer à se vérifier : pendant le recouvrement, l'enregistrement de signatures porte les deux signatures, l'ancienne et la nouvelle.
+3. **Retirer l'entrée de l'ancienne clé** de `config/signing-keys.v1.json`, par un commit revu et signé (`git commit -s`). Dès lors, une signature qui la nomme est une signature inconnue (règle S5) : ignorée et comptée, jamais vérifiée. Un enregistrement qui ne porterait que l'ancienne signature est refusé (`signature-key-unknown`) : c'est pourquoi l'étape 2 précède celle-ci.
+4. **Décommissionner l'ancienne clé scellée** (effacer les copies, garder UNE copie archivée chiffrée hors ligne pendant 7 ans pour audit).
+5. **Signer désormais avec la nouvelle clé seule.**
 
 ---
 
 ## Protocole de révocation (clé compromise)
 
-Si vous découvrez un accès non autorisé à la clé privée :
+Si vous découvrez, ou soupçonnez, un accès non autorisé à la clé privée :
 
-1. **Arrêt immédiat :** Ne pas signer de nouveaux lignages avec cette clé.
-2. **Mettre à jour le manifest :**
+1. **Arrêt immédiat :** ne plus rien signer avec cette clé.
+2. **Dater la révocation.** `revokedAt` est l'instant le plus ancien à partir duquel la clé ne doit plus être crue : au plus tard l'instant de la découverte (`revokedAt <= revocationWitness.discoveredAt`, règle K6), et plus tôt si l'exposition a commencé avant, par exemple au dernier instant où la clé est connue saine. Une révocation datée après la découverte laisserait valide une signature faite entre les deux : le contrat la refuse. `revokedAt` reste strictement postérieur à `activatedAt` (K5).
+3. **Mettre à jour l'entrée** de la clé dans `config/signing-keys.v1.json` : l'entrée reste au registre, `revokedAt` passe de `null` à l'instant choisi, et `revocationReason` et `revocationWitness` deviennent obligatoires (K6) :
    ```json
-   "revokedAt": "2026-07-23T14:32:00.000Z",
-   "revocationReason": "suspected compromise — machine breach",
+   "revokedAt": "2026-07-23T09:00:00.000Z",
+   "revocationReason": "suspected compromise of the offline machine; last known safe use at 09:00 UTC",
    "revocationWitness": {
-     "signatory": "owner@libre-ai.example",
+     "signatory": "key-custodian",
      "discoveredAt": "2026-07-23T14:30:00.000Z"
    }
    ```
-3. **Générer une nouvelle clé** (rotation immédiate).
-4. **Audit :** Examiner les enveloppes signées par la clé compromise (historique de git + audit logs).
+   `revocationReason` décrit la clé et l'incident, jamais une personne ; `signatory` est un rôle (K7). L'identité de qui révoque est celle du trailer `Signed-off-by` du commit revu.
+4. **Effet chez les vérificateurs.** L'activité d'une clé se juge à l'instant de la vérification (règle S6) : tout enregistrement qu'elle a signé cesse de se vérifier dès `now >= revokedAt`, quelle que soit la date que le manifeste se donne. Un enregistrement à double signature dont l'une est révoquée est refusé en entier (S9), même si l'autre se vérifie : le producteur le réémet sans la signature compromise.
+5. **Générer une nouvelle clé** (cérémonie complète) et re-signer avec elle ce qui doit rester vérifiable.
+6. **Audit :** examiner ce que la clé compromise a signé (historique git, journaux d'audit).
 
 ---
 
@@ -304,8 +330,8 @@ Si vous découvrez un accès non autorisé à la clé privée :
 
 ### ✓ Audit trail
 
-- [ ] Commit Git du manifest inclut le keyID et la date de la cérémonial.
-- [ ] Witness du signatory + timestamp d'attestation.
+- [ ] Commit Git du manifest inclut le `signingKeyId` et la date de la cérémonie, signé (`Signed-off-by`) par qui enregistre.
+- [ ] Témoin de l'entrée : rôle (`signatory`) et instant d'attestation, sans nom ni adresse.
 - [ ] Copie de backup du fichier scellé sécurisée hors-ligne (coffre-fort, duplication géographique).
 
 ---
@@ -314,7 +340,7 @@ Si vous découvrez un accès non autorisé à la clé privée :
 
 ### Où la clé publique est-elle consommée ?
 
-Le manifest `config/signing-keys.v1.json` est lu par le **consommateur** qui vérifie, jamais par une bibliothèque de vérification. Le consommateur charge le registre, choisit les clés actives (non révoquées) et les passe à la bibliothèque :
+Le manifest `config/signing-keys.v1.json` est lu par le **consommateur** qui vérifie, jamais par une bibliothèque de vérification. Le consommateur charge le registre, refuse en bloc un registre qui enfreint une règle K, et passe les clés à la bibliothèque ; une clé ne vérifie que si elle est active à l'instant de la vérification (`activatedAt <= now < revokedAt`, règle S6) et autorisée pour le type du manifeste (`artifactTypes`, règle S7) :
 
 1. **Paquet provenance d'`artifact-verification`** (`packages/provenance/src/index.ts`) — prend la clé publique **en paramètre** et ne lit aucun registre ; ce dépôt réserve le choix des clés au consommateur (son `AGENTS.md`). Aucune bibliothèque d'`artifact-verification` ne lit `config/signing-keys.v1.json` elle-même.
 2. **Vérification des preuves** (future) — même contrat : la clé arrive en paramètre, chargée par le consommateur.
@@ -368,11 +394,11 @@ Les tests de scellement de `tools/security/keygen-ceremony.test.ts` tournent sou
 
 ### Q : Comment puis-je vérifier que la clé publique dans le repo est la bonne ?
 
-**R :** L'identifiant est l'empreinte : le SHA-256 des 32 octets bruts de la clé publique. Extrayez le PEM de l'entrée du registre (OpenSSL ne lit pas le JSON), recalculez l'empreinte et comparez-la à l'identifiant de l'entrée et à la copie papier ou USB de la cérémonie :
+**R :** L'identifiant est l'empreinte : `ed25519-` suivi du SHA-256 des 32 octets bruts de la clé publique (règle K3). Extrayez le PEM de l'entrée du registre (OpenSSL ne lit pas le JSON), recalculez l'empreinte et comparez-la à l'identifiant de l'entrée et à la copie papier ou USB de la cérémonie :
 
 ```bash
-jq -r --arg id "<identifiant>" '.keys[] | select(.id == $id) | .publicKey' config/signing-keys.v1.json \
-  | openssl pkey -pubin -outform DER | tail -c 32 | sha256sum
+jq -r --arg id "<identifiant>" '.keys[] | select(.signingKeyId == $id) | .publicKey' config/signing-keys.v1.json \
+  | openssl pkey -pubin -outform DER | tail -c 32 | sha256sum | cut -d' ' -f1 | sed 's/^/ed25519-/'
 # Doit afficher <identifiant>. Le PEM se compare aussi octet pour octet à <identifiant>.pub.pem du support.
 ```
 
@@ -384,6 +410,7 @@ jq -r --arg id "<identifiant>" '.keys[] | select(.id == $id) | .publicKey' confi
 - **PROMOTION-DOSSIER.md** (envelope-v1, deferral mentioning WP-G2-Z01).
 - **packages/provenance/** (AgentContributorLineage v1, signature Ed25519).
 - **tools/security/keygen-ceremony.ts** (script de génération, sealing, public-key output).
+- **Contrat `signing-keys.v1`** du dépôt des contrats : `contracts/schemas/signing-keys.v1.schema.json` et `contracts/artifact-manifest-signatures-v1/SEMANTICS.md` (règles K0 à K7, S0 à S10, cycle de vie des clés).
 - **RFC 8037** (Ed25519, CFRG elliptic curve signatures).
 - **NIST SP 800-132** (PBKDF2, password hashing — scrypt equivalent for modern setups).
 
@@ -391,7 +418,6 @@ jq -r --arg id "<identifiant>" '.keys[] | select(.id == $id) | .publicKey' confi
 
 ## Sign-off
 
-Cérémonial exécuté et validé par : `<your name>` · Date : `<date>`
-Witness : `<optional: security team lead, external auditor>` · Attesté le : `<date>`
+La cérémonie ne se signe pas dans ce document. Qui l'a exécutée, et qui en est témoin, signe le commit qui enregistre la clé (`git commit -s`, trailer `Signed-off-by`) ; le registre ne porte que le rôle du témoin (`witness.signatory`) et l'instant de son attestation (règle K7).
 
 **Une seule source de vérité pour l'identité de cette clé : le commit git du manifest dans `config/signing-keys.v1.json`.**

@@ -29,10 +29,11 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
  * Owner-run, offline; docs/security/KEY-CEREMONY-RUNBOOK.md is the procedure.
  *
  * Usage:
- *   bun tools/security/keygen-ceremony.ts --out <dir> [--purpose <text>] [--passphrase-fd <n>]
- *   bun tools/security/keygen-ceremony.ts --dev-key [--purpose <text>]
- *   bun tools/security/keygen-ceremony.ts --public-key-only [--purpose <text>]
+ *   bun tools/security/keygen-ceremony.ts --out <dir> [entry options] [--passphrase-fd <n>]
+ *   bun tools/security/keygen-ceremony.ts --dev-key [entry options]
+ *   bun tools/security/keygen-ceremony.ts --public-key-only [entry options]
  *   bun tools/security/keygen-ceremony.ts --verify-sealed <file> --public-key <pem> [--passphrase-fd <n>]
+ * Entry options: [--purpose <text>] [--artifact-types <type,...>] [--signatory <role>]
  *
  * Exit codes: 0 success, 1 tool failure (write, unseal, mismatch, public key
  * shape), 2 usage, 4 refusal (CI detected outside --dev-key, output under
@@ -54,17 +55,37 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
  * error. The tool never writes the registry itself: registering a key is an
  * owner act.
  *
+ * The entry is a key of the `signing-keys.v1` contract of the contracts
+ * authority (contracts/schemas/signing-keys.v1.schema.json, semantics in
+ * contracts/artifact-manifest-signatures-v1/SEMANTICS.md, rules K0 to K7):
+ * `signingKeyId` derived from the raw key (K3), `revokedAt` null for a key in
+ * force, `artifactTypes` the manifests the key may sign (empty: none, S7), and
+ * a witness whose `signatory` is a role, never a person's name or address (K7).
+ *
  * Importing this module runs nothing: the ceremony starts under
  * `import.meta.main` only, so the test imports the real functions.
  */
 
+/** `artifactType` values of artifact-manifest.v1, the only ones a key may be authorized for. */
+export const ARTIFACT_TYPES = ["build", "dataset", "export", "release", "evidence"] as const;
+export type ArtifactType = (typeof ARTIFACT_TYPES)[number];
+
+export interface RegistryWitness {
+  signatory: string;
+  attestedAt: string;
+  comment: string;
+}
+
+/** One key of signing-keys.v1, in force: the revocation members are absent (K6). */
 export interface RegistryEntry {
-  id: string;
+  signingKeyId: string;
   algorithm: "Ed25519";
   publicKey: string;
   purpose: string;
+  artifactTypes: ArtifactType[];
   activatedAt: string;
   revokedAt: null;
+  witness: RegistryWitness;
 }
 
 export interface GeneratedKeyPair {
@@ -106,6 +127,16 @@ export const EXIT_REFUSED = 4;
 const CI_VARIABLES = ["CI", "GITHUB_ACTIONS", "GITLAB_CI", "CIRCLECI", "TRAVIS", "BUILDKITE"];
 const MINIMUM_PASSPHRASE_LENGTH = 32;
 const DEFAULT_PURPOSE = "AgentContributorLineage v1, Proof v1 origin signatures";
+// The default purpose signs lineage and proof records, not artifact manifests:
+// an empty set authorizes no manifest, the least a key may be given (S7).
+const DEFAULT_ARTIFACT_TYPES: readonly ArtifactType[] = [];
+const DEFAULT_SIGNATORY = "key-custodian";
+
+// Bounds and forms of signing-keys.v1 (K1, K3, K7).
+const SIGNING_KEY_ID_PREFIX = "ed25519-";
+const SIGNATORY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+const PURPOSE_MAXIMUM_LENGTH = 256;
+const ARTIFACT_TYPES_MAXIMUM = 5;
 
 // DER prefix of an Ed25519 SubjectPublicKeyInfo (RFC 8410 §4): SEQUENCE(42),
 // SEQUENCE(5) { OID 1.3.101.112 }, BIT STRING(33) with 0 unused bits.
@@ -152,12 +183,15 @@ export class SealError extends Error {
   }
 }
 
-/** Key identifier: lowercase hex SHA-256 of the 32 raw public-key bytes. */
+/**
+ * signingKeyId of signing-keys.v1 (K3): `ed25519-` and the lowercase hex
+ * SHA-256 of the 32 raw public-key bytes, never of the PEM text or a date.
+ */
 export function deriveKeyId(rawPublicKey: Uint8Array): string {
   if (rawPublicKey.length !== 32) {
     throw new RangeError(`an Ed25519 public key is 32 bytes, got ${rawPublicKey.length}`);
   }
-  return createHash("sha256").update(rawPublicKey).digest("hex");
+  return SIGNING_KEY_ID_PREFIX + createHash("sha256").update(rawPublicKey).digest("hex");
 }
 
 function rawPublicKeyFromSpkiDer(der: Uint8Array): Uint8Array {
@@ -296,19 +330,73 @@ export function unsealPrivateKey(sealed: Uint8Array, passphrase: string): string
   });
 }
 
+/** Why `--purpose` is refused, or null when it is a signing-keys.v1 purpose. */
+export function purposeProblem(purpose: string): string | null {
+  const length = [...purpose].length;
+  return length >= 1 && length <= PURPOSE_MAXIMUM_LENGTH
+    ? null
+    : `--purpose takes 1 to ${PURPOSE_MAXIMUM_LENGTH} characters`;
+}
+
+/** Why `--signatory` is refused, or null when it is a role identifier (K7). */
+export function signatoryProblem(signatory: string): string | null {
+  return SIGNATORY_PATTERN.test(signatory)
+    ? null
+    : `--signatory takes a role identifier (${SIGNATORY_PATTERN.source}), never a name or an address`;
+}
+
+/**
+ * The `--artifact-types` list (comma-separated, empty for none) as a set of
+ * artifact-manifest.v1 types, or why it is refused. The refusal never quotes
+ * the text it was given.
+ */
+export function parseArtifactTypes(
+  text: string,
+): { ok: true; value: ArtifactType[] } | { ok: false; reason: string } {
+  const reason =
+    `--artifact-types takes at most ${ARTIFACT_TYPES_MAXIMUM} distinct values among ` +
+    `${ARTIFACT_TYPES.join(", ")}, comma-separated`;
+  if (text === "") return { ok: true, value: [] };
+  const value: ArtifactType[] = [];
+  for (const item of text.split(",")) {
+    const known = ARTIFACT_TYPES.find((type) => type === item);
+    if (known === undefined || value.includes(known)) return { ok: false, reason };
+    value.push(known);
+  }
+  return value.length > ARTIFACT_TYPES_MAXIMUM ? { ok: false, reason } : { ok: true, value };
+}
+
+/**
+ * A signing-keys.v1 key in force. Throws on a member the contract refuses, so
+ * that no caller prints an entry a verifier would reject as a whole (K1).
+ */
 export function registryEntry(input: {
-  keyId: string;
+  signingKeyId: string;
   publicKeyPem: string;
   purpose: string;
+  artifactTypes: readonly ArtifactType[];
   activatedAt: string;
+  signatory: string;
+  witnessComment: string;
 }): RegistryEntry {
+  const problem =
+    purposeProblem(input.purpose) ??
+    signatoryProblem(input.signatory) ??
+    (parseArtifactTypes(input.artifactTypes.join(",")).ok ? null : "invalid --artifact-types");
+  if (problem !== null) throw new RangeError(problem);
   return {
-    id: input.keyId,
+    signingKeyId: input.signingKeyId,
     algorithm: "Ed25519",
     publicKey: input.publicKeyPem.trim(),
     purpose: input.purpose,
+    artifactTypes: [...input.artifactTypes],
     activatedAt: input.activatedAt,
     revokedAt: null,
+    witness: {
+      signatory: input.signatory,
+      attestedAt: input.activatedAt,
+      comment: input.witnessComment,
+    },
   };
 }
 
@@ -343,15 +431,22 @@ export async function findGitAncestor(dir: string): Promise<string | null> {
   }
 }
 
+interface EntryOptions {
+  purpose: string;
+  artifactTypes: ArtifactType[];
+  signatory: string;
+}
+
 type Mode =
-  | { kind: "generate"; out: string; purpose: string; passphraseFd: number | null }
-  | { kind: "dev-key"; purpose: string }
-  | { kind: "public-key-only"; purpose: string }
+  | { kind: "generate"; out: string; entry: EntryOptions; passphraseFd: number | null }
+  | { kind: "dev-key"; entry: EntryOptions }
+  | { kind: "public-key-only"; entry: EntryOptions }
   | { kind: "verify"; sealed: string; publicKey: string; passphraseFd: number | null };
 
+const ENTRY_OPTIONS = ["--purpose", "--artifact-types", "--signatory"] as const;
 const VALUE_OPTIONS = new Set([
   "--out",
-  "--purpose",
+  ...ENTRY_OPTIONS,
   "--passphrase-fd",
   "--verify-sealed",
   "--public-key",
@@ -397,7 +492,6 @@ function parseArguments(argv: readonly string[]): Mode | { error: string } {
     }
     passphraseFd = Number(fdText);
   }
-  const purpose = values.get("--purpose") ?? DEFAULT_PURPOSE;
   const sealed = values.get("--verify-sealed");
   const selectors = [flags.has("--dev-key"), flags.has("--public-key-only"), sealed !== undefined];
   if (selectors.filter(Boolean).length > 1) {
@@ -407,28 +501,44 @@ function parseArguments(argv: readonly string[]): Mode | { error: string } {
   if (sealed !== undefined) {
     const publicKey = values.get("--public-key");
     if (publicKey === undefined) return { error: "--verify-sealed needs --public-key" };
-    if (values.has("--out") || values.has("--purpose")) {
-      return { error: "--verify-sealed takes neither --out nor --purpose" };
+    if (values.has("--out") || ENTRY_OPTIONS.some((option) => values.has(option))) {
+      return { error: `--verify-sealed takes neither --out nor ${ENTRY_OPTIONS.join(", ")}` };
     }
     return { kind: "verify", sealed, publicKey, passphraseFd };
   }
   if (values.has("--public-key")) return { error: "--public-key belongs to --verify-sealed" };
+
+  const purpose = values.get("--purpose") ?? DEFAULT_PURPOSE;
+  const signatory = values.get("--signatory") ?? DEFAULT_SIGNATORY;
+  const artifactTypesText = values.get("--artifact-types");
+  const artifactTypes =
+    artifactTypesText === undefined
+      ? { ok: true as const, value: [...DEFAULT_ARTIFACT_TYPES] }
+      : parseArtifactTypes(artifactTypesText);
+  if (!artifactTypes.ok) return { error: artifactTypes.reason };
+  const entryProblem = purposeProblem(purpose) ?? signatoryProblem(signatory);
+  if (entryProblem !== null) return { error: entryProblem };
+  const entry: EntryOptions = { purpose, artifactTypes: artifactTypes.value, signatory };
+
   if (flags.has("--dev-key") || flags.has("--public-key-only")) {
     if (values.has("--out") || passphraseFd !== null) {
       return { error: "--dev-key and --public-key-only write nothing and read no passphrase" };
     }
-    return { kind: flags.has("--dev-key") ? "dev-key" : "public-key-only", purpose };
+    return { kind: flags.has("--dev-key") ? "dev-key" : "public-key-only", entry };
   }
   const out = values.get("--out");
   if (out === undefined) return { error: "--out <directory> is required" };
-  return { kind: "generate", out, purpose, passphraseFd };
+  return { kind: "generate", out, entry, passphraseFd };
 }
 
 const USAGE = [
-  "usage: keygen-ceremony.ts --out <dir> [--purpose <text>] [--passphrase-fd <n>]",
-  "       keygen-ceremony.ts --dev-key [--purpose <text>]",
-  "       keygen-ceremony.ts --public-key-only [--purpose <text>]",
+  "usage: keygen-ceremony.ts --out <dir> [entry options] [--passphrase-fd <n>]",
+  "       keygen-ceremony.ts --dev-key [entry options]",
+  "       keygen-ceremony.ts --public-key-only [entry options]",
   "       keygen-ceremony.ts --verify-sealed <file> --public-key <pem> [--passphrase-fd <n>]",
+  "entry options: [--purpose <text>] [--artifact-types <type,...>] [--signatory <role>]",
+  `  --artifact-types: comma-separated among ${ARTIFACT_TYPES.join(", ")}; default none`,
+  `  --signatory: role identifier of the witness, default ${DEFAULT_SIGNATORY}`,
 ].join("\n");
 
 function stripOneLineEnding(text: string): string {
@@ -494,12 +604,29 @@ function generateChecked(io: CeremonyIo): { pair: GeneratedKeyPair; keyId: strin
   return { pair, keyId };
 }
 
-function printEntry(io: CeremonyIo, keyId: string, publicKeyPem: string, purpose: string): void {
+// The witness comment describes the key, never a person (K7).
+const WITNESS_COMMENTS: Record<Exclude<Mode["kind"], "verify">, string> = {
+  generate:
+    "Offline key ceremony; the sealed envelope was unsealed and checked against this public key before it was named.",
+  "public-key-only": "Public half only; the private half was discarded at generation.",
+  "dev-key": "Ephemeral development key; never to be registered.",
+};
+
+function printEntry(
+  io: CeremonyIo,
+  kind: Exclude<Mode["kind"], "verify">,
+  signingKeyId: string,
+  publicKeyPem: string,
+  options: EntryOptions,
+): void {
   const entry = registryEntry({
-    keyId,
+    signingKeyId,
     publicKeyPem,
-    purpose,
+    purpose: options.purpose,
+    artifactTypes: options.artifactTypes,
     activatedAt: io.now().toISOString(),
+    signatory: options.signatory,
+    witnessComment: WITNESS_COMMENTS[kind],
   });
   io.stdout(`${JSON.stringify(entry, null, 2)}\n`);
 }
@@ -579,14 +706,14 @@ async function runGenerate(mode: Extract<Mode, { kind: "generate" }>, io: Ceremo
 
   io.stderr(
     [
-      `key id: ${keyId}`,
+      `signing key id: ${keyId}`,
       `sealed: ${sealedPath} (unsealed and checked against the public key before it was named)`,
       `public: ${publicPath}`,
       "Standard output holds the registry entry for config/signing-keys.v1.json.",
       "",
     ].join("\n"),
   );
-  printEntry(io, keyId, pair.publicKeyPem, mode.purpose);
+  printEntry(io, "generate", keyId, pair.publicKeyPem, mode.entry);
   return EXIT_OK;
 }
 
@@ -649,10 +776,10 @@ export async function main(argv: readonly string[], io: CeremonyIo): Promise<num
   }
   io.stderr(
     mode.kind === "dev-key"
-      ? `dev key id: ${generated.keyId} (ephemeral, nothing written)\n`
-      : `key id: ${generated.keyId} (public half only, the private half is discarded)\n`,
+      ? `dev signing key id: ${generated.keyId} (ephemeral, nothing written)\n`
+      : `signing key id: ${generated.keyId} (public half only, the private half is discarded)\n`,
   );
-  printEntry(io, generated.keyId, generated.pair.publicKeyPem, mode.purpose);
+  printEntry(io, mode.kind, generated.keyId, generated.pair.publicKeyPem, mode.entry);
   return EXIT_OK;
 }
 
