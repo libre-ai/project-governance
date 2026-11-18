@@ -21,6 +21,29 @@ allowances:
       the table name is the only non-parameterizable fragment; it is checked
       against /^[a-z][a-z0-9_]{0,62}$/ (UnsafeTableNameError otherwise) before
       any SQL is sent, then double-quoted; every value is bound as $1/$2.
+  - repository: libre-ai/organization-data-lifecycle
+    path: packages/data/src/adapters/database-client.ts
+    rule: unsafe-call
+    count: 2
+    because: >-
+      the SqlExecutor bridge of withDedicatedSession forwards the text its caller
+      issues to the only raw-text entry point of the driver; values travel
+      separately as bound parameters, and the SQL of each caller is scanned at
+      its own site. The bridge itself does not bound the text.
+  - repository: libre-ai/organization-data-lifecycle
+    path: packages/data/src/adapters/audit-event-store.integration.test.ts
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      test spy forwarding to an in-memory PGlite the statements issued by the
+      store under test; it builds no SQL and never reaches a production database.
+  - repository: libre-ai/organization-data-lifecycle
+    path: packages/data/src/adapters/migration-runner.integration.test.ts
+    rule: exec-non-constant
+    count: 1
+    because: >-
+      test decorator forwarding to an in-memory PGlite the statements issued by
+      the migration runner under test; it builds no SQL of its own.
   - repository: libre-ai/ai-work-supervision
     path: crates/work-supervision-store/src/lib.rs
     rule: rust-format-sql
