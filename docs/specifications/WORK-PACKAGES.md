@@ -49,14 +49,18 @@ A criterion is one bullet of `docs/cahier-des-charges.md`:
 
 ## Verification level (advisory)
 
-A criterion MAY declare how strong its validation is, with the clause `Niveau : <1|2|3|4>` in its bullet. The clause is optional and advisory: no gate reads it, the grammars above do not change, and a specification without it stays valid. The command `bun tools/quality/criteria-levels.ts <path of the specification>` reports it; it is not part of `bun run check`.
+A criterion MAY declare how strong its validation is, with the clause `Niveau : <1|2|3|4>` in its bullet, after `Validation :`. The clause is optional and advisory: no gate reads it, the grammars above do not change, and a specification without it stays valid. The command `bun tools/quality/criteria-levels.ts <path of the specification>` reports it; it is not part of `bun run check`.
 
 - Level 1: a deterministic execution that can be replayed (a command and its expected output).
 - Level 2: an observable state read and dated (an API, a diff, a counter); the clause holds an ISO 8601 date (`YYYY-MM-DD`).
 - Level 3: an adversarial review by a model. It is a judgement, not a proof: the level is followed by the word `jugement`.
 - Level 4: a human validation, followed by the word `jugement` as well.
 
-The command prints one line per criterion (identifier, line, level or `undeclared`, problem codes) and never the text of a criterion. Its counters sum to the criteria read. The problem codes are `validation-placeholder`, `validation-empty`, `claim-without-judgement`, `judgement-level-mismatch`, `volatile-without-date` and `level-malformed`. A problem is reported and the reading goes on; the command exits 0 whatever it reports, and 2 on a wrong usage or a specification the parsers refuse, relaying their reason. A placeholder written inside a code span is read as a command, which is a limit of the report.
+The command prints one line per criterion (identifier, line, level, `undeclared` or `malformed`, problem codes) and never the text of a criterion. Its counters sum to the criteria read. The problem codes are `validation-placeholder`, `validation-empty`, `claim-without-judgement`, `judgement-level-mismatch`, `volatile-without-date` and `level-malformed`. A problem is reported and the reading goes on; the command exits 0 whatever it reports, and says so on the line `advisory: exit 0 despite <n> violating` when a criterion violates. It exits 2 on a wrong usage, on a path that is not a regular file (a symbolic link is refused) or on a specification the parsers refuse, relaying their reason. A placeholder written inside a code span is read as a command, which is a limit of the report.
+
+The clause is read after `Validation :`, outside code spans: the same words in the statement of the criterion or in a code span are not the clause. Any other spelling of it after `Validation :` (`niveau :`, `NIVEAU :`, `Niveaux :`, a no-break space, `**Niveau** :`) and the clause in a bullet nested under the criterion are `level-malformed`.
+
+A participle such as `testé` or `revue passée` claims a check. Outside a judgement it needs a means of replay: a code span that holds a command, that is, after optional `NAME=value` assignments, a program followed by at least one argument, or a single program named by an explicit relative path (`./check.sh`). A file name alone is not a means of replay.
 
 The example below is read by `tools/quality/criteria-levels.test.ts`. It is advisory, and is not one of the five labelled examples of the grammars listed at the top of this standard.
 
