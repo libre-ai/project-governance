@@ -48,13 +48,13 @@ export const DEPENDENCY_STATES = [
 ] as const;
 export type DependencyState = (typeof DEPENDENCY_STATES)[number];
 
-const SECTIONS = [
+export const SECTIONS = [
   "dependencies",
   "devDependencies",
   "optionalDependencies",
   "peerDependencies",
 ] as const;
-type Section = (typeof SECTIONS)[number];
+export type Section = (typeof SECTIONS)[number];
 
 export interface DirectDependency {
   readonly manifest: string;
@@ -99,6 +99,22 @@ const EXACT_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
  * so `~`, uppercase and consecutive dots are refused rather than escaped.
  */
 const PACKAGE_NAME = /^(@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+/** The only form of a publication date that may reach a pull request description. */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * The canonical instant of a registry date, or null when it is not one.
+ * `Date.parse` accepts free text around a date, so the registry's own spelling is
+ * never kept: only what this function rebuilds from the parsed time goes further.
+ */
+export function normalisedInstant(value: string): string | null {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : new Date(time).toISOString();
+}
+
+export function isIsoInstant(value: string): boolean {
+  return ISO_INSTANT.test(value) && normalisedInstant(value) === value;
+}
 
 export function isExactVersion(version: string): boolean {
   return EXACT_VERSION.test(version);
@@ -114,10 +130,15 @@ function components(version: string): readonly [number, number, number] {
   return [Number(match[1]), Number(match[2]), Number(match[3])];
 }
 
-function compareVersions(left: string, right: string): number {
+export function compareVersions(left: string, right: string): number {
   const [a, b, c] = components(left);
   const [x, y, z] = components(right);
   return a - x || b - y || c - z;
+}
+
+/** The lowest of several exact versions: what the title of a grouped bump starts from. */
+export function lowestVersion(versions: readonly string[]): string {
+  return [...versions].sort(compareVersions)[0] ?? "";
 }
 
 /** The class of a bump from `from` to a higher `to`. */
@@ -130,6 +151,13 @@ export function bumpKind(from: string, to: string): BumpKind {
   return minor === toMinor ? "patch" : "minor";
 }
 
+/** The class of a bump that moves several declared versions to one target. */
+export function widestKind(froms: readonly string[], to: string): BumpKind {
+  const kinds = froms.map((from) => bumpKind(from, to));
+  if (kinds.includes("major")) return "major";
+  return kinds.includes("minor") ? "minor" : "patch";
+}
+
 /**
  * The branch of one bump. `+` cannot occur in a package name, so two different
  * packages never share a branch, and `@a/b` keeps no `/` that could collide
@@ -139,10 +167,11 @@ export function branchName(name: string, version: string): string {
   return `work/bun-update/${name.replace("/", "+")}@${version}`;
 }
 
-/** The packument of a registry response, or null when it cannot be trusted. */
-export function parsePackument(value: unknown): Packument | null {
+/** The packument of a registry response about `name`, or null when it cannot be trusted. */
+export function parsePackument(value: unknown, name: string): Packument | null {
   if (typeof value !== "object" || value === null) return null;
-  const { "dist-tags": tags, versions, time } = value as Record<string, unknown>;
+  const { name: answered, "dist-tags": tags, versions, time } = value as Record<string, unknown>;
+  if (answered !== name) return null;
   if (typeof tags !== "object" || tags === null) return null;
   if (typeof versions !== "object" || versions === null) return null;
   if (typeof time !== "object" || time === null) return null;
@@ -165,10 +194,16 @@ export function parsePackument(value: unknown): Packument | null {
 export function examinationRefusal(
   dependency: DirectDependency,
   overrides: ReadonlySet<string>,
+  memberNames: ReadonlySet<string>,
 ): string | null {
   if (dependency.section === "peerDependencies") return "a peer range is the consumer's to resolve";
   if (!isSafePackageName(dependency.name)) return "the package name cannot reach a git ref safely";
-  if (overrides.has(dependency.name)) return "pinned by `overrides`, which a bump must not move";
+  if (overrides.has(dependency.name)) {
+    return "pinned by `overrides` or `resolutions`, which a bump must not move";
+  }
+  // bun links a member of the workspace whatever the public registry publishes
+  // under the same name: comparing the two would propose an unrelated package.
+  if (memberNames.has(dependency.name)) return "resolved to a member of this workspace";
   if (!isExactVersion(dependency.declared)) {
     return `\`${dependency.declared}\` is not an exact release version`;
   }
@@ -190,7 +225,9 @@ function classification(
  * version above the declared one and not above `latest`: a version the
  * maintainers did not promote is not offered. A candidate whose publication date
  * is missing or unreadable makes the dependency unreadable: its age, which the
- * release-age guard depends on, cannot be proved.
+ * release-age guard depends on, cannot be proved. So does a `latest` below the
+ * declared version: that answer contradicts the manifest, and reading it as
+ * "nothing higher" would report a dependency up to date on an incoherent registry.
  */
 export function classifyDependency(
   dependency: DirectDependency,
@@ -204,6 +241,13 @@ export function classifyDependency(
   const current = dependency.declared;
   if (!packument.versions.some((published) => published.version === current)) {
     return classification(dependency, "unreadable", `${current} is not published on the registry`);
+  }
+  if (compareVersions(packument.latest, current) < 0) {
+    return classification(
+      dependency,
+      "unreadable",
+      `latest ${packument.latest} is below the declared ${current}`,
+    );
   }
   const higher = packument.versions
     .filter((published) => !published.deprecated)
@@ -226,12 +270,12 @@ export function classifyDependency(
   }
   let youngest: string | null = null;
   for (const candidate of candidates) {
-    const publishedAt = candidate.publishedAt;
-    const time = publishedAt === null ? Number.NaN : Date.parse(publishedAt);
-    if (publishedAt === null || Number.isNaN(time)) {
+    const publishedAt =
+      candidate.publishedAt === null ? null : normalisedInstant(candidate.publishedAt);
+    if (publishedAt === null) {
       return classification(dependency, "unreadable", `${candidate.version} has no readable date`);
     }
-    const ageSeconds = Math.floor((now.getTime() - time) / 1000);
+    const ageSeconds = Math.floor((now.getTime() - Date.parse(publishedAt)) / 1000);
     if (ageSeconds >= minimumAgeSeconds) {
       const kind = bumpKind(current, candidate.version);
       const target = { version: candidate.version, kind, publishedAt, ageSeconds };
@@ -290,56 +334,101 @@ export function directDependencies(path: string, manifest: unknown): DirectDepen
 }
 
 /**
- * The manifest with one dependency moved, or null when the edit would change
- * anything else. Text is edited rather than re-serialised so that the bump is a
- * one-line diff.
+ * The manifest with one entry of one section moved, or null when the edit would
+ * change anything else. Text is edited rather than re-serialised so that the bump
+ * is a one-line diff. The same name and version may stand on several lines (a peer
+ * range, another section), so each line is tried until one produces the expected
+ * document.
  */
-export function editManifest(text: string, name: string, from: string, to: string): string | null {
+export function editManifest(
+  text: string,
+  section: Section,
+  name: string,
+  from: string,
+  to: string,
+): string | null {
+  const expected = JSON.parse(text) as Record<string, unknown>;
+  const entries = expected[section] as Record<string, string> | undefined;
+  if (entries?.[name] !== from) return null;
+  for (const pins of ["overrides", "resolutions"]) {
+    if (Object.hasOwn(Object(expected[pins]), name)) return null;
+  }
+  entries[name] = to;
+  const wanted = JSON.stringify(expected);
   const line = new RegExp(
-    `^(\\s*"${name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}":\\s*")${from.replace(/\./g, "\\.")}(",?\\s*)$`,
+    `^(\\s*"${name.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}":\\s*")${from.replace(/\./g, "\\.")}",?\\s*$`,
     "gm",
   );
-  const edited = text.replace(line, `$1${to}$2`);
-  if (edited === text) return null;
-  const expected = JSON.parse(text) as Record<string, unknown>;
-  for (const section of SECTIONS) {
-    const entries = expected[section] as Record<string, string> | undefined;
-    if (entries?.[name] === from) entries[name] = to;
-  }
-  return JSON.stringify(JSON.parse(edited)) === JSON.stringify(expected) ? edited : null;
+  const edited = [...text.matchAll(line)]
+    .map((match) => {
+      const start = match.index + (match[1] ?? "").length;
+      return `${text.slice(0, start)}${to}${text.slice(start + from.length)}`;
+    })
+    .find((candidate) => JSON.stringify(JSON.parse(candidate)) === wanted);
+  return edited ?? null;
+}
+
+/** One declaration a proposal moves. */
+export interface ProposalEdit {
+  readonly manifest: string;
+  readonly section: Section;
+  readonly from: string;
 }
 
 export interface Proposal {
   readonly name: string;
+  /** The lowest declared version among `edits`. */
   readonly from: string;
   readonly to: string;
+  /** The widest class among `edits`. */
   readonly kind: BumpKind;
   readonly publishedAt: string;
   readonly ageSeconds: number;
   readonly branch: string;
   readonly manifests: readonly string[];
+  readonly edits: readonly ProposalEdit[];
   /** Subdirectory of the bundle that holds this proposal's files. */
   readonly directory: string;
 }
 
-/** One proposal per bump, however many manifests declare the dependency. */
+/** The manifest with every edit the proposal makes to it, or null when one cannot apply. */
+export function editedManifest(
+  text: string,
+  path: string,
+  proposal: Pick<Proposal, "name" | "to" | "edits">,
+): string | null {
+  let edited: string | null = text;
+  for (const { manifest, section, from } of proposal.edits) {
+    if (manifest !== path || edited === null) continue;
+    edited = editManifest(edited, section, proposal.name, from, proposal.to);
+  }
+  return edited;
+}
+
+/**
+ * One proposal per package and target: the branch is named after those two, so
+ * declarations at different versions moving to one target share one proposal.
+ */
 export function proposalsOf(classifications: readonly Classification[]): Proposal[] {
   const proposals = new Map<string, Proposal>();
   for (const { dependency, target } of classifications) {
     if (target === null) continue;
-    const key = `${dependency.name}@${dependency.declared}@${target.version}`;
+    const key = `${dependency.name}@${target.version}`;
     const known = proposals.get(key);
-    const manifests = [...new Set([...(known?.manifests ?? []), dependency.manifest])];
+    const { manifest, section, declared } = dependency;
+    const edits = [...(known?.edits ?? []), { manifest, section, from: declared }];
+    const froms = edits.map((edit) => edit.from);
     proposals.set(key, {
       name: dependency.name,
-      from: dependency.declared,
+      from: lowestVersion(froms),
       to: target.version,
-      kind: target.kind,
+      kind: widestKind(froms, target.version),
       publishedAt: target.publishedAt,
       ageSeconds: target.ageSeconds,
       branch: branchName(dependency.name, target.version),
-      manifests,
-      directory: String(known === undefined ? proposals.size : Number(known.directory)),
+      manifests: [...new Set(edits.map((edit) => edit.manifest))],
+      edits,
+      directory: known?.directory ?? String(proposals.size),
     });
   }
   return [...proposals.values()];
@@ -347,10 +436,16 @@ export function proposalsOf(classifications: readonly Classification[]): Proposa
 
 export type RegistryReader = (name: string) => Promise<unknown>;
 
+export type RegistryFetch = (url: string, init: RequestInit) => Promise<Response>;
+
 const REGISTRY_TIMEOUT_MS = 30_000;
 
-async function readRegistry(name: string): Promise<unknown> {
-  const response = await fetch(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, {
+/**
+ * The public registry, anonymously: no credential is attached, and a redirect is
+ * an error rather than a second host answering for the registry.
+ */
+export async function readRegistry(name: string, request: RegistryFetch = fetch): Promise<unknown> {
+  const response = await request(`https://registry.npmjs.org/${name.replace("/", "%2f")}`, {
     redirect: "error",
     signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
@@ -360,18 +455,57 @@ async function readRegistry(name: string): Promise<unknown> {
 
 export async function classifyAll(
   dependencies: readonly DirectDependency[],
-  overrides: ReadonlySet<string>,
+  workspace: Pick<Workspace, "overrides" | "memberNames">,
   read: RegistryReader,
   now: Date,
 ): Promise<Classification[]> {
   return Promise.all(
     dependencies.map(async (dependency) => {
-      const refusal = examinationRefusal(dependency, overrides);
+      const { overrides, memberNames } = workspace;
+      const refusal = examinationRefusal(dependency, overrides, memberNames);
       if (refusal !== null) return classification(dependency, "not-examined", refusal);
-      const packument = await read(dependency.name).then(parsePackument, () => null);
+      const packument = await read(dependency.name).then(
+        (answer) => parsePackument(answer, dependency.name),
+        () => null,
+      );
       return classifyDependency(dependency, packument, now);
     }),
   );
+}
+
+/** What the manifests of a checkout say about the dependencies they declare. */
+export interface Workspace {
+  readonly manifests: readonly string[];
+  readonly overrides: ReadonlySet<string>;
+  /** Every package name this workspace itself provides. */
+  readonly memberNames: ReadonlySet<string>;
+  /** Why the `workspaces` field cannot be honoured; empty when it can. */
+  readonly failures: readonly string[];
+}
+
+export async function readWorkspace(root: string): Promise<Workspace> {
+  const readManifest = (path: string) =>
+    JSON.parse(readFileSync(join(root, path), "utf8")) as {
+      readonly name?: unknown;
+      readonly workspaces?: unknown;
+      readonly overrides?: Record<string, unknown>;
+      readonly resolutions?: Record<string, unknown>;
+    };
+  const rootManifest = readManifest("package.json");
+  const { patterns, failures } = workspaceManifestPatterns(rootManifest.workspaces);
+  const members = failures.length > 0 ? [] : await scanManifestPatterns(root, patterns);
+  const manifests = [...new Set(["package.json", ...members])];
+  return {
+    manifests,
+    overrides: new Set([
+      ...Object.keys(rootManifest.overrides ?? {}),
+      ...Object.keys(rootManifest.resolutions ?? {}),
+    ]),
+    memberNames: new Set(
+      manifests.map((path) => readManifest(path).name).filter((name) => typeof name === "string"),
+    ),
+    failures,
+  };
 }
 
 export type LockfileRegenerator = (directory: string) => {
@@ -382,19 +516,26 @@ export type LockfileRegenerator = (directory: string) => {
 /**
  * No lifecycle script runs (`--ignore-scripts`) and nothing is installed
  * (`--lockfile-only`): the bundle is produced without executing dependency code.
- * `bunfig.toml` is copied next to the manifests, so the release-age guard of the
- * repository also judges this resolution.
+ * The environment is rebuilt rather than inherited, and `HOME` is the bundle's own
+ * directory, so no credential and no user-level bun configuration reach the
+ * resolution. `bunfig.toml` is copied next to the manifests, so the release-age
+ * guard of the repository also judges it.
  */
+export function lockfileCommand(directory: string): {
+  readonly command: readonly string[];
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string>>;
+} {
+  return {
+    command: [process.execPath, "install", "--lockfile-only", "--ignore-scripts"],
+    cwd: directory,
+    env: { PATH: process.env.PATH ?? "", HOME: directory, TMPDIR: tmpdir() },
+  };
+}
+
 function regenerateLockfile(directory: string): { readonly ok: boolean; readonly detail: string } {
-  const result = Bun.spawnSync(
-    [process.execPath, "install", "--lockfile-only", "--ignore-scripts"],
-    {
-      cwd: directory,
-      env: { PATH: process.env.PATH ?? "", HOME: directory, TMPDIR: tmpdir() },
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
+  const { command, cwd, env } = lockfileCommand(directory);
+  const result = Bun.spawnSync([...command], { cwd, env, stdout: "pipe", stderr: "pipe" });
   return { ok: result.exitCode === 0, detail: new TextDecoder().decode(result.stderr).trim() };
 }
 
@@ -415,12 +556,7 @@ export function prepareBundle(
     }
     const edited = new Map<string, string>();
     for (const path of proposal.manifests) {
-      const text = editManifest(
-        readFileSync(join(root, path), "utf8"),
-        proposal.name,
-        proposal.from,
-        proposal.to,
-      );
+      const text = editedManifest(readFileSync(join(root, path), "utf8"), path, proposal);
       if (text === null) return `${path}: the edit would change more than ${proposal.name}`;
       edited.set(path, text);
       writeFileSync(join(work, path), text);
@@ -489,22 +625,16 @@ export async function main(
       return 2;
     }
   }
-  const rootManifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
-    readonly workspaces?: unknown;
-    readonly overrides?: Record<string, unknown>;
-  };
-  const workspaces = workspaceManifestPatterns(rootManifest.workspaces);
-  if (workspaces.failures.length > 0) {
-    for (const failure of workspaces.failures) console.error(failure);
+  const workspace = await readWorkspace(root);
+  if (workspace.failures.length > 0) {
+    for (const failure of workspace.failures) console.error(failure);
     return 2;
   }
-  const members = await scanManifestPatterns(root, workspaces.patterns);
-  const manifests = [...new Set(["package.json", ...members])];
+  const { manifests } = workspace;
   const dependencies = manifests.flatMap((path) =>
     directDependencies(path, JSON.parse(readFileSync(join(root, path), "utf8"))),
   );
-  const overrides = new Set(Object.keys(rootManifest.overrides ?? {}));
-  const classifications = await classifyAll(dependencies, overrides, read, now);
+  const classifications = await classifyAll(dependencies, workspace, read, now);
   const tally = tallyOf(classifications);
   const proposals = proposalsOf(classifications);
 

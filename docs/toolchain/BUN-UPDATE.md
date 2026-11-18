@@ -24,8 +24,8 @@ dependency lands in exactly one state, and the last lines print the counters:
 | `proposable` | a patch or minor older than the release-age floor exists |
 | `major-only` | only a breaking version exists: listed, never applied |
 | `too-recent` | the only candidates are younger than the release-age floor |
-| `not-examined` | not an exact release version, a peer range, or pinned by `overrides` |
-| `unreadable` | the registry gave no usable answer: the run fails |
+| `not-examined` | not an exact release version, a peer range, pinned by `overrides` or `resolutions`, or the name of a workspace member |
+| `unreadable` | the registry gave no usable or coherent answer (another package's name, a `latest` below the declared version): the run fails |
 
 Below 1.0.0 a minor counts as breaking, and below 0.1.0 a patch does too.
 
@@ -40,7 +40,9 @@ prepared; `2` usage.
 2. `propose` (`contents: write`, `pull-requests: write`) installs nothing, re-verifies
    each bundle with `tools/fleet/propose-bun-update.ts`, then commits with
    `--signoff`, pushes `work/bun-update/<package>@<version>` without force and opens
-   the pull request. It never merges.
+   the pull request. It never merges. The re-verification reads the target's existence
+   and age from the public registry without a token, and parses `bun.lock`: no URL, no
+   other table changed, no package changed outside the target's dependencies.
 
 `propose` exits `0` when every proposal is opened or already open, `1` when one is
 refused or fails, `2` on usage, and `3` while ADR-0069 is not accepted.

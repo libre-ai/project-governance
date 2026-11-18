@@ -60,7 +60,8 @@ jobs:
       pull-requests: write
     steps:
       # No persisted credential: the tool hands the token to git through a helper
-      # that reads it from the environment of the one command that pushes.
+      # that reads it from the environment, and only the commands that reach the
+      # forge receive that environment.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

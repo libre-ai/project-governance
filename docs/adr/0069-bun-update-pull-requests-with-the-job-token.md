@@ -48,13 +48,13 @@ Les versions étant exactes, la classe de la montée décide :
 
 - correctif et mineure : une pull request ;
 - majeure : listée dans le résumé du job, jamais appliquée ;
-- spécificateur non exact, `file:`, `workspace:`, dépendance de pair, paquet épinglé par `overrides` : nommé et compté comme non examiné.
+- spécificateur non exact, `file:`, `workspace:`, dépendance de pair, paquet épinglé par `overrides` ou `resolutions`, nom porté par un membre de l'espace de travail : nommé et compté comme non examiné.
 
 Lecture de l'auteur, à confirmer à la signature : sous 1.0.0, une mineure compte comme majeure, et sous 0.1.0 un correctif aussi, parce que le versionnage sémantique n'y promet aucune compatibilité.
 
 ### D3 — Forme des pull requests
 
-Une pull request par montée, sur une branche `work/bun-update/<paquet>@<version>`, jamais sur la branche servie. Pas de force push : une branche existante n'est jamais réécrite. Pas de fusion automatique. La description ouvre sur `Door: two-way` et `Origin: inspection`.
+Une pull request par paquet et par version cible, sur une branche `work/bun-update/<paquet>@<version>`, jamais sur la branche servie : plusieurs déclarations du même paquet qui montent vers la même cible partagent la pull request. Pas de force push : une branche existante n'est jamais réécrite. Pas de fusion automatique. La description ouvre sur `Door: two-way` et `Origin: inspection`.
 
 ### D4 — Âge minimal de publication
 
@@ -62,7 +62,7 @@ Une version plus jeune que `MINIMUM_RELEASE_AGE_SECONDS` (`ecosystem/check-relea
 
 ### D5 — Séparation des deux jobs
 
-Le job `plan` lit le registre et régénère `bun.lock` (`--lockfile-only --ignore-scripts`) avec `contents: read`. Le job `propose` détient le jeton, n'installe rien, et revérifie chaque paquet reçu : une seule ligne de manifeste modifiée, aucun fichier en plus, classe, âge et nom de branche recalculés. Les actions sont épinglées par sha.
+Le job `plan` lit le registre et régénère `bun.lock` (`--lockfile-only --ignore-scripts`) avec `contents: read`. Le job `propose` détient le jeton, n'installe rien, et revérifie chaque paquet reçu : seules les lignes de manifeste de la montée modifiées, aucun fichier en plus, classe et nom de branche recalculés, version cible supérieure à la version déclarée, existence et âge relus au registre public sans jeton, `bun.lock` analysé et comparé à celui du dépôt (aucune URL, aucune autre table modifiée, aucun paquet modifié hors de la fermeture de la cible). Le jeton ne passe qu'aux commandes qui joignent la forge. Les actions sont épinglées par sha.
 
 ### D6 — Signature des commits
 
@@ -90,7 +90,7 @@ Le workflow se lance à la main seulement (`workflow_dispatch`, sans `schedule`)
 - Activer ce réglage autorise aussi un workflow à **approuver** une pull request. Aucun workflow de ce dépôt ne le fait aujourd'hui, et la branche servie n'exige aucune revue approuvante ; le risque est à peser à la signature.
 - Les pull requests touchent toutes `bun.lock` : la fusion de l'une met les autres en conflit. Un conflit se règle en fermant la pull request, en supprimant sa branche et en relançant le workflow. Une branche restée sans pull request est signalée en échec, jamais réécrite.
 - Une dépendance illisible ou un paquet non préparé arrête le run avant le job `propose` : aucune pull request n'est ouverte sur un relevé incomplet.
-- Le job `plan` s'exécute sans jeton d'écriture mais résout des dépendances tierces ; sa sortie est traitée comme une donnée à revérifier. La revérification ne relit pas le contenu de `bun.lock` au-delà de la présence de la version visée : ce contenu reste à la charge de la relecture et des contrôles.
+- Le job `plan` s'exécute sans jeton d'écriture mais résout des dépendances tierces ; sa sortie est traitée comme une donnée à revérifier. La revérification borne la forme de `bun.lock` (D5) ; elle ne compare pas les empreintes `sha512` au registre : le contenu des archives reste à la charge de la relecture et des contrôles. La fermeture se calcule par noms de paquets : une entrée imbriquée d'un paquet de la fermeture est acceptée sans que son emplacement soit résolu.
 - Le paramètre `require_extra_approval_for_unattributed_changes` de la branche servie est à `true` ; son effet sur un commit de bot n'a pas été mesuré.
 - Aucun run réel n'a eu lieu : le câblage est prouvé par des tests de structure, la logique par des fixtures sans réseau.
 

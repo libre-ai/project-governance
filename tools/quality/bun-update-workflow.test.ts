@@ -33,7 +33,29 @@ const steps = jobs.flatMap((job) => [...job.steps]);
 const plan = workflow.jobs.plan as Job;
 const propose = workflow.jobs.propose as Job;
 
+/** `bun`, any options, then a subcommand that installs, spelled in full or by its alias. */
+const INSTALLS = /\bbun\b[^\n;&|]*\s(?:install|i|add|a|update)(?:\s|$)/m;
+
 describe("the bun update workflow", () => {
+  test.each([
+    "bun install",
+    "bun i",
+    "bun i --frozen-lockfile",
+    "bun --cwd=tools i",
+    "bun add left-pad",
+    "bun a left-pad",
+    "bun update",
+  ])("recognises `%s` as an install", (command) => {
+    expect(command).toMatch(INSTALLS);
+  });
+
+  test.each([
+    'bun tools/fleet/plan-bun-update.ts --root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/bun-update"',
+    'test "$(bun --revision)" = "1.4.0"',
+  ])("does not read `%s` as an install", (command) => {
+    expect(command).not.toMatch(INSTALLS);
+  });
+
   test("starts by hand only: no schedule until the ADR is accepted", () => {
     expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch"]);
   });
@@ -82,7 +104,7 @@ describe("the bun update workflow", () => {
   test("no step installs dependencies, forces a push or merges", () => {
     const commands = steps.flatMap((step) => (step.run === undefined ? [] : [step.run]));
     for (const command of commands) {
-      expect(command).not.toMatch(/\bbun (install|add|update)\b/);
+      expect(command).not.toMatch(INSTALLS);
       expect(command).not.toContain("--force");
       expect(command).not.toMatch(/\bgh pr merge\b/);
     }
