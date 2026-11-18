@@ -81,6 +81,10 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * owner decision (ADR-0066 D2). Adding an entry is what lets a fiche say that
  * something is paid.
  *
+ * `ecosystem/third-parties.v1.yaml` joined the day it was written (ADR-0070,
+ * proposed): removing an entry or moving a date away loosens what
+ * `check-third-parties.ts` holds the fleet to.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -173,6 +177,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/schemas\/produit\.v1\.schema\.json$/,
   // check-produits.ts: the products whose fiche may describe a paid hosted offer (ADR-0066 D2).
   /^ecosystem\/hosted-offers\.v1\.yaml$/,
+  // check-third-parties.ts: the services the fleet depends on and their dated exit exercises (ADR-0070).
+  /^ecosystem\/third-parties\.v1\.yaml$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
   // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
@@ -213,6 +219,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/schemas/brique.v1.schema.json",
   "ecosystem/schemas/produit.v1.schema.json",
   "ecosystem/hosted-offers.v1.yaml",
+  "ecosystem/third-parties.v1.yaml",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
   "distribution/templates/dependabot/cargo.yml",
