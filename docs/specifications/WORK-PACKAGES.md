@@ -47,6 +47,27 @@ A criterion is one bullet of `docs/cahier-des-charges.md`:
   Validation : `cargo test -p work-supervision-daemon --locked migrations`
 ```
 
+## Verification level (advisory)
+
+A criterion MAY declare how strong its validation is, with the clause `Niveau : <1|2|3|4>` in its bullet. The clause is optional and advisory: no gate reads it, the grammars above do not change, and a specification without it stays valid. The command `bun tools/quality/criteria-levels.ts <path of the specification>` reports it; it is not part of `bun run check`.
+
+- Level 1: a deterministic execution that can be replayed (a command and its expected output).
+- Level 2: an observable state read and dated (an API, a diff, a counter); the clause holds an ISO 8601 date (`YYYY-MM-DD`).
+- Level 3: an adversarial review by a model. It is a judgement, not a proof: the level is followed by the word `jugement`.
+- Level 4: a human validation, followed by the word `jugement` as well.
+
+The command prints one line per criterion (identifier, line, level or `undeclared`, problem codes) and never the text of a criterion. Its counters sum to the criteria read. The problem codes are `validation-placeholder`, `validation-empty`, `claim-without-judgement`, `judgement-level-mismatch`, `volatile-without-date` and `level-malformed`. A problem is reported and the reading goes on; the command exits 0 whatever it reports, and 2 on a wrong usage or a specification the parsers refuse, relaying their reason. A placeholder written inside a code span is read as a command, which is a limit of the report.
+
+The example below is read by `tools/quality/criteria-levels.test.ts`. It is advisory, and is not one of the five labelled examples of the grammars listed at the top of this standard.
+
+```markdown criteria-level-example advisory
+- CA-21 Every refusal carries a stable machine code. Validation : `cargo test -p work-supervision-daemon --locked refusal_codes` Niveau : 1
+- CA-22 The fleet serves one branch. Validation : `gh api repos/libre-ai/example --jq .default_branch` relevé le 2026-11-16, Niveau : 2
+- CA-23 The threat model covers the daemon. Validation : revue adverse par un modèle, Niveau : 3 jugement
+- CA-24 The wording of the notice is accepted. Validation : relu par le propriétaire, Niveau : 4 jugement
+- CA-25 A schema migration can be replayed. Validation : `cargo test -p work-supervision-daemon --locked migrations`
+```
+
 ## Work-package table
 
 The PRD holds exactly one table with this header, one row per work package. The table is part of the merged PRD, so a change of scope is a pull request visible on the PRD.
