@@ -1,0 +1,88 @@
+name: Bun update
+
+# Proposes the patch and minor bumps of this repository's bun dependencies, one
+# pull request per bump, with the job's own GITHUB_TOKEN (ADR-0069).
+#
+# Disabled until ADR-0069 is accepted, twice over: there is no `schedule`, and the
+# `propose` job exits before writing anything while the ADR is not accepted
+# (tools/fleet/propose-bun-update.ts). Adding a schedule is part of the owner's
+# acceptance, not of this file.
+#
+# Two jobs, so that the one that talks to the registry and resolves dependencies
+# never holds a write token, and the one that holds it installs nothing.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: bun-update
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan the bumps and prepare their lockfiles
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Plan
+        run: bun tools/fleet/plan-bun-update.ts --root "$GITHUB_WORKSPACE" --out "$RUNNER_TEMP/bun-update" --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bun-update
+          path: ${{ runner.temp }}/bun-update
+          if-no-files-found: error
+          retention-days: 1
+
+  propose:
+    name: Open one pull request per prepared bump
+    needs: plan
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # No persisted credential: the tool hands the token to git through a helper
+      # that reads it from the environment of the one command that pushes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: bun-update
+          path: ${{ runner.temp }}/bun-update
+      - name: Propose
+        env:
+          BUN_UPDATE_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: bun tools/fleet/propose-bun-update.ts --root "$GITHUB_WORKSPACE" --bundle "$RUNNER_TEMP/bun-update" --repository "$REPOSITORY" --base "$BASE"
