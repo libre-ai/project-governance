@@ -147,11 +147,3 @@ allowances:
       (create table and its checks); no value of a request or of the
       environment reaches the text. Every query of the store is a tagged
       template with bound parameters.
-  - repository: libre-ai/project-website
-    path: src/web/gates.ts
-    rule: exec-non-constant
-    count: 1
-    because: >-
-      not SQL: pattern.exec(text) is RegExp.prototype.exec matching the
-      forbidden-copy patterns against the visible text of a built page; no
-      database is involved.

@@ -57,10 +57,12 @@ allowances:
     token: Content-Security-Policy
     count: 1
     because: >-
-      the site's single header table (its ADR 0006 §2), sent by its Bun server
-      and required unchanged in the Caddyfile of the static target. It relaxes
-      nothing: every directive is 'self' or 'none', and src/headers.test.ts
-      refuses unsafe-inline, unsafe-eval, unsafe-hashes and any http(s) source.
+      bounded by the Caddyfile of the static target, which this gate holds to
+      the strict base (strictBaseViolations) and which src/caddy-headers.test.ts
+      requires identical, header by header, to this table: a weaker policy here
+      fails the site's own test before it can be served. The table is the
+      site's single header source (its ADR 0006 §2), sent by its Bun server
+      through withSecurity on every response.
 servers_outside_surfaces:
   - repository: libre-ai/collaborative-data-sync
     path: packages/relay/src/relay-server.ts
