@@ -1,14 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GATED_PATHSPECS } from "../quality/check-review-evidence";
+import { GATED_PATH_PATTERNS, GATED_PATHSPECS } from "../quality/check-review-evidence";
+import { excludedPatterns, refusedPaths } from "./bounded-merge-scope";
 import { BODY_LINE_WARNING, bodyLineCount, lintEvalFile, parseFrontmatter } from "./lint-skill";
 
 // Structure of the bounded-merge conduct of skills/pr-body and of the perimeter
-// ADR-0068 D2 proposes. A skill is prose held by review; what a machine can hold
-// is that the commands, the closed gates and the refusals are still written.
-// Expected values come from the L071 brief and from ADR-0068, not from the
-// current text. Nothing here asserts that ADR-0068 is signed or in force.
+// of ADR-0068 D2. A skill is prose held by review; what a machine can hold is
+// that the commands, the closed gates and the refusals are still written, and
+// that D2 refuses the guardrails it names and admits the rest. Expected values
+// come from the L071 brief, from ADR-0068 and from the owner decision of
+// 2026-11-19 (« Accepter, exclusion seule », five of the last thirteen merges
+// admitted), not from the current text.
 
 const REPO_ROOT = join(import.meta.dir, "..", "..");
 const SKILL_PATH = "skills/pr-body/SKILL.md";
@@ -27,17 +30,17 @@ function section(markdown: string, heading: string): string {
   return next === -1 ? markdown.slice(start) : markdown.slice(start, next);
 }
 
-/** The regular expressions of the fenced block ADR-0068 D2 declares. */
-function admissiblePatterns(adr: string): RegExp[] {
-  const block = /```text admissible-paths\n([\s\S]*?)```/.exec(adr)?.[1] ?? "";
-  return block
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .map((line) => new RegExp(line));
+function isAdmissible(path: string, excluded: readonly RegExp[]): boolean {
+  return refusedPaths([path], GATED_PATH_PATTERNS, excluded).length === 0;
 }
 
-function isAdmissible(path: string, patterns: readonly RegExp[]): boolean {
-  return patterns.some((pattern) => pattern.test(path));
+/** Runs the command form on `paths`, with an environment reduced to PATH. */
+function runScope(paths: readonly string[]): { exitCode: number; stdout: string } {
+  const result = Bun.spawnSync(["bun", join(REPO_ROOT, "tools/skills/bounded-merge-scope.ts")], {
+    stdin: new TextEncoder().encode(paths.map((path) => `${path}\n`).join("")),
+    env: { PATH: process.env.PATH ?? "" },
+  });
+  return { exitCode: result.exitCode, stdout: result.stdout.toString() };
 }
 
 describe("pr-body: entries resolved before writing", () => {
@@ -71,6 +74,8 @@ describe("pr-body: conduct after the push", () => {
 
   test("refuses guarded paths, failing checks and pending checks", () => {
     expect(after).toContain("GATED_PATH_PATTERNS");
+    expect(after).toContain("bun tools/skills/bounded-merge-scope.ts");
+    expect(after).toContain("git worktree add --detach <dir> origin/<servie>");
     expect(after).toMatch(/check en échec ou en attente : aucun appel/);
   });
 
@@ -107,16 +112,29 @@ describe("pr-body: file-level limits", () => {
   });
 });
 
-describe("ADR-0068 D2: the closed list of admissible paths", () => {
-  const patterns = admissiblePatterns(read(ADR_PATH));
+describe("ADR-0068 D2: every file except the named guardrails", () => {
+  const patterns = excludedPatterns(read(ADR_PATH));
 
-  test("declares at least one pattern", () => {
+  test("declares its exclusions in an excluded-paths block", () => {
     expect(patterns.length).toBeGreaterThan(0);
+    expect(read(ADR_PATH)).not.toContain("```text admissible-paths");
   });
 
-  test("admits a report and refuses a non-Markdown file beside it", () => {
-    expect(isAdmissible("docs/reports/2026-11-18-note.md", patterns)).toBe(true);
-    expect(isAdmissible("docs/reports/data.json", patterns)).toBe(false);
+  test("admits the files of the five merges the owner decision admits, and a new directory", () => {
+    // #251, #254, #255, #259 and #260, per the table of ADR-0068 and the owner
+    // decision of 2026-11-19; the new directory is the risk that decision accepts.
+    const admitted = [
+      "ecosystem/fleet-state.ts",
+      "ecosystem/fleet-state.test.ts",
+      "verification/recall/recall.ts",
+      "verification/recall/README.md",
+      "tools/fleet/remediation/kit.ts",
+      "ecosystem/fleet-pins.v1.yaml",
+      "tools/fleet/remediation/apply.ts",
+      "docs/reports/2026-11-18-note.md",
+      "new-directory/note.md",
+    ];
+    expect(admitted.filter((path) => !isAdmissible(path, patterns))).toEqual([]);
   });
 
   test("refuses every guarded path", () => {
@@ -131,22 +149,43 @@ describe("ADR-0068 D2: the closed list of admissible paths", () => {
     expect(concrete.filter((path) => isAdmissible(path, patterns))).toEqual([]);
   });
 
-  test("refuses the K4 surfaces and any directory that does not exist yet", () => {
+  test("refuses the K4 surfaces, layer 3 and the registers by its own block, without GATED_PATH_PATTERNS", () => {
     const refused = [
       ".github/workflows/ci.yml",
-      "tools/quality/check-review-evidence.ts",
-      "tools/fleet/bump-plan.ts",
-      "ecosystem/check-briques.ts",
-      "skills/pr-body/SKILL.md",
-      "packages/classification/src/index.ts",
+      ".github/composition/manifest.json",
+      "docs/adr/0068-bounded-agent-merge.md",
+      "docs/decisions/DECISION-REGISTER.md",
       "docs/specifications/LOOP-SECURITY-KERNEL.md",
-      "docs/reviews/example/REVIEW.md",
+      "docs/reviews/AGENT-REVIEW-PROTOCOL.md",
+      "docs/method/POLARIS.md",
       "AGENTS.md",
+      "CLAUDE.md",
+      "skills/pr-body/SKILL.md",
+      "tools/skills/bounded-merge-scope.ts",
+      "tools/quality/check-issue-forms.ts",
+      "tools/security/keygen-ceremony.ts",
+      "ecosystem/check-briques.ts",
+      "distribution/templates/langgraph-gates/x.ts",
+      "packages/classification/src/index.ts",
+      "crates/ecosystem-engine/contracts-authority.pin.json",
+      "ecosystem/schemas/brique.v1.schema.json",
       "package.json",
-      "new-guardrails/gate.ts",
+      "project.v1.yaml",
+      "REUSE.toml",
       "docs/parity/../../tools/quality/gate.md",
       "docs/parity/.hidden/note.md",
     ];
-    expect(refused.filter((path) => isAdmissible(path, patterns))).toEqual([]);
+    expect(refused.filter((path) => refusedPaths([path], [], patterns).length === 0)).toEqual([]);
+  });
+});
+
+describe("bounded-merge-scope: the command form", () => {
+  test("exits 0 on admitted paths, 1 on a refused one, 2 on nothing read", () => {
+    expect(runScope(["tools/fleet/remediation/apply.ts"]).exitCode).toBe(0);
+    const refused = runScope(["tools/fleet/remediation/apply.ts", "docs/adr/0001-x.md"]);
+    expect(refused.exitCode).toBe(1);
+    expect(refused.stdout).toContain("refused docs/adr/0001-x.md");
+    expect(refused.stdout).toContain("examined=2 admitted=1 refused=1");
+    expect(runScope([]).exitCode).toBe(2);
   });
 });

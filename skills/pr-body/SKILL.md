@@ -102,7 +102,7 @@ Par défaut, aucun appel de fusion. `gh pr merge` n'est permis que si ces trois 
 
 1. Le mandat de la session demande la fusion, en toutes lettres.
 2. `git show origin/<servie>:docs/adr/0068-bounded-agent-merge.md` réussit et la valeur de son champ `Statut` commence par `accepted`. Statut `proposé`, fichier absent ou illisible : aucun appel.
-3. Chaque condition de D2 et D3 de cet ADR, lu sur la base, tient. Un fichier correspondant à `GATED_PATH_PATTERNS` lu sur la base, un fichier hors de la liste fermée de D2, un check en échec ou en attente : aucun appel, état rendu.
+3. Chaque condition de D2 et D3 de cet ADR, lu sur la base, tient. D2 se lit sur une extraction détachée de la base (`git worktree add --detach <dir> origin/<servie>`, retirée ensuite par `git worktree remove <dir>`) : `git diff --name-only origin/<servie>...<sha> | (cd <dir> && bun tools/skills/bounded-merge-scope.ts)` sort 0. Sortie 1 (un fichier correspond à `GATED_PATH_PATTERNS` ou au bloc d'exclusions de D2) ou 2 (rien lu, bloc illisible), un check en échec ou en attente : aucun appel, état rendu.
 
 L'appel est celui de D4 de l'ADR, épinglé au sha relu : `gh pr merge <n> --merge --match-head-commit <sha> --body-file <journal>`. `autoMergeRequest` reste nul : `--auto` et `--admin` sont exclus. Un commit poussé ensuite annule la revue et rejoue les trois portes sur le nouveau sha.
 

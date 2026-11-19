@@ -2,12 +2,12 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # ADR-0068 — Fusion d'une pull request par un agent : bornée hors des chemins gardés et des surfaces K4, épinglée au sha relu
 
-- **Statut :** proposé — l'acceptation est un acte du propriétaire : il ajoute la ligne d'arbitrage datée et change ce statut dans la pull request qu'il fusionne. Tant que ces deux lignes n'ont pas changé, cet ADR n'est pas en vigueur, fusionné ou non, et aucun agent ne fusionne en son nom.
-- **Arbitrage :** aucun constaté par la rédaction. Le lanceur du lot L071 rapporte une décision de principe du propriétaire du 2026-11-18, option « fusion bornée par décision » ; la rédaction n'a pas vu cette décision et ne la consigne pas comme arbitrage. Le propriétaire la confirme, ou non, en signant.
+- **Statut :** accepted — arbitrage propriétaire du 2026-11-19 par questions structurées ; la fusion de cette pull request vaut signature (ADR-0043).
+- **Arbitrage :** Owner-arbitration: 2026-11-19 — question structurée posée dans la session de l'agent qui tient la pull request ; réponse « Accepter, exclusion seule » : décision de principe confirmée, D2 réduit à l'exclusion des garde-fous nommés.
 - **Date de rédaction :** 2026-11-18
 - **Connexes :** ADR-0009 §5 et §6 (surface à touche humaine, aucun auto-merge sur la couche 3 et les garde-fous) ; ADR-0011 D4 (confiance graduée) ; ADR-0023 (K4 : revue documentée puis fusion du propriétaire) ; ADR-0025 et ADR-0050 D1 (modification d'une skill sur échec observé) ; ADR-0043 et D68 (signature d'une pull request de doctrine) ; `docs/method/POLARIS.md` (K4, « Merge automation sur revue propre ») ; `docs/specifications/LOOP-SECURITY-KERNEL.md` (K4) ; `skills/pr-body/SKILL.md`, qui applique cette décision.
-- **Amende :** rien. K4, ADR-0009 §6 et ADR-0011 D4 restent entiers : cet ADR n'ouvre aucune fusion sur leurs surfaces.
-- **Invariants :** I-17 (appliqué : registre, ADR, garde-fous et couche 3 restent à touche humaine) ; I-11 (appliqué : DCO sur le commit de fusion) ; I-25 (appliqué à la modification de `skills/pr-body`). Aucun invariant n'est inscrit par cette rédaction ; le texte proposé figure à la section « Acte de signature ».
+- **Ne modifie pas :** K4, ADR-0009 §6 et ADR-0011 D4, qui restent entiers : cet ADR n'ouvre aucune fusion sur leurs surfaces.
+- **Invariants :** I-17 (appliqué : registre, ADR, garde-fous et couche 3 restent à touche humaine) ; I-11 (appliqué : DCO sur le commit de fusion) ; I-25 (appliqué à la modification de `skills/pr-body`) ; I-40 (inscrit par cet ADR, D115).
 - **N'autorise pas :** une fusion hors de `libre-ai/project-governance` ; une fusion automatique différée ; une modification de réglage de forge, de ruleset ou de protection de branche ; une promotion de skill.
 
 ## Vérification empirique
@@ -48,16 +48,43 @@ Un agent ne fusionne pas. Il rend l'URL de la pull request, le sha de tête et l
 
 ### D2 — Périmètre
 
-Dans `libre-ai/project-governance` seulement, chaque fichier touché par la pull request satisfait les deux règles :
+Dans `libre-ai/project-governance` seulement, tout fichier est admis, sauf les garde-fous nommés. Un fichier touché par la pull request est refusé s'il satisfait l'une des deux règles :
 
-1. il ne correspond à aucun motif de `GATED_PATH_PATTERNS`, lu **sur la base** (`git show origin/<servie>:tools/quality/check-review-evidence.ts`) et jamais sur la tête, qui pourrait l'avoir affaibli ;
-2. il correspond à la liste fermée ci-dessous. Tout le reste est réputé surface K4 : workflows, code des gates et des outils, skills, schémas, configuration, contrats, données lues par un gate, et tout répertoire qui n'existe pas encore.
+1. il correspond à un motif de `GATED_PATH_PATTERNS`, lu **sur la base** (`git show origin/<servie>:tools/quality/check-review-evidence.ts`) et jamais sur la tête, qui pourrait l'avoir affaibli ;
+2. il correspond à une ligne du bloc ci-dessous, lu lui aussi sur la base.
 
-```text admissible-paths
-^docs/(parity|reports|rfcs)/([^/.][^/]*/)*[^/.][^/]*\.md$
+```text excluded-paths
+(^|/)\.
+^docs/(adr|decisions|specifications|reviews)/
+^docs/method/POLARIS\.md$
+^(AGENTS|CLAUDE)\.md$
+^prompts/
+^skills/
+^tools/(quality|skills|security|attestation|licensing|release|doctrine)/
+(^|/)check-[^/]*$
+^distribution/templates/
+^packages/
+^crates/
+^ecosystem/schemas/
+\.schema\.json$
+^toolchains/
+^(package\.json|bun\.lock|bunfig\.toml|tsconfig\.json|biome\.json|Cargo\.toml|Cargo\.lock|deny\.toml|rust-toolchain\.toml|project\.v1\.yaml)$
+^(LICENSE|LICENSING\.md|REUSE\.toml)$
+^LICENSES/
 ```
 
-La liste est fermée parce qu'une liste d'exclusions laisse passer par défaut le premier répertoire de garde-fous créé après elle. Elle s'élargit par un nouvel ADR, jamais par un agent.
+Ce que nomme chaque groupe de lignes, dans l'ordre :
+
+- tout segment caché, dont `.github/` (workflows et composition exécutés par la CI, surface K4) et tout chemin non normalisé (`..`) ;
+- le registre des décisions, le registre des invariants et les ADR (I-17), la spécification K4 et le protocole de revue qui la réalise, l'attente de `POLARIS.md` sur la fusion ;
+- les instructions d'agent et les skills, dont celle qui applique cette décision ;
+- le code des gates : `tools/quality`, `tools/skills`, l'outillage de sécurité, d'attestation, de licence, de publication et de réplication de doctrine, tout fichier `check-*` où qu'il soit, et les gabarits de gates distribués à la flotte ;
+- la couche 3 et les contrats : `packages/` (brique de classification), `crates/` (moteur et épinglage des contrats), les schémas ;
+- la configuration : chaîne d'outils, manifestes et verrous de dépendances, fiche du projet, licences et REUSE (I-11).
+
+Le reste est admis, `tools/fleet` et le code de `ecosystem/` hors `check-*` compris. Le motif du choix et son risque sont à la section « Alternatives rejetées » et aux « Conséquences ». Le bloc s'élargit d'une exclusion par un nouvel ADR, ou par une pull request que fusionne le propriétaire ; jamais par un agent, puisque le bloc vit sous `docs/adr/`.
+
+L'outil `bun tools/skills/bounded-merge-scope.ts`, lancé depuis une extraction de la base, applique les deux règles aux chemins lus sur son entrée : sortie 0 si tout est admis, 1 si un chemin est refusé, 2 s'il n'a rien lu ou si ce bloc est illisible ; un 2 vaut un refus (D1).
 
 ### D3 — Conditions sur la pull request
 
@@ -92,7 +119,7 @@ L'état se relit en JSON, jamais sur le texte affiché. La sortie de fin de tour
 
 ### D5 — Ce qui reste interdit
 
-`--admin`, `--auto`, `--squash`, `--rebase` ; toute fusion d'une pull request dont un fichier sort de D2 ; toute relance de checks destinée à obtenir un vert ; toute fusion d'une pull request ouverte par un tiers ; toute modification par un agent de cet ADR, de sa liste ou de la skill qui l'applique sans signature du propriétaire.
+`--admin`, `--auto`, `--squash`, `--rebase` ; toute fusion d'une pull request dont un fichier sort de D2 ; toute relance de checks destinée à obtenir un vert ; toute fusion d'une pull request ouverte par un tiers ; toute modification par un agent de cet ADR, de son bloc d'exclusions, de l'outil qui l'applique ou de la skill qui l'applique sans signature du propriétaire.
 
 ### D6 — Retour arrière et retrait
 
@@ -101,32 +128,38 @@ Une fusion sous cet ADR s'annule par `git revert -m 1 <commit de fusion>` dans u
 ## Conséquences
 
 - `skills/pr-body` gagne les commits qui atterrissent, la vérification de la base et la conduite après la poussée. Sa section de fusion ne s'active que sur le statut de cet ADR lu sur la base.
-- Portée réelle, mesurée le 2026-11-18 sur les 13 commits de fusion de premier parent que porte la branche servie : **0 sur 13** auraient été admissibles sous D2. L'autorisation est donc presque vide aujourd'hui, et le propriétaire le sait en signant.
-- Aucun gate n'impose cette décision : la skill la porte, la revue la contrôle. Une application mécanique demanderait un gate neuf, hors de cette rédaction.
+- Portée réelle, mesurée le 2026-11-19 sur les 13 commits de fusion de premier parent de la branche servie qui finissent à `86b1ac3` : **5 sur 13** auraient été admissibles sous D2 (#251, #254, #255, #259, #260). Commande, depuis une extraction de la base :
+  `for m in $(git log --first-parent --merges --format=%H -13 86b1ac3); do git diff --name-only "$m^1" "$m" | bun tools/skills/bounded-merge-scope.ts >/dev/null && git log -1 --format=%s "$m"; done`
+  Elle imprime une ligne par fusion admise. Une ligne d'exclusion ajoutée ou retirée change ce chiffre : il se rejoue, il ne se cite pas.
+- Risque accepté par le propriétaire : un répertoire de garde-fous créé après ce bloc est admis par défaut tant qu'une ligne ne l'exclut pas. Le code que les workflows exécutent hors des répertoires exclus (`tools/fleet`, `ecosystem/*.ts` hors `check-*`) est admis, de même qu'une donnée lue par un gate hors de `GATED_PATH_PATTERNS` (#259 touche `ecosystem/fleet-pins.v1.yaml`, que lit `ecosystem/check-fleet-pins.ts`).
+- Aucun gate n'impose cette décision : la skill la porte, l'outil `tools/skills/bounded-merge-scope.ts` en applique D2, la revue la contrôle. Une application mécanique au moment de la fusion demanderait un gate neuf, hors de cette rédaction.
 - La branche servie reste rouge sur le contrôle de licence pour les fusions faites sans corps signé ; cet ADR ne corrige pas ces fusions passées.
 
 ## Alternatives rejetées
 
-| Option | Fusions admissibles sur 13 | Motif du rejet |
+| Option | Fusions admissibles sur 13 | Sort |
 | --- | --- | --- |
-| Liste fermée de D2 | 0 (retenue) | Retenue : la sécurité passe avant la portée, et un élargissement reste possible |
-| Exclure seulement les garde-fous nommés, admettre le reste (`tools/fleet`, `ecosystem/*.ts`) | 5 (#251, #254, #255, #259, #260) | Admet du code que les workflows exécutent ; ADR-0009 §6 : « aucune boucle ne modifie ses propres garde-fous » |
-| Fusion automatique différée (`--auto`) | sans objet | `allow_auto_merge` vaut `false`, et les conditions de D3 ne seraient plus relues au moment de la fusion |
-| Aucune autorisation | 0 | Écartée par la décision de principe rapportée ; reste l'issue si le propriétaire ne signe pas |
+| Exclure seulement les garde-fous nommés, admettre le reste (`tools/fleet`, `ecosystem/*.ts`) | 5 (#251, #254, #255, #259, #260) | **Retenue** (D2) : décision du propriétaire du 2026-11-19, « Accepter, exclusion seule ». Elle admet du code que les workflows exécutent ; les garde-fous d'ADR-0009 §6 restent exclus |
+| Liste fermée de chemins admis (`docs/parity`, `docs/reports`, `docs/rfcs`, Markdown seul) | 0 | Rejetée : décision du propriétaire du 2026-11-19. Elle refusait par défaut tout répertoire nouveau, mais n'admettait aucune des 13 dernières fusions |
+| Fusion automatique différée (`--auto`) | sans objet | Rejetée : `allow_auto_merge` vaut `false`, et les conditions de D3 ne seraient plus relues au moment de la fusion |
+| Aucune autorisation | 0 | Rejetée : décision de principe confirmée par le propriétaire le 2026-11-19 |
 
 ## Acte de signature
 
-À la charge du propriétaire, dans la pull request qu'il fusionne. Rien de ce qui suit n'est en vigueur avant cet acte.
+Arbitrage du propriétaire du 2026-11-19, « Accepter, exclusion seule » ; la fusion de cette pull request par le propriétaire vaut signature (ADR-0043). Ce que la version proposée lui laissait à faire est porté dans la même pull request :
 
-1. Confirmer ou refuser la décision de principe, et trancher la largeur de D2 au vu du tableau ci-dessus.
-2. Porter l'arbitrage daté sur la ligne « Arbitrage » et faire passer le statut au littéral d'acceptation du gabarit ADR.
-3. Accepter que l'agent écrive, dans le message de fusion, un `Signed-off-by` dérivé de la configuration git de la session (D4) : c'est une attestation DCO (I-11).
-4. Ajouter au registre des décisions, au numéro suivant de la série, l'entrée : « Un agent fusionne une pull request de `libre-ai/project-governance` seulement sous les conditions cumulatives d'ADR-0068 : fichiers hors de `GATED_PATH_PATTERNS` lus sur la base et dans la liste fermée de D2, checks terminés sans échec, revue à rôle séparé du sha exact, fusion épinglée par `--match-head-commit`, aucune mise à jour de branche par la forge, journal dans le message de fusion ; K4 reste entier | ADR-0068 ».
-5. Ajouter au registre des invariants, au numéro suivant de la série : « Un agent ne fusionne une pull request que sous une décision du registre qui borne les chemins, épingle le sha relu et exclut la surface à touche humaine d'I-17 ».
-6. Préciser dans `docs/method/POLARIS.md` que l'attente de « Merge automation sur revue propre » continue de valoir pour les surfaces K4.
+1. Décision de principe confirmée, largeur de D2 tranchée : exclusion des garde-fous nommés (tableau ci-dessus).
+2. Ligne « Arbitrage » datée et statut `accepted` (ligne d'en-tête).
+3. Le `Signed-off-by` que l'agent écrit dans le message de fusion (D4) est une attestation DCO (I-11) dérivée de la configuration git de la session ; il fait partie de D4, accepté avec l'ADR.
+4. Registre des décisions : D115.
+5. Registre des invariants : I-40, avec son entrée `gates: []` dans `ecosystem/invariant-gates.v1.yaml` et la projection régénérée.
+6. `docs/method/POLARIS.md` : l'attente de « Merge automation sur revue propre » continue de valoir pour les surfaces K4, et la fusion bornée d'ADR-0068 y est citée.
+
+Aucun réglage de forge n'est demandé : D4 s'appuie sur la fusion à la demande, `allow_auto_merge` restant `false`.
 
 ## Vérification
 
 - `bun run check:skills && bun run check:skills-routing && bun run check:skills-cascade` : les trois gates impriment leurs compteurs et sortent 0.
-- `bun test tools/skills/pr-body-bounded-merge.test.ts` : la skill porte les entrées et les interdits de cette décision, et la liste de D2 refuse chaque chemin gardé.
-- Après signature seulement : `git log --first-parent --grep '^Bounded-merge: ADR-0068' origin/<servie>` liste les fusions faites sous cet ADR. Cette commande ne renvoie rien tant qu'aucune n'a eu lieu.
+- `bun test tools/skills/pr-body-bounded-merge.test.ts` : la skill porte les entrées et les interdits de cette décision, D2 refuse chaque chemin gardé et chaque surface exclue, et admet un chemin hors de ces garde-fous.
+- La commande de la section « Conséquences » rejoue la portée de D2.
+- Après la fusion de cette pull request : `git log --first-parent --grep '^Bounded-merge: ADR-0068' origin/<servie>` liste les fusions faites sous cet ADR. Cette commande ne renvoie rien tant qu'aucune n'a eu lieu.
