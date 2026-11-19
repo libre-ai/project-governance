@@ -8,12 +8,19 @@
 # entry here. The format is a closed line whitelist, read by
 # ecosystem/fleet-gates.ts (parseRegistry); a key written twice is refused.
 #
-# No detector is registered yet: until one is, every discovery fails, on an
-# undeclared script or on a fleet audited by zero detectors.
+# The detectors directory of this repository is ecosystem/fleet-detectors/
+# (2026-11-19, first three detectors, adapted from gates already in service);
+# `bun run check:fleet-gates` checks it against this file.
 #
 #   detecteurs:
 #     - identifiant: <lowercase slug>
 #       fichier: <file name in the detectors directory>
 
 version: 1
-detecteurs: []
+detecteurs:
+  - identifiant: sql-construction
+    fichier: sql-construction.sh
+  - identifiant: local-paths
+    fichier: local-paths.sh
+  - identifiant: default-branch-ref
+    fichier: default-branch-ref.sh

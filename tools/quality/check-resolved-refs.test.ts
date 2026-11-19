@@ -4,6 +4,7 @@ import {
   DEFAULT_BRANCH_NAMES,
   findWorkflowsMissingServedBranch,
   isPatternSubject,
+  locateWorkflowsMissingServedBranch,
   REF_PATTERNS,
   resolveServedBranch,
   SCANNED_ROOTS,
@@ -27,6 +28,8 @@ describe("scanForWrittenRefs — a ref handed to a request", () => {
     // placeholder written inside a plain string is what the linter refuses.
     ["graphql-built-expression", "const expression = JSON.stringify(`main:$" + "{path}`);"],
     ["git-ref-path", 'api.json(["api", `repos/$' + "{REPO}/git/ref/heads/main`])"],
+    ["git-branch-flag", 'run(["git", "clone", "--depth=1", "--branch", "main", url]);'],
+    ["git-branch-flag", "  git clone --branch=master https://example.invalid/o/r.git"],
   ];
 
   for (const [id, line] of cases) {
@@ -175,6 +178,13 @@ describe("findWorkflowsMissingServedBranch", () => {
     expect(findWorkflowsMissingServedBranch([file("w.yml", text)], "migrate/recover-code")).toEqual(
       [],
     );
+  });
+
+  test("the located form names the line of the filter, past blank lines", () => {
+    const text = "on:\n  push:\n\n    branches: [main]\n";
+    expect(
+      locateWorkflowsMissingServedBranch([file("w.yml", text)], "migrate/recover-code"),
+    ).toEqual([{ path: "w.yml", line: 4 }]);
   });
 
   test("no filter at all is not a finding: every branch already runs", () => {

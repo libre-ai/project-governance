@@ -7,8 +7,10 @@ import { discoverDetectors, printable, REGISTRY_PATH } from "./fleet-gates";
  * effectful half of `fleet-gates.ts`. It lists the detectors of one directory
  * with their declaration, checks them against the registry
  * (`ecosystem/fleet-gates.v1.yaml` unless another file is named) both ways,
- * and prints the volume read. Not part of `bun run check`: the directory of
- * the detectors is the owner's to name.
+ * and prints the volume read. `bun run check:fleet-gates`, part of
+ * `bun run check`, runs it on this repository's detectors directory,
+ * `ecosystem/fleet-detectors/` (named 2026-11-19 with its first three
+ * detectors); another directory can still be named on the command line.
  */
 
 const [directory, registryPath = REGISTRY_PATH] = process.argv.slice(2);

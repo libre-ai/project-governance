@@ -132,6 +132,17 @@ export const REF_PATTERNS: readonly RefPattern[] = [
     pattern: new RegExp(String.raw`/git/refs?/heads/(?:${BRANCHES})\b`),
     says: "read the repository's `default_branch` from its own metadata, then ask for that ref",
   },
+  // Added on 2026-11-19 with the fleet detector `default-branch-ref`: a clone
+  // or a fetch asked for a written branch is a request too, and the rule's
+  // own list of forms names it.
+  {
+    id: "git-branch-flag",
+    // The shell form (the flag, then a blank or an equals sign, then the
+    // branch) and the argument-vector form (the flag and the branch as two
+    // quoted elements). Described, not quoted: this file scans itself.
+    pattern: new RegExp(String.raw`--branch(?:[=\s]+|["'\`]\s*,\s*)["'\`]?(?:${BRANCHES})\b`),
+    says: "omit `--branch` — a clone checks out the branch the remote serves; or resolve it with `git ls-remote --symref <url> HEAD`",
+  },
 ] as const;
 
 export interface RefFinding {
@@ -241,14 +252,29 @@ export function findWorkflowsMissingServedBranch(
   workflows: readonly { readonly path: string; readonly text: string }[],
   servedBranch: string,
 ): readonly string[] {
-  const missing: string[] = [];
+  return locateWorkflowsMissingServedBranch(workflows, servedBranch).map((found) => found.path);
+}
+
+/**
+ * The same verdict with the 1-based line of the filter, for a consumer that
+ * records findings as `path:line` (the fleet detector `default-branch-ref`).
+ */
+export function locateWorkflowsMissingServedBranch(
+  workflows: readonly { readonly path: string; readonly text: string }[],
+  servedBranch: string,
+): readonly { readonly path: string; readonly line: number }[] {
+  const missing: { path: string; line: number }[] = [];
   for (const workflow of workflows) {
     const match = /^\s*branches:\s*\[([^\]]*)\]/m.exec(workflow.text);
     if (match === null) continue;
     const listed = (match[1] ?? "")
       .split(",")
       .map((name) => name.trim().replace(/^["']|["']$/g, ""));
-    if (!listed.includes(servedBranch)) missing.push(workflow.path);
+    if (listed.includes(servedBranch)) continue;
+    // `\s*` may have crossed blank lines: the line is the one of `branches:`.
+    const at = match.index + match[0].indexOf("branches:");
+    const line = workflow.text.slice(0, at).split("\n").length;
+    missing.push({ path: workflow.path, line });
   }
   return missing;
 }

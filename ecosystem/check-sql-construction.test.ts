@@ -312,7 +312,8 @@ test("this gate's own sources hold no raw-SQL construction", async () => {
   const own = (await readdir(directory)).filter(
     (name) => name.includes("sql-construction") && name.endsWith(".ts"),
   );
-  expect(own.length).toBe(3);
+  // The gate, its scanner, this test, and the fleet detector built on them.
+  expect(own.length).toBe(4);
   for (const name of own) {
     const text = await Bun.file(new URL(name, directory)).text();
     expect(`${name}: ${rules(scanSource(name, text)).join(",")}`).toBe(`${name}: `);
