@@ -98,6 +98,7 @@
 import { lstat, mkdir, mkdtemp, realpath, rename, rm, rmdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { extname, join, resolve } from "node:path";
+import { decodeFindingPath } from "../../../ecosystem/fleet-detector-io";
 import {
   type DetectorDescriptor,
   discoverDetectors,
@@ -151,7 +152,11 @@ export interface Finding {
 
 const FINDING = /^([^:]+):([1-9][0-9]*):/;
 
-/** A finding line `path:line:text`; null when it has another shape. */
+/**
+ * A finding line `path:line:text`; null when it has another shape. The path is
+ * decoded as `findingLine` encodes it (a colon in a name would otherwise end
+ * the path early: `doc:12:x.md` read as `doc` at line 12).
+ */
 export function parseFinding(raw: string): Finding | null {
   const match = FINDING.exec(raw);
   const path = match?.[1];
@@ -159,7 +164,7 @@ export function parseFinding(raw: string): Finding | null {
   if (path === undefined || line === undefined) return null;
   const number = Number(line);
   if (!Number.isSafeInteger(number)) return null;
-  return { path, line: number, raw };
+  return { path: decodeFindingPath(path), line: number, raw };
 }
 
 // ------------------------------------------------------------------ decisions

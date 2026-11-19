@@ -263,6 +263,37 @@ describe("measure", () => {
     expect(seen).toEqual([["o/alpha"]]);
   });
 
+  // Review of 2026-11-19 (M1): the volume a detector reports on a success was
+  // read by nobody, so a measure over zero files read « conforme » without a
+  // trace. It is now recorded beside the proof path.
+  test("the volume a successful run reports is recorded in the detail", async () => {
+    const reader = fakeReader({
+      "a o/alpha": { ok: true, lines: [], volume: "a: 0 finding(s); 3\ttracked" },
+    });
+    const { measures } = await measure([detector("a", 0)], [entry("o/alpha")], reader);
+    expect(measures.map((m) => m.detail)).toEqual([
+      "preuves/a/o/alpha.txt (volume: a: 0 finding(s); 3\\u0009tracked)",
+    ]);
+  });
+
+  test("the reader takes the volume from the last line a detector writes on stderr", async () => {
+    const root = scratch("volume");
+    const repo = join(root, "o", "alpha");
+    mkdirSync(repo, { recursive: true });
+    const script = join(root, "volume.sh");
+    writeFileSync(
+      script,
+      "#!/bin/sh\necho finding\necho first >&2\necho 'last line' >&2\necho >&2\n",
+    );
+    chmodSync(script, 0o755);
+    const reader = localFleetReader({ worktrees: root, snapshot: root, environment: {} });
+    const run = await reader.run(
+      { ...detector("v", 1), path: script },
+      { scope: "repo", repository: "o/alpha" },
+    );
+    expect(run).toEqual({ ok: true, lines: ["finding"], volume: "last line" });
+  });
+
   test("an unreadable worktree is an error for each of its measures, read once, never run", async () => {
     const spy = fakeReader({}, { "o/alpha": null });
     const { measures, heads } = await measure(

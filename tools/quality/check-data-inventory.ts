@@ -236,7 +236,7 @@ export const NOT_GATED: readonly NotGated[] = [
   {
     path: "ecosystem/fleet-gates.v1.yaml",
     because:
-      "the registry of fleet detectors: check-fleet-gates confronts it with the detectors directory both ways, so an entry dropped while its script stays fails as an undeclared gate; that check runs on a directory the owner names, outside bun run check",
+      "the registry of fleet detectors: check-fleet-gates confronts it with the detectors directory both ways, so an entry dropped while its script stays fails as an undeclared gate; bun run check runs it on ecosystem/fleet-detectors",
   },
   {
     path: "ecosystem/repositories.v1.yaml",
@@ -515,6 +515,12 @@ export const NOT_GATED: readonly NotGated[] = [
     path: "ecosystem/fixtures/",
     extensions: [".json", ".toml", ".yaml", ".yml"],
     because: "fixtures of the ecosystem tests",
+  },
+  {
+    path: "ecosystem/fixtures/fleet-detectors/",
+    extensions: [".txt"],
+    because:
+      "source text the fleet-detector tests copy into a throwaway repository; kept as .txt so this repository's own SQL and ref gates do not read it as a site",
   },
   {
     path: "tools/attestation/fixtures/",
