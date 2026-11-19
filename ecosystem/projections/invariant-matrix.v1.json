@@ -240,6 +240,12 @@
       "etat": "en vigueur",
       "application": "sans gate",
       "gates": []
+    },
+    {
+      "invariant": "I-40",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
     }
   ]
 }
