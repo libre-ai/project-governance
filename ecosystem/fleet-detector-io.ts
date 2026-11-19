@@ -58,13 +58,26 @@ export function requiredVariable(
   return value;
 }
 
+export interface ReadOptions {
+  /**
+   * Set aside a file with a NUL byte in its first 8000 bytes as binary. Off
+   * for a detector whose scope is source files: a NUL byte does not stop bun
+   * or rustc from reading a source, so it must not stop the scan either.
+   */
+  readonly skipBinary: boolean;
+}
+
 /**
- * The tracked files of `worktree` that `inScope` keeps, read as text. Links,
- * submodules and binary files are counted apart, never read.
+ * The tracked files of `worktree` that `inScope` keeps, read as text. Links
+ * and submodules are counted apart, never read (a link is versioned, not its
+ * target, which may lie outside the worktree); binary files too, when the
+ * options say so. A worktree with no tracked file is an error: an empty source
+ * is not a clean one.
  */
 export async function readTrackedFiles(
   worktree: string,
   inScope: (path: string) => boolean,
+  options: ReadOptions = { skipBinary: true },
 ): Promise<TrackedRead> {
   const listed = Bun.spawnSync(["git", "-C", worktree, "ls-files", "--stage", "-z"], {
     stdout: "pipe",
@@ -80,6 +93,9 @@ export async function readTrackedFiles(
     .toString()
     .split("\0")
     .filter((record) => record !== "");
+  if (records.length === 0) {
+    throw new DetectorInputError(`no tracked file in ${printable(worktree)}: nothing to measure`);
+  }
 
   const files: TrackedFile[] = [];
   let outOfScope = 0;
@@ -115,7 +131,7 @@ export async function readTrackedFiles(
         `tracked file ${printable(path)} unreadable: ${printable(reason)}`,
       );
     }
-    if (bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)) {
+    if (options.skipBinary && bytes.subarray(0, BINARY_PROBE_BYTES).includes(0)) {
       binary += 1;
       continue;
     }
@@ -131,13 +147,25 @@ export function describeRead(read: TrackedRead): string {
 
 /**
  * One finding as `fleet-state.ts` stores it and `tools/fleet/remediation/kit.ts`
- * parses it: `path:line:rule`. The path is printable (a line break in a name
- * would forge a second finding); the rule is the detector's own identifier,
+ * parses it: `path:line:rule`. The rule is the detector's own identifier,
  * never the matched text, which may carry what the detector exists to keep out
  * of the record (a user name, for one).
+ *
+ * The path is encoded so the line stays one finding and its first colon stays
+ * the separator: a backslash becomes `\` first (so the encoding is
+ * reversible), then a colon `:`, then control and bidi characters as
+ * `printable` writes them. `decodeFindingPath` is the inverse.
  */
 export function findingLine(path: string, line: number, rule: string): string {
-  return `${printable(path)}:${line}:${rule}`;
+  const encoded = printable(path.replaceAll("\\", "\\u005c").replaceAll(":", "\\u003a"));
+  return `${encoded}:${line}:${rule}`;
+}
+
+/** The path a `findingLine` encoded. */
+export function decodeFindingPath(encoded: string): string {
+  return encoded.replace(/\\u([0-9a-f]{4})/g, (_, hex: string) =>
+    String.fromCharCode(Number.parseInt(hex, 16)),
+  );
 }
 
 export interface DetectorResult {

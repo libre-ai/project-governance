@@ -1,15 +1,25 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { parseFinding } from "../tools/fleet/remediation/kit";
 import type { SqlAllowance } from "./check-sql-construction";
 import { measureDefaultBranchRefs } from "./detect-default-branch-refs";
 import { measureLocalPaths, scanLocalPaths } from "./detect-local-paths";
 import { judgeSqlSites } from "./detect-sql-construction";
 import { DetectorInputError, findingLine, readTrackedFiles } from "./fleet-detector-io";
 import { type DetectorDescriptor, discoverDetectors, REGISTRY_PATH } from "./fleet-gates";
-import { localFleetReader } from "./fleet-state";
+import { type DetectorRun, localFleetReader } from "./fleet-state";
+import { scanSource } from "./sql-construction-scanner";
 
 /**
  * The first three fleet detectors (owner's decision of 2026-11-19: adapted
@@ -21,8 +31,11 @@ import { localFleetReader } from "./fleet-state";
  * `check-context-hygiene.sh`. Each detector is run the way `fleet-state.ts`
  * runs it — its script, through `localFleetReader`, in a worktree laid out as
  * `<root>/<owner>/<name>` — so the protocol (one stdout line per finding,
- * `path:line:rule`, exit 0 for a measure, any other exit an error) is the one
- * under test, not an imitation of it.
+ * `path:line:rule`, the volume as the last stderr line, exit 0 for a measure,
+ * any other exit an error) is the one under test, not an imitation of it.
+ *
+ * The cases marked « review » come from the independent review of 2026-11-19
+ * (B1, M1-M4, m1-m4); each was red before its correction.
  */
 
 const roots: string[] = [];
@@ -44,8 +57,10 @@ function git(cwd: string, ...args: string[]): void {
 }
 
 interface Fleet {
+  readonly root: string;
   readonly worktrees: string;
   readonly snapshot: string;
+  readonly worktree: string;
 }
 
 /** One repository `owner/name` with `files` added to its index, and its snapshot entry. */
@@ -71,7 +86,7 @@ function fleet(
       JSON.stringify({ repository, default_branch: servedBranch }),
     );
   }
-  return { worktrees: join(root, "worktrees"), snapshot };
+  return { root, worktrees: join(root, "worktrees"), snapshot, worktree };
 }
 
 const discovered = await discoverDetectors(join(import.meta.dir, "fleet-detectors"), REGISTRY_PATH);
@@ -83,13 +98,22 @@ function detectorOf(id: string): DetectorDescriptor {
   return found;
 }
 
-async function run(id: string, at: Fleet, repository: string) {
+async function run(id: string, at: Fleet, repository: string): Promise<DetectorRun> {
   const reader = localFleetReader({
     worktrees: at.worktrees,
     snapshot: at.snapshot,
     environment: { PATH: process.env.PATH, HOME: process.env.HOME, TMPDIR: process.env.TMPDIR },
   });
   return reader.run(detectorOf(id), { scope: "repo", repository });
+}
+
+/** The finding lines of a run, or its error reason: one value to compare. */
+function found(result: DetectorRun): readonly string[] | string {
+  return result.ok ? result.lines : `error: ${result.reason}`;
+}
+
+function volumeOf(result: DetectorRun): string {
+  return result.ok ? (result.volume ?? "(no volume)") : `error: ${result.reason}`;
 }
 
 describe("the detectors directory", () => {
@@ -100,6 +124,21 @@ describe("the detectors directory", () => {
       expect([detector.scope, detector.target]).toEqual(["repo", 0]);
     }
   });
+
+  // Review B1: a fixture built by concatenation was itself a site of the
+  // gate these detectors adapt, in this public repository.
+  test("the detectors and this test hold no raw-SQL construction", () => {
+    for (const name of [
+      "fleet-detectors.test.ts",
+      "fleet-detector-io.ts",
+      "detect-sql-construction.ts",
+      "detect-local-paths.ts",
+      "detect-default-branch-refs.ts",
+    ]) {
+      const text = readFileSync(join(import.meta.dir, name), "utf8");
+      expect(`${name}: ${scanSource(name, text).length}`).toBe(`${name}: 0`);
+    }
+  });
 });
 
 describe("sql-construction", () => {
@@ -107,23 +146,35 @@ describe("sql-construction", () => {
     const at = fleet("fixture/sql", {
       "src/query.ts": "export const read = (db, id) =>\n  db.unsafe(`SELECT * FROM t`);\n",
     });
-    const result = await run("sql-construction", at, "fixture/sql");
-    expect(result).toEqual({ ok: true, lines: ["src/query.ts:2:unsafe-call"] });
+    expect(found(await run("sql-construction", at, "fixture/sql"))).toEqual([
+      "src/query.ts:2:unsafe-call",
+    ]);
   });
 
   test("a tagged template parameterizes: no finding", async () => {
     const at = fleet("fixture/sql-clean", {
-      // `$` and `{` are concatenated: this is source text under test, and a
-      // placeholder inside a plain string is what the linter refuses.
-      "src/query.ts":
-        "export const read = (sql, id) => sql`SELECT * FROM t WHERE id = $" + "{id}`;\n",
+      "src/query.ts": readFileSync(
+        join(import.meta.dir, "fixtures/fleet-detectors/tagged-query.ts.txt"),
+        "utf8",
+      ),
     });
-    expect(await run("sql-construction", at, "fixture/sql-clean")).toEqual({ ok: true, lines: [] });
+    expect(found(await run("sql-construction", at, "fixture/sql-clean"))).toEqual([]);
   });
 
-  const allowance = (count: number): SqlAllowance => ({
+  // Review M2: a NUL byte made the source « binary » and took it out of the
+  // scan, while bun runs it and the gate reads it.
+  test("a NUL byte in a source does not take it out of the scan", async () => {
+    const at = fleet("fixture/sql-nul", {
+      "src/query.ts": "/* \u0000 */\nexport const read = (db) => db.unsafe(`SELECT 1`);\n",
+    });
+    expect(found(await run("sql-construction", at, "fixture/sql-nul"))).toEqual([
+      "src/query.ts:2:unsafe-call",
+    ]);
+  });
+
+  const allowance = (count: number, path = "a.ts"): SqlAllowance => ({
     repository: "fixture/sql",
-    path: "a.ts",
+    path,
     rule: "unsafe-call",
     count,
     because: "reviewed",
@@ -151,6 +202,12 @@ describe("sql-construction", () => {
   test("an allowance of another repository covers nothing here", () => {
     expect(judgeSqlSites("fixture/other", sites, [allowance(2)]).findings).toHaveLength(2);
   });
+
+  // Review M4: `const stale = 0` survived.
+  test("an allowance with no site left is counted stale", () => {
+    const judged = judgeSqlSites("fixture/sql", sites, [allowance(2), allowance(1, "gone.ts")]);
+    expect([judged.findings, judged.stale]).toEqual([[], 1]);
+  });
 });
 
 describe("local-paths", () => {
@@ -159,11 +216,10 @@ describe("local-paths", () => {
       "README.md": "# Setup\n\ncd /Users/alice/dev/project\n", // allow-local-path (fixture)
       "deploy.sh": "cp build /home/bob/www\n", // allow-local-path (fixture)
     });
-    const result = await run("local-paths", at, "fixture/paths");
-    expect(result).toEqual({
-      ok: true,
-      lines: ["README.md:3:local-path", "deploy.sh:1:local-path"],
-    });
+    expect(found(await run("local-paths", at, "fixture/paths"))).toEqual([
+      "README.md:3:local-path",
+      "deploy.sh:1:local-path",
+    ]);
   });
 
   test("the marker, a web path, a relative path and a binary file are not findings", async () => {
@@ -172,7 +228,7 @@ describe("local-paths", () => {
       "b.md": "https://example.invalid/home/index.html and docs/home/x\n",
       "c.bin": new Uint8Array([0, ...new TextEncoder().encode("/home/carol/")]), // allow-local-path (fixture)
     });
-    expect(await run("local-paths", at, "fixture/paths-clean")).toEqual({ ok: true, lines: [] });
+    expect(found(await run("local-paths", at, "fixture/paths-clean"))).toEqual([]);
   });
 
   test("a file URL and a drive letter are workstation paths", () => {
@@ -182,6 +238,26 @@ describe("local-paths", () => {
       "n.txt:2:local-path",
     ]);
   });
+
+  // Review m2 (orchestrator's decision): the CI runner's home is not a
+  // workstation; an immutable-system home is one.
+  test("the CI runner's home is not a finding, an immutable-system home is", () => {
+    const text = "cd /home/runner/work/r\nls /var/home/frank/x\n"; // allow-local-path (fixture)
+    expect(scanLocalPaths([{ path: "n.txt", text }]).findings).toEqual(["n.txt:2:local-path"]);
+  });
+
+  // Review M4: `mode === "120000" && false` survived; the link was then read
+  // through to its target outside the worktree.
+  test("a tracked link is counted, never followed", async () => {
+    const at = fleet("fixture/link", { "a.md": "x\n" });
+    const outside = join(at.root, "outside.txt");
+    writeFileSync(outside, "/home/grace/secret\n"); // allow-local-path (fixture)
+    symlinkSync(outside, join(at.worktree, "link.md"));
+    git(at.worktree, "add", "link.md");
+    const result = await run("local-paths", at, "fixture/link");
+    expect(found(result)).toEqual([]);
+    expect(volumeOf(result)).toContain("1 link(s)");
+  });
 });
 
 describe("default-branch-ref", () => {
@@ -190,14 +266,10 @@ describe("default-branch-ref", () => {
       "tools/fetch.ts": 'export const url = "repos/o/r/contents/card.yaml?ref=main";\n',
       ".github/workflows/ci.yml": "on:\n  push:\n    branches: [main]\n",
     });
-    const result = await run("default-branch-ref", at, "fixture/refs");
-    expect(result).toEqual({
-      ok: true,
-      lines: [
-        "tools/fetch.ts:1:rest-ref-query",
-        ".github/workflows/ci.yml:3:workflow-filter-omits-served-branch",
-      ],
-    });
+    expect(found(await run("default-branch-ref", at, "fixture/refs"))).toEqual([
+      "tools/fetch.ts:1:rest-ref-query",
+      ".github/workflows/ci.yml:3:workflow-filter-omits-served-branch",
+    ]);
   });
 
   test("a resolved ref and a filter listing the served branch are not", async () => {
@@ -205,18 +277,26 @@ describe("default-branch-ref", () => {
       "tools/fetch.ts": 'export const expression = "HEAD:card.yaml";\n',
       ".github/workflows/ci.yml": "on:\n  push:\n    branches: [trunk]\n",
       "tools/fetch.test.ts": 'const refused = "contents/card.yaml?ref=main";\n',
+      "tests/fetch.ts": 'const refused = "contents/card.yaml?ref=main";\n',
     });
-    expect(await run("default-branch-ref", at, "fixture/refs-clean")).toEqual({
-      ok: true,
-      lines: [],
+    expect(found(await run("default-branch-ref", at, "fixture/refs-clean"))).toEqual([]);
+  });
+
+  // Review m4: Rust sources make requests too.
+  test("a written ref in a Rust source is a finding", async () => {
+    const at = fleet("fixture/refs-rust", {
+      "src/fetch.rs": 'const URL: &str = "repos/o/r/contents/card.yaml?ref=main";\n',
     });
+    expect(found(await run("default-branch-ref", at, "fixture/refs-rust"))).toEqual([
+      "src/fetch.rs:1:rest-ref-query",
+    ]);
   });
 
   test("an absent snapshot is an error, never a zero", async () => {
     const at = fleet("fixture/refs-blind", { "a.ts": "x\n" }, null);
-    const result = await run("default-branch-ref", at, "fixture/refs-blind");
-    expect(result.ok).toBe(false);
-    expect(result.ok ? "" : result.reason).toContain("forge snapshot of fixture/refs-blind");
+    expect(found(await run("default-branch-ref", at, "fixture/refs-blind"))).toContain(
+      "forge snapshot of fixture/refs-blind",
+    );
   });
 
   test("a missing input variable is an input error", async () => {
@@ -232,11 +312,27 @@ describe("the tracked read", () => {
     );
   });
 
+  // Review M1: an empty source is not a clean one.
+  test("a repository with no tracked file is an error, for every detector", async () => {
+    const at = fleet("fixture/empty", {});
+    for (const id of ["sql-construction", "local-paths", "default-branch-ref"]) {
+      expect(found(await run(id, at, "fixture/empty"))).toContain("no tracked file");
+    }
+  });
+
+  // Review M1/M4: the volume reaches the state through the protocol; a
+  // no-op in place of the line that writes it survived.
+  test("a successful run reports its volume as its last stderr line", async () => {
+    const at = fleet("fixture/volume", { "a.md": "x\n", "b.ts": "y\n" });
+    expect(volumeOf(await run("local-paths", at, "fixture/volume"))).toBe(
+      "local-paths: 0 finding(s); 2 tracked = 0 out of scope + 0 link(s) + 0 submodule(s) + 0 binary + 2 read text file(s); 0 line(s) exempted by « allow-local-path »",
+    );
+  });
+
   test("a tracked file missing from the working tree is an error", async () => {
     const at = fleet("fixture/gone", { "a.md": "x\n" });
-    const worktree = join(at.worktrees, "fixture/gone");
-    rmSync(join(worktree, "a.md"));
-    await expect(readTrackedFiles(worktree, () => true)).rejects.toThrow("a.md");
+    rmSync(join(at.worktree, "a.md"));
+    await expect(readTrackedFiles(at.worktree, () => true)).rejects.toThrow("a.md");
   });
 
   test("its counters sum to the tracked files", async () => {
@@ -245,14 +341,18 @@ describe("the tracked read", () => {
       "b.md": "y\n",
       "c.bin": new Uint8Array([0, 1]),
     });
-    const read = await readTrackedFiles(
-      join(at.worktrees, "fixture/count"),
-      (path) => !path.endsWith(".md"),
-    );
+    const read = await readTrackedFiles(at.worktree, (path) => !path.endsWith(".md"));
     expect([read.tracked, read.outOfScope, read.binary, read.files.length]).toEqual([3, 1, 1, 1]);
   });
 
   test("a finding line escapes a line break in a path", () => {
     expect(findingLine("a\nb.ts", 4, "r")).toBe("a\\u000ab.ts:4:r");
+  });
+
+  // Review m1: the kit read `doc:12:x.md` as the path `doc` at line 12.
+  test("a path holding a colon or a backslash survives the kit's parse", () => {
+    for (const path of ["doc:12:x.md", "a\\u003ab.md", "c\nd.md"]) {
+      expect(parseFinding(findingLine(path, 3, "r"))).toMatchObject({ path, line: 3 });
+    }
   });
 });

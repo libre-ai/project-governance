@@ -119,6 +119,9 @@ describe("isPatternSubject — a test of the pattern must contain the pattern", 
     "crates/ecosystem-engine/tests/fixtures/patch-rev/rev-branch.toml",
     "tools/quality/__fixtures__/sample.yml",
     "verification/tests/case.ts",
+    // Review of 2026-11-19 (m3): a fleet repository keeps them at its root.
+    "tests/case.ts",
+    "fixtures/sample.json",
   ];
   for (const path of subjects) {
     test(`excluded: ${path}`, () => expect(isPatternSubject(path)).toBe(true));
@@ -194,6 +197,72 @@ describe("findWorkflowsMissingServedBranch", () => {
         "migrate/recover-code",
       ),
     ).toEqual([]);
+  });
+
+  // Review of 2026-11-19 (M3): the first form read the first `branches: [...]`
+  // of the file, whatever the event and whatever the list form.
+  const locate = (text: string) =>
+    locateWorkflowsMissingServedBranch([file("w.yml", text)], "trunk");
+
+  test("a block-list filter on push is read", () => {
+    expect(locate("on:\n  push:\n    branches:\n      - main\n")).toEqual([
+      { path: "w.yml", line: 3 },
+    ]);
+  });
+
+  test("the push filter is judged, not the first filter of the file", () => {
+    const text = "on:\n  pull_request:\n    branches: [trunk]\n  push:\n    branches: [main]\n";
+    expect(locate(text)).toEqual([{ path: "w.yml", line: 5 }]);
+  });
+
+  test("a pull_request filter alone is not a push filter", () => {
+    expect(locate("on:\n  pull_request:\n    branches: [main]\n  push:\n")).toEqual([]);
+  });
+
+  test("a glob that matches the served branch lists it", () => {
+    expect(locate("on:\n  push:\n    branches: ['**']\n")).toEqual([]);
+    expect(
+      locateWorkflowsMissingServedBranch(
+        [file("w.yml", "on:\n  push:\n    branches: ['migrate/*']\n")],
+        "migrate/recover-code",
+      ),
+    ).toEqual([]);
+  });
+
+  test("a negated pattern after a match excludes the served branch", () => {
+    expect(locate("on:\n  push:\n    branches: ['**', '!trunk']\n")).toEqual([
+      { path: "w.yml", line: 3 },
+    ]);
+  });
+
+  test("branches-ignore that matches the served branch omits it", () => {
+    expect(locate("on:\n  push:\n    branches-ignore: [trunk]\n")).toEqual([
+      { path: "w.yml", line: 3 },
+    ]);
+  });
+
+  test("an event list or a bare event carries no filter", () => {
+    expect(locate("on: [push, pull_request]\n")).toEqual([]);
+    expect(locate("on: push\n")).toEqual([]);
+  });
+});
+
+describe("git-branch-flag — the review cases of 2026-11-19 (M3)", () => {
+  test("the short flag of a clone is a written ref", () => {
+    const scan = scanForWrittenRefs([
+      file("tools/x.sh", "git clone -b main https://example.invalid/r"),
+    ]);
+    expect(scan.findings.map((f) => f.id)).toEqual(["git-branch-flag"]);
+  });
+
+  test("a branch whose name only starts with the default one is not it", () => {
+    for (const line of ["git clone --branch main-v2 u", "git clone --branch main/next u"]) {
+      expect(scanForWrittenRefs([file("tools/x.sh", line)]).findings).toEqual([]);
+    }
+  });
+
+  test("creating a branch is not a request", () => {
+    expect(scanForWrittenRefs([file("tools/x.sh", "git checkout -b main")]).findings).toEqual([]);
   });
 });
 

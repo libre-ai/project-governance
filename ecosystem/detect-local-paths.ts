@@ -25,6 +25,11 @@ import {
  * (a file URL, a drive letter) it is. The examples are in the tests, not here:
  * this file is itself scanned.
  *
+ * Two adjustments decided on 2026-11-19 after the first fleet run: the home of
+ * the hosted CI runner (the user named `runner`) is a build machine, not a
+ * workstation, and is not a finding; the home of an immutable Linux system,
+ * under `/var`, is one. Every other Linux home stays a finding.
+ *
  * A finding names the line, never the path it found: the record of a measure
  * must not carry the user name this detector exists to keep out of the tree.
  */
@@ -32,7 +37,10 @@ import {
 export const LOCAL_PATH_RULE = "local-path";
 export const LOCAL_PATH_MARKER = "allow-local-path";
 
-const HOME_PATH = /(?<![A-Za-z0-9_.-])\/(?:Users|home)\/[A-Za-z0-9._-]+/;
+const NAME = String.raw`[A-Za-z0-9._-]`;
+const HOME_PATH = new RegExp(
+  String.raw`(?<!${NAME})(?:\/var\/home|\/Users|\/home(?!\/runner(?!${NAME})))\/${NAME}+`,
+);
 
 export interface LocalPathScan {
   readonly findings: readonly string[];

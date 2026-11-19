@@ -15,7 +15,10 @@
  * with the worktree `<worktrees>/<owner>/<name>` as working directory, once per
  * measured repository; a `parc` detector runs once, from the worktrees root.
  * Each non-empty line of its standard output is one finding: the count is the
- * number of such lines, and the lines are the proof. Exit 0 is a measure; any
+ * number of such lines, and the lines are the proof. The last non-empty line of
+ * its standard error, on a success, is its volume (what it examined); it is
+ * recorded in the detail of the measure, beside the proof path, so a measure
+ * over nothing is visible in the state. Exit 0 is a measure; any
  * other exit, a signal, a timeout, an output over DETECTOR_MAX_STDOUT_BYTES or
  * that is not UTF-8: an error, never a count of zero.
  *
@@ -133,7 +136,12 @@ export type DetectorTarget =
   | { readonly scope: "parc"; readonly repositories: readonly string[] };
 
 export type DetectorRun =
-  | { readonly ok: true; readonly lines: readonly string[] }
+  | {
+      readonly ok: true;
+      readonly lines: readonly string[];
+      /** The last stderr line of the run: what the detector says it examined. */
+      readonly volume?: string;
+    }
   | { readonly ok: false; readonly reason: string };
 
 /**
@@ -223,7 +231,12 @@ function ran(detector: DetectorDescriptor, repository: string, run: DetectorRun)
     target: detector.target,
     verdict: verdictOf("ok", detector.target, run.lines.length),
     status: "ok",
-    detail: proofPath(detector.id, repository),
+    // The volume makes a measure over nothing visible in the state: a
+    // « conforme » that read zero files says so in its own row.
+    detail:
+      run.volume === undefined
+        ? proofPath(detector.id, repository)
+        : `${proofPath(detector.id, repository)} (volume: ${printable(run.volume)})`,
     lines: run.lines,
   };
 }
@@ -700,6 +713,15 @@ function diagnostic(stderr: string): string {
   return first.length > 200 ? `${first.slice(0, 200)}…` : first;
 }
 
+/**
+ * The volume a detector reports on a success: the last non-empty line of its
+ * standard error, or null when it reports none.
+ */
+export function volumeLine(stderr: string): string | null {
+  const lines = findingLines(stderr);
+  return lines.at(-1) ?? null;
+}
+
 /** The finding lines of a detector's output: non-empty lines, carriage returns dropped. */
 export function findingLines(stdout: string): string[] {
   return stdout
@@ -890,7 +912,10 @@ export function localFleetReader(sources: LocalSources): FleetReader {
       } catch {
         return { ok: false, reason: "detector output is not UTF-8" };
       }
-      return { ok: true, lines: findingLines(stdout) };
+      const volume = volumeLine(result.stderr);
+      return volume === null
+        ? { ok: true, lines: findingLines(stdout) }
+        : { ok: true, lines: findingLines(stdout), volume };
     },
   };
 }

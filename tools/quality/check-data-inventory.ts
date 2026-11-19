@@ -517,6 +517,12 @@ export const NOT_GATED: readonly NotGated[] = [
     because: "fixtures of the ecosystem tests",
   },
   {
+    path: "ecosystem/fixtures/fleet-detectors/",
+    extensions: [".txt"],
+    because:
+      "source text the fleet-detector tests copy into a throwaway repository; kept as .txt so this repository's own SQL and ref gates do not read it as a site",
+  },
+  {
     path: "tools/attestation/fixtures/",
     extensions: [".json"],
     because: "fixtures of the attestation tests",

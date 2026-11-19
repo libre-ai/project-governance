@@ -82,7 +82,7 @@ export async function measureSqlConstruction(
     const reason = error instanceof Error ? error.message : String(error);
     throw new DetectorInputError(`allowlist unreadable: ${reason}`);
   }
-  const read = await readTrackedFiles(worktree, isScannedSource);
+  const read = await readTrackedFiles(worktree, isScannedSource, { skipBinary: false });
   const sites = new Map<string, SqlFinding[]>();
   for (const file of read.files) {
     const found = scanSource(file.path, file.text);
