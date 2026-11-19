@@ -178,9 +178,9 @@ describe("the authorizing ADR", () => {
     expect(commands).toEqual([]);
   });
 
-  test("the ADR this tool names exists and is not accepted yet", async () => {
+  test("the ADR this tool names exists and is accepted (owner decision of 2026-11-19)", async () => {
     const text = await Bun.file(new URL(`../../${AUTHORIZING_ADR}`, import.meta.url)).text();
-    expect(isAuthorized(text)).toBe(false);
+    expect(isAuthorized(text)).toBe(true);
   });
 });
 
