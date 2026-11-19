@@ -2,8 +2,10 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Bun dependency updates
 
-**Status: disabled.** ADR-0069 is proposed. Until the owner accepts it, the
-`propose` job exits with code 3 and writes nothing.
+**Status: enabled, by hand only.** ADR-0069 was accepted on 2026-11-19. The
+workflow has no `schedule`; it opens pull requests only once the repository
+setting "Allow GitHub Actions to create and approve pull requests" is on, which
+the owner sets.
 
 `.github/workflows/bun-update.yml` proposes the patch and minor bumps of this
 repository's bun dependencies, one pull request per bump, with the job's own

@@ -2,8 +2,8 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # ADR-0069 — Montées de version bun de ce dépôt : pull requests automatiques avec le jeton éphémère du job
 
-- **Statut :** proposé — l'acceptation est un acte du propriétaire : il ajoute la ligne d'arbitrage datée et remplace ce statut par le littéral `accepted` dans la pull request qu'il fusionne. Tant que ces deux lignes n'ont pas changé, cet ADR n'est pas en vigueur, fusionné ou non, et le workflow `Bun update` n'écrit rien.
-- **Arbitrage :** aucun constaté par la rédaction. Le lanceur du lot L126 rapporte une décision du propriétaire du 2026-11-18 : les montées de version bun disponibles sont proposées par pull requests automatiques, écrites avec le jeton éphémère du job. La rédaction n'a pas vu cette décision et ne la consigne pas comme arbitrage. Le propriétaire la confirme, ou non, en signant.
+- **Statut :** accepted 2026-11-19
+- **Arbitrage :** Owner-arbitration: 2026-11-19 — question structurée posée dans la session de l'agent qui tient la pull request ; réponse « Accepter, tu actives » : la décision du 2026-11-18 est confirmée, l'ADR est accepté tel que rédigé, et le propriétaire active lui-même le réglage « Allow GitHub Actions to create and approve pull requests » (étape 3 de l'acte de signature). Le workflow reste à déclenchement manuel : aucun `schedule` n'est ajouté (étape 6).
 - **Date de rédaction :** 2026-11-18
 - **Connexes :** `docs/method/AGENTIC-LOOP-INVENTORY.md` (§ Alerte de récidive, limite 2 ; § Dependabot bun) ; `docs/toolchain/FLEET-BUMP.md` ; `docs/toolchain/BUN-UPDATE.md` ; `ecosystem/check-release-age.ts` ; ADR-0068 (proposé, fusion par un agent : cet ADR n'en dépend pas et n'ouvre aucune fusion).
 - **Documents amendés à l'acceptation :** les trois textes de la section « Ce que cet ADR renverse », dans la mesure qu'elle fixe pour chacun.
