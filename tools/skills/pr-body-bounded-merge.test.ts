@@ -120,8 +120,8 @@ describe("ADR-0068 D2: every file except the named guardrails", () => {
     expect(read(ADR_PATH)).not.toContain("```text admissible-paths");
   });
 
-  test("admits the files of the five merges the owner decision admits, and a new directory", () => {
-    // #251, #254, #255, #259 and #260, per the table of ADR-0068 and the owner
+  test("admits the files of the four merges the owner decision admits, and a new directory", () => {
+    // #251, #254, #255 and #260, per the table of ADR-0068 and the owner
     // decision of 2026-11-19; the new directory is the risk that decision accepts.
     const admitted = [
       "ecosystem/fleet-state.ts",
@@ -129,7 +129,6 @@ describe("ADR-0068 D2: every file except the named guardrails", () => {
       "verification/recall/recall.ts",
       "verification/recall/README.md",
       "tools/fleet/remediation/kit.ts",
-      "ecosystem/fleet-pins.v1.yaml",
       "tools/fleet/remediation/apply.ts",
       "docs/reports/2026-11-18-note.md",
       "new-directory/note.md",
@@ -169,6 +168,9 @@ describe("ADR-0068 D2: every file except the named guardrails", () => {
       "packages/classification/src/index.ts",
       "crates/ecosystem-engine/contracts-authority.pin.json",
       "ecosystem/schemas/brique.v1.schema.json",
+      "ecosystem/fleet-pins.v1.yaml",
+      "ecosystem/sql-construction-allowlist.v1.yaml",
+      "ecosystem/fleet-gates.v1.yaml",
       "package.json",
       "project.v1.yaml",
       "REUSE.toml",

@@ -66,6 +66,7 @@ Dans `libre-ai/project-governance` seulement, tout fichier est admis, sauf les g
 ^packages/
 ^crates/
 ^ecosystem/schemas/
+^ecosystem/[^/]+\.(ya?ml|json)$
 \.schema\.json$
 ^toolchains/
 ^(package\.json|bun\.lock|bunfig\.toml|tsconfig\.json|biome\.json|Cargo\.toml|Cargo\.lock|deny\.toml|rust-toolchain\.toml|project\.v1\.yaml)$
@@ -79,10 +80,10 @@ Ce que nomme chaque groupe de lignes, dans l'ordre :
 - le registre des décisions, le registre des invariants et les ADR (I-17), la spécification K4 et le protocole de revue qui la réalise, l'attente de `POLARIS.md` sur la fusion ;
 - les instructions d'agent et les skills, dont celle qui applique cette décision ;
 - le code des gates : `tools/quality`, `tools/skills`, l'outillage de sécurité, d'attestation, de licence, de publication et de réplication de doctrine, tout fichier `check-*` où qu'il soit, et les gabarits de gates distribués à la flotte ;
-- la couche 3 et les contrats : `packages/` (brique de classification), `crates/` (moteur et épinglage des contrats), les schémas ;
+- la couche 3 et les contrats : `packages/` (brique de classification), `crates/` (moteur et épinglage des contrats), les schémas, et les données de la racine d'`ecosystem/` (listes d'exemption, registres de générations, de détecteurs, de dépôts et d'invariants), qu'un gate lit et qu'une ligne ajoutée suffit à relâcher ;
 - la configuration : chaîne d'outils, manifestes et verrous de dépendances, fiche du projet, licences et REUSE (I-11).
 
-Le reste est admis, `tools/fleet` et le code de `ecosystem/` hors `check-*` compris. Le motif du choix et son risque sont à la section « Alternatives rejetées » et aux « Conséquences ». Le bloc s'élargit d'une exclusion par un nouvel ADR, ou par une pull request que fusionne le propriétaire ; jamais par un agent, puisque le bloc vit sous `docs/adr/`.
+Le reste est admis, `tools/fleet` et le code de `ecosystem/` hors `check-*` compris (pas ses données de racine). Le motif du choix et son risque sont à la section « Alternatives rejetées » et aux « Conséquences ». Le bloc s'élargit d'une exclusion par un nouvel ADR, ou par une pull request que fusionne le propriétaire ; jamais par un agent, puisque le bloc vit sous `docs/adr/`.
 
 L'outil `bun tools/skills/bounded-merge-scope.ts`, lancé depuis une extraction de la base, applique les deux règles aux chemins lus sur son entrée : sortie 0 si tout est admis, 1 si un chemin est refusé, 2 s'il n'a rien lu ou si ce bloc est illisible ; un 2 vaut un refus (D1).
 
@@ -128,10 +129,10 @@ Une fusion sous cet ADR s'annule par `git revert -m 1 <commit de fusion>` dans u
 ## Conséquences
 
 - `skills/pr-body` gagne les commits qui atterrissent, la vérification de la base et la conduite après la poussée. Sa section de fusion ne s'active que sur le statut de cet ADR lu sur la base.
-- Portée réelle, mesurée le 2026-11-19 sur les 13 commits de fusion de premier parent de la branche servie qui finissent à `86b1ac3` : **5 sur 13** auraient été admissibles sous D2 (#251, #254, #255, #259, #260). Commande, depuis une extraction de la base :
+- Portée réelle, mesurée le 2026-11-19 sur les 13 commits de fusion de premier parent de la branche servie qui finissent à `86b1ac3` : **4 sur 13** auraient été admissibles sous D2 (#251, #254, #255, #260). #259 est refusée parce qu'elle modifie `ecosystem/fleet-pins.v1.yaml` ; sans la ligne qui exclut les données de la racine d'`ecosystem/`, le chiffre était 5, celui qu'annonçait la question posée au propriétaire. Commande, depuis une extraction de la base :
   `for m in $(git log --first-parent --merges --format=%H -13 86b1ac3); do git diff --name-only "$m^1" "$m" | bun tools/skills/bounded-merge-scope.ts >/dev/null && git log -1 --format=%s "$m"; done`
   Elle imprime une ligne par fusion admise. Une ligne d'exclusion ajoutée ou retirée change ce chiffre : il se rejoue, il ne se cite pas.
-- Risque accepté par le propriétaire : un répertoire de garde-fous créé après ce bloc est admis par défaut tant qu'une ligne ne l'exclut pas. Le code que les workflows exécutent hors des répertoires exclus (`tools/fleet`, `ecosystem/*.ts` hors `check-*`) est admis, de même qu'une donnée lue par un gate hors de `GATED_PATH_PATTERNS` (#259 touche `ecosystem/fleet-pins.v1.yaml`, que lit `ecosystem/check-fleet-pins.ts`).
+- Risque accepté par le propriétaire : un répertoire de garde-fous créé après ce bloc est admis par défaut tant qu'une ligne ne l'exclut pas. Le code que les workflows exécutent hors des répertoires exclus (`tools/fleet`, `ecosystem/*.ts` hors `check-*`) est admis. Une donnée lue par un gate hors de `GATED_PATH_PATTERNS` et hors de la racine d'`ecosystem/` reste admise tant qu'une ligne ne l'exclut pas.
 - Aucun gate n'impose cette décision : la skill la porte, l'outil `tools/skills/bounded-merge-scope.ts` en applique D2, la revue la contrôle. Une application mécanique au moment de la fusion demanderait un gate neuf, hors de cette rédaction.
 - La branche servie reste rouge sur le contrôle de licence pour les fusions faites sans corps signé ; cet ADR ne corrige pas ces fusions passées.
 
@@ -139,7 +140,7 @@ Une fusion sous cet ADR s'annule par `git revert -m 1 <commit de fusion>` dans u
 
 | Option | Fusions admissibles sur 13 | Sort |
 | --- | --- | --- |
-| Exclure seulement les garde-fous nommés, admettre le reste (`tools/fleet`, `ecosystem/*.ts`) | 5 (#251, #254, #255, #259, #260) | **Retenue** (D2) : décision du propriétaire du 2026-11-19, « Accepter, exclusion seule ». Elle admet du code que les workflows exécutent ; les garde-fous d'ADR-0009 §6 restent exclus |
+| Exclure seulement les garde-fous nommés, données de gate de la racine d'`ecosystem/` comprises, admettre le reste (`tools/fleet`, `ecosystem/*.ts`) | 4 (#251, #254, #255, #260) | **Retenue** (D2) : décision du propriétaire du 2026-11-19, « Accepter, exclusion seule ». Elle admet du code que les workflows exécutent ; les garde-fous d'ADR-0009 §6 restent exclus |
 | Liste fermée de chemins admis (`docs/parity`, `docs/reports`, `docs/rfcs`, Markdown seul) | 0 | Rejetée : décision du propriétaire du 2026-11-19. Elle refusait par défaut tout répertoire nouveau, mais n'admettait aucune des 13 dernières fusions |
 | Fusion automatique différée (`--auto`) | sans objet | Rejetée : `allow_auto_merge` vaut `false`, et les conditions de D3 ne seraient plus relues au moment de la fusion |
 | Aucune autorisation | 0 | Rejetée : décision de principe confirmée par le propriétaire le 2026-11-19 |
