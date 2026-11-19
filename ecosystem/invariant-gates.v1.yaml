@@ -88,3 +88,5 @@ entries:
     gates: []
   - invariant: I-39
     gates: []
+  - invariant: I-40
+    gates: []
