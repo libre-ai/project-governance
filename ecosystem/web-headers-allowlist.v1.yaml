@@ -51,6 +51,16 @@ allowances:
       post-deploy smoke check (matchesSmokeContract): it reads the served HTML
       and refuses a page that carries no Content-Security-Policy; it sets no
       header. The served policy is the Caddyfile one, which this gate checks.
+  - repository: libre-ai/project-website
+    path: src/headers.ts
+    rule: csp-header-literal
+    token: Content-Security-Policy
+    count: 1
+    because: >-
+      the site's single header table (its ADR 0006 §2), sent by its Bun server
+      and required unchanged in the Caddyfile of the static target. It relaxes
+      nothing: every directive is 'self' or 'none', and src/headers.test.ts
+      refuses unsafe-inline, unsafe-eval, unsafe-hashes and any http(s) source.
 servers_outside_surfaces:
   - repository: libre-ai/collaborative-data-sync
     path: packages/relay/src/relay-server.ts
