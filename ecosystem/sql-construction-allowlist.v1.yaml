@@ -138,3 +138,12 @@ allowances:
     because: >-
       not SQL: vm.exec(command, { signal }) runs a command inside a Gondolin
       sandbox VM of a transitional experiment; no database is involved.
+  - repository: libre-ai/project-website
+    path: server/store.ts
+    rule: unsafe-call
+    count: 1
+    because: >-
+      migrate() sends SCHEMA_SQL, a module constant holding the waitlist DDL
+      (create table and its checks); no value of a request or of the
+      environment reaches the text. Every query of the store is a tagged
+      template with bound parameters.
