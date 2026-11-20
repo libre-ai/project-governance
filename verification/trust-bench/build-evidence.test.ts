@@ -168,6 +168,50 @@ describe("cross-check of the record against itself", () => {
     expect(failed({ secondPass: [] })).toEqual([record.provenance.second_passage.fichier]);
   });
 
+  test("a layer measured at two costs is a red that names the layer and its costs", () => {
+    // A review layer: no launcher line carries its cost, so only the cost check can see it.
+    const layer = record.provenance.modeles[0]?.couche ?? "";
+    let changed = false;
+    const measures = record.measures.map((measure) => {
+      if (changed || measure.couche !== layer) return measure;
+      changed = true;
+      return { ...measure, cout: measure.cout + 5 };
+    });
+    expect(changed).toBe(true);
+    expect(failed({ measures })).toEqual(["layer costs"]);
+    const note = crossCheckRecord({ ...record, measures }).find(
+      (check) => check.item === "layer costs",
+    )?.note;
+    expect(note).toContain(`${layer} (4, 9)`);
+  });
+
+  test("a case whose expectation in the corpus differs from its measures is a red", () => {
+    // The raw lines and the measures agree with each other: only the corpus says otherwise.
+    const corpus = {
+      ...record.corpus,
+      cas: record.corpus.cas.map((cas) => (cas.id === "D04" ? { ...cas, attendu: false } : cas)),
+    };
+    expect(failed({ corpus })).toEqual([record.provenance.corpus]);
+    expect(
+      crossCheckRecord({ ...record, corpus }).find((c) => c.item === record.provenance.corpus)
+        ?.note,
+    ).toContain("1 with a different expectation");
+  });
+
+  test("a review line written by another model than its label is a red", () => {
+    const [model] = record.provenance.modeles;
+    if (model === undefined) throw new Error("no model");
+    const lines = (record.reviews[model.etiquette] ?? []).map((line, index) =>
+      index === 0 ? { ...line, modele: "autre-modele" } : line,
+    );
+    const reviews = { ...record.reviews, [model.etiquette]: lines };
+    expect(failed({ reviews })).toEqual(["measures against raw lines"]);
+    expect(
+      crossCheckRecord({ ...record, reviews }).find((c) => c.item === "measures against raw lines")
+        ?.note,
+    ).toContain("review by autre-modele");
+  });
+
   test("a raw line of another revision is a red", () => {
     const reference = record.reference.map((line, index) =>
       index === 0 ? { ...line, revision: "0".repeat(40) } : line,
@@ -472,6 +516,20 @@ describe("sources", () => {
     expect(readRecord(copy).measures.length).toBe(record.measures.length);
     writeFileSync(join(copy, record.provenance.reference.fichier), "\n");
     expect(() => readRecord(copy)).toThrow(`${record.provenance.reference.fichier}: empty`);
+  });
+
+  test("the limit on reformatted files names the file kept to the byte", () => {
+    // Derived from the fingerprints, not from the prose: an original whose fingerprint is the
+    // one of the versioned file was not reformatted, and the limit must not say it was.
+    const identical = record.provenance.fichiers_d_origine
+      .filter(
+        (file) => record.fingerprints[`verification/trust-bench/${file.fichier}`] === file.sha256,
+      )
+      .map((file) => file.fichier);
+    expect(identical).toEqual(["resultats/pi-evidence.mesures.json"]);
+    const limit = record.provenance.limites.find((text) => text.includes("remis en forme")) ?? "";
+    expect(limit).not.toBe("");
+    for (const file of identical) expect(limit).toContain(file);
   });
 
   test("no source carries a path of the machine that measured", () => {

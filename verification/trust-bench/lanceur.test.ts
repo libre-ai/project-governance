@@ -227,6 +227,51 @@ describe("lanceur", () => {
     expect(outcome.resultsWritten).toBe(false);
   }, 60_000);
 
+  test("a copy with work not committed is refused, and left as it was", () => {
+    const b = bench();
+    const edited = "const x = 1;\nconst y = 3;\n";
+    writeFileSync(join(b.copy, "src", "a.ts"), edited);
+    writeFileSync(join(b.copy, "notes.txt"), "not committed\n");
+    const outcome = launch(b, CATCHES_DEFECT, [VALID]);
+    expect(outcome.code).toBe(2);
+    expect(outcome.stderr).toContain("2 entrée(s)");
+    expect(outcome.layerRuns).toBe(0);
+    expect(outcome.resultsWritten).toBe(false);
+    // The restore of the launcher would have wiped both: they are still there, unchanged.
+    expect(readFileSync(join(b.copy, "src", "a.ts"), "utf8")).toBe(edited);
+    expect(readFileSync(join(b.copy, "notes.txt"), "utf8")).toBe("not committed\n");
+  }, 60_000);
+
+  test("a case named like the healthy revision, or twice the same id, is refused", () => {
+    for (const [cas, motif] of [
+      [[{ ...VALID, id: "SAIN" }], "SAIN : identifiant réservé"],
+      [
+        [VALID, { ...VALID, cherche: "const y = 1;", remplace: "const y = 2;" }],
+        "D01 : identifiant en double",
+      ],
+      [[{ ...VALID, id: "../D01" }], "../D01 : identifiant invalide"],
+    ] as const) {
+      const b = bench();
+      const outcome = launch(b, CATCHES_DEFECT, cas);
+      expect(outcome.code, outcome.stderr).toBe(2);
+      expect(outcome.stderr).toContain(motif);
+      expect(outcome.layerRuns).toBe(0);
+      expect(outcome.resultsWritten).toBe(false);
+    }
+  }, 60_000);
+
+  test("a substitution whose file leaves the copy is refused before anything is written", () => {
+    for (const fichier of ["../outside.ts", "src/../../outside.ts", "/tmp/outside.ts"]) {
+      const b = bench();
+      const outside = join(b.copy, "..", "outside.ts");
+      const outcome = launch(b, CATCHES_DEFECT, [{ ...VALID, fichier, cherche: "" }]);
+      expect(outcome.code, `${fichier}\n${outcome.stderr}`).toBe(2);
+      expect(outcome.stderr).toContain(`${fichier} sort de la copie`);
+      expect(outcome.layerRuns).toBe(0);
+      expect(existsSync(outside)).toBe(false);
+    }
+  }, 60_000);
+
   test("a layer red on the healthy revision stops the bench, and no result is written", () => {
     const b = bench();
     const outcome = launch(b, "exit 1", [VALID]);

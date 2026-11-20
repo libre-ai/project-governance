@@ -29,7 +29,12 @@ afterAll(() => {
   for (const root of roots) rmSync(root, { recursive: true, force: true });
 });
 
-type Mode = "faithful" | "path-accepted" | "path-failed-without-refusal" | "verify-silent";
+type Mode =
+  | "faithful"
+  | "path-accepted"
+  | "path-failed-without-refusal"
+  | "verify-silent"
+  | "token-leaked";
 
 /**
  * A stand-in CLI with the behaviour the six scenarios rely on, taken from the
@@ -59,14 +64,18 @@ if (!/^[A-Za-z0-9._+-]+$/.test(check.command)) {
   }
 }
 let verdict = "INCOMPLETE";
+let output = "";
 try {
   const run = Bun.spawnSync([check.command, ...check.args], { cwd, stdout: "pipe", stderr: "pipe" });
   verdict = run.exitCode === 0 ? "CONFORMANT" : "FAILED";
+  output = run.stdout.toString();
 } catch {
   // An executable that does not exist: the required check is unavailable.
 }
 mkdirSync(join(cwd, ".evidence"), { recursive: true });
-writeFileSync(join(cwd, ".evidence", "bundle.json"), JSON.stringify({ check, output: "[masked]" }));
+// The faithful CLI masks what a check printed; the leaking one records it as it came.
+const recorded = MODE === "token-leaked" ? output : "[masked]";
+writeFileSync(join(cwd, ".evidence", "bundle.json"), JSON.stringify({ check, output: recorded }));
 console.log(\`bundle — verdict \${verdict} (declared recipe, criteria declared)\`);
 process.exit(verdict === "CONFORMANT" ? 0 : 1);
 `;
@@ -141,6 +150,13 @@ describe("pilote-pi-evidence", () => {
   test("a verify that printed nothing did not run: S6 does not pass on an empty output", () => {
     const run = pilot(repositoryWith("verify-silent"));
     expect(run.scenarios, run.output).toEqual({ ...ALL_OK, S6: "ECART non-exécuté(rc=0)" });
+    expect(run.code).toBe(1);
+  }, 120_000);
+
+  test("a CLI that records the token a check printed fails S5, and only S5", () => {
+    const run = pilot(repositoryWith("token-leaked"));
+    // One file of the evidence folder carries the token: one leak counted.
+    expect(run.scenarios, run.output).toEqual({ ...ALL_OK, S5: "ECART 1" });
     expect(run.code).toBe(1);
   }, 120_000);
 

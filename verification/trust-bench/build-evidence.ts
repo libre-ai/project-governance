@@ -391,6 +391,28 @@ export function crossCheckRecord(record: TrustBenchRecord): CrossCheck[] {
       `${declared.length - new Set(declared).size} declared more than once`,
   });
 
+  // One cost per layer, over all the measures. `synthese.jq` groups by (layer, cost): a layer
+  // measured at two costs would come out as two layers of the same name. Only the launcher lines
+  // carry a cost to confront; the reviews and the derived layers have none, so this check is
+  // the one that holds their measures to a single cost.
+  const costs = new Map<string, Set<number>>();
+  for (const measure of measures) {
+    const held = costs.get(measure.couche) ?? new Set<number>();
+    held.add(measure.cout);
+    costs.set(measure.couche, held);
+  }
+  const severalCosts = [...costs]
+    .filter(([, held]) => held.size > 1)
+    .map(([layer, held]) => `${layer} (${[...held].sort((a, b) => a - b).join(", ")})`)
+    .sort();
+  checks.push({
+    item: "layer costs",
+    ok: costs.size > 0 && severalCosts.length === 0,
+    note:
+      `${costs.size} layer(s) over ${measures.length} measure(s), ${severalCosts.length} with more than one cost` +
+      (severalCosts.length > 0 ? `: ${severalCosts.join("; ")}` : ""),
+  });
+
   // A raw line of the launcher says one thing: a verdict by its exit code, or
   // an interruption, never both. `delai` is read here; a line without it is
   // not a line of this format.

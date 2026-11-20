@@ -12,6 +12,11 @@
 // toute mesure, et une couche qui n'est pas verte sur la révision saine l'arrête sans écrire de
 // résultat.
 //
+// Trois refus, en sortie 2 et avant toute écriture, tenus par les mêmes tests : une copie qui porte
+// du travail non commité ou non suivi (la restauration l'effacerait), un identifiant de cas réservé
+// (SAIN), en double ou qui n'est pas un nom simple, et une substitution dont le fichier sort de la
+// copie une fois son chemin résolu.
+//
 // Trois issues d'une couche qui ne sont pas un verdict d'elle-même, tenues par les mêmes tests :
 // - « delai » : la commande a dépassé son délai et le lanceur l'a arrêtée ; code null ;
 // - « signal » : la commande est morte d'un signal que le lanceur n'a pas envoyé (mémoire, crash) ;
@@ -24,7 +29,7 @@
 // le rejeu d'un rouge et avant la distinction du signal : leurs lignes ne portent ni « instable »
 // ni « signal », et une mort par signal y aurait été consignée « delai » avec le code 124.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 interface Couche {
   readonly id: string;
@@ -58,6 +63,13 @@ function usage(motif: string): never {
   console.error(`${motif}\n${USAGE}`);
   process.exit(2);
 }
+// Un refus d'entrée sort en 2, comme un usage, avant que le banc ne touche à la copie.
+function refuser(motif: string): never {
+  console.error(`banc refusé : ${motif}`);
+  process.exit(2);
+}
+// L'identifiant de la révision saine : un cas du corpus ne peut pas le porter.
+const SAIN = "SAIN";
 const [corpusPath, copieArg, sortiePath, ...options] = process.argv.slice(2);
 if (!corpusPath || !copieArg || !sortiePath) usage("arguments manquants");
 let diffsDir: string | null = null;
@@ -81,12 +93,21 @@ function substitutionsDe(cas: Cas): readonly Substitution[] {
   if (cas.fichier === undefined || cas.fichier === "") return [];
   return [{ fichier: cas.fichier, cherche: cas.cherche ?? "", remplace: cas.remplace ?? "" }];
 }
+// Le chemin d'une substitution, résolu dans la copie ; null s'il en sort (« ../ », absolu).
+// Résolution lexicale : un lien symbolique de la copie qui pointe dehors n'est pas vu.
+function cheminDans(fichier: string): string | null {
+  const chemin = resolve(copie, fichier);
+  const rel = relative(copie, chemin);
+  if (rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
+  return chemin;
+}
 // Calcule le contenu final de chaque fichier touché, sans écrire. Lève si une substitution
 // est absente ou ambiguë : le corpus se valide en entier avant le premier lancement.
 function planifier(cas: Cas): Map<string, string> {
   const etat = new Map<string, string>();
   for (const s of substitutionsDe(cas)) {
-    const chemin = join(copie, s.fichier);
+    const chemin = cheminDans(s.fichier);
+    if (chemin === null) throw new Error(`${cas.id} : ${s.fichier} sort de la copie`);
     if (s.cherche === "") {
       if (etat.has(chemin) || existsSync(chemin))
         throw new Error(`${cas.id} : ${s.fichier} existe déjà, création refusée`);
@@ -148,6 +169,30 @@ function etat(r: Issue): string {
   return `rc=${r.code}`;
 }
 
+// Une copie qui porte du travail non commité n'est pas une copie de banc : la restauration
+// (checkout, clean) l'effacerait. Elle est refusée avant toute écriture.
+const statut = git("status", "--porcelain");
+if (statut.code !== 0) refuser(`${copie} : pas une copie de travail git (${statut.out.trim()})`);
+const entrees = statut.out.split("\n").filter((ligne) => ligne !== "").length;
+if (entrees > 0)
+  refuser(
+    `${copie} : copie non propre, ${entrees} entrée(s) non commitée(s) ou non suivie(s) ; la restauration du banc les effacerait`,
+  );
+// L'identifiant d'un cas nomme ses lignes de résultat et son fichier de diff : la révision saine
+// a le sien, deux cas n'en partagent pas, et aucun ne désigne un chemin.
+const ID_VALIDE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const vus = new Set<string>();
+for (const cas of corpus.cas) {
+  if (typeof cas.id !== "string" || !ID_VALIDE.test(cas.id))
+    refuser(`${String(cas.id)} : identifiant invalide (attendu ${ID_VALIDE.source})`);
+  if (cas.id === SAIN) refuser(`${cas.id} : identifiant réservé à la révision saine`);
+  if (vus.has(cas.id)) refuser(`${cas.id} : identifiant en double`);
+  vus.add(cas.id);
+  for (const s of substitutionsDe(cas)) {
+    if (typeof s.fichier !== "string" || cheminDans(s.fichier) === null)
+      refuser(`${cas.id} : ${String(s.fichier)} sort de la copie`);
+  }
+}
 restaurer();
 for (const cas of corpus.cas) {
   if (substitutionsDe(cas).length === 0) throw new Error(`${cas.id} : aucune substitution`);
@@ -156,7 +201,7 @@ for (const cas of corpus.cas) {
 const revision = git("rev-parse", "HEAD").out.trim();
 const lignes: string[] = [];
 const sain: Cas = {
-  id: "SAIN",
+  id: SAIN,
   attendu: false,
   nature: "révision d'origine",
   origine: "référence",
@@ -216,7 +261,7 @@ for (const cas of [sain, ...corpus.cas]) {
     console.log(`${cas.id}\t${couche.id}\t${etat(r)}\t${r.ms} ms`);
     // Une couche qui n'est pas verte sur la révision saine ne mesure plus rien : rouge, tout cas y
     // paraîtrait « attrapé » ; en délai ou tuée, aucun de ses verdicts ne se lirait.
-    if (cas.id === "SAIN" && r.code !== 0) {
+    if (cas.id === SAIN && r.code !== 0) {
       restaurer();
       const issue = r.code === null ? `finit « ${etat(r)} »` : `sort en ${r.code}`;
       console.error(
