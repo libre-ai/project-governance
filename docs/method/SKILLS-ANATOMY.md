@@ -1,6 +1,6 @@
 # Anatomie d'une skill — doctrine d'écriture
 
-- **Portée :** comment écrire un `SKILL.md` de `governance/skills/` — structure,
+- **Portée :** comment écrire un `SKILL.md` de `skills/` — structure,
   budget, formulation. La gouvernance d'admission (anti-doublon, eval,
   dépréciation, `.out-of-scope/`) est fixée par ADR-0025 ; ce document ne la
   répète pas, il fixe la doctrine d'**écriture**, distincte.
@@ -117,7 +117,7 @@ qui dit à l'agent que l'étape est faite. Deux propriétés en font un levier :
 
 Le critère le plus fort est à la fois vérifiable et exhaustif. Un critère de
 fin vérifiable est aussi la matière naturelle des signes `working_if` d'un
-`eval.json` (ADR-0050 D3, proposé).
+`eval.json` (ADR-0050 D3 ; depuis la pull request #109, 2026-10-14, T1 en vérifie la forme : règle `eval-working-if` de `tools/skills/lint-skill.ts`).
 
 ## Mots-tête pré-entraînés
 

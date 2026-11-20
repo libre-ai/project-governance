@@ -30,7 +30,9 @@
  *
  * Negative triggers are deliberately NOT scored here. A negative trigger
  * shares enough vocabulary with its own skill's description (that is what
- * makes it a *near* miss) that in a 6-skill corpus with no competing
+ * makes it a *near* miss) that in a corpus limited to this repository's
+ * skills/ (its size is the "routable skill(s)" count on this gate's success
+ * line, never a number written here) with no competing
  * "generic review" or "generic deploy" skill to lose to, the skill often
  * still wins its own negative trigger by default — the check would then
  * fail on exactly the triggers that are doing their job. Mechanizing that

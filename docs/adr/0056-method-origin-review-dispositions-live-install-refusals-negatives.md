@@ -347,7 +347,7 @@ Archify déclare de telles négatives sur 16 lignes et n'en vérifie aucune
   partage avec `vision.md` §28 et `skills/.out-of-scope/`.
 - **Le registre n'a aujourd'hui ni consommateur ni gate** : aucun outil ne le
   lit, aucun contrôle ne vérifie sa forme, et sa consultation avant une
-  proposition (D4) n'est tenue que par la revue.
+  proposition (D4) n'est tenue que par la revue. *Depuis la pull request #142 (2026-10-24) : `6cf6087:tools/quality/check-refusals.ts` lit le registre et en vérifie la forme, dans `bun run check` par le script `check:refusals` de `6cf6087:package.json:34` ; ce gate ne juge que la forme du registre, pas sa consultation avant une proposition (D4).*
 - `docs/reviews/AGENT-REVIEW-PROTOCOL.md` gagne un renvoi vers D2, sans en
   recopier le texte, et la gravité `blocking` d'une négative démentie par le
   diff (D5).
