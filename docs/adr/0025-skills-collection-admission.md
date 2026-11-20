@@ -13,7 +13,7 @@ Owner-arbitration: 2026-08-18
 - **Portée :** admission, gouvernance et licence d'une collection de skills
   agentiques (harness d'ingénierie) sous `governance/skills/` — comment une
   skill entre dans la collection, comment elle en sort, ce qui la distingue
-  d'un plugin machine et d'une capacité produit couche-2.
+  d'un plugin machine et d'une capacité produit couche-2. *Depuis la pull request #4 (2026-10-07, ADR-0041) : la collection vit sous `skills/` à la racine de ce dépôt, index `6cf6087:skills/README.md` ; `governance` nomme un dépôt retiré, et l'ancien chemin se lit ainsi partout dans cet ADR.*
 - **Étend :** I-17 (surface à touche humaine fermée — l'admission d'une
   skill et sa dépréciation restent un acte propriétaire, jamais un gate
   auto-suffisant), I-13 (la méthode est le produit zéro — une collection de

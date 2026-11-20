@@ -11,7 +11,7 @@
   2026-10-14 — texte validé, D7-A et D8-C arbitrés en chat
 - **Date de rédaction :** 2026-10-13
 - **Portée :** admission, modification et promotion d'une skill de
-  `governance/skills/` ; vérification de collision avec les plugins machine.
+  `governance/skills/` ; vérification de collision avec les plugins machine. *Chemin réel, déjà à la rédaction : `skills/` à la racine de ce dépôt, où la pull request #4 (2026-10-07, ADR-0041) a posé la collection, index `6cf6087:skills/README.md` ; `governance` nomme un dépôt retiré.*
 - **Amende :** ADR-0025 D2 (une quatrième condition, la condition 3 rejouée,
   un test de composition nommé, une résolution de plus) et D6 (critère de
   promotion). D1, D3, D4 et D5 restent inchangées.
@@ -98,7 +98,7 @@ ces signes sur un usage réel, cité par date et source dans le changeset de
 promotion. La promotion reste un acte propriétaire ; aucun gate ne la fait.
 La vérification de forme du champ par T1 (`lint-skill.ts`) est un changement
 d'outillage, hors de cette pull request ; tant qu'elle n'existe pas, le champ
-est une convention de revue.
+est une convention de revue. *Depuis la pull request #109 (2026-10-14) : cette vérification existe, portée par T1 dans `6cf6087:tools/skills/lint-skill.ts:412-447` sous la règle `eval-working-if`.*
 
 ### D4 — D2.3 rejouée à chaque installation ou mise à jour d'un plugin machine
 
@@ -157,7 +157,7 @@ mesurable. L'installation reste un acte de harness, hors de ce dépôt, quelle
 que soit l'option.
 
 **Décision : A.** Le manifeste et son gate d'égalité restent à construire
-(voir Conséquences) ; jusque-là, D1 d'ADR-0025 n'est pas encore mesuré.
+(voir Conséquences) ; jusque-là, D1 d'ADR-0025 n'est pas encore mesuré. *Depuis la pull request #109 (2026-10-14) : les deux sont construits. `6cf6087:tools/skills/build-skills-manifest.ts` génère `.claude-plugin/marketplace.json` et vérifie qu'il liste exactement la collection ; son script `check:skills-manifest` de `6cf6087:package.json:64` tourne dans `bun run check`. Ce gate compare le manifeste à la collection, pas une copie installée à la canonique.*
 
 ### D8 — Journal de comportement par skill
 
@@ -184,7 +184,7 @@ le canal de D7 ne porte pas cette trace.
   d'écriture issue du même drill ; il ne répète pas ces règles d'admission.
 - Restent à faire hors de cette pull request : la vérification de forme de
   `working_if` par T1 ; le manifeste de plugin et son gate d'égalité (D7-A) ; le premier
-  `working_if` des skills admises, qui passe lui-même la barre D1.
+  `working_if` des skills admises, qui passe lui-même la barre D1. *Depuis la pull request #109 (2026-10-14) : les deux premiers points sont construits (notes sous D3 et D7).* *Depuis la pull request #261 (2026-11-19) : pour le troisième, `6cf6087:skills/pr-body/eval.json` porte un `working_if`, seul `eval.json` de la collection dans ce cas à ce commit.*
 
 ## Ce qui n'est pas décidé ici
 

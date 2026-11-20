@@ -126,7 +126,7 @@ n'existe. Toute entrée nouvelle la remplit.
 | mcp-server | Exposition MCP des capacités de la constellation. | — |
 | corpus | La pratique documentée, opposable — corpus public. | — |
 | docs | Documentation générée de la constellation (projection, jamais une autorité). | — |
-| skills | Collection **présente**, versionnée et testée de compétences du harness d'ingénierie (`governance/skills/`, ADR-0025) — à ne pas confondre avec `patterns-skills` ci-dessous. | `patterns-skills` (autre objet, futur) |
+| skills | Collection **présente**, versionnée et testée de compétences du harness d'ingénierie (`skills/`, ADR-0025) — à ne pas confondre avec `patterns-skills` ci-dessous. | `patterns-skills` (autre objet, futur) |
 | patterns-skills | Candidat **futur** du portfolio couche 2 (`ecosystem/portfolio.v1.yaml`, source Fabric, `exposure: idea`) : bibliothèque de patterns d'agent pour Polaris, pas encore construite — à ne pas confondre avec `skills` ci-dessus. | `skills` (autre objet, présent) |
 
 ### 4.1 Ambiguïtés résolues
