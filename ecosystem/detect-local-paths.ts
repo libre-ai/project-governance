@@ -28,7 +28,10 @@ import {
  * Two adjustments decided on 2026-11-19 after the first fleet run: the home of
  * the hosted CI runner (the user named `runner`) is a build machine, not a
  * workstation, and is not a finding; the home of an immutable Linux system,
- * under `/var`, is one. Every other Linux home stays a finding.
+ * under `/var`, is one. Every other Linux home stays a finding. On 2026-11-20
+ * the home of Dependabot's hosted build (the user named `dependabot`) joined
+ * the runner's, for the same reason: it is a build machine, quoted in reviews
+ * of CI logs.
  *
  * A finding names the line, never the path it found: the record of a measure
  * must not carry the user name this detector exists to keep out of the tree.
@@ -39,7 +42,7 @@ export const LOCAL_PATH_MARKER = "allow-local-path";
 
 const NAME = String.raw`[A-Za-z0-9._-]`;
 const HOME_PATH = new RegExp(
-  String.raw`(?<!${NAME})(?:\/var\/home|\/Users|\/home(?!\/runner(?!${NAME})))\/${NAME}+`,
+  String.raw`(?<!${NAME})(?:\/var\/home|\/Users|\/home(?!\/(?:runner|dependabot)(?!${NAME})))\/${NAME}+`,
 );
 
 export interface LocalPathScan {
