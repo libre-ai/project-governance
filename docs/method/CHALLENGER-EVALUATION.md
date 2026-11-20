@@ -250,14 +250,27 @@ contenu (la sortie d'un agent, un fichier, un constat), et où ce verdict sert
 à noter ce contenu ou ce qui l'a produit, ou à en décider : une note, un taux,
 le verdict d'un essai, la décision d'un gate.
 
+Cette définition dit ce que la règle saisit, pas ce que la méthode permet.
+Elle nomme le verdict d'un essai et la décision d'un gate pour qu'aucun juge
+de la flotte n'échappe aux bornes, y compris hors d'une évaluation menée sous
+cette méthode (dans un produit, dans un outil). Dans une évaluation menée
+sous cette méthode, l'interdit général s'ajoute aux bornes : un signal jugé
+se présente à part et ne décide pas (« Ce que la méthode n'autorise pas »).
+Les deux se lisent ensemble, et le plus strict s'applique : tenir les six
+bornes n'y donne pas à un juge le droit de décider.
+
 ### Ce qui n'est pas un juge au sens de cette règle
 
 - **Un modèle que l'on mesure lui-même contre des attendus.** Rien d'autre que
   lui n'est noté sur ses réponses. C'est le cas du lecteur à froid
   (`verification/adoption/cold-reader/`) et du relecteur du banc de confiance
-  (`verification/trust-bench/`). Mesurer ainsi un relecteur est la
-  qualification que (c) exige ; il devient un juge, et tient les six bornes,
-  le jour où un verdict s'appuie sur le sien.
+  (`verification/trust-bench/`). Mesurer ainsi un relecteur est une mesure de
+  même nature que la qualification que (c) exige : ses verdicts sont comparés
+  à des attendus écrits avant la mesure. Cela ne dit pas que cette mesure
+  tient (c), qui exige aussi un taux de faux succès publié avec son numérateur
+  et son dénominateur : cette règle ne juge la conformité d'aucun banc borne
+  par borne. Il devient un juge, et tient les six bornes, le jour où un
+  verdict s'appuie sur le sien.
 - **La revue à rôle séparé faite par un agent**
   (`docs/reviews/AGENT-REVIEW-PROTOCOL.md`). Elle est exclue par exception
   nommée, et non parce que la définition ne la toucherait pas : un modèle y
@@ -266,13 +279,17 @@ le verdict d'un essai, la décision d'un gate.
 **Le risque que cette exclusion laisse, écrit pour qu'il ne se perde pas.**
 ADR-0068 (D3, condition 6) fait dépendre la fusion d'une pull request par un
 agent d'une revue à rôle séparé du sha exact, qui ne laisse aucun constat
-bloquant ouvert. Le protocole de cette revue lui fait rendre exactement un
-verdict parmi trois valeurs (`approve`, `approve-with-minor-reservations`,
-`reject`). Aucun de ces deux textes ne demande que cette revue soit qualifiée
-contre des cas étiquetés. La fusion par un agent s'appuie donc sur le jugement
-d'un modèle, rendu à trois valeurs, qu'aucun de ces deux textes ne fait
-qualifier contre des cas étiquetés : (a) et (c) n'y sont pas tenues, et cette
-règle ne les y impose pas. Le banc de confiance mesure un autre relecteur (un
+bloquant ouvert ; il ne nomme pas la valeur du verdict de cette revue. Le
+protocole de cette revue lui fait rendre exactement un verdict parmi trois
+valeurs (`approve`, `approve-with-minor-reservations`, `reject`). Aucun de
+ces deux textes ne demande que cette revue soit qualifiée contre des cas
+étiquetés. La fusion par un agent s'appuie donc sur le jugement d'un modèle
+(les constats de cette revue, et ceux qu'elle classe bloquants), qu'aucun de
+ces deux textes ne fait qualifier contre des cas étiquetés. (a) n'y est pas
+tenue : son verdict a trois valeurs. Pour (c), ce qui est établi est
+l'absence de l'exigence dans ces deux textes, pas l'absence de toute
+qualification. Cette règle n'impose ni (a) ni (c) à cette revue. Le banc de
+confiance mesure un autre relecteur (un
 modèle local, sur les diffs d'un corpus de défauts semés et de cas sains), pas
 cette revue. L'exception se relit à chaque évolution de cette revue ou
 d'ADR-0068.
@@ -281,24 +298,29 @@ d'ADR-0068.
 
 Tout juge par modèle écrit ou employé par la flotte, dans un produit comme
 dans l'outillage, tient six bornes. Sous chacune, « à montrer » dit ce qu'un
-relecteur demande à voir du premier juge proposé : cela n'ajoute aucune borne,
-et une borne que le juge ne sait pas montrer tenue est lue comme non tenue.
+relecteur demande à voir du premier juge proposé. Cela n'ajoute aucune borne :
+si un « à montrer » dit plus que sa borne, le texte de la borne fait foi. Et
+une borne que le juge ne sait pas montrer tenue est lue comme non tenue.
 
 - **(a) Verdicts booléens.** Le juge ne rend que des verdicts booléens. Toute
   note, tout taux et tout agrégat se calculent sans modèle, à partir de ces
   verdicts. Un texte de justification peut accompagner un verdict : il se
-  conserve comme trace, et n'entre dans aucun calcul ni aucune décision.
+  conserve comme trace, et n'entre dans aucun calcul ni aucune décision. Une
+  réponse qui porte autre chose qu'un booléen par verdict et ce texte, une
+  note par exemple, est hors schéma : (b) s'y applique.
   *À montrer :* le schéma de sortie du juge, qui n'admet qu'un booléen par
   verdict et, au plus, un texte ; le calcul de chaque note, rejouable sur les
   verdicts enregistrés sans appeler de modèle ; un cas où la réponse du juge
-  porte une note, et où cette note n'entre nulle part.
+  porte une note, et où l'essai sort non noté.
 - **(b) Un échec n'est ni un zéro ni une réussite.** Quand le juge échoue,
   refuse ou répond hors schéma, l'essai est marqué non noté. Il n'entre alors
   ni au numérateur ni au dénominateur d'un taux, et se compte à part : essais
-  notés et essais non notés somment aux essais lancés.
+  notés et essais non notés somment aux essais lancés. Aucun fichier
+  n'enregistre un zéro comme note d'un essai non noté.
   *À montrer :* un cas pour chacune des trois causes (échec, refus, réponse
-  hors schéma), où l'essai sort non noté et où aucun fichier ne porte un zéro
-  pour lui ; les compteurs imprimés, qui somment aux essais lancés.
+  hors schéma), où l'essai sort non noté et où aucun fichier n'enregistre un
+  zéro comme note pour lui ; les compteurs imprimés, qui somment aux essais
+  lancés.
 - **(c) Qualification avant usage.** Avant d'entrer dans un verdict, le juge
   est qualifié contre des cas étiquetés avant la mesure, par une étiquette qui
   ne vient ni de lui ni de sa sortie. Son taux de faux succès (cas étiquetés
@@ -312,8 +334,8 @@ et une borne que le juge ne sait pas montrer tenue est lue comme non tenue.
   jamais un constat de sécurité, quelle qu'en soit la source.
   *À montrer :* un cas où le juge déclare faux un constat de sécurité, et où
   ce constat sort à la sévérité qu'il avait en entrant ; et qu'aucun chemin du
-  composant n'écrit la sévérité ou la présence d'un constat de sécurité à
-  partir d'un verdict du juge.
+  composant n'abaisse la sévérité d'un constat de sécurité, ni ne le supprime,
+  à partir d'un verdict du juge.
 - **(e) Le contenu jugé est une donnée, et l'invite le dit.** Délimiter le
   contenu ne suffit pas : l'invite dont cette borne tire sa leçon le délimite.
   La borne exige deux choses de plus. L'invite porte une consigne explicite,
@@ -329,10 +351,12 @@ et une borne que le juge ne sait pas montrer tenue est lue comme non tenue.
   consigne : la borne qui tient sans elle est (d).
 - **(f) Le juge s'enregistre.** Le modèle juge et sa version s'enregistrent
   par essai. Deux essais jugés par des modèles différents ne se comparent
-  pas : ils ne s'apparient pas et ne s'agrègent pas dans un même taux.
+  pas : ils ne s'apparient pas et ne s'agrègent pas dans un même taux. Deux
+  versions d'un même modèle comptent ici pour deux modèles différents.
   *À montrer :* un enregistrement d'essai, qui porte le modèle juge et sa
-  version ; un cas où deux essais jugés par des modèles différents sont
-  refusés à l'appariement et à l'agrégation, et comptés à part.
+  version ; un cas où deux essais jugés par des modèles différents, et un cas
+  où deux essais jugés par deux versions d'un même modèle, sont refusés à
+  l'appariement et à l'agrégation.
 
 La règle ne fixe aucun seuil : ni taux de faux succès admissible, ni taille du
 jeu de qualification. Le travail qui écrira le premier juge les fixera en
@@ -393,7 +417,8 @@ modèle » ci-dessus : verdicts booléens, essai non noté quand le juge échoue
 qualification préalable contre des cas étiquetés, aucun constat de sécurité
 abaissé, contenu jugé déclaré comme une donnée par une consigne explicite et
 placé dans une frontière qu'il ne peut pas refermer, modèle juge enregistré
-par essai. Deux essais jugés par des modèles différents ne s'apparient pas.
+par essai. Deux essais jugés par des modèles différents, ou par deux versions
+d'un même modèle, ne s'apparient pas.
 
 ### L'incertitude se donne, elle ne se devine pas
 
@@ -410,6 +435,14 @@ bras : l'infrastructure n'a pas lancé l'agent, ou un contrôle n'a pas pu
 s'exécuter. Un agent lancé qui s'arrête, plante ou épuise son budget est un
 **échec** de son bras : ce que le bras lui a donné peut en être la cause, et
 le sortir des comptes favoriserait ce bras.
+
+L'échec du seul juge n'est pas l'une de ces deux causes. Un essai dont les
+contrôles se sont exécutés, et dont seul le juge a échoué, refusé ou répondu
+hors schéma, reste noté dans le taux de réussite de son bras, qui ne lit que
+les contrôles exécutables. La borne (b) s'y lit sur le signal jugé : l'essai
+est non noté pour ce signal seul, sort de son taux et s'y compte à part, de
+sorte que, pour ce signal aussi, notés et non notés somment aux essais
+lancés.
 
 Une paire dont un bras au moins est non noté sort du test exact de cette
 paire, et se compte à part. Le nombre d'essais non notés se donne par bras ;
@@ -469,10 +502,15 @@ révision citée, sont dans ADR-0071.
   mauvais usage.
 - **Suffisance du jeu** : 10 cas dont 1 négatif, demi-largeur d'intervalle
   d'au plus 0,20, 10 cas appariés. Dans la source c'est un statut rangé dans
-  le résultat ; d'après la lecture du drill, il ne change pas le verdict. Le
-  principe est repris comme un refus ; ces quatre seuils ne sont pas repris.
+  le résultat, à deux valeurs dont l'une se nomme `provisional` ; d'après la
+  lecture du drill, il ne change pas le verdict. Le principe est repris comme
+  un refus ; ces quatre seuils ne sont pas repris. La valeur `provisional`
+  d'`evaluationStatus` porte le même nom que ce statut de la source, pas le
+  même sens : ici, elle refuse de conclure.
 - **Un cas jugé par deux modèles différents** sort de la comparaison : repris
-  (borne (f) de la section « Juge par modèle »).
+  (borne (f) de la section « Juge par modèle »). Que deux versions d'un même
+  modèle comptent pour deux modèles est une précision de la borne : cela n'a
+  pas été lu dans la source.
 
 Les seuils et les niveaux cités ci-dessus (0,50, 10, 1, 0,20, 10, 95 %, 0,05)
 sont des **conventions de la source**, pas des normes de la flotte.
@@ -492,4 +530,6 @@ sont des **conventions de la source**, pas des normes de la flotte.
 - **Conclure sur un jeu trop petit.** Un résultat provisoire refuse de
   conclure ; il ne se publie pas comme un écart établi.
 - **Fondre un signal jugé dans une note.** Ce qu'un modèle juge se présente à
-  part de ce qu'un contrôle exécute, et ne décide pas.
+  part de ce qu'un contrôle exécute, et ne décide pas. Cet interdit vaut pour
+  toute évaluation menée sous cette méthode ; il s'ajoute aux six bornes, qui
+  saisissent aussi un juge écrit hors d'elle (section « Juge par modèle »).
