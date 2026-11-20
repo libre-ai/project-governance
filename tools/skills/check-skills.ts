@@ -19,6 +19,59 @@ import {
 
 const SKILLS_ROOT = "skills";
 
+export interface SkillLintCheck {
+  readonly item: string;
+  readonly ok: boolean;
+  readonly note: string;
+}
+
+export interface SkillLint {
+  readonly checks: readonly SkillLintCheck[];
+  /** Body length of SKILL.md, or null when its frontmatter cannot be read. */
+  readonly bodyLines: number | null;
+}
+
+/**
+ * Every T1 check of one skill directory: its SKILL.md, then its eval.json.
+ * One function for the gate below and for the admission receipt
+ * (build-skills-admission.ts), so the receipt records the verdict of this
+ * gate and not of a second reading of the same rules.
+ */
+export async function lintSkillDirectory(root: string, dir: string): Promise<SkillLint> {
+  const checks: SkillLintCheck[] = [];
+  const skillPath = `${root}/${dir}/SKILL.md`;
+  const source = await Bun.file(skillPath).text();
+  for (const finding of lintSkillMarkdown(dir, source)) {
+    checks.push({ item: `${skillPath} — ${finding.rule}`, ok: finding.ok, note: finding.note });
+  }
+
+  const parsed = parseFrontmatter(source);
+  const status = "error" in parsed ? undefined : parsed.metadata.status;
+  const bodyLines = "error" in parsed ? null : bodyLineCount(parsed.body);
+
+  const evalPath = `${root}/${dir}/eval.json`;
+  if (!existsSync(evalPath)) {
+    checks.push({
+      item: evalPath,
+      ok: false,
+      note: "missing eval.json (3 positive triggers, 2 negative triggers, 1 behavioral case required)",
+    });
+    return { checks, bodyLines };
+  }
+  let raw: unknown;
+  try {
+    raw = await Bun.file(evalPath).json();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    checks.push({ item: evalPath, ok: false, note: `invalid JSON (${message})` });
+    return { checks, bodyLines };
+  }
+  for (const finding of lintEvalFile(raw, status)) {
+    checks.push({ item: `${evalPath} — ${finding.rule}`, ok: finding.ok, note: finding.note });
+  }
+  return { checks, bodyLines };
+}
+
 async function main(): Promise<void> {
   const report = new GateReport();
 
@@ -43,42 +96,12 @@ async function main(): Promise<void> {
   }
 
   for (const dir of dirs) {
-    const skillPath = `${SKILLS_ROOT}/${dir}/SKILL.md`;
-    const source = await Bun.file(skillPath).text();
-    for (const finding of lintSkillMarkdown(dir, source)) {
-      report.check(`${skillPath} — ${finding.rule}`, finding.ok, finding.note);
-    }
-
-    const parsed = parseFrontmatter(source);
-    const status = "error" in parsed ? undefined : parsed.metadata.status;
-    if (!("error" in parsed)) {
-      const lines = bodyLineCount(parsed.body);
-      if (lines > BODY_LINE_WARNING) {
-        console.warn(
-          `::warning::${skillPath}: body is ${lines} lines, past the ${BODY_LINE_WARNING}-line CI warning (target: ${BODY_LINE_TARGET}) — consider progressive disclosure into references/`,
-        );
-      }
-    }
-
-    const evalPath = `${SKILLS_ROOT}/${dir}/eval.json`;
-    if (!existsSync(evalPath)) {
-      report.check(
-        evalPath,
-        false,
-        "missing eval.json (3 positive triggers, 2 negative triggers, 1 behavioral case required)",
+    const lint = await lintSkillDirectory(SKILLS_ROOT, dir);
+    for (const check of lint.checks) report.check(check.item, check.ok, check.note);
+    if (lint.bodyLines !== null && lint.bodyLines > BODY_LINE_WARNING) {
+      console.warn(
+        `::warning::${SKILLS_ROOT}/${dir}/SKILL.md: body is ${lint.bodyLines} lines, past the ${BODY_LINE_WARNING}-line CI warning (target: ${BODY_LINE_TARGET}) — consider progressive disclosure into references/`,
       );
-      continue;
-    }
-    let raw: unknown;
-    try {
-      raw = await Bun.file(evalPath).json();
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      report.check(evalPath, false, `invalid JSON (${message})`);
-      continue;
-    }
-    for (const finding of lintEvalFile(raw, status)) {
-      report.check(`${evalPath} — ${finding.rule}`, finding.ok, finding.note);
     }
   }
 

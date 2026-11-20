@@ -327,7 +327,8 @@ export const NOT_GATED: readonly NotGated[] = [
   {
     path: "ecosystem/projections/",
     extensions: [".json"],
-    because: "generated projections; check:projection and check-projection-digest recompute them",
+    because:
+      "generated projections; check:projection and check-projection-digest recompute them, and check:skills-admission regenerates and compares skills-admission.v1.json",
   },
   // Two exact paths, not the directory: each file names its own generator, and
   // a third file there must be a decision this list records.

@@ -43,6 +43,10 @@
     {
       "owner": "tt-a1i",
       "because": "upstream of the archify drill (MIT, public), cited pinned by ADR-0056 as the source of its five method rules"
+    },
+    {
+      "owner": "NVIDIA",
+      "because": "upstream of the SkillEvaluator drill of 2026-11-20 (public), cited pinned by the ADRs that adapt its ideas, none of its text"
     }
   ]
 }

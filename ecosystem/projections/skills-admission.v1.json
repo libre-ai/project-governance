@@ -1,0 +1,270 @@
+{
+  "schema_version": "libre-ai.skills-admission.v1",
+  "recipe": "libre-ai.skill-fingerprint.v1",
+  "skills": [
+    {
+      "name": "biscuit-auth",
+      "fingerprint": "sha256:e724d3b47a22b7cb01793cc2d6f8ab56af9ac705f886b41dac757ac4a95b20bc",
+      "files": 3,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "context-conformity",
+      "fingerprint": "sha256:c4b191f3be6eb6da5621175ffaa14b69e9f5cd129913c2f46a94e6ae00af317c",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "deploy-clever",
+      "fingerprint": "sha256:809898d10a714421153ace2fbc6717d017d84decff2495b1710634d495eb38cb",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "pr-body",
+      "fingerprint": "sha256:841be658ca8b2f97aab42cf8eb7199f4b6b702573391fa701c26a66caddb9dbb",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "review-fanout",
+      "fingerprint": "sha256:69c29bf07f51cb877f377a80e590bea64689dd559d51a2702256d459d4cd99b3",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "rgpd-dpia",
+      "fingerprint": "sha256:e51135a6703c4285110d2cb80a515df4f2347d84c1d3866d7ccfb27bd4c94dbb",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "verify-runtime",
+      "fingerprint": "sha256:995a665649dac21971cba3b1ac10539d349ac29c10678270a757b2c09debcf76",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    },
+    {
+      "name": "wizard",
+      "fingerprint": "sha256:16912bcf8e953e56ad40ebb9bee6e52125ec3f797160e06e33f75f901e86b8d6",
+      "files": 2,
+      "checks": [
+        {
+          "id": "structure",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "routing",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "non-cascade",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "security",
+          "required": true,
+          "result": "pass"
+        },
+        {
+          "id": "distribution",
+          "required": true,
+          "result": "pass"
+        }
+      ],
+      "state": "candidate"
+    }
+  ]
+}

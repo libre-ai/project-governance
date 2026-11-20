@@ -83,6 +83,20 @@ describe("touchesGatedPaths", () => {
     ).toEqual(["ecosystem/third-parties.v1.yaml"]);
   });
 
+  // ADR-0072 D3: removing a required check admits every skill on less evidence.
+  test("matches tools/skills/skills-admission-policy.v1.json exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "tools/skills/skills-admission-policy.v1.json",
+        "tools/skills/skills-admission-policy.v2.json",
+        "tools/skills/skills-admission-policy.v1.json.bak",
+        "docs/tools/skills/skills-admission-policy.v1.json",
+        "tools/skills/build-skills-admission.ts",
+        "ecosystem/projections/skills-admission.v1.json",
+      ]),
+    ).toEqual(["tools/skills/skills-admission-policy.v1.json"]);
+  });
+
   // Review of #142 (2026-10-23): an exemption relaxes the refusals gate, so
   // its file is gated like the register — exactly that file. Its neighbour
   // pinned-citations.v1.json used to stand here as an ungated sibling; it

@@ -3,8 +3,9 @@
 
 # Skills collection — installation
 
-The admitted skills of this directory are governed by ADR-0025 (admission)
-and ADR-0050 (observed-failure bar, `working_if`, distribution). Writing a
+The admitted skills of this directory are governed by ADR-0025 (admission),
+ADR-0050 (observed-failure bar, `working_if`, distribution) and ADR-0072
+(admission state derived from evidence). Writing a
 skill: `docs/method/SKILLS-ANATOMY.md`. Installing one is an act of the
 harness, never of this repository.
 
@@ -40,6 +41,49 @@ compared to the canonical file here, byte for byte, before it is trusted:
 diff -r <harness skill directory>/<name> skills/<name> -x eval.json
 ```
 
+## Admission state — derived, never declared
+
+Since ADR-0072 the admission state of a skill is computed from the checks it
+passed, on the fingerprint of its directory, and written in the generated
+receipt `ecosystem/projections/skills-admission.v1.json`:
+
+- `candidate`: every required check passed on that fingerprint;
+- `incomplete`: a required check failed, could not judge, or left no result.
+  A check that was not run is never a dispensation.
+
+`promoted` stays an act of the owner, bound to a fingerprint. No tool writes
+it, no promotion is recorded yet, and a skill that declares it fails the gate
+until the promotion record of ADR-0072 D6 exists.
+
+After any change under `skills/<name>/`, regenerate the receipt in the same
+commit:
+
+```sh
+bun run build:skills-admission
+```
+
+The generator exits with the verdict of the gate on what it wrote. When a
+required check does not pass, it writes a receipt that says `incomplete`,
+names the check and fails: generating again changes nothing, repair the skill
+or the check.
+
+`bun run check:skills-admission`, part of `bun run check`, fails and names the
+skill when the receipt is not the one the tree generates (one changed byte is
+enough), or when the `metadata.status` of a skill is not its derived state.
+The frontmatter follows the derived state, never the reverse: repair the skill
+or the check, not the word. It also fails, naming the file, when a file under
+`skills/` is not tracked by git (ignored, or never added): `git add` it or
+remove it. The gate and the generator ask git, so they run in a clone, not in
+an exported copy.
+
+The fingerprint recipe, `libre-ai.skill-fingerprint.v1`, is written in
+`tools/skills/skill-fingerprint.ts`. It covers every file of the directory,
+`eval.json` included, since the checks read it; a copy made without
+`eval.json` is compared with the `diff -r` above, not by fingerprint. A
+symbolic link, a special file or an unreadable file in a skill directory is
+refused by name, never skipped. The required checks are listed in
+`tools/skills/skills-admission-policy.v1.json`.
+
 ## Frontmatter and the Agent Skills validators
 
 Since ADR-0053 the frontmatter carries only the Agent Skills fields, and
@@ -51,7 +95,9 @@ metadata:
   status: candidate
 ```
 
-T1 refuses any other top-level key. Six skills pass the Agent Skills
+That line is a copy of the derived state above, held equal to it by the gate
+(ADR-0072 D5); it is not where the state is decided. T1 refuses any other
+top-level key. Six skills pass the Agent Skills
 reference validator as they stand (`uvx --from skills-ref agentskills
 validate skills/<name>`).
 

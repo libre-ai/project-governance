@@ -1,0 +1,5 @@
+{
+  "schema_version": "libre-ai.skills-admission-policy.v1",
+  "because": "The checks a skill must have passed, on the fingerprint of its directory, for its admission state to be `candidate` (ADR-0072 D3). A required check that failed, could not judge or left no result makes the state `incomplete`. A check that build-skills-admission.ts knows and that this list leaves out still runs and is recorded, without counting. Removing an entry loosens the admission of every skill, so this file is on the guarded surface of check-review-evidence.ts. A file that cannot be read, or contradicts itself, is read as every known check being required, and the gate fails naming the defect: not a list, empty, an unknown check, a check listed twice, a key written twice or hidden behind an escape, a key other than the three of this file, another schema_version.",
+  "required_checks": ["structure", "routing", "non-cascade", "security", "distribution"]
+}

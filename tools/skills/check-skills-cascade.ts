@@ -51,6 +51,8 @@ export interface CascadeReference {
 }
 
 export interface CascadeCheck {
+  /** The skill the check judges: the caller, never the callee it names. */
+  readonly skill: string;
   readonly item: string;
   readonly ok: boolean;
   readonly note: string;
@@ -114,6 +116,7 @@ export function evaluateNonCascade(skills: readonly SkillText[]): CascadeResult 
     const parsed = parseFrontmatter(skill.skillMarkdown);
     if ("error" in parsed) {
       checks.push({
+        skill: skill.name,
         item: `skills/${skill.name}/SKILL.md`,
         ok: false,
         note: `frontmatter unreadable, invocation mode unknown: ${parsed.error} (see T1)`,
@@ -147,6 +150,7 @@ export function evaluateNonCascade(skills: readonly SkillText[]): CascadeResult 
     pairsExamined += callees.length;
     if (references.length === 0) {
       checks.push({
+        skill: caller.name,
         item: `skills/${caller.name}`,
         ok: true,
         note: `user-invoked; references none of ${callees.length} other user-invoked skill(s) across ${Object.keys(caller.files).length} file(s)`,
@@ -154,6 +158,7 @@ export function evaluateNonCascade(skills: readonly SkillText[]): CascadeResult 
     } else {
       for (const reference of references) {
         checks.push({
+          skill: reference.caller,
           item: `${reference.file}:${reference.line}`,
           ok: false,
           note: `user-invoked "${reference.caller}" references user-invoked "${reference.callee}" (non-cascade rule, SKILLS-ANATOMY.md): "${reference.text}"`,
