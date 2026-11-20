@@ -415,7 +415,7 @@ const WS: string = root(WORKSPACE);
 //
 // Measured on 2026-11-20. On the `Bun quality` job logs of the 60 latest `ci`
 // runs, 59 of which hold this file: the first test took 123.84 ms to
-// 2 948.68 ms and was killed at the limit 4 times; a later test of the same
+// 5 007.32 ms and was killed at the limit 4 times; a later test of the same
 // shape (one gate run, one `cargo metadata`) took 34.77 ms to 69.22 ms. In the
 // red logs the tests that follow stayed slow when their run reached cargo,
 // while a run that stops before cargo, in between, took 31.54 ms. The longest
