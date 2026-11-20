@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
+import stat
 import subprocess
 import sys
 import time
@@ -61,6 +62,44 @@ def fingerprint(plan):
 
 
 RECEIPT = '.composition-state.json'
+# A checkout's own config may name a `core.fsmonitor` program, which `status`
+# runs when it refreshes the index: reading a composition must execute nothing
+# it holds. Passed to every read, whichever subcommand would consult it.
+NO_FSMONITOR = ('-c', 'core.fsmonitor=false')
+
+
+def entry_state(path):
+    """'absent', 'present' or 'unreadable' for `path`, its last component never followed.
+
+    Not `Path.exists()`: on recent Pythons (measured on 3.15) it answers False
+    on any OSError, so a path the caller may not read would pass for one that
+    is not there, and the advice would be to mount it again.
+    """
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return 'absent'
+    except OSError:
+        return 'unreadable'
+    return 'present'
+
+
+def root_state(root):
+    """'missing', 'not a directory', 'unreadable' or 'present' for the composition root."""
+    try:
+        mode = os.stat(root).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return 'missing'
+    except OSError:
+        return 'unreadable'
+    if not stat.S_ISDIR(mode):
+        return 'not a directory'
+    try:
+        with os.scandir(root):
+            pass
+    except OSError:
+        return 'unreadable'
+    return 'present'
 
 
 def receipt_verdict(plan, root):
@@ -70,8 +109,9 @@ def receipt_verdict(plan, root):
     `verify` cannot say READY for a root `check` refuses on its receipt.
     """
     receipt = root / RECEIPT
-    if not receipt.exists() and not receipt.is_symlink():
-        return 'absent'
+    state = entry_state(receipt)
+    if state != 'present':
+        return state
     try:
         if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 256:
             return 'unreadable'
@@ -86,10 +126,10 @@ def verify_checkouts(plan, root, run):
         path = root / checkout['path']
         if path.is_symlink() or path.resolve() != path or not path.is_dir():
             raise ValueError('Composition checkout path changed')
-        head = run(['git', 'rev-parse', 'HEAD'], path, 15, True).stdout.strip()
+        head = run(['git', *NO_FSMONITOR, 'rev-parse', 'HEAD'], path, 15, True).stdout.strip()
         if head != checkout['ref']:
             raise ValueError('Composition checkout revision mismatch')
-        status = run(['git', 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+        status = run(['git', *NO_FSMONITOR, 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
         if status.strip():
             raise ValueError('Composition tracked inputs changed')
 
@@ -109,14 +149,15 @@ def inspect_checkout(checkout, root, run):
     `--no-optional-locks` keeps `status` from writing its refreshed index.
     """
     path = root / checkout['path']
-    if not path.exists() and not path.is_symlink():
-        return None, 'absent'
+    state = entry_state(path)
+    if state != 'present':
+        return None, state
     if path.is_symlink() or path.resolve() != path or not path.is_dir():
         return None, 'unreadable'
     git_dir = path / '.git'
     if git_dir.is_symlink() or not git_dir.is_dir():
         return None, 'unreadable'
-    git = ['git', '--no-optional-locks', '--git-dir=.git']
+    git = ['git', *NO_FSMONITOR, '--no-optional-locks', '--git-dir=.git']
     try:
         head = run([*git, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], path, 15, True).stdout.strip()
         composition.revision(head)
@@ -143,8 +184,12 @@ def report_checkouts(plan, root, run, emit):
     """One line per planned checkout, then the counters. True when every one is concordant."""
     expected = mounted = concordant = 0
     verdicts = {}
-    if not root.is_dir():
-        emit(f'Composition root is missing: {root}')
+    state = root_state(root)
+    if state == 'unreadable':
+        # Not a mount to redo: `prepare` refuses a root that is not new or empty.
+        emit(f'Composition root is unreadable: {root}: restore read access to it, then run --phase verify again')
+    elif state != 'present':
+        emit(f'Composition root is {state}: {root}')
     for checkout in plan['checkouts']:
         head, verdict = inspect_checkout(checkout, root, run)
         verdicts[checkout['path']] = verdict
@@ -209,7 +254,11 @@ def report_receipt(plan, root, emit):
     """The receipt `--phase check` demands. True when it is the one of this plan."""
     verdict = receipt_verdict(plan, root)
     emit(f'receipt {RECEIPT} expected={fingerprint(plan)} {verdict}')
-    if verdict != 'concordant':
+    if verdict == 'unreadable':
+        # A receipt is there: the root is not new, and `prepare` would refuse it too.
+        emit('--phase check refuses this root: its receipt is present but cannot be read as one '
+             '(permissions, a link, or other content).')
+    elif verdict != 'concordant':
         emit('--phase check refuses this root: only --phase prepare, on a new root and for this target and '
              'revision, writes the receipt it demands.')
     return verdict == 'concordant'

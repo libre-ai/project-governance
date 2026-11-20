@@ -11,6 +11,7 @@ import io
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import subprocess
 import sys
@@ -29,7 +30,9 @@ def git(cwd, *argv):
     found = shutil.which('git')
     if found is None:
         raise RuntimeError('git is required for composition tests')
-    env = {key: value for key, value in os.environ.items() if key != 'GIT_NO_REPLACE_OBJECTS'}
+    # As the runner's own `command`: an inherited GIT_DIR, GIT_WORK_TREE or
+    # GIT_INDEX_FILE would make the fixtures write into another repository.
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
     return subprocess.run([found, *argv], cwd=cwd, check=True, capture_output=True, text=True,
                           env={**env, **GIT_IDENTITY}).stdout.strip()
 
@@ -472,6 +475,107 @@ class ReportTests(unittest.TestCase):
         ready, lines = self.report(mounted, toolchain=False, bun=None)
         self.assertFalse(ready)
         self.assertTrue(lines[-1].startswith('Sources of execution-sandbox: NOT MOUNTED'))
+
+    def test_root_that_cannot_be_read_is_unreadable_never_absent(self):
+        # Python 3.13+ `Path.exists()` answers False on any OSError: a root the
+        # caller may not read would be reported as never mounted, and the
+        # advice would send them to `prepare`, which refuses a non-empty root.
+        mounted = Mounted(self.base)
+        mounted.root.chmod(0)
+        self.addCleanup(mounted.root.chmod, 0o755)
+        try:
+            os.listdir(mounted.root)
+            self.skipTest('this user reads a directory of mode 000 (superuser): the case cannot be built')
+        except PermissionError:
+            pass
+        status, lines = self.cli(mounted, '--phase', 'verify')
+        self.assertEqual(status, 1)
+        self.assertTrue(lines[0].startswith(f'Composition root is unreadable: {mounted.root}'), lines)
+        self.assertEqual([line.rsplit(' ', 1)[1] for line in lines[1:4]], ['unreadable'] * 3)
+        self.assertIn(f'receipt {RECEIPT} expected={mounted.fingerprint} unreadable', lines)
+        self.assertFalse(any('writes the receipt it demands' in line for line in lines), lines)
+        self.assertEqual(lines[-1], 'Composition execution-sandbox: NOT READY')
+
+    def test_root_that_is_a_regular_file_is_named_not_a_directory(self):
+        mounted = Mounted(self.base)
+        shutil.rmtree(mounted.root)
+        mounted.root.write_text('not a composition\n')
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertEqual(lines[0], f'Composition root is not a directory: {mounted.root}')
+        self.assertEqual(lines[-1], 'Composition execution-sandbox: NOT READY')
+
+    def test_checkout_that_is_a_link_to_another_clone_is_not_concordant(self):
+        # The clone sits at the pinned revision: only the refusal of a link
+        # keeps the verdict about the directory the plan names.
+        mounted = Mounted(self.base)
+        sibling = mounted.root / 'schemas-and-contracts'
+        elsewhere = self.base / 'elsewhere'
+        git(self.base, 'clone', '--quiet', str(sibling), str(elsewhere))
+        self.assertEqual(git(elsewhere, 'rev-parse', 'HEAD'), mounted.refs['schemas-and-contracts'])
+        shutil.rmtree(sibling)
+        sibling.symlink_to(elsewhere)
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertIn(f"schemas-and-contracts mounted=- expected={mounted.refs['schemas-and-contracts']} unreadable",
+                      lines)
+
+    def test_fsmonitor_of_a_checkout_is_never_run(self):
+        # `core.fsmonitor` in a checkout's own config names a program that
+        # `git status` runs: reading a composition must not execute it.
+        mounted = Mounted(self.base)
+        witness = self.base / 'fsmonitor-ran'
+        hook = self.base / 'fsmonitor.sh'
+        hook.write_text(f'#!/bin/sh\ntouch {shlex.quote(str(witness))}\n')
+        hook.chmod(0o755)
+        for name in NAMES:
+            git(mounted.root / name, 'config', 'core.fsmonitor', str(hook))
+        with self.subTest('report'):
+            self.report(mounted)
+            self.assertFalse(witness.exists())
+        with self.subTest('verify_checkouts'):
+            witness.unlink(missing_ok=True)  # each reader is judged on its own calls
+            self.m.verify_checkouts(mounted.plan, mounted.root, self.m.command)
+            self.assertFalse(witness.exists())
+
+    def mounted_with_pin(self, content):
+        mounted = Mounted(self.base)
+        governance = mounted.root / 'project-governance'
+        (governance / 'toolchains' / 'bun.json').write_bytes(content)
+        mounted.plan['checkouts'][0]['ref'] = commit(governance, 'rewrite the pin')
+        return mounted
+
+    def test_bun_pin_larger_than_its_bound_is_unreadable(self):
+        # Valid JSON of 65537 bytes: read whole by the bounded read, so only
+        # the size guard refuses it.
+        body = json.dumps({'revision': PINNED_BUN}).encode()
+        mounted = self.mounted_with_pin(body + b' ' * (65537 - len(body)))
+        self.assertEqual((mounted.root / 'project-governance' / 'toolchains' / 'bun.json').stat().st_size, 65537)
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertIn(f'bun found={PINNED_BUN} expected=- unreadable', lines)
+
+    def test_bun_pin_revision_with_a_line_break_is_unreadable(self):
+        # A newline in the revision would also split the report line it is printed in.
+        mounted = self.mounted_with_pin(json.dumps({'revision': PINNED_BUN + '\n'}).encode())
+        ready, lines = self.report(mounted)
+        self.assertFalse(ready)
+        self.assertIn(f'bun found={PINNED_BUN} expected=- unreadable', lines)
+
+    def test_fixture_helper_ignores_an_inherited_git_dir(self):
+        # An inherited GIT_DIR would send the fixtures' init and commits to
+        # whichever repository it names.
+        decoy = self.base / 'decoy'
+        decoy.mkdir()
+        git(decoy, 'init', '--quiet')
+        fixture = self.base / 'fixture'
+        fixture.mkdir()
+        with patch.dict(os.environ, {'GIT_DIR': str(decoy / '.git')}):
+            git(fixture, 'init', '--quiet')
+            (fixture / 'README.md').write_text('fixture\n')
+            commit(fixture, 'fixture')
+        self.assertEqual(git(decoy, 'rev-list', '--all', '--count'), '0')
+        self.assertEqual(git(fixture, 'rev-list', '--all', '--count'), '1')
 
 
 if __name__ == '__main__':
