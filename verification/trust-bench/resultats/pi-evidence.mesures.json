@@ -1,0 +1,1505 @@
+[
+  {
+    "cas": "SAIN",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 252
+  },
+  {
+    "cas": "SAIN",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 695
+  },
+  {
+    "cas": "SAIN",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 13247
+  },
+  {
+    "cas": "SAIN",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1125
+  },
+  {
+    "cas": "SAIN",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1487
+  },
+  {
+    "cas": "D01",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 252
+  },
+  {
+    "cas": "D01",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 606
+  },
+  {
+    "cas": "D01",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12832
+  },
+  {
+    "cas": "D01",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 937
+  },
+  {
+    "cas": "D01",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 1603
+  },
+  {
+    "cas": "D02",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 217
+  },
+  {
+    "cas": "D02",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 578
+  },
+  {
+    "cas": "D02",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12827
+  },
+  {
+    "cas": "D02",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1198
+  },
+  {
+    "cas": "D02",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1575
+  },
+  {
+    "cas": "D03",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 240
+  },
+  {
+    "cas": "D03",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 662
+  },
+  {
+    "cas": "D03",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 12533
+  },
+  {
+    "cas": "D03",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 847
+  },
+  {
+    "cas": "D03",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 1387
+  },
+  {
+    "cas": "D04",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 215
+  },
+  {
+    "cas": "D04",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 564
+  },
+  {
+    "cas": "D04",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 12708
+  },
+  {
+    "cas": "D04",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 907
+  },
+  {
+    "cas": "D04",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1313
+  },
+  {
+    "cas": "D05",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 263
+  },
+  {
+    "cas": "D05",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 552
+  },
+  {
+    "cas": "D05",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12495
+  },
+  {
+    "cas": "D05",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 800
+  },
+  {
+    "cas": "D05",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1655
+  },
+  {
+    "cas": "D06",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 206
+  },
+  {
+    "cas": "D06",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 556
+  },
+  {
+    "cas": "D06",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 11831
+  },
+  {
+    "cas": "D06",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 862
+  },
+  {
+    "cas": "D06",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 1402
+  },
+  {
+    "cas": "D07",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 215
+  },
+  {
+    "cas": "D07",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 558
+  },
+  {
+    "cas": "D07",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 11956
+  },
+  {
+    "cas": "D07",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 844
+  },
+  {
+    "cas": "D07",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1333
+  },
+  {
+    "cas": "D08",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 242
+  },
+  {
+    "cas": "D08",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 575
+  },
+  {
+    "cas": "D08",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 12702
+  },
+  {
+    "cas": "D08",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 858
+  },
+  {
+    "cas": "D08",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 1738
+  },
+  {
+    "cas": "D09",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 250
+  },
+  {
+    "cas": "D09",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 601
+  },
+  {
+    "cas": "D09",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12007
+  },
+  {
+    "cas": "D09",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1015
+  },
+  {
+    "cas": "D09",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1559
+  },
+  {
+    "cas": "D10",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 266
+  },
+  {
+    "cas": "D10",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 643
+  },
+  {
+    "cas": "D10",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12703
+  },
+  {
+    "cas": "D10",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 923
+  },
+  {
+    "cas": "D10",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": true,
+    "rouge": false,
+    "illisible": false,
+    "ms": 2015
+  },
+  {
+    "cas": "T01",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 247
+  },
+  {
+    "cas": "T01",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 535
+  },
+  {
+    "cas": "T01",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 12493
+  },
+  {
+    "cas": "T01",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 886
+  },
+  {
+    "cas": "T01",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1433
+  },
+  {
+    "cas": "T02",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 233
+  },
+  {
+    "cas": "T02",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 679
+  },
+  {
+    "cas": "T02",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 11769
+  },
+  {
+    "cas": "T02",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 937
+  },
+  {
+    "cas": "T02",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1352
+  },
+  {
+    "cas": "T03",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 165
+  },
+  {
+    "cas": "T03",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 608
+  },
+  {
+    "cas": "T03",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 10828
+  },
+  {
+    "cas": "T03",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 727
+  },
+  {
+    "cas": "T03",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1142
+  },
+  {
+    "cas": "T04",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 146
+  },
+  {
+    "cas": "T04",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 512
+  },
+  {
+    "cas": "T04",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9989
+  },
+  {
+    "cas": "T04",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 684
+  },
+  {
+    "cas": "T04",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1144
+  },
+  {
+    "cas": "T05",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 140
+  },
+  {
+    "cas": "T05",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 484
+  },
+  {
+    "cas": "T05",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9825
+  },
+  {
+    "cas": "T05",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 726
+  },
+  {
+    "cas": "T05",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1137
+  },
+  {
+    "cas": "T06",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 141
+  },
+  {
+    "cas": "T06",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 502
+  },
+  {
+    "cas": "T06",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9915
+  },
+  {
+    "cas": "T06",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 725
+  },
+  {
+    "cas": "T06",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1186
+  },
+  {
+    "cas": "T07",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 156
+  },
+  {
+    "cas": "T07",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 491
+  },
+  {
+    "cas": "T07",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9791
+  },
+  {
+    "cas": "T07",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 569
+  },
+  {
+    "cas": "T07",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1137
+  },
+  {
+    "cas": "T08",
+    "couche": "L1a-lint",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 89
+  },
+  {
+    "cas": "T08",
+    "couche": "L1b-types",
+    "cout": 1,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 432
+  },
+  {
+    "cas": "T08",
+    "couche": "L2-tests",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9687
+  },
+  {
+    "cas": "T08",
+    "couche": "L3-controles-depot",
+    "cout": 2,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 568
+  },
+  {
+    "cas": "T08",
+    "couche": "L4-execution-reelle",
+    "cout": 3,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 1167
+  },
+  {
+    "cas": "D01",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 12440
+  },
+  {
+    "cas": "D02",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 5652
+  },
+  {
+    "cas": "D03",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 8793
+  },
+  {
+    "cas": "D04",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 7965
+  },
+  {
+    "cas": "D05",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 7897
+  },
+  {
+    "cas": "D06",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 5368
+  },
+  {
+    "cas": "D07",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 6254
+  },
+  {
+    "cas": "D08",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 4854
+  },
+  {
+    "cas": "D09",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 9473
+  },
+  {
+    "cas": "D10",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 6942
+  },
+  {
+    "cas": "T01",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 9214
+  },
+  {
+    "cas": "T02",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 5830
+  },
+  {
+    "cas": "T03",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": true,
+    "illisible": false,
+    "ms": 10005
+  },
+  {
+    "cas": "T04",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 8252
+  },
+  {
+    "cas": "T05",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 7009
+  },
+  {
+    "cas": "T06",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 4567
+  },
+  {
+    "cas": "T07",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 11931
+  },
+  {
+    "cas": "T08",
+    "couche": "L5-relecture-mistral-small-3.2-24b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 10928
+  },
+  {
+    "cas": "D01",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 25162
+  },
+  {
+    "cas": "D02",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 15113
+  },
+  {
+    "cas": "D03",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 21841
+  },
+  {
+    "cas": "D04",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 16882
+  },
+  {
+    "cas": "D05",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 15009
+  },
+  {
+    "cas": "D06",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 23081
+  },
+  {
+    "cas": "D07",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 13116
+  },
+  {
+    "cas": "D08",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 15281
+  },
+  {
+    "cas": "D09",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 29690
+  },
+  {
+    "cas": "D10",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 26668
+  },
+  {
+    "cas": "T01",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 15908
+  },
+  {
+    "cas": "T02",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": true,
+    "ms": 126183
+  },
+  {
+    "cas": "T03",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 21990
+  },
+  {
+    "cas": "T04",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 12838
+  },
+  {
+    "cas": "T05",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 25553
+  },
+  {
+    "cas": "T06",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 38843
+  },
+  {
+    "cas": "T07",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 15535
+  },
+  {
+    "cas": "T08",
+    "couche": "L5-relecture-qwen3-8b-q4km",
+    "cout": 4,
+    "attendu": false,
+    "rouge": true,
+    "illisible": false,
+    "ms": 26167
+  },
+  {
+    "cas": "D01",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 37602
+  },
+  {
+    "cas": "D02",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 20765
+  },
+  {
+    "cas": "D03",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 30634
+  },
+  {
+    "cas": "D04",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 24847
+  },
+  {
+    "cas": "D05",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 22906
+  },
+  {
+    "cas": "D06",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 28449
+  },
+  {
+    "cas": "D07",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 19370
+  },
+  {
+    "cas": "D08",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 20135
+  },
+  {
+    "cas": "D09",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 39163
+  },
+  {
+    "cas": "D10",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 33610
+  },
+  {
+    "cas": "T01",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 25122
+  },
+  {
+    "cas": "T02",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": true,
+    "ms": 132013
+  },
+  {
+    "cas": "T03",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": true,
+    "illisible": false,
+    "ms": 31995
+  },
+  {
+    "cas": "T04",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 21090
+  },
+  {
+    "cas": "T05",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 32562
+  },
+  {
+    "cas": "T06",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 43410
+  },
+  {
+    "cas": "T07",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 27466
+  },
+  {
+    "cas": "T08",
+    "couche": "L6-croisee-au-moins-un-signale",
+    "cout": 5,
+    "attendu": false,
+    "rouge": true,
+    "illisible": false,
+    "ms": 37095
+  },
+  {
+    "cas": "D01",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 37602
+  },
+  {
+    "cas": "D02",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 20765
+  },
+  {
+    "cas": "D03",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 30634
+  },
+  {
+    "cas": "D04",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 24847
+  },
+  {
+    "cas": "D05",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 22906
+  },
+  {
+    "cas": "D06",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 28449
+  },
+  {
+    "cas": "D07",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 19370
+  },
+  {
+    "cas": "D08",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 20135
+  },
+  {
+    "cas": "D09",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 39163
+  },
+  {
+    "cas": "D10",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": true,
+    "rouge": true,
+    "illisible": false,
+    "ms": 33610
+  },
+  {
+    "cas": "T01",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 25122
+  },
+  {
+    "cas": "T02",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": true,
+    "ms": 132013
+  },
+  {
+    "cas": "T03",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 31995
+  },
+  {
+    "cas": "T04",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 21090
+  },
+  {
+    "cas": "T05",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 32562
+  },
+  {
+    "cas": "T06",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 43410
+  },
+  {
+    "cas": "T07",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 27466
+  },
+  {
+    "cas": "T08",
+    "couche": "L6-croisee-accord-des-deux",
+    "cout": 5,
+    "attendu": false,
+    "rouge": false,
+    "illisible": false,
+    "ms": 37095
+  }
+]

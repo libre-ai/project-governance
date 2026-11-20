@@ -1,0 +1,182 @@
+[
+  {
+    "cas": "D01",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 25162,
+    "tokens_entree": 399,
+    "tokens_sortie": 963,
+    "raison": "The original code returned an 'incomplete' verdict if either 'interrupted' or 'requiredUnavailable' was non-empty. The modified code only checks for 'interrupted'. This change removes the condition where 'requiredUnavailable' (i.e., missing required checks) would trigger an 'incomplete' verdict. Previously, missing required checks would result in an 'incomplete' verdict, but now they might not, depending on other conditions. This could lead to incorrect verdicts in scenarios where required checks are unavailable but no interruptions occur, constituting a regression."
+  },
+  {
+    "cas": "D02",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 15113,
+    "tokens_entree": 392,
+    "tokens_sortie": 512,
+    "raison": "The diff removes a condition that checked if `reference.revision.status_sha256` differs from `candidate.revision.status_sha256`, which was previously used to detect differences in the working tree status. This change would cause the comparison function to no longer report such differences, potentially leading to incorrect 'stale' outcomes when status hashes differ. This is a regression because the code now behaves differently than before, losing a previously functional check."
+  },
+  {
+    "cas": "D03",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 21841,
+    "tokens_entree": 428,
+    "tokens_sortie": 732,
+    "raison": "The change modifies the condition for returning 0 or 1 in the 'gate' command. Originally, it returned 0 only if the verdict was 'conformant'. Now, it returns 0 if the verdict is not 'failed'. This alters the behavior for cases where the verdict is neither 'conformant' nor 'failed' (e.g., 'non-conformant' or other values). This could lead to incorrect exit codes in scenarios where the original logic expected a failure but the new logic treats it as success, introducing a regression or bug."
+  },
+  {
+    "cas": "D04",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 16882,
+    "tokens_entree": 350,
+    "tokens_sortie": 538,
+    "raison": "The code change replaces the test target of a regular expression from the line content (`line`) to the file name (`file`). This is a critical logic error because the script's purpose is to detect markers within file contents, not file names. By testing the regex against the file name instead of the line, the script will incorrectly flag files whose names match the marker pattern, even if their contents do not. This introduces a regression where the script no longer performs its intended function correctly."
+  },
+  {
+    "cas": "D05",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 15009,
+    "tokens_entree": 483,
+    "tokens_sortie": 432,
+    "raison": "The change replaces a regex validation for the 'command' field (which ensured it was a bare executable name without spaces or paths) with a check for an empty string. This weakens the validation, allowing any non-empty string (including invalid characters like spaces or paths) to pass. The error message also changes to imply a stricter requirement than the actual check. This introduces a regression by reducing the correctness of input validation."
+  },
+  {
+    "cas": "D06",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 23081,
+    "tokens_entree": 524,
+    "tokens_sortie": 711,
+    "raison": "The diff shows the removal of the 'npm-token' rule from the SCRUB_RULES array. This rule was previously used to identify and scrub npm tokens (matching patterns like 'npm_[A-Za-z0-9]{36}'). By removing this rule, the code no longer applies scrubbing to npm tokens, which could expose sensitive data if such tokens exist in the text. This change alters the behavior of the scrubbing logic, introducing a regression where previously protected data is no longer masked."
+  },
+  {
+    "cas": "D07",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 13116,
+    "tokens_entree": 387,
+    "tokens_sortie": 394,
+    "raison": "The diff shows a typo in the verdict string. The original code returns 'incomplete' when there are interrupted or required unavailable checks. The modified code mistakenly uses 'incomplet' (a misspelling). This typo would cause the verdict to be an invalid string, potentially leading to bugs where the system expects 'incomplete' but receives 'incomplet'. This is a bug in the code logic, as the verdict string is now incorrect and would break any downstream code relying on the exact string value."
+  },
+  {
+    "cas": "D08",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 15281,
+    "tokens_entree": 415,
+    "tokens_sortie": 449,
+    "raison": "The code change introduces a new `console.error` statement that logs the entire environment object (`env`) as a JSON string. This could expose sensitive data such as API keys, secrets, or other confidential information stored in environment variables. Logging such data is a security risk, especially if the logs are accessible to unauthorized parties. The original code did not include this logging, so the change weakens the security by potentially leaking sensitive information."
+  },
+  {
+    "cas": "D09",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 29690,
+    "tokens_entree": 402,
+    "tokens_sortie": 940,
+    "raison": "The original condition checked if `options.headMayDiffer` was not true (i.e., false or undefined), and if the HEADs differed, it added a 'HEAD differs' entry. The new condition checks if `options.headMayDiffer` is true and the HEADs differ, which inverts the logic. The comment indicates that `headMayDiffer` is meant to allow HEAD differences (e.g., when evidence files are added), so the original logic correctly ignores such differences when `headMayDiffer` is true. The change now treats these cases as differences, which is a regression."
+  },
+  {
+    "cas": "D10",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 26668,
+    "tokens_entree": 361,
+    "tokens_sortie": 853,
+    "raison": "The change modifies the value of `DEFAULT_TIMEOUT_SECONDS` from 600 to 6. This alters the default behavior of the application, potentially causing timeouts to be significantly shorter than intended. Unless explicitly documented as a deliberate design change (e.g., optimizing performance), this constitutes a regression or bug. The diff alone does not provide context for this change, so it introduces a defect by changing the behavior of the code."
+  },
+  {
+    "cas": "T01",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 15908,
+    "tokens_entree": 421,
+    "tokens_sortie": 490,
+    "raison": "The change swaps the order of two conditions in a logical AND expression. The original condition was 'origin === \"declared\" && results.some(...)'. The new condition is 'results.some(...) && origin === \"declared\"'. Since logical AND is commutative in this context (both conditions are boolean expressions), the overall truth value remains unchanged. This is a refactor that does not alter the program's behavior."
+  },
+  {
+    "cas": "T02",
+    "modele": "qwen3-8b-q4km",
+    "defaut": null,
+    "illisible": true,
+    "ms": 126183,
+    "tokens_entree": 530,
+    "tokens_sortie": 4000,
+    "raison": "réponse non analysable : SyntaxError: JSON Parse error: Unexpected EOF"
+  },
+  {
+    "cas": "T03",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 21990,
+    "tokens_entree": 430,
+    "tokens_sortie": 733,
+    "raison": "The change in the 'gate' case of the runCli function swaps the condition and its return values. The original logic was: return 0 if verdict is 'conformant', else 1. The new logic is: return 1 if verdict is not 'conformant', else 0. These are logically equivalent. The code behavior remains identical, so this is a refactor, not a defect."
+  },
+  {
+    "cas": "T04",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 12838,
+    "tokens_entree": 409,
+    "tokens_sortie": 424,
+    "raison": "The change replaces `differences.length > 0` with `differences.length !== 0`. Both conditions are logically equivalent because array lengths are non-negative integers. The behavior of the function remains identical: if there are any differences, the function returns a stale outcome. This is a stylistic change with no impact on functionality, and does not introduce any defects."
+  },
+  {
+    "cas": "T05",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 25553,
+    "tokens_entree": 470,
+    "tokens_sortie": 832,
+    "raison": "The change modifies the condition in the `parseCheck` function from `if (typeof value.id !== 'string' || !ID.test(value.id))` to `if (!(typeof value.id === 'string' && ID.test(value.id)))`. Both conditions are logically equivalent due to De Morgan's laws. The original condition checks if the `id` is not a string or does not match the regex. The new condition checks if the `id` is not both a string and matches the regex. Since the logical outcome remains the same, the behavior of the function does not change. This is a refactor that simplifies the condition without altering functionality."
+  },
+  {
+    "cas": "T06",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 38843,
+    "tokens_entree": 348,
+    "tokens_sortie": 1286,
+    "raison": "The diff shows the addition of a comment line (`// Relative to the repository root.`) after the imports in the config.ts file. The rest of the code remains unchanged, including the export declarations and type definitions. Since the change only introduces a new comment and does not alter the program's behavior, logic, or safety/security properties, it is a documentation update rather than a defect. No bugs, regressions, or security issues are introduced."
+  },
+  {
+    "cas": "T07",
+    "modele": "qwen3-8b-q4km",
+    "defaut": false,
+    "illisible": false,
+    "ms": 15535,
+    "tokens_entree": 544,
+    "tokens_sortie": 512,
+    "raison": "The code change adds a new entry to the SCRUB_RULES array for detecting GitLab tokens with the pattern /glpat-[A-Za-z0-9_-]{20,}/g. This is a valid enhancement to the scrubbing functionality, targeting a specific format of sensitive data (GitLab personal access tokens). The regex pattern is correctly formed and aligns with typical GitLab token structures. No syntax errors or logical flaws are present. The change does not introduce bugs, regressions, or weaken existing security checks. It improves the system's ability to detect and scrub sensitive data, which is a desirable behavior."
+  },
+  {
+    "cas": "T08",
+    "modele": "qwen3-8b-q4km",
+    "defaut": true,
+    "illisible": false,
+    "ms": 26167,
+    "tokens_entree": 429,
+    "tokens_sortie": 892,
+    "raison": "The change modifies the regular expression for validating IDs, increasing the maximum allowed length from 63 to 95 characters. This alters the validation constraint for the 'id' field in the CheckSpec interface. If the original 63-character limit was enforced for a specific reason (e.g., system constraints, protocol requirements, or safety checks), this change weakens that constraint. Without explicit context confirming the necessity of the new limit, this could introduce a regression or weaken safety checks by allowing longer IDs that might previously have been invalid."
+  }
+]

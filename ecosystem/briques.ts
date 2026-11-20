@@ -3,6 +3,7 @@ import addFormats from "ajv-formats";
 
 import { exemptionKey, scanText, validateCitedPath } from "../tools/quality/check-pinned-citations";
 import { GateReport } from "../tools/quality/gate-report";
+import { parseInvariantsRegister } from "../tools/quality/invariants-register";
 
 /**
  * The brick map (ADR-0064): eleven layers, one schema, a derived status.
@@ -381,16 +382,14 @@ export interface BriquesOutcome {
 // ---------------------------------------------------------------- parsers ---
 
 /**
- * `| I-NN | text … |` rows of INVARIANTS.md. A row whose text opens with
- * « Retiré », whatever the emphasis or the case around it, is withdrawn.
+ * `| I-NN | text … |` rows of INVARIANTS.md, with their standing. The rows and
+ * what makes one withdrawn are read by the register's one reader, shared with
+ * the threat-model citations gate: two readers disagreed once (2026-11-16).
  */
 export function parseInvariants(markdown: string): Map<string, InvariantStanding> {
   const found = new Map<string, InvariantStanding>();
-  for (const line of markdown.split("\n")) {
-    const row = /^\|\s*(I-[0-9]{2,3})\s*\|\s*(.*)$/.exec(line);
-    if (row === null) continue;
-    const [, id, rest] = row as unknown as [string, string, string];
-    found.set(id, /^[\s*_~]*retir[ée]/i.test(rest) ? "retiré" : "en vigueur");
+  for (const entry of parseInvariantsRegister(markdown).entries.values()) {
+    found.set(entry.id, entry.retired ? "retiré" : "en vigueur");
   }
   return found;
 }

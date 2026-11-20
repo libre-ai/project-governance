@@ -122,7 +122,7 @@ right one remains a review matter (realigned 2026-10-09).
 | --------------------------------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------- |
 | Agent token reused across missions                        | Elevation                   | K1 Biscuit includes mission_id; authorizer check; per-mission issuance                                   | token leaked to lateral mission (physical compromise or accessor bug)               | I-18      |
 | Malicious tool output (e.g. fabricated source code)       | Tampering + Info disclosure | K2 classify as `operational` (not authority); K3 envelope all recall; decision-log requires human review | agent or human approves fabricated result (distinct gate: human-touch surface I-17) | I-18      |
-| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-18, I-17, I-35 (an agent quorum never stands for a human review without two distinct model families) |
+| Agent writes to orchestrator lock (e.g., Authority facts) | Elevation                   | K4: no Biscuit grants `CI/gate` write; layer-3 requires `CODEOWNERS` + independent review                | colluding agents + human reviewer (distinct from zero-agent-mutation doctrine)      | I-18, I-17 (no agent review stands for the human touch; I-35 withdrawn by D103, 2026-11-09)            |
 
 ### Collab relay
 

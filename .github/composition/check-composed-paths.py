@@ -23,6 +23,7 @@
 import argparse
 import importlib.util
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -69,7 +70,10 @@ def prepare_paths(manifest, prepare):
 
 
 def _git(args):
-    return subprocess.run(["git", *args], capture_output=True, text=True, timeout=600)
+    # No inherited GIT_* variable reaches git: GIT_OBJECT_DIRECTORY (a git hook)
+    # would send the scratch fetch into another repository's object store.
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    return subprocess.run(["git", *args], capture_output=True, text=True, timeout=600, env=env)
 
 
 class GitPresence:
