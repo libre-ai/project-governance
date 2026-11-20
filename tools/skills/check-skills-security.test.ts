@@ -15,8 +15,11 @@ import { touchesGatedPaths } from "../quality/check-review-evidence";
 import {
   asciiOnly,
   formatSecurityVolume,
+  LINE_UNITS_SCANNED,
   loadSkillTree,
   type NameFinding,
+  type OverlongLine,
+  overlongLines,
   PATTERNS_PATH,
   type ScannedFile,
   SECURITY_CATEGORIES,
@@ -26,6 +29,7 @@ import {
   scanEntryNames,
   scanForSkillRisks,
   type UnreadEntry,
+  unreadFailures,
   validatePatterns,
 } from "./check-skills-security";
 
@@ -535,9 +539,11 @@ describe("invisible characters", () => {
   });
 
   // Review finding B2, measured before the bound: 20 000 runs on one line
-  // printed a line of 1 160 186 characters.
+  // printed a line of 1 160 186 characters. A line is now matched up to
+  // LINE_UNITS_SCANNED units, which is 2 000 of these runs.
   test("the gate bounds the line of a finding, and says how many findings were cut", () => {
-    const runs = Array.from({ length: 20_000 }, () => asTags("ab")).join("x");
+    const runs = Array.from({ length: 2_000 }, () => asTags("ab")).join("x");
+    expect(runs.length).toBeLessThanOrEqual(LINE_UNITS_SCANNED);
     const root = tree({ "alpha/SKILL.md": `# alpha\n\n${runs}\n\nplain${asTags("one")}\n` });
     const run = runGate([root]);
     expect(run.exitCode).toBe(1);
@@ -545,7 +551,7 @@ describe("invisible characters", () => {
       `${join(root, "alpha/SKILL.md")}:3: matches invisible-unicode-tags (invisible-character): ` +
         '2 tag character(s) spelling "ab", 2 tag character(s) spelling "ab", ' +
         '2 tag character(s) spelling "ab", ' +
-        "19997 more run(s) not shown, of 39994 tag character(s) in all",
+        "1997 more run(s) not shown, of 3994 tag character(s) in all",
     );
     expect(run.stderr).toContain(
       `${root}: findings=2 (printed=2 not-printed=0), evidence cut on 1 of the printed`,
@@ -569,7 +575,8 @@ describe("invisible characters", () => {
     expect(run.stderr).toContain(`${join(root, "alpha/SKILL.md")}:100: matches`);
     expect(run.stderr).not.toContain(`${join(root, "alpha/SKILL.md")}:101: matches`);
     expect(run.stderr).toContain(
-      `${root}: findings=250 (printed=100 not-printed=150), evidence cut on 0 of the printed`,
+      `${root}: findings=250 (printed=100 not-printed=150 on 2 path(s), ` +
+        "1 of them named by no printed finding), evidence cut on 0 of the printed",
     );
     expect(run.stderr).toContain("failed: 101 of 101 assertion(s) did not hold.");
 
@@ -578,6 +585,25 @@ describe("invisible characters", () => {
     expect(exact.exitCode).toBe(1);
     expect(exact.stderr).not.toContain("findings=");
     expect(exact.stderr).toContain("failed: 100 of 100 assertion(s) did not hold.");
+  });
+
+  // Review finding N3: past the hundred, a file whose findings are all left
+  // out was named on no line, and nothing said that such a file existed.
+  test("the count line says on how many paths the findings left out are, and how many of them are named nowhere", () => {
+    const root = tree({
+      "a/SKILL.md": `${`a${ZERO_WIDTH_SPACE}b\n`.repeat(150)}`,
+      "b/SKILL.md": `${PIPE_TO_SHELL}\n`,
+      "d/SKILL.md": `ok${asTags("run this")}\n`,
+    });
+    const run = runGate([root]);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).not.toContain(join(root, "b/SKILL.md"));
+    expect(run.stderr).not.toContain(join(root, "d/SKILL.md"));
+    // 50 left out in a/, which the printed findings name, and one each in b/ and d/.
+    expect(run.stderr).toContain(
+      `${root}: findings=152 (printed=100 not-printed=52 on 3 path(s), ` +
+        "2 of them named by no printed finding), evidence cut on 0 of the printed",
+    );
   });
 
   test("a byte-order mark that opens a file is tolerated; any other one is refused", () => {
@@ -618,6 +644,88 @@ describe("invisible characters", () => {
     expect(run.stdout).toContain(
       "entries=1 (scanned=1 undecodable=0 symlinks=0 unreadable=0), lines=3, patterns=14",
     );
+  });
+});
+
+// Review finding N1. The regular expression engine gives up without an error:
+// past a recursion depth or a step budget it returns "no match", which the
+// gate read as a clean line. Lengths below were measured on 2026-11-20, each
+// on a line that holds a true match.
+describe("what the engine gives up on", () => {
+  // The entry as first written, one group repeated, matched a run of
+  // 1 286 142 Tags characters with the pinned Bun (1 929 214 with Bun 1.4.4)
+  // and returned null one character later. A name is used because it is the
+  // one text the gate hands its patterns whatever its length: a line this
+  // long is refused before any pattern reads it (next tests).
+  test("a Tags run longer than the engine matched with a repeated group is refused", () => {
+    const run = asTags("a").repeat(2_000_000);
+    const findings: NameFinding[] = scanEntryNames("skills", [`skills/${run}`], patterns);
+    // The path is left out of the comparison: a failure would print it.
+    expect(findings.map(({ patternId, evidence }) => ({ patternId, evidence }))).toEqual([
+      {
+        patternId: "invisible-unicode-tags",
+        evidence: `2000000 tag character(s) spelling "${"a".repeat(120)}" and 1999880 more`,
+      },
+    ]);
+  });
+
+  test("a line is matched up to the limit, and reported unmatched past it", () => {
+    const atLimit = `${" ".repeat(LINE_UNITS_SCANNED - PIPE_TO_SHELL.length)}${PIPE_TO_SHELL}`;
+    const over = ` ${atLimit}`;
+    const files: ScannedFile[] = [
+      { path: "f.md", content: `${atLimit}\n${over}\nok \\\n${over}\nplain\n` },
+    ];
+    expect(atLimit).toHaveLength(LINE_UNITS_SCANNED);
+    expect(
+      scanForSkillRisks(files, patterns).map(({ line, patternId }) => ({ line, patternId })),
+    ).toEqual([{ line: 1, patternId: "remote-exec-pipe-to-shell" }]);
+    const overlong: OverlongLine[] = overlongLines(files);
+    expect(overlong).toEqual([
+      { path: "f.md", line: 2, units: LINE_UNITS_SCANNED + 1 },
+      // A continued line is measured joined, as it is matched.
+      { path: "f.md", line: 3, lastLine: 4, units: LINE_UNITS_SCANNED + 5 },
+    ]);
+  });
+
+  // `secret-read-dotenv` returns null on this line (28 294 units; it finds
+  // the match on 28 292): every ". " is a place where a match can start, and
+  // the engine spends its step budget before it reaches the last one.
+  test("the gate refuses the line the engine gives up on, instead of passing it", () => {
+    const line = `${". ".repeat(14_142)}; cat .env`;
+    const root = tree({ "alpha/SKILL.md": `# alpha\n\n${line}\n`, "alpha/notes.md": "ok\n" });
+    const run = runGate([root]);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(
+      `${join(root, "alpha/SKILL.md")}:3: line of 28294 UTF-16 units, ` +
+        `over the ${LINE_UNITS_SCANNED} a pattern is applied to: not scanned, so it is refused`,
+    );
+    expect(run.stderr).toContain("failed: 1 of 2 assertion(s) did not hold.");
+  });
+
+  // The forms that came nearest to a null, or cost the engine the most, each
+  // as long as the limit allows: the limit is only worth the measure behind
+  // it, so the measure is replayed here with the Bun that runs the suite.
+  test.each([
+    ["places to start, then the match", "secret-read-dotenv", "", ". ", "; cat .env"],
+    ["places to start, digits between", "secret-read-dotenv", "", ". 1 ", "; cat .env"],
+    ["one group repeated, digits", "secret-read-dotenv", "cat ", "1 ", ".env"],
+    ["one group repeated, paths", "secret-read-dotenv", "cat ", "a.b ", ".env"],
+    ["pipes and slashes after", "remote-exec-pipe-to-shell", "curl x | sh #", "|/", ""],
+    ["commits before", "gate-bypass-no-verify", "", "git commit -x ", "; git commit -n"],
+    ["redirections before", "write-outside-redirect", "", ">/a", " > ~/x"],
+    ["copies before", "write-outside-copy", "", "cp a ", "; cp a ~/x"],
+    ["one Tags run", "invisible-unicode-tags", "", asTags("a"), ""],
+    ["one zero-width run", "invisible-zero-width", "", ZERO_WIDTH_SPACE, ""],
+    ["one bidi run", "invisible-bidi-control", "", RIGHT_TO_LEFT_OVERRIDE, ""],
+  ])("at the limit, the match is still found: %s", (_label, id, head, unit, tail) => {
+    const repetitions = Math.floor((LINE_UNITS_SCANNED - head.length - tail.length) / unit.length);
+    const line = `${head}${unit.repeat(repetitions)}${tail}`;
+    expect(line.length).toBeGreaterThan(LINE_UNITS_SCANNED - unit.length);
+    expect(line.length).toBeLessThanOrEqual(LINE_UNITS_SCANNED);
+    const ids = scanForSkillRisks([{ path: "f.md", content: line }], patterns).map(
+      (finding) => finding.patternId,
+    );
+    expect(ids).toContain(id);
   });
 });
 
@@ -713,6 +821,30 @@ describe("the names of the entries", () => {
     for (const line of (run.stdout + run.stderr).split("\n"))
       expect(line).toMatch(/^[\x20-\x7e]*$/);
   });
+
+  // Review finding N4: the entries that could not be read were handed to the
+  // name scan, and no test held it.
+  test("the name of an entry that cannot be read is read too", () => {
+    const root = tree({
+      "alpha/SKILL.md": "# alpha\n",
+      [`alpha/lo${ZERO_WIDTH_SPACE}cked.md`]: "x\n",
+    });
+    chmodSync(join(root, `alpha/lo${ZERO_WIDTH_SPACE}cked.md`), 0o000);
+    expect(
+      Bun.spawnSync(["mkfifo", join(root, "alpha", `pi${ZERO_WIDTH_JOINER}pe`)]).exitCode,
+    ).toBe(0);
+    const run = runGate([root]);
+    expect(run.exitCode).toBe(1);
+    expect(run.stderr).toContain(
+      `${root}/alpha/lo\\u200bcked.md: its name matches invisible-zero-width (invisible-character): U+200B x1`,
+    );
+    expect(run.stderr).toContain(`${root}/alpha/lo\\u200bcked.md: cannot be read (EACCES)`);
+    expect(run.stderr).toContain(
+      `${root}/alpha/pi\\u200dpe: its name matches invisible-zero-width (invisible-character): U+200D x1`,
+    );
+    expect(run.stderr).toContain(`${root}/alpha/pi\\u200dpe: not a regular file`);
+    expect(run.stderr).toContain("entries=3 (scanned=1 undecodable=0 symlinks=0 unreadable=2)");
+  });
 });
 
 describe("what the gate prints of the tree it scans", () => {
@@ -761,6 +893,43 @@ describe("what the gate prints of the tree it scans", () => {
       1,
     );
     expect(run.stdout).not.toContain(ESCAPE);
+  });
+
+  // Review finding N4: the reason of an unreadable entry is what the system
+  // said of it when the error carries no code, and it was escaped with no
+  // test holding it. Every reason the gate process meets on a fixture is a
+  // plain code (EACCES), so the entry is built here.
+  test("the reason of an entry that was not read is printed escaped, each kind in its turn", () => {
+    const read: SkillTreeRead = {
+      scanned: [],
+      undecodable: ["skills/a/blob"],
+      symlinks: ["skills/a/link"],
+      unreadable: [
+        { path: "skills/a/x", reason: `cannot be read (${forging}${ZERO_WIDTH_SPACE})` },
+      ],
+    };
+    const failures: UnreadEntry[] = unreadFailures(read);
+    expect(failures.map((failure) => failure.path)).toEqual([
+      "skills/a/blob",
+      "skills/a/link",
+      "skills/a/x",
+    ]);
+    expect(failures[0]?.reason).toStartWith("not valid UTF-8 text");
+    expect(failures[1]?.reason).toStartWith("symbolic link, not followed");
+    expect(failures[2]?.reason).toBe(`cannot be read (${forged}\\u200b)`);
+  });
+
+  // Review finding N4: the root is what the operator typed, and it is still
+  // printed, so it is escaped like the rest; no test held it on this message.
+  test("a root that holds no file is named escaped", () => {
+    const root = join(workspace(), `sk${ZERO_WIDTH_SPACE}il${ESCAPE}[31mls`);
+    mkdirSync(join(root, "alpha"), { recursive: true });
+    const run = runGate([root]);
+    expect(run.exitCode).toBe(0);
+    expect(run.stdout).toContain("sk\\u200bil\\u001b[31mls/ holds no file");
+    // The dash of the message is the gate's own; nothing of the root is raw.
+    expect(run.stdout + run.stderr).not.toContain(ESCAPE);
+    expect(run.stdout + run.stderr).not.toContain(ZERO_WIDTH_SPACE);
   });
 });
 

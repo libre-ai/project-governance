@@ -275,13 +275,29 @@ section ne les recopie pas.
   illisible sous `skills/` est un échec nommé, pas un fichier sauté.
 - **Trois familles de caractères invisibles, et elles seules.** Sont refusés,
   dans le contenu d'un fichier comme dans son nom (chaque segment du chemin
-  sous `skills/`), 150 points de code : le bloc Unicode « Tags » (U+E0000 à
+  d'une entrée rencontrée sous `skills/` : fichier, lien, entrée illisible),
+  150 points de code : le bloc Unicode « Tags » (U+E0000 à
   U+E007F), les caractères de largeur nulle (U+180E, U+200B à U+200D, U+2060 à
   U+2064, U+FEFF) et les contrôles bidirectionnels (U+061C, U+200E, U+200F,
   U+202A à U+202E, U+2066 à U+2069). Un modèle les lit, un relecteur ne les
   voit pas. Une marque d'ordre d'octets n'est tolérée qu'en tout début de
   fichier. Un texte collé depuis une page web ou un traitement de texte est la
-  source habituelle d'un tel caractère.
+  source habituelle d'un tel caractère. Limite : le nom d'un répertoire qui ne
+  contient aucune entrée n'est pas lu, à aucune profondeur. Le parcours ne
+  rencontre que des entrées, et git ne versionne pas un répertoire vide ; un
+  tel répertoire créé à la main sous `skills/` passe donc, quel que soit son
+  nom. La racine elle-même n'est pas lue comme un nom : c'est l'opérateur qui
+  la saisit.
+- **Une ligne de plus de 10 000 unités UTF-16 est refusée sans être lue.**
+  Au-delà d'une certaine taille, le moteur d'expressions régulières abandonne
+  sans erreur et répond « aucune correspondance », exactement comme pour une
+  ligne saine : une ligne de 28 Ko a caché un `cat .env`, et une suite « Tags »
+  de 1,3 million de caractères n'était pas vue (mesures du 2026-11-20, dans
+  l'en-tête du gate). Le gate ne confie donc au moteur aucune ligne plus
+  longue que celles où il a été mesuré ; la ligne trop longue est un constat
+  nommé, avec sa longueur, et se corrige en la coupant. Une ligne continuée
+  par `\` se mesure jointe. La plus longue ligne de `skills/` en comptait
+  1 184 à cette date.
 - **Ce qui passe, et n'affiche pourtant rien.** Le gate ne refuse pas « tout
   caractère invisible » : les sélecteurs de variante (U+FE00 à U+FE0F, U+E0100
   à U+E01EF, qui peuvent coder un texte octet par octet) et le reste de la
@@ -305,7 +321,11 @@ section ne les recopie pas.
   laquelle de ses lignes porte la correspondance. Un constat montre au plus
   trois suites « Tags » de 120 caractères, une exécution au plus cent
   constats ; ce qui est omis est compté, et dès qu'un constat est coupé ou
-  omis une ligne `findings=… (printed=… not-printed=…)` le dit.
+  omis une ligne `findings=… (printed=… not-printed=…)` le dit. Quand des
+  constats sont omis, elle donne aussi le nombre de chemins distincts qui les
+  portent, et combien de ces chemins ne sont nommés par aucun constat
+  imprimé : corriger ce qui est affiché peut faire apparaître un fichier que
+  le rapport ne montrait pas. Elle les compte, elle ne les liste pas.
 - **Le gate est grossier par construction.** Il arrête la forme évidente
   d'une consigne, pas une commande reconstruite par un alias ou un encodage :
   la revue reste nécessaire.

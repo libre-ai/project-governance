@@ -69,8 +69,8 @@
     {
       "id": "invisible-unicode-tags",
       "category": "invisible-character",
-      "regex": "(\\uDB40[\\uDC00-\\uDC7F])+",
-      "because": "the Unicode Tags block, U+E0000 to U+E007F (written here as its UTF-16 surrogate pairs), displays nothing and shadows ASCII one for one: a model reads the instruction it spells, a reviewer sees none"
+      "regex": "\\uDB40[\\uDC00-\\uDC7F]",
+      "because": "the Unicode Tags block, U+E0000 to U+E007F (written here as its UTF-16 surrogate pairs, one character per match and no repetition: the engine gives up on a repeated group past a run length, and reports no match), displays nothing and shadows ASCII one for one: a model reads the instruction it spells, a reviewer sees none"
     },
     {
       "id": "invisible-zero-width",

@@ -59,10 +59,46 @@
  * at most RUNS_SHOWN Tags runs, each cut at PAYLOAD_SHOWN characters; a run
  * prints at most FINDINGS_SHOWN findings. Whatever is left out is counted: in
  * the finding itself, and, as soon as a finding is cut or not printed, on a
- * line of its own (`findings=… (printed=… not-printed=…)`). No such line means
- * every finding was printed whole. Entries that could not be read are not
- * findings: each prints its own line, and their number is the one of the
- * volume line.
+ * line of its own (`findings=… (printed=… not-printed=…)`). When findings are
+ * not printed, that line also says on how many distinct paths they are, and
+ * how many of those paths no printed finding names: fixing what is printed
+ * can bring up a file the report never showed. It counts them, it does not
+ * list them. No such line means every finding was printed whole. Entries that
+ * could not be read are not findings: each prints its own line, and their
+ * number is the one of the volume line.
+ *
+ * A null from the engine is not always an absence. The regular expression
+ * engine gives up without an error: past a recursion depth or a step budget
+ * it returns "no match", which is also what a clean line returns. Measured
+ * 2026-11-20 with the pinned Bun (1.4.0-canary.1+57f349f63), every line
+ * holding a true match:
+ *
+ * - the Tags entry as first written, one group repeated, matched a run of
+ *   1 286 142 characters and returned null on 1 286 143 (1 929 214 and
+ *   1 929 215 with Bun 1.4.4); its non-capturing form gave up too, from
+ *   1 392 639. The entry now matches one character and repeats nothing, and
+ *   the gate joins adjacent matches into runs itself: a run of 200 000 000
+ *   characters is matched. The two other families never repeated: same
+ *   measure, same result;
+ * - of the eleven other entries, `secret-read-dotenv` has the same weakness,
+ *   and a nearer one. Its repeated group returns null from 434 175
+ *   repetitions (a line of 868 358 UTF-16 units), and from 28 293 units when
+ *   the line holds enough places where a match can start, each one spending
+ *   the step budget: a 28 KB line hid `cat .env`, with both Bun versions.
+ *   The ten others returned the match on every line tried: up to 64 000 000
+ *   units on the forms the engine reads in linear time; on the four forms it
+ *   reads in quadratic time, up to 1 000 000 units for three of them (36 to
+ *   257 seconds for one line) and 300 000 for the fourth (102 seconds). Such
+ *   a line makes the gate slow, not green.
+ *
+ * So the gate hands the engine no line it cannot vouch for: a logical line
+ * over LINE_UNITS_SCANNED UTF-16 units is not matched at all, and is a
+ * finding of its own, named with its length. At that size every form above
+ * was measured matching, and a test replays the nearest ones at the limit
+ * with the Bun that runs it. This is a measure of the forms tried, not a
+ * proof over every line: the limit sits under the nearest null by a factor
+ * of 2.8 in length, 8 in steps. Names are not bounded: only the three
+ * invisible entries read them, and none repeats.
  *
  * A byte-order mark that opens a file is tolerated: it is an encoding
  * signature, a single fixed character that carries nothing, and the strict
@@ -306,6 +342,14 @@ const RUNS_SHOWN = 3;
 /** Findings printed by one run of the gate; the others are counted. */
 const FINDINGS_SHOWN = 100;
 
+/**
+ * UTF-16 units of one logical line the patterns are applied to. A longer line
+ * is refused unmatched: past a size the engine returns "no match" for a line
+ * it gave up on (measures in the header). The longest line of skills/ was
+ * 1184 units on 2026-11-20.
+ */
+export const LINE_UNITS_SCANNED = 10_000;
+
 interface Hidden {
   readonly text: string;
   /** Whether `text` leaves a part of a run, or whole runs, counted but not shown. */
@@ -366,16 +410,67 @@ function describeHidden(matched: readonly string[]): Hidden {
   };
 }
 
+/**
+ * The matches of `expression` in `text`, adjacent ones joined into one run.
+ * An invisible-character entry matches one character and repeats nothing (a
+ * repeated group is what the engine gives up on), so a run is rebuilt here,
+ * from positions: this joins what the data file found, it finds nothing.
+ */
+function joinedRuns(text: string, expression: RegExp): string[] {
+  const runs: string[] = [];
+  let start = 0;
+  let end = -1;
+  for (const match of text.matchAll(expression)) {
+    if (match.index !== end) {
+      if (end >= 0) runs.push(text.slice(start, end));
+      start = match.index;
+    }
+    end = match.index + match[0].length;
+  }
+  if (end >= 0) runs.push(text.slice(start, end));
+  return runs;
+}
+
 /** The fields of a finding that say what a line or a name hides. */
-function evidenceOf(matched: readonly string[]): { evidence: string; evidenceCut?: true } {
-  const hidden = describeHidden(matched);
+function evidenceOf(text: string, expression: RegExp): { evidence: string; evidenceCut?: true } {
+  const hidden = describeHidden(joinedRuns(text, expression));
   return { evidence: hidden.text, ...(hidden.cut ? { evidenceCut: true } : {}) };
+}
+
+/** A logical line longer than the patterns are applied to. */
+export interface OverlongLine {
+  readonly path: string;
+  readonly line: number;
+  readonly lastLine?: number;
+  /** Its length, in UTF-16 units. */
+  readonly units: number;
+}
+
+/**
+ * The logical lines over LINE_UNITS_SCANNED units. `scanForSkillRisks` skips
+ * exactly these, so each is a finding here or it is nowhere. Pure.
+ */
+export function overlongLines(files: readonly ScannedFile[]): OverlongLine[] {
+  const overlong: OverlongLine[] = [];
+  for (const file of files) {
+    for (const { start, end, text } of logicalLines(file.content)) {
+      if (text.length <= LINE_UNITS_SCANNED) continue;
+      overlong.push({
+        path: file.path,
+        line: start,
+        ...(end > start ? { lastLine: end } : {}),
+        units: text.length,
+      });
+    }
+  }
+  return overlong;
 }
 
 /**
  * One finding per (logical line, pattern) that matches, reported on the
  * physical line where the logical line starts, with the line it ends on when
- * a continuation joined several. Pure.
+ * a continuation joined several. A line over LINE_UNITS_SCANNED units is not
+ * matched: `overlongLines` reports it. Pure.
  */
 export function scanForSkillRisks(
   files: readonly ScannedFile[],
@@ -390,16 +485,17 @@ export function scanForSkillRisks(
   const findings: SecurityFinding[] = [];
   for (const file of files) {
     for (const { start, end, text } of logicalLines(file.content)) {
+      // Past this size a null is not an absence: the line is refused unmatched.
+      if (text.length > LINE_UNITS_SCANNED) continue;
       for (const { pattern, expression } of compiled) {
-        const matched = text.match(expression);
-        if (matched === null) continue;
+        if (text.match(expression) === null) continue;
         findings.push({
           path: file.path,
           line: start,
           ...(end > start ? { lastLine: end } : {}),
           patternId: pattern.id,
           category: pattern.category,
-          ...(pattern.category === "invisible-character" ? evidenceOf(matched) : {}),
+          ...(pattern.category === "invisible-character" ? evidenceOf(text, expression) : {}),
         });
       }
     }
@@ -424,13 +520,12 @@ export function scanEntryNames(
   for (const path of paths) {
     const name = relative(root, path);
     for (const { pattern, expression } of compiled) {
-      const matched = name.match(expression);
-      if (matched === null) continue;
+      if (name.match(expression) === null) continue;
       findings.push({
         path,
         patternId: pattern.id,
         category: pattern.category,
-        ...evidenceOf(matched),
+        ...evidenceOf(name, expression),
       });
     }
   }
@@ -548,6 +643,40 @@ export function formatSecurityVolume(read: SkillTreeRead, lines: number, pattern
   );
 }
 
+/**
+ * What each entry that was not scanned prints, in the order it is printed:
+ * its path and the reason. The reason of an unreadable entry can carry what
+ * the system said of it, so it goes through `asciiOnly`; the path is escaped
+ * where it is printed, like every other.
+ */
+export function unreadFailures(read: SkillTreeRead): UnreadEntry[] {
+  return [
+    ...read.undecodable.map((path) => ({
+      path,
+      reason:
+        "not valid UTF-8 text (invalid bytes, or a NUL): its content cannot be read, so it is refused",
+    })),
+    ...read.symlinks.map((path) => ({
+      path,
+      reason: "symbolic link, not followed: its target is not part of the tree",
+    })),
+    ...read.unreadable.map(({ path, reason }) => ({ path, reason: asciiOnly(reason) })),
+  ];
+}
+
+/**
+ * Where the findings that are not printed are: on how many distinct paths,
+ * and how many of those paths no printed finding names. A count, not a list:
+ * a path named nowhere is why the line exists, and listing them would be the
+ * unbounded output the cap removes.
+ */
+function omittedPaths(findings: readonly { readonly path: string }[], printed: number): string {
+  const shown = new Set(findings.slice(0, printed).map((finding) => finding.path));
+  const omitted = new Set(findings.slice(printed).map((finding) => finding.path));
+  const unnamed = [...omitted].filter((path) => !shown.has(path)).length;
+  return ` on ${omitted.size} path(s), ${unnamed} of them named by no printed finding`;
+}
+
 /** Whether the root entry exists, without following it if it is a link. */
 function rootIsPresent(root: string): boolean {
   try {
@@ -610,13 +739,25 @@ async function main(): Promise<void> {
     ...read.unreadable.map((entry) => entry.path),
   ];
   const named = scanEntryNames(root, entries, patterns);
+  const overlong = overlongLines(read.scanned);
   const findings = scanForSkillRisks(read.scanned, patterns);
-  const refused = new Set([...named, ...findings].map((finding) => finding.path));
+  const refused = new Set([...named, ...overlong, ...findings].map((finding) => finding.path));
   for (const file of read.scanned) {
     if (!refused.has(file.path)) record(file.path, true, "no pattern matches");
   }
 
+  const range = (line: number, lastLine: number | undefined): string =>
+    `:${line}${lastLine === undefined ? "" : `-${lastLine}`}`;
   const printed = [
+    // First: a line that was not matched says nothing of what it holds.
+    ...overlong.map((line) => ({
+      path: line.path,
+      place: range(line.line, line.lastLine),
+      note:
+        `line of ${line.units} UTF-16 units, over the ${LINE_UNITS_SCANNED} a pattern is applied to: ` +
+        "not scanned, so it is refused",
+      cut: false,
+    })),
     ...named.map((finding) => ({
       path: finding.path,
       place: "",
@@ -625,7 +766,7 @@ async function main(): Promise<void> {
     })),
     ...findings.map((finding) => ({
       path: finding.path,
-      place: `:${finding.line}${finding.lastLine === undefined ? "" : `-${finding.lastLine}`}`,
+      place: range(finding.line, finding.lastLine),
       note:
         `matches ${finding.patternId} (${finding.category})` +
         (finding.evidence === undefined ? "" : `: ${finding.evidence}`),
@@ -638,27 +779,17 @@ async function main(): Promise<void> {
   // every finding was printed, and printed whole.
   const cut = shown.filter((finding) => finding.cut).length;
   if (printed.length > shown.length || cut > 0) {
+    const omitted = printed.length - shown.length;
     record(
       root,
       false,
-      `findings=${printed.length} (printed=${shown.length} not-printed=${printed.length - shown.length}), ` +
+      `findings=${printed.length} (printed=${shown.length} not-printed=${omitted}` +
+        `${omitted > 0 ? omittedPaths(printed, shown.length) : ""}), ` +
         `evidence cut on ${cut} of the printed`,
     );
   }
 
-  for (const path of read.undecodable) {
-    record(
-      path,
-      false,
-      "not valid UTF-8 text (invalid bytes, or a NUL): its content cannot be read, so it is refused",
-    );
-  }
-  for (const path of read.symlinks) {
-    record(path, false, "symbolic link, not followed: its target is not part of the tree");
-  }
-  for (const { path, reason } of read.unreadable) {
-    record(path, false, asciiOnly(reason));
-  }
+  for (const { path, reason } of unreadFailures(read)) record(path, false, reason);
   // A failing run prints no volume line, so the counts ride on a check of
   // their own whenever an entry was left unread.
   if (read.scanned.length < entriesMet(read)) {
