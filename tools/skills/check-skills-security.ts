@@ -346,7 +346,7 @@ const FINDINGS_SHOWN = 100;
  * UTF-16 units of one logical line the patterns are applied to. A longer line
  * is refused unmatched: past a size the engine returns "no match" for a line
  * it gave up on (measures in the header). The longest line of skills/ was
- * 1184 units on 2026-11-20.
+ * 1159 units on 2026-11-20.
  */
 export const LINE_UNITS_SCANNED = 10_000;
 

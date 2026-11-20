@@ -297,7 +297,7 @@ section ne les recopie pas.
   longue que celles où il a été mesuré ; la ligne trop longue est un constat
   nommé, avec sa longueur, et se corrige en la coupant. Une ligne continuée
   par `\` se mesure jointe. La plus longue ligne de `skills/` en comptait
-  1 184 à cette date.
+  1 159 à cette date.
 - **Ce qui passe, et n'affiche pourtant rien.** Le gate ne refuse pas « tout
   caractère invisible » : les sélecteurs de variante (U+FE00 à U+FE0F, U+E0100
   à U+E01EF, qui peuvent coder un texte octet par octet) et le reste de la
