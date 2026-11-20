@@ -16,7 +16,7 @@
       "file": "docs/security/THREAT-MODEL.md",
       "id": "I-35",
       "anchor": "human touch; I-35 withdrawn by D103, 2026-11-09",
-      "because": "orchestrator-lock row of the agent-fleet table: the carrier cell names I-18 and I-17 and records that I-35 was withdrawn by D103. This row named I-35 as a carrier until the change that introduced this list; the rewording awaits the owner's validation"
+      "because": "orchestrator-lock row of the agent-fleet table: the carrier cell names I-18 and I-17 and records that I-35 was withdrawn by D103. This row named I-35 as a carrier until the change that introduced this list; the owner validated the rewording on 2026-11-20"
     },
     {
       "file": "docs/security/THREAT-MODEL.md",
