@@ -56,7 +56,8 @@ class RunnerTests(unittest.TestCase):
 
             def child(argv, cwd, timeout, capture=False, stdin=None):
                 calls.append(argv)
-                if argv[:3] == ['git', 'rev-parse', 'HEAD']:
+                # Matched on the subcommand: options before it (`-c ...`) are the runner's own.
+                if argv[0] == 'git' and argv[-2:] == ['rev-parse', 'HEAD']:
                     return subprocess.CompletedProcess(argv, 0, heads[cwd.name])
                 return subprocess.CompletedProcess(argv, 0, '')
             with patch.object(self.m, 'command', side_effect=child):
@@ -96,9 +97,9 @@ class RunnerTests(unittest.TestCase):
 
             def child(argv, cwd, timeout, capture=False, stdin=None):
                 nonlocal mutated
-                if argv[:3] == ['git', 'rev-parse', 'HEAD']:
+                if argv[0] == 'git' and argv[-2:] == ['rev-parse', 'HEAD']:
                     return subprocess.CompletedProcess(argv, 0, heads[cwd.name])
-                if argv[:2] == ['git', 'status']:
+                if argv[0] == 'git' and 'status' in argv:
                     return subprocess.CompletedProcess(argv, 0, ' M source.rs\n' if mutated else '')
                 if argv[0] == 'cargo':
                     mutated = True

@@ -7,6 +7,57 @@ Les dépendances de développement `file:` et Cargo `path` relient plusieurs dé
 
 Cette recette utilise les outils existants de CI. Elle prépare un **nouveau dossier** et refuse de remplacer un checkout existant. Tous les dépôts nécessaires sont présents avant l’installation ; le toolkit construit UI avant que les consommateurs en copient les exports. Les paquets conservent leurs noms, imports et versions indépendants. Rien n’est publié vers npm, Cargo ou un service de déploiement.
 
+## Vérifier un dépôt de la flotte sur clone neuf (agent)
+
+Sur un clone neuf d’un dépôt de la flotte, `bun run check` lancé seul ne mesure pas ce que le pipeline mesure : les dépendances `file:../<dépôt frère>` résolvent ce qui se trouve à côté, à n’importe quelle révision, et le Bun du poste n’est pas forcément celui que la gouvernance épingle. Le pipeline (`.github/workflows/validate-composition.yml`) monte d’abord la composition avec `run-composition.py`. La même commande se lance en local, et sa phase `verify` dit si le résultat est prêt.
+
+```sh
+set -eu
+TARGET=collaborative-data-sync
+TARGET_REVISION="$(git ls-remote "https://github.com/libre-ai/$TARGET.git" HEAD | cut -f1)"
+WORKSPACE="$(mktemp -d)"
+WORKSPACE="$(cd "$WORKSPACE" && pwd -P)"
+COMPOSITION="$WORKSPACE/sources"
+git clone --quiet https://github.com/libre-ai/project-governance.git "$WORKSPACE/tooling"
+python3 -B "$WORKSPACE/tooling/.github/composition/run-composition.py" \
+  --target "$TARGET" --revision "$TARGET_REVISION" \
+  --root "$COMPOSITION" --phase prepare
+```
+
+Dans le même terminal, installez ensuite Bun par les blocs de la section 2.2 (celui de votre plateforme) : ils ne lisent que `WORKSPACE` et `COMPOSITION`, définis ci-dessus. Ne lancez pas la section 2.1, qui remonterait les sources dans un dossier déjà occupé. Puis demandez le verdict :
+
+```sh
+python3 -B "$WORKSPACE/tooling/.github/composition/run-composition.py" \
+  --target "$TARGET" --revision "$TARGET_REVISION" \
+  --root "$COMPOSITION" --phase verify
+```
+
+`TARGET_REVISION` est ici la tête de la branche servie ; donnez le SHA complet de tout autre commit à vérifier. `--root` doit être un chemin absolu sans lien symbolique (d’où `pwd -P`), et le dossier doit être neuf ou vide pour `prepare`. Aucun jeton n’est requis : les sources sont lues par le protocole Git sur des dépôts publics.
+
+`prepare` imprime une ligne par dépôt du plan, ses compteurs, puis `Sources of <cible>: MOUNTED` ou `NOT MOUNTED`. `verify` imprime les mêmes lignes et compteurs, puis le reçu, Bun et son verdict :
+
+```text
+project-governance mounted=<sha> expected=<sha> concordant
+collaborative-data-sync mounted=<sha> expected=<sha> concordant
+Composition collaborative-data-sync: 2 repositories expected, 2 mounted, 2 concordant
+receipt .composition-state.json expected=<empreinte du plan> concordant
+bun found=<révision> expected=<révision> concordant
+Toolchain: 1 expected, 1 concordant
+Composition collaborative-data-sync: READY
+```
+
+- Verdict d’un dépôt : `concordant`, `mismatch` (une autre révision que celle du plan), `modified` (un fichier suivi a changé), `masked` (un fichier suivi porte un drapeau d’index `skip-worktree` ou `assume-unchanged` : Git ne le regarde plus, son silence ne dit rien de ce fichier), `absent`, `unreadable` (pas un checkout Git lisible à cet endroit, un dossier qui est un lien, un `.git` qui est un fichier ou un lien : il renverrait à un autre dépôt que le dossier nommé, ou un chemin que l’outil n’a pas le droit de lire : jamais annoncé `absent`). La configuration propre d’un checkout ne lance aucun programme pendant la lecture : `core.fsmonitor` y est désactivé.
+- `prepare` monte les sources et ne juge pas l’outillage. `verify` ne monte rien et n’écrit rien, `.git` compris ; elle seule dit `READY`.
+- `verify` lit le reçu `.composition-state.json` que `prepare` écrit à la racine et que `--phase check` exige (`absent`, `mismatch` s’il appartient à un autre plan, `unreadable`). Des dépôts posés à la main aux bons SHA, sans `prepare`, ne sont donc pas `READY` : `check` les refuserait.
+- `verify` compare `bun --revision` à la révision de `project-governance/toolchains/bun.json` **dans la composition**, le fichier que le pipeline donne à son installateur. Si elle diffère, la sortie nomme la révision attendue ; elle s’installe par la section 2.2, puis `verify` se relance.
+- Les variables `GIT_*` du terminal (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`…) ne sont transmises à aucune commande lancée par l’outil : le verdict porte sur le dossier donné à `--root`. La purge vaut aussi pour le `fetch` de `prepare` : `GIT_SSL_CAINFO`, `GIT_PROXY_COMMAND` et `GIT_SSH_COMMAND` ne l’atteignent pas, donc un `prepare` derrière un proxy TLS d’entreprise doit trouver le certificat de ce proxy dans le magasin de certificats du système.
+- Si la racine n’existe pas, la première ligne le dit : `Composition root is missing: <chemin>` ; si c’est un fichier, `Composition root is not a directory: <chemin>` ; si l’outil ne peut pas la lire, `Composition root is unreadable: <chemin>` : rendre le droit de lecture puis relancer `verify`, un nouveau `prepare` refuserait cette racine non vide.
+- Le code de sortie est non nul dès qu’un dépôt n’est pas `concordant`, que le plan est vide, ou, pour `verify`, que le reçu ou Bun n’est pas celui attendu. Sous `set -e`, une `verify` non prête arrête donc le terminal ; pour seulement lire son diagnostic, ajoutez `|| true` à la commande.
+
+Quand `verify` dit `READY`, `--phase check` (section 3) admet cette racine : même reçu, mêmes SHA. Cette phase installe dans l’ordre du plan, puis exécute la commande de vérification de la cible ; ses propres prérequis (Rust, outil de licences) sont ceux de la section 2.1, que `verify` ne juge pas.
+
+Les voisins sont montés aux SHA de `manifest.json` **de l’outillage employé**. Le clone ci-dessus prend l’outillage à la tête de la branche servie de `project-governance`. Le pipeline d’un dépôt emploie, lui, la révision `tooling_ref` écrite dans son `.github/workflows/code-validation.yml` : pour reproduire exactement son verdict, placez `$WORKSPACE/tooling` à ce SHA (`git -C "$WORKSPACE/tooling" checkout --detach <tooling_ref>`). Un outillage antérieur à l’ajout de la phase `verify` la refuse.
+
 ## 1. Choisir les révisions et lire le plan
 
 Prérequis : Git, Python 3.11 ou supérieur, Bash, curl, Rustup et un accès aux dépôts GitHub publics. Les commandes suivantes s’exécutent dans le même terminal. L’exemple choisit un commit Notebook qualifié ; pour un autre travail, remplacez `TARGET` et `TARGET_REVISION` par le nom canonique et le SHA complet du commit à vérifier. N’utilisez pas un ancien commit documentaire comme preuve de présence du code.
@@ -32,6 +83,8 @@ Les deux dernières commandes affichent le plan sans installer ni modifier les d
 
 ## 2. Préparer les sources et les outils
 
+### 2.1 Sources, Rust et outil de licences
+
 ```sh
 python3 "$WORKSPACE/tooling/.github/composition/run-composition.py" \
   --target "$TARGET" --revision "$TARGET_REVISION" \
@@ -48,6 +101,10 @@ export PATH="$WORKSPACE/licensing/bin:$PATH"
 
 Le répertoire choisi par `rustup which` place Cargo et rustc 1.97 en tête du `PATH` de cette session ; aucun défaut Rustup global ni variable `RUSTUP_TOOLCHAIN` n’est modifié.
 
+### 2.2 Bun, Node et outils vérifiés
+
+Ces blocs ne lisent que `WORKSPACE` et `COMPOSITION`, et demandent que la section 2.1 ou la recette agent ait monté les sources. Les fiches de Bun, de Node et de cargo-deny sont lues dans `"$COMPOSITION/project-governance/toolchains"`, la gouvernance **composée** : ce sont les fichiers que le pipeline donne à son installateur, et celui auquel `verify` compare Bun. Seule la fiche d’osv-scanner vient de l’outillage (`$WORKSPACE/tooling`), comme dans le pipeline. Lire Bun dans l’outillage installerait, dès que l’outillage et la gouvernance composée épinglent deux Bun, celui que `verify` refuse.
+
 Bun doit être exactement `1.4.0-canary.1+57f349f63`. Les builds Notebook utilisent Node `26.5.0` et vérifient aussi le SHA de son exécutable. Les installateurs ci-dessous lisent les empreintes depuis les manifestes épinglés, vérifient les archives avant extraction et n’activent les chemins qu’après tous les contrôles. Leurs fichiers `GITHUB_PATH` et `GITHUB_ENV` sont ici de simples sorties locales ; aucun fichier d’environnement n’est exécuté.
 
 ```sh
@@ -62,9 +119,9 @@ Sur **Linux x86_64** :
 
 ```sh
 bash "$WORKSPACE/tooling/.github/composition/install-toolchains.sh" \
-  "$WORKSPACE/tooling/toolchains/bun.json" \
-  "$WORKSPACE/tooling/toolchains/notebook-qualification.json" \
-  "$WORKSPACE/tooling/toolchains/cargo-deny.json" \
+  "$COMPOSITION/project-governance/toolchains/bun.json" \
+  "$COMPOSITION/project-governance/toolchains/notebook-qualification.json" \
+  "$COMPOSITION/project-governance/toolchains/cargo-deny.json" \
   "$WORKSPACE/tooling/toolchains/osv-scanner.json"
 ```
 
@@ -80,8 +137,8 @@ printf '%s  %s\n' \
   621479c80cd1be892d4d33e989b94f3cf22a21bcaf46dffe90ecb5805f7b840a \
   "$WORKSPACE/install-macos-toolchains.sh" | shasum -a 256 --check
 bash "$WORKSPACE/install-macos-toolchains.sh" \
-  "$WORKSPACE/tooling/toolchains/bun.json" \
-  "$WORKSPACE/tooling/toolchains/notebook-qualification.json"
+  "$COMPOSITION/project-governance/toolchains/bun.json" \
+  "$COMPOSITION/project-governance/toolchains/notebook-qualification.json"
 ```
 
 Ces recettes refusent les autres architectures. Elles ne changent pas l’autorisation d’usage bootstrap de la version Bun préliminaire.
