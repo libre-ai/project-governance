@@ -1,0 +1,11 @@
+{
+  "because": "Fingerprints of identifiers that must not appear in this tree, read by tools/quality/check-identifier-fingerprints.ts (fingerprint, normalisation and threat model in its header: masking at read time, not confidentiality). The only entry delivered is a sentinel: its identifier is synthetic, composed at test time by check-identifier-fingerprints.test.ts, and keeps the list non-empty so the gate runs. Real entries are derived by the owner of each list with --derive, from a plain list kept outside the repository, and added here.",
+  "entries": [
+    {
+      "class": "person",
+      "tokens": 1,
+      "sha256": "22b39c34aee9e83edc17aca9258b70e5da11e0eb7faa576478c0096f02829175"
+    }
+  ],
+  "exemptPaths": []
+}

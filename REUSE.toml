@@ -151,3 +151,12 @@ path = ["crates/ecosystem-engine/vendored/**"]
 precedence = "closest"
 SPDX-FileCopyrightText = "2026 Libre AI contributors"
 SPDX-License-Identifier = "Apache-2.0"
+
+# The homoglyph table is an excerpt of Unicode UTS #39 confusables.txt (source,
+# date and sha256 inside the file): its pairs are Unicode data under
+# Unicode-3.0, the surrounding JSON and its explanation are ours.
+[[annotations]]
+path = ["tools/quality/identifier-confusables.v1.json"]
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 Libre AI contributors", "2026 Unicode, Inc."]
+SPDX-License-Identifier = "Apache-2.0 AND Unicode-3.0"

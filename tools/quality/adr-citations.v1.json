@@ -1,0 +1,13 @@
+{
+  "convention": "`ADR-NNNN` (hyphen, four digits) cites the series of this repository, docs/adr/NNNN-*.md: it is qualified by its form. A decision of another repository's series is cited `<repository> ADR NNNN` (space, four digits), with the repository listed below. Any other form is a bare citation.",
+  "localForm": "ADR-NNNN",
+  "documents": [
+    "AGENTS.md",
+    "GOALS.md",
+    "STATUS.md",
+    "docs/README.md",
+    "docs/decisions/*.md",
+    "docs/architecture/*.md"
+  ],
+  "foreignRepositories": ["control-plane"]
+}

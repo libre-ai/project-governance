@@ -1,0 +1,341 @@
+import { describe, expect, test } from "bun:test";
+import {
+  guard,
+  type Plan,
+  type Ports,
+  type PushedRef,
+  parsePushedRefs,
+  parseServedBranch,
+  planPush,
+  type Runner,
+  refuse,
+} from "./pre-push-artifact-lifecycle";
+
+// The pre-push guard without git: its stdin contract, the choice of interval
+// for each pushed ref, and the verdict. The process tests run it under a real
+// `git push` against a fixture remote.
+
+const ZERO = "0".repeat(40);
+const LOCAL = "a".repeat(40);
+const REMOTE = "b".repeat(40);
+const SERVED = "c".repeat(40);
+const BASE = "d".repeat(40);
+
+function pushed(localSha: string, remoteSha: string, ref = "refs/heads/feature"): PushedRef {
+  return { localRef: ref, localSha, remoteRef: ref, remoteSha };
+}
+
+/** Ports over a fixed object store: `commits` exist, `bases` maps "a b" to their merge base. */
+function ports(
+  options: {
+    commits?: readonly string[];
+    bases?: Readonly<Record<string, string>>;
+    served?: ReturnType<Ports["servedBranch"]>;
+    tracking?: Readonly<Record<string, string>>;
+  } = {},
+): Ports & { asked: string[] } {
+  const asked: string[] = [];
+  return {
+    asked,
+    isCommit: (sha) => (options.commits ?? []).includes(sha),
+    resolveRef: (ref) => options.tracking?.[ref] ?? null,
+    mergeBase: (a, b) => options.bases?.[`${a} ${b}`] ?? null,
+    servedBranch: (remote) => {
+      asked.push(remote);
+      return options.served ?? { ok: false, reason: "no answer" };
+    },
+  };
+}
+
+describe("parsePushedRefs", () => {
+  test("reads the four fields of every line git writes", () => {
+    const input = `refs/heads/a ${LOCAL} refs/heads/a ${ZERO}\n(delete) ${ZERO} refs/heads/b ${REMOTE}\n`;
+    expect(parsePushedRefs(input)).toEqual({
+      ok: true,
+      refs: [
+        { localRef: "refs/heads/a", localSha: LOCAL, remoteRef: "refs/heads/a", remoteSha: ZERO },
+        { localRef: "(delete)", localSha: ZERO, remoteRef: "refs/heads/b", remoteSha: REMOTE },
+      ],
+    });
+  });
+
+  test("an empty input is no ref, not an error", () => {
+    expect(parsePushedRefs("")).toEqual({ ok: true, refs: [] });
+  });
+
+  test("a line that is not four fields with object names is refused with its number", () => {
+    expect(parsePushedRefs(`refs/heads/a ${LOCAL} refs/heads/a ${ZERO}\nnonsense\n`)).toEqual({
+      ok: false,
+      line: 2,
+    });
+    expect(parsePushedRefs(`refs/heads/a xyz refs/heads/a ${ZERO}\n`)).toEqual({
+      ok: false,
+      line: 1,
+    });
+  });
+});
+
+describe("parseServedBranch", () => {
+  test("reads a served branch that is not called main", () => {
+    expect(parseServedBranch(`ref: refs/heads/trunk-served\tHEAD\n${SERVED}\tHEAD\n`)).toEqual({
+      ok: true,
+      name: "trunk-served",
+      sha: SERVED,
+    });
+  });
+
+  test("a remote without a symbolic HEAD names no served branch", () => {
+    expect(parseServedBranch(`${SERVED}\tHEAD\n`).ok).toBe(false);
+    expect(parseServedBranch("").ok).toBe(false);
+  });
+});
+
+describe("planPush", () => {
+  test("a deleted ref is skipped without asking anything", () => {
+    const p = ports();
+    expect(planPush("origin", [pushed(ZERO, REMOTE)], p)).toEqual([
+      { kind: "skip", ref: "refs/heads/feature", why: "deleted, nothing to examine" },
+    ]);
+    expect(p.asked).toEqual([]);
+  });
+
+  test("a ref the remote already has is skipped", () => {
+    expect(planPush("origin", [pushed(LOCAL, LOCAL)], ports())[0]?.kind).toBe("skip");
+  });
+
+  test("a known remote commit: the interval from its merge base with the pushed one", () => {
+    const p = ports({ commits: [REMOTE], bases: { [`${REMOTE} ${LOCAL}`]: REMOTE } });
+    expect(planPush("origin", [pushed(LOCAL, REMOTE)], p)).toEqual([
+      {
+        kind: "gate",
+        ref: "refs/heads/feature",
+        sha: LOCAL,
+        range: `${REMOTE}..${LOCAL}`,
+        why: "what the remote does not have",
+      },
+    ]);
+    expect(p.asked).toEqual([]);
+  });
+
+  test("a new branch: the interval from the merge base with the served branch, asked to the remote", () => {
+    const p = ports({
+      commits: [SERVED],
+      bases: { [`${SERVED} ${LOCAL}`]: BASE },
+      served: { ok: true, name: "trunk-served", sha: SERVED },
+    });
+    const [plan] = planPush("upstream", [pushed(LOCAL, ZERO)], p);
+    expect(plan).toEqual({
+      kind: "gate",
+      ref: "refs/heads/feature",
+      sha: LOCAL,
+      range: `${BASE}..${LOCAL}`,
+      why: "from the merge base with the served branch trunk-served",
+    });
+    expect(p.asked).toEqual(["upstream"]);
+  });
+
+  test("a served commit unknown here falls back to the remote-tracking ref of the served branch", () => {
+    const p = ports({
+      commits: [BASE],
+      bases: { [`${BASE} ${LOCAL}`]: BASE },
+      served: { ok: true, name: "trunk-served", sha: SERVED },
+      tracking: { "refs/remotes/origin/trunk-served": BASE },
+    });
+    expect(planPush("origin", [pushed(LOCAL, ZERO)], p)[0]).toMatchObject({
+      range: `${BASE}..${LOCAL}`,
+    });
+  });
+
+  test("a remote commit unknown here is measured from the served branch", () => {
+    const p = ports({
+      commits: [SERVED],
+      bases: { [`${SERVED} ${LOCAL}`]: BASE },
+      served: { ok: true, name: "trunk-served", sha: SERVED },
+    });
+    expect(planPush("origin", [pushed(LOCAL, REMOTE)], p)[0]).toMatchObject({
+      range: `${BASE}..${LOCAL}`,
+    });
+  });
+
+  test("no served branch: the whole gate, with the reason", () => {
+    expect(planPush("origin", [pushed(LOCAL, ZERO)], ports())).toEqual([
+      {
+        kind: "gate",
+        ref: "refs/heads/feature",
+        sha: LOCAL,
+        range: null,
+        why: "no answer: whole gate",
+      },
+    ]);
+  });
+
+  test("no merge base with the served branch: the whole gate, with the reason", () => {
+    const p = ports({ commits: [SERVED], served: { ok: true, name: "trunk-served", sha: SERVED } });
+    expect(planPush("origin", [pushed(LOCAL, ZERO)], p)[0]).toEqual({
+      kind: "gate",
+      ref: "refs/heads/feature",
+      sha: LOCAL,
+      range: null,
+      why: "no merge base with the served branch trunk-served is known here: whole gate",
+    });
+  });
+});
+
+/** The counter line check-artifact-lifecycle.ts prints on every verdict it reaches. */
+const counters = (unavailable: number): string =>
+  `markers: total=${unavailable} valid=0 overdue=0 unavailable=${unavailable} malformed=0`;
+
+/**
+ * A runner whose work tree is commit `checkedOut`: only there are untracked
+ * files examined. Each run prints the gate's counter line, with `unavailable[i]`
+ * unavailable markers (default 0); `output[i]`, when given, replaces the output.
+ */
+function runner(
+  codes: readonly (number | null)[],
+  available = true,
+  checkedOut = LOCAL,
+  unavailable: readonly number[] = [],
+  output: readonly (string | undefined)[] = [],
+): Runner & { calls: unknown[] } {
+  const calls: unknown[] = [];
+  return {
+    calls,
+    gateAvailable: () => available,
+    runGate: (sha, range, untracked) => {
+      calls.push([sha, range, untracked]);
+      const index = calls.length - 1;
+      const exitCode = index < codes.length ? (codes[index] as number | null) : 0;
+      return {
+        exitCode,
+        output: output[index] ?? `gate run ${calls.length}\n${counters(unavailable[index] ?? 0)}\n`,
+        untrackedExamined: untracked && sha === checkedOut,
+      };
+    },
+  };
+}
+
+const GATED: Plan = {
+  kind: "gate",
+  ref: "refs/heads/feature",
+  sha: LOCAL,
+  range: "x..y",
+  why: "why",
+};
+const OTHER: Plan = { ...GATED, ref: "refs/heads/other", sha: REMOTE, range: null };
+const SKIPPED: Plan = { kind: "skip", ref: "refs/heads/old", why: "deleted, nothing to examine" };
+
+describe("guard", () => {
+  test("nothing to gate: pass without running the gate", () => {
+    const r = runner([1]);
+    const outcome = guard([SKIPPED], r, false);
+    expect(outcome.exitCode).toBe(0);
+    expect(r.calls).toEqual([]);
+    expect(outcome.lines.at(-1)).toBe("artifact-lifecycle pre-push: refs=1 examined=0: pass");
+  });
+
+  test("each gated ref is judged on its own commit; the untracked files once, where examined", () => {
+    const r = runner([0, 0, 0]);
+    const outcome = guard([OTHER, GATED, SKIPPED, { ...GATED, range: null }], r, false);
+    expect(outcome.exitCode).toBe(0);
+    expect(r.calls).toEqual([
+      [REMOTE, null, true],
+      [LOCAL, "x..y", true],
+      [LOCAL, null, false],
+    ]);
+    expect(outcome.lines.join("\n")).not.toContain("NOT examined");
+  });
+
+  test("no pushed ref is the checked-out commit: the untracked files are said NOT examined", () => {
+    const outcome = guard([OTHER], runner([0]), false);
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines).toContain(
+      "artifact-lifecycle pre-push: untracked files of the work tree NOT examined: no pushed ref is the checked-out commit with an index and tracked files equal to it",
+    );
+  });
+
+  test("a refusal of the guard itself says the override does not lift it, and blocks under it", () => {
+    for (const override of [false, true]) {
+      const refused = refuse("unexpected line 1 on the standard input", override);
+      expect(refused.exitCode).toBe(2);
+      expect(refused.lines.at(-1)).toContain("push REFUSED (exit 2)");
+      expect(refused.lines.at(-1)).toContain(
+        "ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 lifts violations only (exit 1)",
+      );
+      expect(refused.lines.join("\n")).not.toContain("OVERRIDE");
+    }
+  });
+
+  test.each([
+    ["an unreadable source or a usage error", 2, 2],
+    ["a malformed marker", 4, 4],
+    ["an unevaluable merged() marker", 3, 3],
+    ["a gate that cannot start", null, 2],
+    ["a code outside the gate's contract", 7, 7],
+  ])("under the override, %s still blocks with its code", (_name, code, expected) => {
+    const outcome = guard([GATED], runner([code]), true);
+    expect(outcome.exitCode).toBe(expected);
+    expect(outcome.lines.at(-1)).toContain(`push REFUSED (exit ${expected})`);
+    expect(outcome.lines.at(-1)).toContain("lifts violations only (exit 1)");
+    expect(outcome.lines.join("\n")).not.toContain("OVERRIDE");
+  });
+
+  test("under the override, a violation on one ref does not lift a guard refusal on another", () => {
+    expect(guard([GATED, OTHER], runner([1, 4]), true).exitCode).toBe(4);
+    expect(guard([GATED, OTHER], runner([3, 1]), true).exitCode).toBe(3);
+  });
+
+  test("an exit 1 whose counters report an unavailable marker blocks under the override with 3", () => {
+    const outcome = guard([GATED], runner([1], true, LOCAL, [1]), true);
+    expect(outcome.exitCode).toBe(3);
+    expect(outcome.lines.at(-1)).toContain("push REFUSED (exit 3)");
+    // Without an unavailable marker the same exit 1 is lifted.
+    expect(guard([GATED], runner([1], true, LOCAL, [0]), true).exitCode).toBe(0);
+  });
+
+  test.each([
+    ["no counter line", "gate run 1\n"],
+    ["two counter lines", `${counters(0)}\n${counters(0)}\n`],
+    ["a counter line of another shape", "markers: total=1 unavailable=0\n"],
+  ])("an exit 1 with %s is an unreadable report: exit 2, under the override too", (_name, out) => {
+    const outcome = guard([GATED], runner([1], true, LOCAL, [], [out]), true);
+    expect(outcome.exitCode).toBe(2);
+    expect(outcome.lines.at(-1)).toContain("push REFUSED (exit 2)");
+  });
+
+  test("a red gate refuses with the gate's code and names the override", () => {
+    const outcome = guard([GATED], runner([1]), false);
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.lines).toContain("gate run 1");
+    expect(outcome.lines.at(-1)).toContain("push REFUSED (gate exit 1)");
+    expect(outcome.lines.at(-1)).toContain("ARTIFACT_LIFECYCLE_ALLOW_PUSH=1");
+  });
+
+  test("the most severe code of the gate wins, whatever the order", () => {
+    expect(guard([GATED, GATED, GATED], runner([3, 1, 4]), false).exitCode).toBe(4);
+    expect(guard([GATED, GATED], runner([3, 2]), false).exitCode).toBe(2);
+  });
+
+  test("a gate that cannot start is an unreadable source, exit 2", () => {
+    expect(guard([GATED], runner([null]), false).exitCode).toBe(2);
+  });
+
+  test("the override lets a red push through and says the CI replays the gate", () => {
+    const outcome = guard([GATED], runner([1]), true);
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines.at(-1)).toContain("OVERRIDE ARTIFACT_LIFECYCLE_ALLOW_PUSH=1 active");
+    expect(outcome.lines.at(-1)).toContain("replays the same gate");
+  });
+
+  test("a gate that is not found is a skipped gate, printed", () => {
+    const outcome = guard([GATED], runner([1], false), false);
+    expect(outcome.exitCode).toBe(0);
+    expect(outcome.lines.at(-1)).toContain("gate SKIPPED");
+    expect(outcome.lines.at(-1)).toContain("CI job");
+  });
+
+  test("a ref name holding a line break forges no line", () => {
+    const outcome = guard([{ ...SKIPPED, ref: "refs/heads/a\npass" }], runner([]), false);
+    // The lines reach git joined by line breaks: count them as git prints them.
+    expect(outcome.lines.join("\n").split("\n")).toHaveLength(2);
+  });
+});

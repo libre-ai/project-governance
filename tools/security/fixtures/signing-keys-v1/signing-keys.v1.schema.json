@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://contracts.libre-ai.fr/schemas/signing-keys.v1.schema.json",
+  "title": "Libre AI Signing Keys v1",
+  "description": "Public Ed25519 key registry (config/signing-keys.v1.json of the key ceremony runbook). Semantics: contracts/artifact-manifest-signatures-v1/SEMANTICS.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "keys"],
+  "properties": {
+    "schemaVersion": { "const": "libre-ai.signing-keys.v1" },
+    "keys": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": { "$ref": "#/$defs/key" }
+    }
+  },
+  "$defs": {
+    "signingKeyId": {
+      "description": "ed25519- followed by the lowercase hex SHA-256 of the 32 raw public key octets (K3). Every such value is a common.v1 identifier.",
+      "type": "string",
+      "pattern": "^ed25519-[0-9a-f]{64}$"
+    },
+    "instant": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "signatory": {
+      "description": "Role identifier, never a person's name or address (K7).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "key": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "signingKeyId",
+        "algorithm",
+        "publicKey",
+        "purpose",
+        "artifactTypes",
+        "activatedAt",
+        "revokedAt",
+        "witness"
+      ],
+      "properties": {
+        "signingKeyId": { "$ref": "#/$defs/signingKeyId" },
+        "algorithm": { "const": "Ed25519" },
+        "publicKey": {
+          "type": "string",
+          "pattern": "^-----BEGIN PUBLIC KEY-----\\nMCowBQYDK2VwAyEA[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=\\n-----END PUBLIC KEY-----$"
+        },
+        "purpose": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "artifactTypes": {
+          "type": "array",
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "$ref": "artifact-manifest.v1.schema.json#/properties/artifactType" }
+        },
+        "activatedAt": { "$ref": "#/$defs/instant" },
+        "revokedAt": { "anyOf": [{ "$ref": "#/$defs/instant" }, { "type": "null" }] },
+        "witness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["signatory", "attestedAt", "comment"],
+          "properties": {
+            "signatory": { "$ref": "#/$defs/signatory" },
+            "attestedAt": { "$ref": "#/$defs/instant" },
+            "comment": { "type": "string", "minLength": 1, "maxLength": 512 }
+          }
+        },
+        "revocationReason": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "revocationWitness": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["signatory", "discoveredAt"],
+          "properties": {
+            "signatory": { "$ref": "#/$defs/signatory" },
+            "discoveredAt": { "$ref": "#/$defs/instant" }
+          }
+        }
+      },
+      "if": {
+        "type": "object",
+        "properties": { "revokedAt": { "type": "null" } },
+        "required": ["revokedAt"]
+      },
+      "then": {
+        "type": "object",
+        "properties": { "revocationReason": false, "revocationWitness": false }
+      },
+      "else": {
+        "type": "object",
+        "properties": { "revocationReason": true, "revocationWitness": true },
+        "required": ["revocationReason", "revocationWitness"]
+      }
+    }
+  }
+}

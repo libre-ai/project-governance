@@ -24,6 +24,6 @@ Le corpus de décisions historiques n'est pas intégralement repris. Les sources
 
 ## Vision et consolidation
 
-[Vision](VISION.md) · [Décision de consolidation](docs/adr/2026-09-29-portfolio-consolidation.md) · [Design Forge](docs/architecture/forge/README.md)
+[Vision](docs/architecture/forge/VISION.md) · [Décision de consolidation](docs/adr/2026-09-29-portfolio-consolidation.md) · [Design Forge](docs/architecture/forge/README.md)
 
 Ces documents distinguent orientation validée, design proposé et capacités à qualifier. Les autorités historiques restent disponibles pendant l’admission.

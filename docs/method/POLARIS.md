@@ -83,7 +83,7 @@ Aucune brique n'est en production sans preuve publiée.
 
 - **Orchestrator runtime** — les boucles elles-mêmes qui opèrent agents et flotte sous K1–K5 (work-packages WP-G3-*).
 - **Harness runtime** — intégration d'agent-runs-v2, de la mémoire et des métriques dans l'exécutable orchestrateur réel.
-- **Merge automation sur revue propre** — l'autorisation permanente d'auto-merge (D4) attend la première wave complète de promotion.
+- **Merge automation sur revue propre** — l'autorisation permanente d'auto-merge (D4) attend la première wave complète de promotion, et cette attente continue de valoir pour les surfaces K4. Seule exception en vigueur : la fusion bornée par un agent d'ADR-0068 (D115, I-40), hors des garde-fous nommés et des surfaces K4, épinglée au sha relu, sans fusion automatique différée.
 
 Le noyau gouverne déjà ; son exécution à l'échelle de constellation s'amorce en vague 3, d'où l'état intermédiaire honnête.
 

@@ -1,0 +1,24 @@
+{
+  "description": "Byte-exact copies of the signing-keys.v1 contract and the two schemas it references, read by keygen-ceremony.test.ts to validate the registry entry the ceremony prints. Re-copy from the contracts authority when the contract changes; keygen-ceremony.test.ts refuses a copy whose SHA-256 differs from the one recorded here.",
+  "repository": "https://github.com/libre-ai/schemas-and-contracts",
+  "commit": "5ed1f716d0061117b4a59935b5558384612a2914",
+  "readOn": "2026-11-17",
+  "semantics": "contracts/artifact-manifest-signatures-v1/SEMANTICS.md",
+  "files": [
+    {
+      "path": "signing-keys.v1.schema.json",
+      "source": "contracts/schemas/signing-keys.v1.schema.json",
+      "sha256": "693f852c6462b87aee4ef99c5f2e39b64ec58bce48af8ce707d0b9389144faa3"
+    },
+    {
+      "path": "artifact-manifest.v1.schema.json",
+      "source": "contracts/schemas/artifact-manifest.v1.schema.json",
+      "sha256": "cb663e4a8093022b750474430a6e9f1fa05aa85c773b167975309cf390dc533c"
+    },
+    {
+      "path": "common.v1.schema.json",
+      "source": "contracts/schemas/common.v1.schema.json",
+      "sha256": "2b96e658dc88c8118fcd3720d6b9b30c445debd1a4facbfe43b321b610a1a396"
+    }
+  ]
+}

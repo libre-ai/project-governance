@@ -146,7 +146,7 @@ authentication for that one command (how generation R reached its 17 consumers),
 or by bumping refused repositories by hand. Nothing else changes: each consumer's
 required checks still decide the merge.
 
-The steps below are kept for a reversal of that decision.
+The steps below are kept for a reversal of that decision. ADR-0069 (accepted 2026-11-19) keeps it: it creates no fleet token, and adds only a write limited to this repository by the job's own token (`docs/toolchain/BUN-UPDATE.md`).
 
 ## Owner steps to enable apply
 

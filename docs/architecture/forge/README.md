@@ -3,7 +3,7 @@
 
 # Forge design
 
-[Product vision](../../../VISION.md) · [Consolidation decision](../../adr/2026-09-29-portfolio-consolidation.md)
+[Product vision](VISION.md) · [Consolidation decision](../../adr/2026-09-29-portfolio-consolidation.md)
 
 These documents specify intended responsibilities and qualification criteria. They do not claim that the runtime is implemented or qualified.
 
