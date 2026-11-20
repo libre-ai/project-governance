@@ -58,6 +58,11 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
       "same absence as check-skills.ts, plus one more: the non-cascade rule binds only user-invoked skills, so a collection holding none asserts nothing — the truth, said with the count of skills it read",
   },
   {
+    file: "tools/skills/check-skills-security.ts",
+    because:
+      "same absence as check-skills.ts: a repository state before the first skill is admitted, or after every skill is deprecated, has no skills/ directory or an empty one, so there is no line to scan for a dangerous pattern; the empty run names which of the two it met",
+  },
+  {
     file: "tools/quality/check-pr-door.ts",
     because:
       "the declaration lives in a pull request description, which exists only on a pull_request run; a push, a dispatch or a local run has no description to read. On a pull_request run an absent or unreadable event payload fails instead of reading as empty",
@@ -66,6 +71,16 @@ export const DECLARED_ALLOWANCES: readonly Allowance[] = [
     file: "tools/quality/check-pr-negatives.ts",
     because:
       "same absence as check-pr-door.ts: the Not-added line lives in a pull request description, and the diff it is confronted to is the pull request's. On a pull_request run an absent or unreadable event payload, data file or diff fails instead of reading as empty",
+  },
+  {
+    file: "tools/quality/check-volatile-values.ts",
+    because:
+      "the guard reads the tracked root documents (README.md, README.<lang>.md, AGENTS.md, CLAUDE.md); a repository tracking none of them has no line to read, and the empty run says so with the count of tracked files it listed. A tracked root document that cannot be read exits 2 instead of reading as empty",
+  },
+  {
+    file: "ecosystem/check-off-code-zones.ts",
+    because:
+      "an empty off-code zones register is the owner's statement that no part of the infrastructure stays outside the code — zero zones is that truth, printed with its counters; an unreadable or unparseable register still fails instead of reading as empty",
   },
 ];
 

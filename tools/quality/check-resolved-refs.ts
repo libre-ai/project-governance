@@ -132,6 +132,22 @@ export const REF_PATTERNS: readonly RefPattern[] = [
     pattern: new RegExp(String.raw`/git/refs?/heads/(?:${BRANCHES})\b`),
     says: "read the repository's `default_branch` from its own metadata, then ask for that ref",
   },
+  // Added on 2026-11-19 with the fleet detector `default-branch-ref`: a clone
+  // or a fetch asked for a written branch is a request too, and the rule's
+  // own list of forms names it.
+  {
+    id: "git-branch-flag",
+    // The long flag anywhere, the short one only after a clone (elsewhere it
+    // creates a branch, which is not a request); the shell form (the flag,
+    // then a blank or an equals sign, then the branch) and the
+    // argument-vector form (the flag and the branch as two quoted elements).
+    // The name must end there: a longer name that starts with the default
+    // one is another branch. Described, not quoted: this file scans itself.
+    pattern: new RegExp(
+      String.raw`(?:--branch|(?<=\bclone\b.*)(?<![\w-])-b)(?:[=\s]+|["'\`]\s*,\s*)["'\`]?(?:${BRANCHES})(?![\w./-])`,
+    ),
+    says: "omit `--branch` — a clone checks out the branch the remote serves; or resolve it with `git ls-remote --symref <url> HEAD`",
+  },
 ] as const;
 
 export interface RefFinding {
@@ -153,17 +169,16 @@ export interface RefScan {
   readonly allowed: readonly RefFinding[];
 }
 
-/** A test, or a fixture, whose object is the pattern itself. */
+/**
+ * A test, or a fixture, whose object is the pattern itself. The directory may
+ * sit at the root of the repository (`tests/`), where a fleet repository often
+ * keeps it.
+ */
 export function isPatternSubject(path: string): boolean {
-  return (
-    /\.test\.[cm]?[jt]s$/.test(path) ||
-    path.includes("/tests/") ||
-    path.includes("/fixtures/") ||
-    path.includes("/__fixtures__/")
-  );
+  return /\.test\.[cm]?[jt]s$/.test(path) || /(?:^|\/)(?:tests|fixtures|__fixtures__)\//.test(path);
 }
 
-const SCANNED_EXTENSIONS = new Set([
+export const SCANNED_EXTENSIONS: ReadonlySet<string> = new Set([
   ".ts",
   ".tsx",
   ".js",
@@ -184,15 +199,23 @@ function extensionOf(path: string): string {
 }
 const SKIPPED_DIRECTORIES = new Set(["node_modules", "target", ".git", "dist", "build"]);
 
-export function isScannedFile(path: string): boolean {
+export function isScannedFile(
+  path: string,
+  extensions: ReadonlySet<string> = SCANNED_EXTENSIONS,
+): boolean {
   const dot = path.lastIndexOf(".");
   if (dot === -1) return false;
-  return SCANNED_EXTENSIONS.has(path.slice(dot));
+  return extensions.has(path.slice(dot));
 }
 
-/** The whole decision as a pure function, so every branch is tested without a filesystem. */
+/**
+ * The whole decision as a pure function, so every branch is tested without a
+ * filesystem. `extensions` widens the scope for a caller whose tree is not this
+ * repository's (the fleet detector reads Rust too).
+ */
 export function scanForWrittenRefs(
   files: readonly { readonly path: string; readonly text: string }[],
+  extensions: ReadonlySet<string> = SCANNED_EXTENSIONS,
 ): RefScan {
   const findings: RefFinding[] = [];
   const allowed: RefFinding[] = [];
@@ -200,7 +223,7 @@ export function scanForWrittenRefs(
   let filesScanned = 0;
   let patternSubjects = 0;
   for (const file of files) {
-    if (!isScannedFile(file.path)) continue;
+    if (!isScannedFile(file.path, extensions)) continue;
     if (isPatternSubject(file.path)) {
       patternSubjects += 1;
       continue;
@@ -241,16 +264,84 @@ export function findWorkflowsMissingServedBranch(
   workflows: readonly { readonly path: string; readonly text: string }[],
   servedBranch: string,
 ): readonly string[] {
-  const missing: string[] = [];
+  return locateWorkflowsMissingServedBranch(workflows, servedBranch).map((found) => found.path);
+}
+
+/**
+ * The same verdict with the 1-based line of the filter, for a consumer that
+ * records findings as `path:line` (the fleet detector `default-branch-ref`).
+ */
+export function locateWorkflowsMissingServedBranch(
+  workflows: readonly { readonly path: string; readonly text: string }[],
+  servedBranch: string,
+): readonly { readonly path: string; readonly line: number }[] {
+  // Review of 2026-11-19: the first form read the first `branches: [...]` of
+  // the file with a regex — whatever the event, never a block list, never a
+  // glob. The workflow is now parsed and only `on.push` is judged, the way
+  // GitHub evaluates it.
+  const missing: { path: string; line: number }[] = [];
   for (const workflow of workflows) {
-    const match = /^\s*branches:\s*\[([^\]]*)\]/m.exec(workflow.text);
-    if (match === null) continue;
-    const listed = (match[1] ?? "")
-      .split(",")
-      .map((name) => name.trim().replace(/^["']|["']$/g, ""));
-    if (!listed.includes(servedBranch)) missing.push(workflow.path);
+    const filter = pushFilter(workflow);
+    if (filter === null || pushRunsOn(filter, servedBranch)) continue;
+    missing.push({ path: workflow.path, line: filterLine(workflow.text, filter.key) });
   }
   return missing;
+}
+
+interface PushFilter {
+  readonly key: "branches" | "branches-ignore";
+  readonly patterns: readonly string[];
+}
+
+/** The branch filter of `on.push`, or null when push is not filtered by branch. */
+function pushFilter(workflow: { readonly path: string; readonly text: string }): PushFilter | null {
+  let document: unknown;
+  try {
+    document = Bun.YAML.parse(workflow.text);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    // A workflow nobody can parse is not one with no filter: say so.
+    throw new Error(`${workflow.path}: not YAML: ${reason}`);
+  }
+  const on = isRecord(document) ? document.on : undefined;
+  const push = isRecord(on) ? on.push : undefined;
+  if (!isRecord(push)) return null;
+  for (const key of ["branches", "branches-ignore"] as const) {
+    const value = push[key];
+    if (value === undefined) continue;
+    const patterns = (Array.isArray(value) ? value : [value]).map(String);
+    return { key, patterns };
+  }
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * GitHub's evaluation: patterns are read in order, a `!pattern` excludes what
+ * the patterns before it matched, and the last that matches decides. `*`
+ * stops at `/`, `**` does not: `Bun.Glob` has the same semantics.
+ */
+function pushRunsOn(filter: PushFilter, branch: string): boolean {
+  let matched = false;
+  for (const pattern of filter.patterns) {
+    const negated = pattern.startsWith("!");
+    if (new Bun.Glob(negated ? pattern.slice(1) : pattern).match(branch)) matched = !negated;
+  }
+  return filter.key === "branches" ? matched : !matched;
+}
+
+/** The 1-based line of the filter key under `push:`, or of `push:`, or 1. */
+function filterLine(text: string, key: string): number {
+  const lines = text.split("\n");
+  const push = lines.findIndex((line) => /^\s*["']?push["']?\s*:/.test(line));
+  if (push === -1) return 1;
+  const filter = lines.findIndex(
+    (line, index) => index > push && new RegExp(String.raw`^\s*${key}\s*:`).test(line),
+  );
+  return (filter === -1 ? push : filter) + 1;
 }
 
 /**

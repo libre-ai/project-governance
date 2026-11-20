@@ -4,7 +4,7 @@
 - **Date :** 2026-08-19
 - **Portée :** amendement de réalisation d'ADR-0018 D2 (contrat de profil du harness) ; enregistrement des choix structurels de la re-livraison WP-G3-H01 dans `libre-ai/harness` (BOOTSTRAP-DOSSIER, § « Exigences de la re-livraison », exigence 2).
 - **Étend :** ADR-0018 (ouverture vague 3), ADR-0026 §2.2/§2.4 (création de `libre-ai/harness`), le dossier `docs/reviews/wp-g3-h01/BOOTSTRAP-DOSSIER.md` (arbitrage de migration du 2026-08-19).
-- **Amende un contrat verrouillé — par successeur majeur, jamais en place** : `harness-profile-v1` reste non-targeted, `harness-profile.v2` est le candidat qui le remplace (COMPATIBILITY.md, « Pre-implementation candidates »).
+- **Amende un contrat verrouillé — par successeur majeur, jamais en place** : ADR-0018 D2 (le contrat de profil du harness) ; `harness-profile-v1` reste non-targeted, `harness-profile.v2` est le candidat qui le remplace (COMPATIBILITY.md, « Pre-implementation candidates »).
 
 ## Contexte
 

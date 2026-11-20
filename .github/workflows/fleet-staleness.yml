@@ -1,0 +1,68 @@
+name: Fleet staleness
+
+# Monthly report, read-only: an active public repository of the inventory
+# whose served branch received no commit for more than 90 days, and a pull
+# request open for more than 30 days. Both are an absence of activity, which
+# no other gate turns red on; they were only visible by opening each
+# repository.
+#
+# The detection lives in ecosystem/fleet-staleness.ts (unit-tested) and the
+# script sends no mutation and files no issue: a finding is acted upon by a
+# human, or declared in ecosystem/staleness-exceptions.v1.yaml. The only write
+# of this workflow is the repeat-failure issue on this repository, below.
+#
+# Not a pull request gate on purpose: a repository going quiet is not a defect
+# of the change under review.
+on:
+  schedule:
+    - cron: "37 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  fleet-staleness:
+    name: Dormant repositories and old pull requests
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      # Bun built-ins only, no `bun install`: the gate stays independent from
+      # the dependency supply chain, like inventory-drift.yml.
+      - name: Report dormant repositories and old pull requests
+        run: bun ecosystem/check-fleet-staleness.ts
+      # A red run here is only visible to someone who opens the Actions tab
+      # (AGENTIC-LOOP-INVENTORY.md). One red run stays a run; two in a row
+      # files a deduplicated governance issue.
+      - name: File an issue if this is the second consecutive failed run
+        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Fleet staleness
+          WORKFLOW_FILE: fleet-staleness.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts
+      # The green run closes the issue the alert opened (idempotent: nothing
+      # open, nothing closed), so the issue never outlives the failure.
+      - name: Close the repeat-failure issue now that the loop is green
+        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_NAME: Fleet staleness
+          WORKFLOW_FILE: fleet-staleness.yml
+          CURRENT_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bun tools/security/repeat-failure-alert.ts --resolve

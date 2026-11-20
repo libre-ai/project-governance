@@ -64,6 +64,9 @@ describe("the inventory of this tree", () => {
       "biome.json",
       "crates/ecosystem-engine/Cargo.toml",
       "package.json",
+      "tools/quality/product-coupling-exemptions.txt",
+      "tools/quality/product-coupling.v1.json",
+      "tools/skills/skills-security-patterns.v1.json",
       "tsconfig.json",
     ]);
     for (const path of audit.awaiting) expect(audit.declared).toContain(path);

@@ -9,7 +9,7 @@
     },
     "schemas-and-contracts": {
       "repository": "libre-ai/schemas-and-contracts",
-      "ref": "a82d7b54cfda00bfcbbdff34a3c34f24a2468a6e",
+      "ref": "5ed1f716d0061117b4a59935b5558384612a2914",
       "dependencies": ["project-governance"],
       "check": [["bun", "run", "check"]]
     },

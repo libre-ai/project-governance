@@ -1,7 +1,7 @@
 # ADR-0022 — Le contexte se restitue, la décision se présente en options
 
 - **Statut :** accepted — la ratification est le merge propriétaire de cette
-  pull request.
+  pull request. **Amendé par :** ADR-0051 (D4, complément ; D5, critère de lot ; ajoute D6).
 - **Arbitrage :** propriétaire, consigne du 2026-08-11 — la directive est
   édictée pour les harness de la flotte et appliquée le même jour aux harness
   machine du propriétaire ; la présente pull request la fait entrer dans la

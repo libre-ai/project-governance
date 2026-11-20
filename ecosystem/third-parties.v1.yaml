@@ -1,0 +1,89 @@
+# Registre des tiers de service de la flotte et de leur exercice de sortie.
+#
+# STATUT : PROPOSÉ (ADR-0070). Aucune date ni procédure de ce fichier n'est un
+# engagement du propriétaire tant qu'ADR-0070 n'est pas accepté. Chaque
+# `planned_on` est une date proposée. Chaque procédure sous
+# `docs/security/third-party-exits/` est une procédure proposée, jamais exécutée.
+#
+# Forme, lue par `tools/quality/check-third-parties.ts` :
+#   id                             third-party.<mots en minuscules joints par un tiret>
+#   subject                        ce dont la flotte dépend
+#   exit_exercise.planned_on       date prévue, AAAA-MM-JJ
+#   exit_exercise.procedure        fichier suivi du dépôt qui décrit l'exercice
+#   exit_exercise.last_executed_on date de la dernière exécution, ou null
+#
+# Style imposé : clés nues, en bloc, sans valeur sur plusieurs lignes.
+# Retirer une entrée desserre le contrôle : ce fichier est sur la surface de
+# `tools/quality/check-review-evidence.ts`.
+schema_version: libre-ai.third-parties.v1
+third_parties:
+  # Forge : la procédure existe et tourne chaque semaine (SOV-02) ; la date est proposée.
+  - id: third-party.forge-github-git
+    subject: "GitHub, forge canonique : hébergement des dépôts git et de leur historique (I-12)"
+    exit_exercise:
+      planned_on: 2027-03-01
+      procedure: verification/sovereignty/forge-restore.ts
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.forge-github-actions
+    subject: "GitHub Actions : exécution des workflows de CI et des actions publiées par des tiers"
+    exit_exercise:
+      planned_on: 2027-03-15
+      procedure: docs/security/third-party-exits/forge-services.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.forge-github-releases
+    subject: "GitHub Releases : archives d'outillage épinglées dans toolchains/"
+    exit_exercise:
+      planned_on: 2027-03-15
+      procedure: docs/security/third-party-exits/forge-services.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.registry-npm
+    subject: "Registre npm : paquets JavaScript résolus par bun.lock"
+    exit_exercise:
+      planned_on: 2027-04-05
+      procedure: docs/security/third-party-exits/package-registries.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.registry-crates-io
+    subject: "crates.io : crates Rust résolues par Cargo.lock"
+    exit_exercise:
+      planned_on: 2027-04-05
+      procedure: docs/security/third-party-exits/package-registries.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.registry-pypi
+    subject: "Index Python par défaut d'uv : outillage de licences de tools/licensing/requirements.txt"
+    exit_exercise:
+      planned_on: 2027-04-05
+      procedure: docs/security/third-party-exits/package-registries.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.origin-rust-toolchain
+    subject: "Distribution de la chaîne Rust épinglée par rust-toolchain.toml, obtenue par rustup"
+    exit_exercise:
+      planned_on: 2027-05-03
+      procedure: docs/security/third-party-exits/toolchain-origins.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.origin-nodejs
+    subject: "nodejs.org : archive Node épinglée dans toolchains/notebook-qualification.json"
+    exit_exercise:
+      planned_on: 2027-05-03
+      procedure: docs/security/third-party-exits/toolchain-origins.md
+      last_executed_on: null
+  # Proposé.
+  - id: third-party.origin-playwright-cdn
+    subject: "cdn.playwright.dev : navigateurs épinglés dans toolchains/notebook-qualification.json"
+    exit_exercise:
+      planned_on: 2027-05-03
+      procedure: docs/security/third-party-exits/toolchain-origins.md
+      last_executed_on: null
+  # Proposé. Cible d'I-07 : aucune ressource n'est provisionnée à la rédaction.
+  - id: third-party.runtime-clever-cloud
+    subject: "Clever Cloud Paris/UE : cible runtime d'I-07, aucune ressource provisionnée à la rédaction"
+    exit_exercise:
+      planned_on: 2027-09-06
+      procedure: docs/security/third-party-exits/runtime-target.md
+      last_executed_on: null

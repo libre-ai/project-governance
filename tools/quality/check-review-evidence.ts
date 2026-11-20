@@ -81,6 +81,10 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * owner decision (ADR-0066 D2). Adding an entry is what lets a fiche say that
  * something is paid.
  *
+ * `ecosystem/third-parties.v1.yaml` joined the day it was written (ADR-0070,
+ * proposed): removing an entry or moving a date away loosens what
+ * `check-third-parties.ts` holds the fleet to.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -144,10 +148,14 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^\.github\/composition\/ref-monotonicity-exemptions\.json$/,
   // check-release-age.ts: packages admitted younger than the release-age floor.
   /^ecosystem\/release-age-exceptions\.v1\.yaml$/,
+  // check-fleet-staleness.ts: dormant repositories and old pull requests excepted from the monthly report.
+  /^ecosystem\/staleness-exceptions\.v1\.yaml$/,
   // check-sql-construction.ts: raw-SQL construction sites admitted as safe.
   /^ecosystem\/sql-construction-allowlist\.v1\.yaml$/,
   // check-web-headers.ts: header relaxations, raw HTML sinks, servers outside surfaces.
   /^ecosystem\/web-headers-allowlist\.v1\.yaml$/,
+  // check-decision-series.ts: ADRs allowed to share their number within a series.
+  /^ecosystem\/decision-series-exemptions\.v1\.json$/,
   // check-work-package-link.ts: exempt classes, approving owners, maturity floor.
   /^ecosystem\/work-package-policy\.v1\.yaml$/,
   // bump-generation.ts: historical sites a bump leaves, commit identity, token secret.
@@ -169,6 +177,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/schemas\/produit\.v1\.schema\.json$/,
   // check-produits.ts: the products whose fiche may describe a paid hosted offer (ADR-0066 D2).
   /^ecosystem\/hosted-offers\.v1\.yaml$/,
+  // check-third-parties.ts: the services the fleet depends on and their dated exit exercises (ADR-0070).
+  /^ecosystem\/third-parties\.v1\.yaml$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
   // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
@@ -194,8 +204,10 @@ export const GATED_PATHSPECS: readonly string[] = [
   "tools/quality/threat-model-citations.v1.json",
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
+  "ecosystem/staleness-exceptions.v1.yaml",
   "ecosystem/sql-construction-allowlist.v1.yaml",
   "ecosystem/web-headers-allowlist.v1.yaml",
+  "ecosystem/decision-series-exemptions.v1.json",
   "ecosystem/work-package-policy.v1.yaml",
   "tools/fleet/bump-generation.v1.yaml",
   "deny.toml",
@@ -207,6 +219,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/schemas/brique.v1.schema.json",
   "ecosystem/schemas/produit.v1.schema.json",
   "ecosystem/hosted-offers.v1.yaml",
+  "ecosystem/third-parties.v1.yaml",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
   "distribution/templates/dependabot/cargo.yml",

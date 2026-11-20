@@ -1,0 +1,15 @@
+schema_version: libre-ai.staleness-exceptions.v1
+# Findings of the monthly fleet staleness control that are known and accepted.
+# Read by ecosystem/check-fleet-staleness.ts. Each entry names the repository,
+# the kind of finding (`dormant` or `pull-request`), the pull request `number`
+# for a `pull-request` entry, and `because`: why the finding stands.
+#
+#   - repository: owner/name
+#     kind: pull-request
+#     number: 12
+#     because: why this pull request stays open
+#
+# An applied entry prints one EXCEPTED line on every run. An entry that covers
+# no current finding fails the gate as stale: remove it once the repository
+# moved again or the pull request closed.
+exceptions: []

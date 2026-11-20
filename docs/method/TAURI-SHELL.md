@@ -60,7 +60,7 @@ Zéro tentative est un échec, jamais un vert.
 | C3 | CSP `default-src 'none'` élargie aux seules origines du schéma privé | un `default-src` autre que `'none'` ; une source autre que `'none'` ou `'self'` (et, pour `connect-src`, autre que `ipc:` et `http://ipc.localhost`) : joker, `https:`, `data:`, `'unsafe-inline'`, hôte nommé | 0 source hors liste blanche parmi N directives lues | `bun test` (§3.1) |
 | C4 | Le magasin de données de la vue web est non persistant. Une écriture dans un magasin non persistant **est acceptée en mémoire** : ce qui est refusé et compté est sa persistance | une fenêtre sans `incognito: true` ; puis, à l'exécution, une écriture `localStorage` ou IndexedDB qui survit à un redémarrage | 0 fenêtre persistante parmi N ; 0 valeur relue après redémarrage parmi M écrites, 0 fichier de magasin sous le dossier personnel de scratch | `bun test` (§3.1), puis la coquille lancée (§3.3) |
 | C5 | Les capacités exposées au front sont énumérées par commande, deny-by-default | une capacité listant `core:default`, un joker ou `allow-*` d'une commande non déclarée ; à l'exécution, l'appel d'une commande enregistrée mais non déclarée, d'une commande inconnue, d'une commande déclarée depuis une autre fenêtre | 0 permission hors liste parmi N ; appels refusés : 3 sur 3 (runtime simulé) et 1 sur 1 (coquille réelle) | `bun test` (§3.1), `cargo test` (§3.2), la coquille lancée (§3.3) |
-| C6 | Le processus Rust n'ouvre aucun port | n'importe quelle socket en écoute du processus ou de ses descendants | 0 `(LISTEN)` parmi N lignes `lsof` examinées sur P processus | `scripts/qualify-macos.sh` (§4) |
+| C6 | Le processus Rust n'ouvre aucun port | n'importe quelle socket en écoute du processus ou de ses descendants ; un port TCP de la boucle locale ouvert pendant que la coquille tourne et absent du balayage de référence | premier instrument : 0 `(LISTEN)` parmi N lignes `lsof` examinées sur P processus ; second instrument : 0 port ouvert hors référence et hors liste attendue sur 65535 ports balayés par adresse, 0 délai, 0 erreur | `scripts/qualify-macos.sh` (§4) pour `lsof` ; l'outil de balayage TCP du produit (§4.1) |
 
 C1 et C2 se recoupent à dessein : C1 borne l'origine du **contenu**, C2 borne
 l'origine des **droits**. Un produit peut passer l'un et échouer l'autre.
@@ -940,6 +940,112 @@ Sur un autre système, le test et le script e2e impriment **`unavailable`** et
 adopte ce gabarit sans job macOS n'a pas la moitié dynamique de C1, C3 (page),
 C4 et C6.
 
+### 4.1 C6, second instrument : balayage TCP de la boucle locale
+
+`lsof` borne C6 à l'arbre de processus de la coquille. Il exclut par
+construction deux cas : un port ouvert par un processus hors de cet arbre (les
+auxiliaires de WebKit n'en sont pas des descendants), et un port que `lsof` ne
+relie pas au pid examiné. ADR-0057 §1 reprend pourtant d'ADR-0042 §8 « aucun
+port n'est ouvert sur la machine ». Le second instrument ne lit aucun
+processus : il tente une connexion TCP sur chaque port de la boucle locale. Il
+s'ajoute à `lsof` et ne le remplace pas.
+
+**Statut.** Le gabarit le recommande. ADR-0057 §4 ne nomme que `lsof -i -P` :
+faire du balayage une exigence de qualification demande un amendement de
+l'ADR, donc une décision du propriétaire.
+
+**Ce qui est balayé.** Les ports 1 à 65535, en TCP, par connexion, sur deux
+adresses : `127.0.0.1` et `::1`. Un écouteur sur `0.0.0.0` est visible sur
+`127.0.0.1`, un écouteur sur `::` est visible sur `::1`. Chaque adresse est
+balayée deux fois : une fois avant le lancement de la coquille (balayage
+`reference`), une fois pendant qu'elle tourne (balayage `coquille`).
+
+**Quatre issues, exactement une par port.**
+
+| Issue | Compteur | Quand |
+| --- | --- | --- |
+| ouvert | `open` | la connexion TCP est établie |
+| refusé | `refused` | `ECONNREFUSED`, et seulement lui |
+| délai | `timeout` | aucune réponse en 2 s |
+| erreur | `error` | toute autre issue (par exemple `EADDRNOTAVAIL`, `EHOSTUNREACH`, `ENETUNREACH`, `EACCES`, `EMFILE`) |
+
+Délai et erreur sont des inconnus : ils ne sont jamais comptés comme fermés.
+Seul un refus prouve qu'aucun processus n'écoute sur le port.
+
+**La somme.** Pour chaque adresse et chaque balayage, l'outil imprime
+`scanned = open + refused + timeout + error`, et `scanned` vaut 65535. Une
+autre valeur veut dire qu'un port n'a reçu aucune issue ou en a reçu deux.
+
+**Les ports de l'hôte.** Les ports ouverts au balayage de référence
+appartiennent à l'hôte, puisque la coquille ne tourne pas encore. Ils sont
+imprimés à part (`hote=`) et exclus du décompte de la coquille. Cette liste se
+résout par la mesure, à chaque exécution : elle ne s'écrit en dur ni dans
+l'outil, ni dans la configuration du produit, ni dans ce document.
+
+**Procédure.**
+
+1. Balayage de référence des deux adresses, avant tout lancement : il donne
+   les ports de l'hôte.
+2. Lancement de la coquille.
+3. Premier instrument : `lsof` sur l'arbre de processus (§4).
+4. Balayage des deux adresses pendant que la coquille tourne.
+5. Verdict : C6 est vert si les deux instruments sont verts.
+
+**Critère de succès du balayage.** Trois conditions, sur chaque adresse :
+
+- les ports ouverts du balayage `coquille`, moins ceux du balayage
+  `reference`, sont exactement la liste attendue, qui est vide pour une
+  coquille ;
+- délai = erreur = 0 dans les deux balayages ;
+- `scanned` = 65535 dans les deux balayages.
+
+**Contrat de l'outil.** Il reçoit trois entrées : l'adresse à balayer
+(`127.0.0.1` ou `::1`), la liste des ports attendus ouverts pour la coquille
+(vide pour une coquille Tauri) et la liste des ports de l'hôte. Le balayage de
+référence produit cette troisième liste, il ne la reçoit pas. L'outil imprime
+une ligne par adresse et par balayage :
+
+`C6 balayage <adresse> <reference|coquille> : scanned=<n> open=<n> refused=<n> timeout=<n> error=<n> ; hote=<ports> ; coquille=<ports>`
+
+| Code de sortie | Sens |
+| --- | --- |
+| 0 | vert : les trois conditions tiennent |
+| 1 | violation : un port ouvert hors liste, ou délai > 0, ou erreur > 0, ou `scanned` différent de 65535 |
+| 2 | usage : argument manquant ou malformé, port hors de 1 à 65535, port attendu présent parmi les ports de l'hôte |
+
+Un port attendu qui figure aussi parmi les ports de l'hôte est une erreur
+d'usage et non une violation : le balayage ne peut pas dire lequel des deux
+l'a ouvert.
+
+**Vecteurs rouges à écrire avec l'outil**, dans le dépôt du produit, sur un
+runner macOS (§1 : un contrôle sans vecteur n'est pas un contrôle) :
+
+- un écouteur ajouté sur toutes les interfaces (`0.0.0.0`) : l'outil sort 1 et
+  nomme le port dans `coquille=` ;
+- un port de l'hôte présent au balayage de référence : il est imprimé dans
+  `hote=` et n'est pas compté parmi les ports de la coquille ;
+- un port attendu qui figure parmi les ports de l'hôte : l'outil sort 2 ;
+- un port qui ne répond pas dans le délai : il est compté en `timeout`, jamais
+  en `refused`, et le verdict est rouge.
+
+Sur une coquille conforme, `coquille=` est vide, `timeout=0`, `error=0` et
+`scanned=65535` pour `127.0.0.1` et pour `::1`.
+
+**Limites déclarées.**
+
+- Un port que la coquille ouvrirait et que l'hôte tenait déjà ouvert au
+  balayage de référence reste invisible au balayage. `lsof` le couvre : c'est
+  la raison des deux instruments.
+- Un port de l'hôte ouvert entre les deux balayages est attribué à la
+  coquille. Le verdict est alors rouge à tort, jamais vert à tort ; rejouer
+  les deux balayages le tranche.
+- L'adresse lien-local de la boucle locale (`fe80::1%lo0` sur macOS) n'est
+  pas balayée. Un écouteur lié à cette seule adresse échappe au balayage ;
+  `lsof` le voit s'il appartient à l'arbre de processus de la coquille.
+- UDP n'est pas balayé, ni aucune adresse hors de la boucle locale.
+- Ce second instrument n'a été exécuté sur aucune coquille construite :
+  **NON VÉRIFIÉ** (§6).
+
 ## 5. Ce qui reste à la charge du produit
 
 - Les noms de commandes, la liste des permissions et la valeur du plafond.
@@ -948,6 +1054,10 @@ C4 et C6.
   contrôle sur la boucle locale, `lsof`) se recopie de
   `apps/desktop/src-tauri/tests/shell_controls.rs` du dépôt de P04 ; il ne
   dépend plus du spike `@wdio/tauri-service`.
+- L'outil de balayage TCP de la boucle locale, second instrument de C6
+  (§4.1), ses vecteurs rouges et son branchement dans la qualification macOS,
+  autour du lancement de la coquille : ce dépôt décrit son contrat et ne livre
+  pas l'outil.
 - Le job macOS de CI qui lance la moitié dynamique (§4, « Où cela tourne en CI »),
   et le refus de `TAURI_CONFIG` dans sa chaîne (§2.5).
 - La matrice de menace du produit, qui reprend les deux risques d'ADR-0057
@@ -968,6 +1078,9 @@ C4 et C6.
   et ne l'établit pas (§3.3).
 - **Les processus auxiliaires de WebKit**, au-delà d'une mesure sur une page
   inactive (§4) : une page qui charge du contenu n'a pas été mesurée.
+- **Le second instrument de C6**, le balayage TCP de la boucle locale (§4.1) :
+  aucun produit ne l'a exécuté sur une coquille construite. Sa procédure, sa
+  somme et ses codes de sortie sont un contrat écrit, pas une mesure.
 - **Le comportement d'une page à script en ligne** sur la CSP effective (§2.1) :
   inféré, non mesuré.
 - **Les clés de §2.1 que `PR#34` ne pose pas** (`pattern`, `bundle.targets`) :

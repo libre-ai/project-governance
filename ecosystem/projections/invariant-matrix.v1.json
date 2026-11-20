@@ -1,0 +1,251 @@
+{
+  "schema_version": "libre-ai.invariant-matrix.v1",
+  "source": "docs/decisions/INVARIANTS.md + ecosystem/invariant-gates.v1.yaml",
+  "rows": [
+    {
+      "invariant": "I-01",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-02",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-03",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-04",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-05",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-06",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-07",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-08",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-09",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-10",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-11",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-12",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-13",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-14",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-15",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-16",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-17",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-18",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-19",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-20",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-21",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-22",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-23",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-24",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-25",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-26",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-27",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-28",
+      "etat": "en vigueur",
+      "application": "imposé et testé",
+      "gates": [
+        {
+          "gate": "crates/ecosystem-engine/scripts/check-patch-rev.ts",
+          "test": "crates/ecosystem-engine/scripts/check-patch-rev.test.ts"
+        }
+      ]
+    },
+    {
+      "invariant": "I-29",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-30",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-31",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-32",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-33",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-34",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-35",
+      "etat": "retiré",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-36",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-37",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-38",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-39",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    },
+    {
+      "invariant": "I-40",
+      "etat": "en vigueur",
+      "application": "sans gate",
+      "gates": []
+    }
+  ]
+}

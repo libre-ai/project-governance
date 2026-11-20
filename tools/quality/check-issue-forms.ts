@@ -3,14 +3,18 @@
  *
  *   bun tools/quality/check-issue-forms.ts --forms <ISSUE_TEMPLATE dir> --labels <labels.yml>
  *
- * Why: the four forms (work package, decision request, idea, question) are the
- * only way the web creates the issues the work-package gate and the owner's
- * decision queue read. A form that drifts (a required field made optional, a
- * label the vocabulary does not know, a field id used twice) produces issue
- * bodies the gate refuses or, worse, silently misreads. The work-package form
- * must render EXACTLY the two headings the norm prescribes
- * (docs/specifications/WORK-PACKAGES.md, "Issue body"): `### PRD-ref` then
- * `### WP`, which GitHub derives from the `label` of each field.
+ * Why: the five forms (work package, decision request, idea, question, rule
+ * feedback) are the only way the web creates the issues the work-package gate,
+ * the owner's decision queue and the rule feedback validator read. A form that
+ * drifts (a required field made optional, a label the vocabulary does not know,
+ * a field id used twice) produces issue bodies the gate refuses or, worse,
+ * silently misreads. The work-package form must render EXACTLY the two headings
+ * the norm prescribes (docs/specifications/WORK-PACKAGES.md, "Issue body"):
+ * `### PRD-ref` then `### WP`, which GitHub derives from the `label` of each
+ * field. The rule feedback form renders its eight `### <label>` sections in a
+ * fixed order, because the ticket is read section by section: for that kind
+ * (ORDERED_KINDS) the order of the fields is checked too, and its single-choice
+ * `Nature` dropdown must offer exactly the natures the ticket accepts.
  *
  * How a form's kind is identified: by its `kind:*` label, never by its file
  * name. The label is what the gates and the labels vocabulary share, and a
@@ -53,6 +57,10 @@ interface Field {
   readonly label: string;
   readonly type: FieldType;
   readonly required: boolean;
+  /** The `attributes.options` of a dropdown, `null` for any other type. */
+  readonly options: readonly string[] | null;
+  /** `attributes.multiple` of a dropdown; `false` when absent. */
+  readonly multiple: boolean;
 }
 
 const ROOT_KEYS: readonly string[] = ["name", "description", "title", "labels", "body"];
@@ -71,6 +79,8 @@ interface FieldSpec {
   readonly type: FieldType;
   /** `true`: the field must be present and required. `false`: it may be absent, but never required. */
   readonly required: boolean;
+  /** A dropdown's options, exactly and in this order; such a dropdown is single-choice. */
+  readonly options?: readonly string[];
 }
 
 /**
@@ -95,9 +105,28 @@ const SPECS: Readonly<Record<string, readonly FieldSpec[]>> = {
     { label: "Statement", type: "textarea", required: true },
     { label: "Document carrying the missing fact", type: "input", required: true },
   ],
+  // The rule feedback ticket: eight sections, in this order, read one by one. The natures are
+  // the closed list the ticket accepts; a dropped option makes that feedback impossible to file.
+  "kind:rule-feedback": [
+    { label: "Rule identifier", type: "input", required: true },
+    { label: "Excerpt digest", type: "input", required: true },
+    { label: "Pack", type: "input", required: true },
+    { label: "Snapshot", type: "input", required: true },
+    { label: "Overlays", type: "input", required: true },
+    { label: "Core version", type: "input", required: true },
+    {
+      label: "Nature",
+      type: "dropdown",
+      required: true,
+      options: ["rephrasing", "trigger", "level"],
+    },
+    { label: "Proposal", type: "input", required: true },
+  ],
 };
 
 const DECISION_REQUEST = "kind:decision-request";
+/** Kinds whose fields must appear in the order of SPECS: their rendered body is read positionally. */
+const ORDERED_KINDS: readonly string[] = ["kind:rule-feedback"];
 
 // --- line whitelist --------------------------------------------------------
 //
@@ -106,11 +135,14 @@ const DECISION_REQUEST = "kind:decision-request";
 // other shape is refused by name, and a key is a plain [a-z_]+ token (its text IS its identity).
 // 2 spaces per level: `key: scalar`, `key: |` (|- > >-; content never scanned), `key:` (opens a
 // mapping), `- token` under root `labels`, `- key: ...` under root `body` (keys at dash + 2),
-// and `labels: [token, ...]`, the only flow collection. A token is bare or "without \ or ".
+// `- token` under the `attributes.options:` of a body element (a dropdown's choices, 8 spaces
+// in), and `labels: [token, ...]`, the only flow collection. A token is bare or "without \ or ".
 
 const PLAIN_KEY = /^([a-z_]+):(?: +(.*))?$/;
 const TOKEN = /^(?:"[^"\\]*"|[A-Za-z0-9:_.-]+)$/;
 const QUOTED = /^(?:"[^"\\]*"|'[^']*')$/;
+/** `- body element` (column 2), its `attributes:` (4), `options:` (6), then each option at 8. */
+const OPTIONS_ITEM_INDENT = 8;
 
 const SHAPES: readonly (readonly [RegExp, string])[] = [
   [/^(?:---|\.\.\.)$/, "a document marker"],
@@ -145,6 +177,8 @@ function scanLines(text: string): string[] {
   let lastDepth = 0;
   let opened = false; // the previous key had no value: the next line may be one level deeper
   let blockIndent: number | null = null;
+  let attributesOpen = false; // the last body-element key (depth 2) was `attributes:`
+  let optionsOpen = false; // the last key was that element's `attributes.options:`, with no value
   for (const [index, line] of lines.entries()) {
     // `reject` answers true so that a refusal and its `continue` fit on one line.
     const reject = (cause: string): boolean => {
@@ -162,6 +196,12 @@ function scanLines(text: string): string[] {
     const isItem = content.startsWith("- ");
     const body = isItem ? content.slice(2) : content;
     if (indent % 2 === 1 && reject("indentation must be a multiple of 2 spaces")) continue;
+    if (isItem && optionsOpen && indent === OPTIONS_ITEM_INDENT) {
+      if (!TOKEN.test(body))
+        reject("an options list item is a bare token or a double-quoted string");
+      opened = false; // nothing nests under an option
+      continue;
+    }
     if (isItem && (list === null || indent !== 2)) {
       reject("a list item is only allowed under labels and body, 2 spaces in");
       continue;
@@ -194,6 +234,8 @@ function scanLines(text: string): string[] {
     if (depth === 0) list = name === "labels" || name === "body" ? name : null;
     lastDepth = depth;
     opened = value === "";
+    if (depth === 2) attributesOpen = name === "attributes" && opened;
+    optionsOpen = list === "body" && depth === 3 && attributesOpen && name === "options" && opened;
 
     if (/^[|>]-?$/.test(value)) {
       blockIndent = depth * 2;
@@ -280,10 +322,68 @@ function readElement(element: unknown, position: number): ElementReading {
     }
   }
 
+  const choice = readChoice(where, type, attributes);
+  violations.push(...choice.violations);
+
   if (type === "markdown" || !isRecord(attributes) || !isFilledString(attributes.label)) {
     return { field: null, id, violations };
   }
-  return { field: { label: attributes.label, type: type as FieldType, required }, id, violations };
+  const field: Field = {
+    label: attributes.label,
+    type: type as FieldType,
+    required,
+    options: choice.options,
+    multiple: choice.multiple,
+  };
+  return { field, id, violations };
+}
+
+/**
+ * Reads the choices of an element: a dropdown needs a non-empty list of distinct strings in
+ * `attributes.options`, and `options` or `multiple` on any other type is refused (the line
+ * whitelist admits an options list under any element's attributes; its meaning is checked here).
+ */
+function readChoice(
+  where: string,
+  type: string,
+  attributes: unknown,
+): {
+  readonly options: readonly string[] | null;
+  readonly multiple: boolean;
+  readonly violations: readonly string[];
+} {
+  if (!isRecord(attributes)) return { options: null, multiple: false, violations: [] };
+  const violations: string[] = [];
+  if (type !== "dropdown") {
+    for (const key of ["options", "multiple"]) {
+      if (key in attributes) violations.push(`${where} (${type}) cannot have attributes.${key}`);
+    }
+    return { options: null, multiple: false, violations };
+  }
+
+  let multiple = false;
+  if ("multiple" in attributes) {
+    if (typeof attributes.multiple === "boolean") multiple = attributes.multiple;
+    else violations.push(`${where} (dropdown) attributes.multiple must be a boolean`);
+  }
+  const raw = attributes.options;
+  if (!Array.isArray(raw) || raw.length === 0) {
+    violations.push(`${where} (dropdown) needs a non-empty attributes.options list`);
+    return { options: null, multiple, violations };
+  }
+  const options: string[] = [];
+  for (const option of raw as readonly unknown[]) {
+    if (!isFilledString(option)) {
+      violations.push(
+        `${where} (dropdown) options must be non-empty strings, found ${JSON.stringify(option)}`,
+      );
+    } else if (options.includes(option)) {
+      violations.push(`${where} (dropdown) option "${option}" is listed twice`);
+    } else {
+      options.push(option);
+    }
+  }
+  return { options, multiple, violations };
 }
 
 function checkLabels(labels: unknown, knownLabels: ReadonlySet<string>): readonly string[] {
@@ -356,6 +456,40 @@ function checkSpecs(kind: string, fields: readonly Field[]): string[] {
     if (!spec.required && field.required) {
       violations.push(
         `${kind}: field "${spec.label}" must stay optional: it exists only when there is something to say`,
+      );
+    }
+    if (spec.options !== undefined && field.type === "dropdown") {
+      const found = field.options ?? [];
+      if (found.join("\n") !== spec.options.join("\n")) {
+        violations.push(
+          `${kind}: field "${spec.label}" must offer exactly ${JSON.stringify(spec.options)}, found ${JSON.stringify(found)}`,
+        );
+      }
+      if (field.multiple) {
+        violations.push(`${kind}: field "${spec.label}" must be single-choice (multiple: false)`);
+      }
+    }
+  }
+
+  // An ordered kind's body is read section by section in the order of SPECS. Only the fields
+  // present are compared, so a missing field is reported once, as missing, and not also as a shift
+  // (a label used twice is already reported; its first use is the one compared).
+  if (ORDERED_KINDS.includes(kind)) {
+    const found: readonly string[] = fields
+      .map((field: Field): string => field.label)
+      .filter(
+        (label: string, index: number, all: readonly string[]): boolean =>
+          expected.has(label) && all.indexOf(label) === index,
+      );
+    const order: readonly string[] = specs
+      .map((spec: FieldSpec): string => spec.label)
+      .filter((label: string): boolean => found.includes(label));
+    const position = found.findIndex(
+      (label: string, index: number): boolean => label !== order[index],
+    );
+    if (position !== -1) {
+      violations.push(
+        `${kind}: field "${found[position]}" is out of order, expected "${order[position]}" at its place`,
       );
     }
   }
