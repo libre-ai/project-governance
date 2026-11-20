@@ -260,7 +260,12 @@ describe("the layer table", () => {
 });
 
 describe("the doctrine parsers", () => {
-  test("invariants: a row whose text opens with « Retiré » is withdrawn, whatever its emphasis", () => {
+  // The forms themselves are held by the tests of the register's one reader
+  // (`tools/quality/check-threat-model-citations.test.ts`); this one holds the
+  // mapping to a standing. A struck-through row reads withdrawn since
+  // 2026-11-16: the citations gate always read it so, and the two now share
+  // their reader.
+  test("invariants: a row struck through or opening with « Retiré » is withdrawn, whatever its emphasis", () => {
     const parsed = parseInvariants(
       [
         "| ID | Invariant |",
@@ -277,7 +282,7 @@ describe("the doctrine parsers", () => {
       ["I-08", "en vigueur"],
       ["I-35", "retiré"],
       ["I-36", "retiré"],
-      ["I-37", "en vigueur"],
+      ["I-37", "retiré"],
       ["I-38", "en vigueur"],
       ["I-100", "en vigueur"],
     ]);
