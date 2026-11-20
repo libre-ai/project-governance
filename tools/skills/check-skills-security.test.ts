@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { auditInventory, NOT_GATED, reportInventory } from "../quality/check-data-inventory";
+import { touchesGatedPaths } from "../quality/check-review-evidence";
 import {
   formatSecurityVolume,
   loadSkillTree,
@@ -495,24 +496,29 @@ describe("this repository", () => {
     }
   });
 
-  test("check:skills-security is a script, and the check chain does not run it", () => {
+  // Owner decision of 2026-11-20: the gate is a step of the aggregate. The
+  // chain is read step by step, so a step that only mentions the script
+  // (`echo check:skills-security`) does not count as running it.
+  test("check:skills-security is a script, and a step of the check chain", () => {
     const manifest: { scripts: Record<string, string> } = JSON.parse(
       readFileSync(join(repository, "package.json"), "utf8"),
     );
     expect(manifest.scripts["check:skills-security"]).toBe(
       "bun run check:bun:runtime && bun tools/skills/check-skills-security.ts",
     );
-    expect(manifest.scripts.check).not.toContain("check:skills-security");
+    expect((manifest.scripts.check ?? "").split(" && ")).toContain("bun run check:skills-security");
   });
 
-  test("the patterns file is declared in the data inventory, and undeclared without its entry", () => {
-    const declared = auditInventory([PATTERNS_PATH]);
-    expect(declared.undeclared).toEqual([]);
-    expect(declared.awaiting).toEqual([PATTERNS_PATH]);
-    const without = NOT_GATED.filter((declaration) => declaration.path !== PATTERNS_PATH);
-    const audit = auditInventory([PATTERNS_PATH], without);
-    expect(audit.undeclared).toEqual([PATTERNS_PATH]);
-    const violations = reportInventory([PATTERNS_PATH], audit, without).violations;
-    expect(violations.some((violation) => violation.includes(PATTERNS_PATH))).toBe(true);
+  // Removing a pattern loosens a gate of the aggregate, so the file is on the
+  // guarded surface: gated by check-review-evidence, and declared nowhere as
+  // not gated (an exact declaration of a gated file contradicts the surface).
+  test("the patterns file is gated, and no declaration says it is not", () => {
+    expect(touchesGatedPaths([PATTERNS_PATH])).toEqual([PATTERNS_PATH]);
+    // No declaration at all: the file is placed by the surface alone.
+    const audit = auditInventory([PATTERNS_PATH], []);
+    expect(audit.gated).toEqual([PATTERNS_PATH]);
+    expect(audit.undeclared).toEqual([]);
+    expect(reportInventory([PATTERNS_PATH], audit, []).violations).toEqual([]);
+    expect(NOT_GATED.filter((declaration) => declaration.path === PATTERNS_PATH)).toEqual([]);
   });
 });
