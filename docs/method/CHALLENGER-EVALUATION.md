@@ -37,7 +37,8 @@ disponible**. Deux champs indépendants, jamais un seul :
 - `implementationStatus` — le composant existe-t-il et se charge-t-il ?
 - `evaluationStatus` — a-t-il été **mesuré** ? Valeurs utiles :
   `not-run`, `baseline-pass`, `challenger-pass`, `no-incremental-value`,
-  `failed`, `invalidated`, `superseded`.
+  `failed`, `invalidated`, `superseded`, `provisional` (mesuré sur un jeu trop
+  petit pour conclure : voir « Mesurer l'effet d'un skill »).
 
 `no-incremental-value` et `invalidated` sont les deux valeurs qui font le
 travail. Sans elles, un corpus ne peut exprimer qu'un succès ou une absence, et
@@ -231,6 +232,140 @@ changer sa sortie.
 
 Ces quatre constats valent plus que les mécanismes qui les ont révélés.
 
+## Mesurer l'effet d'un skill — protocole à trois bras, non outillé
+
+> **État au 2026-11-20 : règle écrite, aucun outil.** Décidé par ADR-0071 D2
+> (D118). Aucun essai n'a été joué sous ce protocole, et rien dans ce dépôt ne
+> sait le jouer. **Condition de reprise de l'outillage**, les deux ensemble :
+> une application consomme un skill, et un lieu d'exécution fermé sait rejouer
+> les essais. D'ici là, ce protocole est la règle contre laquelle se lit toute
+> mesure d'effet qui serait proposée. Il n'ajoute aucune condition à
+> l'admission d'un skill, qui reste celle d'ADR-0025 et d'ADR-0050.
+
+Un skill est un composant comme un autre : son palier « challenge » est une
+comparaison appariée, et son palier « valeur » un écart mesuré. Ce qu'il a de
+propre, c'est qu'il agit en ajoutant du texte au contexte d'un agent. Un agent
+qui reçoit une consigne de plus peut se comporter autrement du seul fait de
+l'avoir reçue, quel qu'en soit le contenu. Comparer « avec le skill » à « sans
+le skill » ne sépare pas ces deux effets.
+
+### Trois bras, appariés par cas
+
+Chaque cas du jeu est joué dans trois conditions, le reste étant identique
+(même agent, même modèle et même version, même environnement, même cas) :
+
+| Bras                 | Ce que l'agent reçoit                                                         | Ce que le bras isole                              |
+| -------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| **Sans le skill**    | rien de plus                                                                  | le comportement de référence                      |
+| **Avec le skill**    | le skill évalué                                                               | l'effet total                                     |
+| **Consigne neutre**  | une consigne de même longueur que le skill, sans contenu utile à la tâche     | l'effet d'avoir reçu une consigne, sans son objet |
+
+L'appariement se fait **par cas** : on compare le même cas d'un bras à
+l'autre, jamais deux moyennes de jeux différents. La conclusion sur le contenu
+du skill se lit sur « avec le skill » contre « consigne neutre ». L'écart
+entre « consigne neutre » et « sans le skill » se rapporte à côté : c'est la
+part de l'effet total qui ne doit rien au skill.
+
+### La décision se prend sur des contrôles exécutables
+
+Un contrôle exécutable répond sans modèle : un fichier existe, une commande
+sort 0, une sortie contient ou correspond à un motif. La réussite d'un essai,
+et donc le taux de réussite d'un bras, se calculent sur ces contrôles seuls.
+
+Un signal jugé par un modèle se présente **à part** : sa propre colonne, son
+propre taux, le modèle juge nommé. Il n'est jamais fondu avec les contrôles
+exécutables dans une note composite, et il ne décide pas. La raison est
+l'attribution : devant un verdict, on doit pouvoir dire quel signal l'a
+décidé, ce qu'une note où signaux jugés et signaux exécutés sont fondus ne
+permet pas. Tout juge par modèle tient les bornes d'I-41 : verdicts booléens,
+essai non noté quand le juge échoue, qualification préalable contre des cas
+étiquetés, aucun constat de sécurité abaissé, contenu jugé déclaré comme une
+donnée par une consigne explicite et placé dans une frontière qu'il ne peut
+pas refermer, modèle juge enregistré par essai. Deux essais jugés par des
+modèles différents ne s'apparient pas.
+
+### L'incertitude se donne, elle ne se devine pas
+
+- **Par bras** : un intervalle de confiance sur le taux de réussite, donné
+  avec le nombre de réussites et le nombre d'essais notés.
+- **Par paire de bras** : un test exact sur les cas discordants, ceux qui
+  réussissent dans un bras et échouent dans l'autre. Les cas concordants ne
+  disent rien de l'écart.
+
+Un essai non noté n'est ni une réussite ni un échec : il sort des deux
+comptes et se rapporte à part, de sorte que notés et non notés somment aux
+essais lancés. Un essai n'est non noté que pour une cause établie hors du
+bras : l'infrastructure n'a pas lancé l'agent, ou un contrôle n'a pas pu
+s'exécuter. Un agent lancé qui s'arrête, plante ou épuise son budget est un
+**échec** de son bras : ce que le bras lui a donné peut en être la cause, et
+le sortir des comptes favoriserait ce bras.
+
+Une paire dont un bras au moins est non noté sort du test exact de cette
+paire, et se compte à part. Le nombre d'essais non notés se donne par bras ;
+s'il diffère d'un bras à l'autre, cet écart se rapporte avec le résultat, qui
+ne se lit pas sans lui.
+
+### Un jeu trop petit ne conclut pas
+
+Quand le jeu est trop petit pour l'écart qu'on prétend mesurer, le résultat
+est **provisoire**, et un résultat provisoire **refuse de conclure** : ni
+promotion, ni rejet, ni chiffre d'effet publié comme établi. C'est un refus,
+pas une étiquette posée à côté d'un verdict qui tomberait quand même.
+
+Son `evaluationStatus` vaut `provisional`. Il ne prend aucune des quatre
+valeurs qui concluent (`baseline-pass`, `challenger-pass`,
+`no-incremental-value`, `failed`). Il ne prend pas non plus `not-run`, puisque
+des essais ont été joués ; ni `invalidated`, réservée à un run mené hors des
+conditions du protocole, quelle que soit la taille de son jeu ; ni
+`superseded`, qui dit qu'un autre résultat le remplace et rien de sa taille.
+
+Deux faits d'arithmétique, calculés aux niveaux que la source emploie (0,05 et
+95 %), montrent ce qu'un petit jeu ne peut pas dire :
+
+- avec cinq cas discordants ou moins, un test exact bilatéral ne descend pas
+  sous 0,05 : sa plus petite valeur est `.06250` à cinq cas et `.03125` à six
+  (`echo 'scale=5; 2/2^5' | bc -l`, puis `echo 'scale=5; 2/2^6' | bc -l`) ;
+- à dix essais, l'intervalle de Wilson autour de cinq réussites a une
+  demi-largeur de `.263403`. À vingt essais elle vaut encore `.200695` pour
+  dix réussites ; à vingt et un, `.196427`, pour dix réussites comme pour
+  onze. Commande, en changeant `s`
+  (réussites) et `n` (essais), valable hors des deux extrémités `s=0` et
+  `s=n` :
+  `echo "scale=6; z=1.959963984540054; n=10; s=5; p=s/n; d=1+z*z/n; m=z*sqrt((p*(1-p)+z*z/(4*n))/n)/d; m" | bc -l`.
+
+La flotte ne fixe aujourd'hui **aucun seuil** de suffisance. Le travail qui
+outillera ce protocole le fixera en donnée, **avant** la mesure : un seuil
+choisi après avoir vu le résultat ne refuse rien.
+
+### Provenance et conventions de la source
+
+Protocole adapté du drill de `NVIDIA/SkillEvaluator` (Apache-2.0, commit
+`35af6d9ba8b0f5c1fb975d6d8bee7459b73619a7`), lu le 2026-11-20. Idées
+seulement, aucun texte repris. Tout ce qui suit a été lu dans le code de
+l'outil, non exécuté ; les citations épinglées, chacune ouverte à la
+révision citée, sont dans ADR-0071.
+
+- **Deux bras**, avec et sans le skill, appariés par cas : repris, plus le
+  bras « consigne neutre », que la source n'a pas.
+- **Intervalle de Wilson** sur le taux de réussite et **test de McNemar
+  exact** sur les cas discordants : repris comme forme de l'incertitude ; le
+  choix de l'intervalle reste à l'outillage.
+- **Note composite** à poids égaux, comparée à un seuil de réussite de 0,50
+  par défaut : non reprise. Dans la source, une tentative se décide en trois
+  temps : le but atteint, que rend un modèle ; puis la sécurité ; puis
+  seulement cette note. La flotte ne reprend pas la note, pour la raison
+  d'attribution dite plus haut, et non parce que la source en ferait un
+  mauvais usage.
+- **Suffisance du jeu** : 10 cas dont 1 négatif, demi-largeur d'intervalle
+  d'au plus 0,20, 10 cas appariés. Dans la source c'est un statut rangé dans
+  le résultat ; d'après la lecture du drill, il ne change pas le verdict. Le
+  principe est repris comme un refus ; ces quatre seuils ne sont pas repris.
+- **Un cas jugé par deux modèles différents** sort de la comparaison : repris
+  (I-41).
+
+Les seuils et les niveaux cités ci-dessus (0,50, 10, 1, 0,20, 10, 95 %, 0,05)
+sont des **conventions de la source**, pas des normes de la flotte.
+
 ## Ce que la méthode n'autorise pas
 
 - **Promouvoir parce que c'est implémenté.** Aucune capacité n'est promue au
@@ -243,3 +378,7 @@ Ces quatre constats valent plus que les mécanismes qui les ont révélés.
   fait que la reconnaissance textuelle ne suffit pas.
 - **Agréger les décisions à la main.** Le verdict global est recalculé
   mécaniquement depuis les rapports, ou il n'est pas fiable.
+- **Conclure sur un jeu trop petit.** Un résultat provisoire refuse de
+  conclure ; il ne se publie pas comme un écart établi.
+- **Fondre un signal jugé dans une note.** Ce qu'un modèle juge se présente à
+  part de ce qu'un contrôle exécute, et ne décide pas.
