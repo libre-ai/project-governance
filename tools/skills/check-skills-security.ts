@@ -31,7 +31,10 @@
  * that reading the data file is reading everything the gate refuses. Each one
  * is compiled case-insensitive and applied to each logical line: a line ending
  * in a backslash is joined to the next, as a shell joins it (the brief said
- * "each line"; joining is stricter), and a finding names the line it starts on.
+ * "each line"; joining is stricter). A finding names the line the logical line
+ * starts on, and the last one too when a continuation joined several
+ * (`SKILL.md:4-6`): the match is somewhere in that range, the gate does not
+ * say on which of its lines.
  *
  * Invisible characters (category `invisible-character`, 2026-11-20) are
  * patterns like the others: the Unicode Tags block, the zero-width characters
@@ -42,6 +45,24 @@
  * ASCII it shadows, any other character named by its code point and counted.
  * The no-break space (U+00A0), the narrow no-break space (U+202F) and the
  * guillemets belong to none of the three families: French prose passes.
+ *
+ * The same three entries are applied to the name of every entry met, as its
+ * path relative to the root: a name is read by the model that is told to open
+ * the file, and a character hidden in it is hidden from the reviewer the same
+ * way. The other categories are not applied to names: a name is not a line an
+ * agent runs.
+ *
+ * What is printed. A path, a decoded payload, a reason: everything that comes
+ * from the scanned tree goes through `asciiOnly` before it is printed, so a
+ * name or a payload can neither forge a line of the report, nor repaint the
+ * terminal, nor carry an invisible character into the log. A finding prints
+ * at most RUNS_SHOWN Tags runs, each cut at PAYLOAD_SHOWN characters; a run
+ * prints at most FINDINGS_SHOWN findings. Whatever is left out is counted: in
+ * the finding itself, and, as soon as a finding is cut or not printed, on a
+ * line of its own (`findings=… (printed=… not-printed=…)`). No such line means
+ * every finding was printed whole. Entries that could not be read are not
+ * findings: each prints its own line, and their number is the one of the
+ * volume line.
  *
  * A byte-order mark that opens a file is tolerated: it is an encoding
  * signature, a single fixed character that carries nothing, and the strict
@@ -54,17 +75,43 @@
  * shortcut: no waiver mechanism, upgrade at the first legitimate finding
  *
  * Limits. The gate is coarse by construction: it stops the obvious form of an
- * instruction, not a command rebuilt through an alias or an encoding. It reads
- * the content of a file, not its name. Of the characters that display
- * nothing, it refuses the three families above and no other: the variation
- * selectors (U+FE00 to U+FE0F, which emoji use, and U+E0100 to U+E01EF), the
- * soft hyphen (U+00AD) and the Hangul fillers pass. No pattern looks for the
- * wording of an injected instruction.
+ * instruction, not a command rebuilt through an alias or an encoding. A
+ * directory that holds no entry is not met by the walk (git does not version
+ * it either), so its name is not read. No pattern looks for the wording of an
+ * injected instruction.
+ *
+ * "Invisible" here means the 150 code points of the three families, and no
+ * other: U+E0000 to U+E007F; U+180E, U+200B to U+200D, U+2060 to U+2064,
+ * U+FEFF; U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069. Other
+ * characters that display nothing, or change what is displayed, pass (measured
+ * 2026-11-20 against the Unicode properties of the pinned Bun: of the 4174
+ * Default_Ignorable_Code_Point, 150 are refused):
+ *
+ * - the variation selectors (U+FE00 to U+FE0F, which emoji use, and U+E0100 to
+ *   U+E01EF), which can encode a text byte by byte, and the rest of the
+ *   default-ignorable range that holds the second set (U+E0080 to U+E0FFF);
+ * - the soft hyphen (U+00AD), the combining grapheme joiner (U+034F), the
+ *   Hangul fillers (U+115F, U+1160, U+3164, U+FFA0), the Khmer inherent vowels
+ *   (U+17B4, U+17B5), the Mongolian free variation selectors (U+180B to
+ *   U+180D, U+180F), the braille blank (U+2800);
+ * - the deprecated format characters (U+206A to U+206F), U+2065, the
+ *   interlinear annotation marks (U+FFF9 to U+FFFB), U+FFF0 to U+FFF8, the
+ *   shorthand format controls (U+1BCA0 to U+1BCA3), the musical format
+ *   characters (U+1D173 to U+1D17A);
+ * - every control character but NUL, which makes the file undecodable, and
+ *   the line feed, which ends a line: escape (U+001B), backspace, carriage
+ *   return, delete, the C1 controls;
+ * - every space that is not a zero-width one (U+00A0, U+1680, U+2000 to
+ *   U+200A, U+202F, U+205F, U+3000) and the line and paragraph separators
+ *   (U+2028, U+2029).
+ *
+ * `tools/quality/check-pr-negatives.ts` treats every default-ignorable code
+ * point as invisible; this gate does not, and widening its families is a
+ * change of the data file, not of this text.
  */
 
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { printable } from "../../ecosystem/fleet-gates";
+import { join, relative } from "node:path";
 
 export const PATTERNS_PATH = "tools/skills/skills-security-patterns.v1.json";
 
@@ -152,7 +199,13 @@ export interface ScannedFile {
 
 export interface SecurityFinding {
   readonly path: string;
+  /** The physical line the logical line starts on. */
   readonly line: number;
+  /**
+   * The last physical line of the logical line, when a continuation joined
+   * several: the match is somewhere in `line`..`lastLine`.
+   */
+  readonly lastLine?: number;
   readonly patternId: string;
   readonly category: SecurityCategory;
   /**
@@ -160,6 +213,35 @@ export interface SecurityFinding {
    * The line shows nothing to whoever opens the file, so the finding has to.
    */
   readonly evidence?: string;
+  /** Present when `evidence` shows only a part of what is hidden, the rest counted. */
+  readonly evidenceCut?: true;
+}
+
+/** An invisible character in the name of an entry: there is no line to name. */
+export interface NameFinding {
+  readonly path: string;
+  readonly patternId: string;
+  readonly category: SecurityCategory;
+  readonly evidence: string;
+  readonly evidenceCut?: true;
+}
+
+/**
+ * A text that comes from the scanned tree, as it is printed: printable ASCII
+ * and nothing else. A line break in a name would forge a line of the report,
+ * an escape sequence would repaint the terminal, and a character that displays
+ * nothing would be as invisible in the log as in the file. Every other
+ * character is written as its code point (`\u001b`, `\u{e0041}`); a backslash
+ * is escaped first, so what is printed reads one way.
+ *
+ * `printable` of ecosystem/fleet-gates.ts is not reused: it leaves the
+ * zero-width characters and the Tags block as they are.
+ */
+export function asciiOnly(text: string): string {
+  return text.replaceAll("\\", "\\u005c").replace(/[^\x20-\x7e]/gu, (character) => {
+    const point = (character.codePointAt(0) ?? 0).toString(16);
+    return point.length > 4 ? `\\u{${point}}` : `\\u${point.padStart(4, "0")}`;
+  });
 }
 
 /** The lines of a text; the empty segment after a final newline is not a line. */
@@ -172,6 +254,8 @@ function linesOf(content: string): string[] {
 interface LogicalLine {
   /** Number of the physical line the logical line starts on. */
   readonly start: number;
+  /** Number of the physical line it ends on: `start`, unless lines were joined. */
+  readonly end: number;
   readonly text: string;
 }
 
@@ -185,7 +269,8 @@ function logicalLines(content: string): LogicalLine[] {
   const logical: LogicalLine[] = [];
   let parts: string[] = [];
   let start = 1;
-  linesOf(content).forEach((line, index) => {
+  const lines = linesOf(content);
+  lines.forEach((line, index) => {
     if (parts.length === 0) start = index + 1;
     const trimmed = line.trimEnd();
     if (trimmed.endsWith("\\")) {
@@ -196,11 +281,11 @@ function logicalLines(content: string): LogicalLine[] {
       return;
     }
     parts.push(line);
-    logical.push({ start, text: parts.join(" ") });
+    logical.push({ start, end: index + 1, text: parts.join(" ") });
     parts = [];
   });
   // A continuation on the last line has nothing to join: it stands alone.
-  if (parts.length > 0) logical.push({ start, text: parts.join(" ") });
+  if (parts.length > 0) logical.push({ start, end: lines.length, text: parts.join(" ") });
   return logical;
 }
 
@@ -215,30 +300,51 @@ const TAGS_LAST = 0xe007f;
 /** Decoded characters printed for one Tags run; the rest of the run is counted. */
 const PAYLOAD_SHOWN = 120;
 
+/** Tags runs printed for one finding; the other runs are counted, with their characters. */
+const RUNS_SHOWN = 3;
+
+/** Findings printed by one run of the gate; the others are counted. */
+const FINDINGS_SHOWN = 100;
+
+interface Hidden {
+  readonly text: string;
+  /** Whether `text` leaves a part of a run, or whole runs, counted but not shown. */
+  readonly cut: boolean;
+}
+
 /**
- * What the matches of an invisible-character pattern hide on one line, in
- * printable ASCII only: the characters themselves never reach the log, where
- * they would be as invisible as in the file.
+ * What the matches of an invisible-character pattern hide on one line or in
+ * one name, in printable ASCII only: the characters themselves never reach
+ * the log, where they would be as invisible as in the file.
  *
  * - A run of the Tags block is decoded to the ASCII it shadows, between
- *   double quotes. Control characters are escaped by `printable`; a backslash
- *   and a double quote are escaped first, so the quoted text reads one way.
- *   The payload is text a stranger wrote for a model to obey: it is printed as
- *   a quotation, cut at PAYLOAD_SHOWN characters.
- * - Any other character is named by its code point and counted.
+ *   double quotes, through `asciiOnly`; a double quote is escaped too, so the
+ *   quoted text reads one way. The payload is text a stranger wrote for a
+ *   model to obey: it is printed as a quotation, cut at PAYLOAD_SHOWN
+ *   characters, and only the first RUNS_SHOWN runs are printed. A line can
+ *   hold any number of runs: without that bound the message has none.
+ * - Any other character is named by its code point and counted: at most one
+ *   name per code point of the families.
  */
-function describeHidden(matched: readonly string[]): string {
+function describeHidden(matched: readonly string[]): Hidden {
   const payloads: string[] = [];
   const counts = new Map<string, number>();
+  let cut = false;
+  let runsNotShown = 0;
+  let charactersNotShown = 0;
   for (const text of matched) {
     const points = Array.from(text, (character) => character.codePointAt(0) ?? 0);
     if (points.every((point) => point >= TAGS_FIRST && point <= TAGS_LAST)) {
+      if (payloads.length >= RUNS_SHOWN) {
+        runsNotShown += 1;
+        charactersNotShown += points.length;
+        continue;
+      }
       // Only the part that is printed is decoded: a run can be any length.
-      const shown = String.fromCodePoint(
-        ...points.slice(0, PAYLOAD_SHOWN).map((point) => point - TAGS_FIRST),
-      );
-      const quoted = printable(shown.replaceAll("\\", "\\u005c").replaceAll('"', "\\u0022"));
+      const shown = points.slice(0, PAYLOAD_SHOWN).map((point) => point - TAGS_FIRST);
+      const quoted = asciiOnly(String.fromCodePoint(...shown)).replaceAll('"', "\\u0022");
       const rest = points.length - shown.length;
+      if (rest > 0) cut = true;
       payloads.push(
         `${points.length} tag character(s) spelling "${quoted}"${rest > 0 ? ` and ${rest} more` : ""}`,
       );
@@ -249,12 +355,27 @@ function describeHidden(matched: readonly string[]): string {
       counts.set(name, (counts.get(name) ?? 0) + 1);
     }
   }
-  return [...payloads, ...[...counts].map(([name, count]) => `${name} x${count}`)].join(", ");
+  if (runsNotShown > 0) {
+    payloads.push(
+      `${runsNotShown} more run(s) not shown, of ${charactersNotShown} tag character(s) in all`,
+    );
+  }
+  return {
+    text: [...payloads, ...[...counts].map(([name, count]) => `${name} x${count}`)].join(", "),
+    cut: cut || runsNotShown > 0,
+  };
+}
+
+/** The fields of a finding that say what a line or a name hides. */
+function evidenceOf(matched: readonly string[]): { evidence: string; evidenceCut?: true } {
+  const hidden = describeHidden(matched);
+  return { evidence: hidden.text, ...(hidden.cut ? { evidenceCut: true } : {}) };
 }
 
 /**
  * One finding per (logical line, pattern) that matches, reported on the
- * physical line where the logical line starts. Pure.
+ * physical line where the logical line starts, with the line it ends on when
+ * a continuation joined several. Pure.
  */
 export function scanForSkillRisks(
   files: readonly ScannedFile[],
@@ -268,20 +389,49 @@ export function scanForSkillRisks(
   }));
   const findings: SecurityFinding[] = [];
   for (const file of files) {
-    for (const { start, text } of logicalLines(file.content)) {
+    for (const { start, end, text } of logicalLines(file.content)) {
       for (const { pattern, expression } of compiled) {
         const matched = text.match(expression);
         if (matched === null) continue;
         findings.push({
           path: file.path,
           line: start,
+          ...(end > start ? { lastLine: end } : {}),
           patternId: pattern.id,
           category: pattern.category,
-          ...(pattern.category === "invisible-character"
-            ? { evidence: describeHidden(matched) }
-            : {}),
+          ...(pattern.category === "invisible-character" ? evidenceOf(matched) : {}),
         });
       }
+    }
+  }
+  return findings;
+}
+
+/**
+ * One finding per (entry, invisible-character pattern) whose name matches.
+ * The name is the path relative to `root`, every segment of it: the root
+ * itself is what the operator typed, not something the tree brought. Pure.
+ */
+export function scanEntryNames(
+  root: string,
+  paths: readonly string[],
+  patterns: readonly SecurityPattern[],
+): NameFinding[] {
+  const compiled = patterns
+    .filter((pattern) => pattern.category === "invisible-character")
+    .map((pattern) => ({ pattern, expression: new RegExp(pattern.regex, "gi") }));
+  const findings: NameFinding[] = [];
+  for (const path of paths) {
+    const name = relative(root, path);
+    for (const { pattern, expression } of compiled) {
+      const matched = name.match(expression);
+      if (matched === null) continue;
+      findings.push({
+        path,
+        patternId: pattern.id,
+        category: pattern.category,
+        ...evidenceOf(matched),
+      });
     }
   }
   return findings;
@@ -434,7 +584,7 @@ async function main(): Promise<void> {
   // lstat, not existsSync: existsSync follows a link, so a dangling link as
   // root would read as "no directory" and pass as declared empty.
   if (!rootIsPresent(root)) {
-    report.allowEmpty(`no ${root}/ directory in this repository`);
+    report.allowEmpty(`no ${asciiOnly(root)}/ directory in this repository`);
     concludeGate(gate, report);
     return;
   }
@@ -442,41 +592,77 @@ async function main(): Promise<void> {
   const lines = read.scanned.reduce((sum, file) => sum + linesOf(file.content).length, 0);
   const volume = formatSecurityVolume(read, lines, patterns.length);
   if (entriesMet(read) === 0) {
-    report.allowEmpty(`${root}/ holds no file — nothing to scan`);
+    report.allowEmpty(`${asciiOnly(root)}/ holds no file — nothing to scan`);
     concludeGate(gate, report);
     return;
   }
 
+  // Every item below names something the tree brought: a path is never
+  // printed as it is, whatever the check that names it.
+  const record = (path: string, ok: boolean, note: string, place = ""): void => {
+    report.check(`${asciiOnly(path)}${place}`, ok, note);
+  };
+
+  const entries: readonly string[] = [
+    ...read.scanned.map((file) => file.path),
+    ...read.undecodable,
+    ...read.symlinks,
+    ...read.unreadable.map((entry) => entry.path),
+  ];
+  const named = scanEntryNames(root, entries, patterns);
   const findings = scanForSkillRisks(read.scanned, patterns);
+  const refused = new Set([...named, ...findings].map((finding) => finding.path));
   for (const file of read.scanned) {
-    const own = findings.filter((finding) => finding.path === file.path);
-    if (own.length === 0) report.check(file.path, true, "no pattern matches");
+    if (!refused.has(file.path)) record(file.path, true, "no pattern matches");
   }
-  for (const finding of findings) {
-    report.check(
-      `${finding.path}:${finding.line}`,
-      false,
-      `matches ${finding.patternId} (${finding.category})` +
+
+  const printed = [
+    ...named.map((finding) => ({
+      path: finding.path,
+      place: "",
+      note: `its name matches ${finding.patternId} (${finding.category}): ${finding.evidence}`,
+      cut: finding.evidenceCut === true,
+    })),
+    ...findings.map((finding) => ({
+      path: finding.path,
+      place: `:${finding.line}${finding.lastLine === undefined ? "" : `-${finding.lastLine}`}`,
+      note:
+        `matches ${finding.patternId} (${finding.category})` +
         (finding.evidence === undefined ? "" : `: ${finding.evidence}`),
+      cut: finding.evidenceCut === true,
+    })),
+  ];
+  const shown = printed.slice(0, FINDINGS_SHOWN);
+  for (const { path, place, note } of shown) record(path, false, note, place);
+  // What is left out is counted, on a line of its own: no such line means
+  // every finding was printed, and printed whole.
+  const cut = shown.filter((finding) => finding.cut).length;
+  if (printed.length > shown.length || cut > 0) {
+    record(
+      root,
+      false,
+      `findings=${printed.length} (printed=${shown.length} not-printed=${printed.length - shown.length}), ` +
+        `evidence cut on ${cut} of the printed`,
     );
   }
+
   for (const path of read.undecodable) {
-    report.check(
+    record(
       path,
       false,
       "not valid UTF-8 text (invalid bytes, or a NUL): its content cannot be read, so it is refused",
     );
   }
   for (const path of read.symlinks) {
-    report.check(path, false, "symbolic link, not followed: its target is not part of the tree");
+    record(path, false, "symbolic link, not followed: its target is not part of the tree");
   }
   for (const { path, reason } of read.unreadable) {
-    report.check(path, false, reason);
+    record(path, false, asciiOnly(reason));
   }
   // A failing run prints no volume line, so the counts ride on a check of
   // their own whenever an entry was left unread.
   if (read.scanned.length < entriesMet(read)) {
-    report.check(root, false, `not every entry was read: ${volume}`);
+    record(root, false, `not every entry was read: ${volume}`);
   }
   report.volume(volume);
   concludeGate(gate, report);

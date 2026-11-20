@@ -273,13 +273,39 @@ section ne les recopie pas.
   revue ou d'arbitrage.
 - **Tout fichier compte.** Un lien symbolique, un binaire ou un fichier
   illisible sous `skills/` est un échec nommé, pas un fichier sauté.
-- **Aucun caractère invisible.** Le bloc Unicode « Tags », les caractères de
-  largeur nulle et les contrôles bidirectionnels sont refusés : un modèle les
-  lit, un relecteur ne les voit pas. Le constat imprime ce que la ligne cache,
-  en ASCII. L'espace insécable, l'espace fine insécable et les guillemets
-  français passent ; une marque d'ordre d'octets n'est tolérée qu'en tout
-  début de fichier. Un texte collé depuis une page web ou un traitement de
-  texte est la source habituelle d'un tel caractère.
+- **Trois familles de caractères invisibles, et elles seules.** Sont refusés,
+  dans le contenu d'un fichier comme dans son nom (chaque segment du chemin
+  sous `skills/`), 150 points de code : le bloc Unicode « Tags » (U+E0000 à
+  U+E007F), les caractères de largeur nulle (U+180E, U+200B à U+200D, U+2060 à
+  U+2064, U+FEFF) et les contrôles bidirectionnels (U+061C, U+200E, U+200F,
+  U+202A à U+202E, U+2066 à U+2069). Un modèle les lit, un relecteur ne les
+  voit pas. Une marque d'ordre d'octets n'est tolérée qu'en tout début de
+  fichier. Un texte collé depuis une page web ou un traitement de texte est la
+  source habituelle d'un tel caractère.
+- **Ce qui passe, et n'affiche pourtant rien.** Le gate ne refuse pas « tout
+  caractère invisible » : les sélecteurs de variante (U+FE00 à U+FE0F, U+E0100
+  à U+E01EF, qui peuvent coder un texte octet par octet) et le reste de la
+  plage ignorable qui contient les seconds (U+E0080 à U+E0FFF), le trait
+  d'union conditionnel (U+00AD), le diacritique U+034F, les remplisseurs
+  Hangul (U+115F, U+1160, U+3164, U+FFA0), U+17B4 et U+17B5, les sélecteurs
+  mongols (U+180B à U+180D, U+180F), le blanc braille (U+2800), U+2065, les
+  caractères de format dépréciés (U+206A à U+206F), U+FFF0 à U+FFFB, U+1BCA0 à
+  U+1BCA3, U+1D173 à U+1D17A, et tout caractère de contrôle sauf NUL
+  (échappement, retour arrière, retour chariot) passent. Passent aussi, à
+  dessein, l'espace insécable, l'espace fine insécable, les autres espaces et
+  les guillemets français. La liste exacte est tenue par un test de
+  `tools/skills/check-skills-security.test.ts` ; élargir une famille est un
+  changement du fichier de données.
+- **Ce que le gate imprime.** Le constat donne ce que la ligne ou le nom
+  cache, en ASCII : une suite du bloc « Tags » décodée, tout autre caractère
+  nommé par son point de code et compté. Un chemin, comme une charge décodée,
+  ne s'imprime qu'en ASCII affichable, le reste écrit en point de code
+  (`\u001b`) : un nom de fichier ne forge pas une ligne du rapport. Une ligne
+  continuée par `\` est annoncée par sa plage (`SKILL.md:4-6`), sans dire
+  laquelle de ses lignes porte la correspondance. Un constat montre au plus
+  trois suites « Tags » de 120 caractères, une exécution au plus cent
+  constats ; ce qui est omis est compté, et dès qu'un constat est coupé ou
+  omis une ligne `findings=… (printed=… not-printed=…)` le dit.
 - **Le gate est grossier par construction.** Il arrête la forme évidente
   d'une consigne, pas une commande reconstruite par un alias ou un encodage :
   la revue reste nécessaire.
