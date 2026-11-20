@@ -326,3 +326,39 @@ generations:
       surface, 0 refused, 0 unreadable. With this declaration 75d6ea08 is
       one generation behind, inside the grace window: no pin turns red. No
       generation is retired here.
+  - sha: a00daec8d10419f266a9611f589c606858ca86b3
+    added_on: 2026-11-18
+    note: >-
+      The composition manifest composes schemas-and-contracts at 5ed1f716
+      (#257), which descends from a82d7b54 and carries
+      libre-ai-contract-types::strict_json and the signing-keys v1 and
+      artifact manifest signatures v1 contracts; every other composed ref is
+      the one of 5f7742d. The composition refuses a Cargo consumer whose
+      `rev` differs from the composed revision, so the three Cargo
+      consumers (artifact-verification, execution-continuity-evaluator,
+      execution-sandbox) cannot pin 5ed1f716 on any earlier generation; that
+      is the reason for this declaration, and artifact-verification's signed
+      manifest verification (L007) needs it. Of what a consumer runs from its
+      pin, validate-composition.yml and the composition tools are unchanged
+      except the manifest's one ref (`git diff --stat 5f7742d a00daec8 --
+      .github/composition/ .github/workflows/validate-composition.yml`: 1
+      file, 1 line); four reusable templates are added
+      (reusable-api-compat, reusable-artifact-lifecycle,
+      reusable-mutation-rust, reusable-shell-lint, with
+      toolchains/cargo-mutants.json) and wired by no consumer yet, and
+      reusable-dependency-policy.yml changes by one comment; package.json
+      gains scripts and no dependency, and bun.lock is unchanged. Generation
+      coherence at a00daec8 (replayed with `check-generation-coherence.py
+      --declaration a00daec8`): 16 declared, 15 verified, 0 failed, 1 not
+      applicable (database-policy-inspector), 20 gate roots replayed, 20
+      passed. Grace window, measured by `bun
+      tools/fleet/bump-generation.ts --dry-run --to a00daec8` before this
+      declaration: 17 consumers on 75d6ea08, signalement refused for
+      surfaces that already disagree (5f7742d against prose citing
+      75d6ea08), 2 repositories without a pin surface, 0 unreadable; 14
+      plan a plain bump, and the three Cargo consumers are refused because
+      their Cargo `rev` must move with the pins, in one pull request each.
+      With this declaration 75d6ea08 is two generations behind, the grace
+      limit: no pin turns red, and every consumer still on 75d6ea08 must
+      move before another generation is declared. No generation is retired
+      here.

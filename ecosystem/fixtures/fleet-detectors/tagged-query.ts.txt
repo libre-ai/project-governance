@@ -1,0 +1,1 @@
+export const read = (sql, id) => sql`SELECT * FROM t WHERE id = ${id}`;

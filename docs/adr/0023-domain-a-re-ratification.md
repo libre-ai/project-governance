@@ -9,8 +9,8 @@
   produit zéro, définition de K4, statut des ADR 0013-0017, renvois du
   registre de décisions.
 - **Étend :** ADR-0008, ADR-0009, ADR-0020, ADR-0009/D4 (K4).
-- **Supersède de manière bornée :** voir §2 — chaque supersession est
-  nominative et bornée à la clause près.
+- **Supersède de manière bornée :** ADR-0009 et ADR-0020 (séquencement résiduel, §2.2) — chaque
+  supersession est nominative et bornée à la clause près au §2.
 
 ## 1. Contexte
 

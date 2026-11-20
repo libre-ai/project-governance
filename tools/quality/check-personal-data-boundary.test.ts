@@ -231,8 +231,9 @@ describe("scanPersonalIdentifiers", () => {
   });
 
   test("does not flag the RFC 2606 .example TLD", () => {
-    // Found on the real tree: the key-ceremony runbook signs with
-    // owner@libre-ai.example. RFC 2606 reserves .example alongside .invalid/.test.
+    // Found on the real tree: the key-ceremony runbook signed with
+    // owner@libre-ai.example until its witness became a role identifier
+    // (signing-keys.v1, K7). RFC 2606 reserves .example alongside .invalid/.test.
     expect(
       identifiersFor(
         "docs/security/KEY-CEREMONY-RUNBOOK.md",

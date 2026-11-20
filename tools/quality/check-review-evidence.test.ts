@@ -70,6 +70,19 @@ describe("touchesGatedPaths", () => {
     ).toEqual(["ecosystem/refusals.v1.yaml"]);
   });
 
+  // ADR-0070 (proposed): removing an entry of this register loosens its gate.
+  test("matches ecosystem/third-parties.v1.yaml exactly, not a sibling", () => {
+    expect(
+      touchesGatedPaths([
+        "ecosystem/third-parties.v1.yaml",
+        "ecosystem/third-parties.v2.yaml",
+        "ecosystem/third-parties.v1.yaml.bak",
+        "docs/ecosystem/third-parties.v1.yaml",
+        "tools/quality/check-third-parties.ts",
+      ]),
+    ).toEqual(["ecosystem/third-parties.v1.yaml"]);
+  });
+
   // Review of #142 (2026-10-23): an exemption relaxes the refusals gate, so
   // its file is gated like the register — exactly that file. Its neighbour
   // pinned-citations.v1.json used to stand here as an ungated sibling; it
@@ -132,6 +145,15 @@ describe("touchesGatedPaths", () => {
         "ecosystem/release-age-exceptions.v1.yaml.bak",
         "docs/ecosystem/release-age-exceptions.v1.yaml",
         "ecosystem/check-release-age.ts",
+      ],
+    ],
+    [
+      "ecosystem/staleness-exceptions.v1.yaml",
+      [
+        "ecosystem/staleness-exceptions.v2.yaml",
+        "ecosystem/staleness-exceptions.v1.yaml.bak",
+        "docs/ecosystem/staleness-exceptions.v1.yaml",
+        "ecosystem/check-fleet-staleness.ts",
       ],
     ],
     [
