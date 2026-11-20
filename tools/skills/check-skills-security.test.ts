@@ -496,17 +496,28 @@ describe("this repository", () => {
     }
   });
 
-  // Owner decision of 2026-11-20: the gate is a step of the aggregate. The
-  // chain is read step by step, so a step that only mentions the script
-  // (`echo check:skills-security`) does not count as running it.
-  test("check:skills-security is a script, and a step of the check chain", () => {
+  // Owner decision of 2026-11-20: the gate is a step of the aggregate. This is
+  // a reading of the chain text, not a run of it, so it holds the chain to the
+  // one shape whose text says what runs: `bun run <script>` steps joined by
+  // `&&`. In that shape every step runs unless an earlier one fails, and a
+  // failure fails the aggregate. Any other step (`exit 0`, `echo …`, `… || true`,
+  // a `;`) can end the chain green before the gate, or swallow its verdict.
+  //
+  // What this test does not see, on purpose (it is not a shell parser):
+  // - spacing around `&&` is ignored;
+  // - an equivalent chain written with grouping, a subshell or another runner
+  //   turns it red: whoever regroups the chain re-reads it and updates this test;
+  // - what the other scripts of the chain do, and whether CI runs `check`.
+  test("check:skills-security is a script, and a step of a check chain that cannot skip it", () => {
     const manifest: { scripts: Record<string, string> } = JSON.parse(
       readFileSync(join(repository, "package.json"), "utf8"),
     );
     expect(manifest.scripts["check:skills-security"]).toBe(
       "bun run check:bun:runtime && bun tools/skills/check-skills-security.ts",
     );
-    expect((manifest.scripts.check ?? "").split(" && ")).toContain("bun run check:skills-security");
+    const steps = (manifest.scripts.check ?? "").trim().split(/\s*&&\s*/);
+    expect(steps).toContain("bun run check:skills-security");
+    expect(steps.filter((step) => !/^bun run [\w:.-]+$/.test(step))).toEqual([]);
   });
 
   // Removing a pattern loosens a gate of the aggregate, so the file is on the
