@@ -4,6 +4,14 @@
   budget, formulation. La gouvernance d'admission (anti-doublon, eval,
   dépréciation, `.out-of-scope/`) est fixée par ADR-0025 ; ce document ne la
   répète pas, il fixe la doctrine d'**écriture**, distincte.
+- **État d'admission :** il ne s'écrit pas, il se calcule (ADR-0072). Le
+  `metadata.status` du frontmatter est la copie de l'état dérivé des contrôles
+  passés sur l'empreinte du répertoire de la skill. Après toute modification
+  d'un fichier sous `skills/<nom>/`, régénérer le reçu dans le même commit :
+  `bun run build:skills-admission`. Si la commande échoue en nommant un
+  contrôle, c'est la skill ou le contrôle qui est à réparer : régénérer de
+  nouveau ne change rien. Un lien symbolique dans un répertoire de skill est
+  refusé, comme un fichier que git ne suit pas.
 
 ## Le pointeur a un coût double
 

@@ -1,7 +1,7 @@
 # ADR-0050 — Amendement d'ADR-0025 : une skill entre ou change sur un échec observé, se promeut sur des signes observables, et sa collision se rejoue à chaque plugin
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; D1 à
-  D8 et l'amendement d'I-25 sont en vigueur à la fusion. **Amendé par :** ADR-0059 (D1 : une seule dérogation nommée, (g)).
+  D8 et l'amendement d'I-25 sont en vigueur à la fusion. **Amendé par :** ADR-0059 (D1 : une seule dérogation nommée, (g)), ADR-0072 (D3 : une promotion ne s'écrit plus tant que l'enregistrement qui la lie à l'empreinte de la skill n'est pas construit ; `status: promoted` fait échouer le gate du reçu d'admission).
 - **Arbitrage :** le propriétaire a validé le texte proposé le 2026-10-13 et
   tranché les deux options qu'il laissait ouvertes : D7 option A, conforme à la
   recommandation de la rédaction, et D8 option C. Les arbitrages du 2026-10-13

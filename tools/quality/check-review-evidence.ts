@@ -85,6 +85,10 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * proposed): removing an entry or moving a date away loosens what
  * `check-third-parties.ts` holds the fleet to.
  *
+ * `tools/skills/skills-admission-policy.v1.json` joined the day it was written
+ * (ADR-0072 D3): it lists the checks a skill must pass for its admission state
+ * to be `candidate`, and removing one admits every skill on less evidence.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -180,6 +184,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/hosted-offers\.v1\.yaml$/,
   // check-third-parties.ts: the services the fleet depends on and their dated exit exercises (ADR-0070).
   /^ecosystem\/third-parties\.v1\.yaml$/,
+  // build-skills-admission.ts: the checks a skill must pass for its admission state (ADR-0072 D3).
+  /^tools\/skills\/skills-admission-policy\.v1\.json$/,
   /^ecosystem\/schemas\/knowledge-object\.schema\.json$/,
   /^ecosystem\/schemas\/knowledge-projection\.schema\.json$/,
   // check-dependabot-conformance.ts: the exact form every consumer's dependabot.yml must take.
@@ -221,6 +227,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "ecosystem/schemas/produit.v1.schema.json",
   "ecosystem/hosted-offers.v1.yaml",
   "ecosystem/third-parties.v1.yaml",
+  "tools/skills/skills-admission-policy.v1.json",
   "ecosystem/schemas/knowledge-object.schema.json",
   "ecosystem/schemas/knowledge-projection.schema.json",
   "distribution/templates/dependabot/cargo.yml",

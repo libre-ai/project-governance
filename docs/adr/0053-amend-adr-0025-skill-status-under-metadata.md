@@ -1,7 +1,7 @@
 # ADR-0053 — Amendement d'ADR-0025 : le statut d'une skill vit sous `metadata`, le frontmatter ne porte que les champs Agent Skills
 
 - **Statut :** accepted — arbitrage propriétaire du 2026-10-14 en chat ; en
-  vigueur à la fusion.
+  vigueur à la fusion. **Amendé par :** ADR-0072 (D1 : `metadata.status` devient la copie de l'état dérivé, tenue égale par un gate ; son emplacement et sa forme restent).
 - **Arbitrage :** entre trois options présentées en question structurée
   (`metadata.status`, statut déplacé dans `eval.json`, statu quo documenté),
   le propriétaire a retenu `metadata.status`, l'option recommandée.
