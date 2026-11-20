@@ -91,12 +91,18 @@ def read_manifest(path, prepare):
         return parse_manifest(stream.read(65537), prepare)
 
 
+def without_git_environment():
+    # `git -C <repository>` still obeys an inherited GIT_DIR (a git hook): it
+    # would read the declaration from whichever repository that names.
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def manifest_at(commit, prepare, repository=HERE.parent.parent):
     """The manifest a governance commit composes: what declaring that commit as a generation declares."""
     if len(commit) != 40 or any(char not in "0123456789abcdef" for char in commit):
         raise ValueError("A generation is a full lowercase commit ID")
     done = subprocess.run(["git", "-C", str(repository), "show", f"{commit}:.github/composition/manifest.json"],
-                          capture_output=True, timeout=60)
+                          capture_output=True, timeout=60, env=without_git_environment())
     if done.returncode != 0:
         raise ValueError(f"cannot read the manifest at {commit[:12]}: {done.stderr.decode('utf-8', 'replace').strip()[-200:]}")
     return parse_manifest(done.stdout[:65537], prepare)
@@ -311,7 +317,7 @@ def declared_gate_drift(commit, governance, repository=HERE.parent.parent):
     drift = []
     for relative in GATE_CLOSURE:
         declared = subprocess.run(["git", "-C", str(repository), "show", f"{commit}:{relative}"],
-                                  capture_output=True, timeout=60)
+                                  capture_output=True, timeout=60, env=without_git_environment())
         composed = governance / relative
         if declared.returncode != 0:
             drift.append(f"{relative}: unreadable at the declared commit {commit[:12]}")
