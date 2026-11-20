@@ -32,24 +32,44 @@ const SKILLS_ROOT = "skills";
 export type SkillsRootOrigin = "default" | "argument";
 
 /**
- * Every text this gate prints comes through here. A directory name, the root
- * given on the command line, a field of a SKILL.md or the message of a file
- * system error all reach the output, and none of them is this gate's to
- * trust: a line break in a name would print a verdict line of its own, an
- * escape sequence would repaint the real one. `printable` writes control
- * characters, line separators and bidi overrides as `\uXXXX`.
+ * A text this gate did not write, made safe to print on one line and read
+ * back without ambiguity. `printable`, shared with the fleet gates, writes
+ * C0, DEL, C1, U+2028, U+2029, U+200E, U+200F, U+202A to U+202E and U+2066
+ * to U+2069 as `\uXXXX`. The backslash is doubled first: without it a name
+ * holding the six characters `\u000a` prints like a name holding a line
+ * break. One notation, so a line break is `\u000a` wherever it is printed.
+ *
+ * Left as they are, and still able to mislead a reader: U+061C, a bidi
+ * control `printable` does not list; zero-width characters; every other
+ * printable non-ASCII text.
+ */
+function shown(text: string): string {
+  return printable(text.replaceAll("\\", "\\\\"));
+}
+
+/**
+ * Every text this gate prints comes through `shown`, here or at the
+ * body-length warning, and nowhere else: escaped once, since a second pass
+ * would double the backslashes again.
+ *
+ * That covers what a message quotes from a SKILL.md or an eval.json as well
+ * as the names read from the file system, although only the names are new to
+ * this gate's output. A skill under admission is text somebody else wrote:
+ * an escape sequence in its frontmatter repaints the verdict line as surely
+ * as one in a directory name. The price is that a message quoting a tab, a
+ * carriage return or a backslash shows it escaped where it showed it raw.
  */
 class PrintableGateReport extends GateReport {
   override check(item: string, ok: boolean, note: string): this {
-    return super.check(printable(item), ok, printable(note));
+    return super.check(shown(item), ok, shown(note));
   }
 
   override allowEmpty(because: string): this {
-    return super.allowEmpty(printable(because));
+    return super.allowEmpty(shown(because));
   }
 
   override volume(summary: string): this {
-    return super.volume(printable(summary));
+    return super.volume(shown(summary));
   }
 }
 
@@ -68,11 +88,12 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * The root was listed, and the scan for SKILL.md then failed on something
- * under it. `entry` is the path the scan names, relative to the root, when it
- * names one.
+ * The root was listed, and its entries could then not be accounted for: the
+ * scan for SKILL.md failed on something under it, or matched a name the
+ * listing does not hold. `entry` is that path, relative to the root, when
+ * one is known; the message says which of the two happened.
  */
-export class SkillsRootEntryUnreadable extends Error {
+export class SkillsRootEntryUnaccounted extends Error {
   readonly entry: string | null;
 
   constructor(entry: string | null, message: string) {
@@ -119,32 +140,65 @@ function setAsideLabel(entry: SetAsideEntry): string {
  * "read" covers both files of a skill: a missing or unparseable eval.json is
  * a failed check, so no success line is printed over a skill half read.
  *
- * The names are file names: the line is returned printable.
+ * The names are returned as read: the report escapes them where it prints.
  */
 export function formatSkillsLintVolume(root: string, listing: SkillsRootListing): string {
   const named =
     listing.setAside.length === 0 ? "" : ` (${listing.setAside.map(setAsideLabel).join(", ")})`;
-  return printable(
+  return (
     `entries under ${under(root, "")}: ${listing.entries.length} = ${listing.skills.length} skill(s) read ` +
-      `+ ${listing.setAside.length} set aside${named}`,
+    `+ ${listing.setAside.length} set aside${named}`
   );
+}
+
+/**
+ * Split what the directory listing holds (`listed`, each entry with its kind)
+ * against the names the glob matched. The three arrays returned are all
+ * filtered from the listing, so they sum by construction.
+ *
+ * A name the glob matched and the listing does not hold belongs to none of
+ * them: filtered away, it would be a skill neither linted nor counted, on a
+ * line that still sums. The two readings are taken one after the other, so a
+ * directory created in between is enough. It is a failure naming the name.
+ */
+export function splitSkillsRoot(
+  listed: readonly SetAsideEntry[],
+  matched: ReadonlySet<string>,
+): SkillsRootListing {
+  const entries = listed.map((entry) => entry.name);
+  const unlisted = [...matched].filter((name) => !entries.includes(name)).sort();
+  const [firstUnlisted] = unlisted;
+  if (firstUnlisted !== undefined) {
+    throw new SkillsRootEntryUnaccounted(
+      firstUnlisted,
+      `the scan matched ${unlisted.length} name(s) the listing of the skills root does not hold ` +
+        `(${unlisted.join(", ")}) — the two readings of the root disagree, so nothing was linted`,
+    );
+  }
+  return {
+    entries,
+    skills: entries.filter((name) => matched.has(name)),
+    setAside: listed.filter((entry) => !matched.has(entry.name)),
+  };
 }
 
 /**
  * Read the root twice and split the first reading against the second: a
  * directory listing, then the gate's glob. The glob stays the selector, so
  * which skills are linted does not depend on the listing; the listing only
- * accounts for what the glob left out, and the three arrays returned are all
- * filtered from it, so they sum by construction.
+ * accounts for what the glob left out.
  *
- * Throws when the root cannot be listed, and a `SkillsRootEntryUnreadable`
- * when the scan fails under a root that was listed — the caller turns each
- * into a failure naming what could not be read.
+ * Throws when the root cannot be listed, and a `SkillsRootEntryUnaccounted`
+ * when the scan fails under a root that was listed or matches a name the
+ * listing does not hold — the caller turns each into a failure naming it.
  */
 export async function listSkillsRoot(root: string): Promise<SkillsRootListing> {
-  const dirents = readdirSync(root, { withFileTypes: true }).sort((a, b) =>
-    a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
-  );
+  const listed: SetAsideEntry[] = readdirSync(root, { withFileTypes: true })
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    .map((dirent) => ({
+      name: dirent.name,
+      kind: dirent.isDirectory() ? "directory" : dirent.isSymbolicLink() ? "symlink" : "other",
+    }));
 
   const matched = new Set<string>();
   const glob = new Bun.Glob("*/SKILL.md");
@@ -155,22 +209,13 @@ export async function listSkillsRoot(root: string): Promise<SkillsRootListing> {
     }
   } catch (error) {
     const path = (error as { path?: unknown }).path;
-    throw new SkillsRootEntryUnreadable(typeof path === "string" ? path : null, messageOf(error));
+    throw new SkillsRootEntryUnaccounted(
+      typeof path === "string" ? path : null,
+      `the skills root was listed, the scan for <name>/SKILL.md then failed under it (${messageOf(error)})`,
+    );
   }
 
-  const setAside: SetAsideEntry[] = [];
-  for (const dirent of dirents) {
-    if (matched.has(dirent.name)) continue;
-    const kind: SetAsideKind = dirent.isDirectory()
-      ? "directory"
-      : dirent.isSymbolicLink()
-        ? "symlink"
-        : "other";
-    setAside.push({ name: dirent.name, kind });
-  }
-
-  const entries = dirents.map((dirent) => dirent.name);
-  return { entries, skills: entries.filter((name) => matched.has(name)), setAside };
+  return splitSkillsRoot(listed, matched);
 }
 
 /**
@@ -203,12 +248,8 @@ export async function lintSkillsCollection(
   } catch (error) {
     // Neither is an empty collection, and each names what it could not read:
     // an entry under a root that was listed, or the root itself.
-    if (error instanceof SkillsRootEntryUnreadable) {
-      report.check(
-        error.entry === null ? root : under(root, error.entry),
-        false,
-        `the skills root was listed, the scan for <name>/SKILL.md then failed under it (${error.message})`,
-      );
+    if (error instanceof SkillsRootEntryUnaccounted) {
+      report.check(error.entry === null ? root : under(root, error.entry), false, error.message);
       return report;
     }
     report.check(root, false, `cannot list the skills root (${messageOf(error)})`);
@@ -252,7 +293,7 @@ export async function lintSkillsCollection(
       const lines = bodyLineCount(parsed.body);
       if (lines > BODY_LINE_WARNING) {
         console.warn(
-          printable(
+          shown(
             `::warning::${skillPath}: body is ${lines} lines, past the ${BODY_LINE_WARNING}-line CI warning (target: ${BODY_LINE_TARGET}) — consider progressive disclosure into references/`,
           ),
         );
@@ -295,7 +336,7 @@ export async function lintSkillsFromArguments(args: readonly string[]): Promise<
       "arguments",
       false,
       `expected at most one, the skills root; got ${args.length}: ` +
-        args.map((argument) => JSON.stringify(argument)).join(" "),
+        args.map((argument) => `« ${argument} »`).join(" "),
     );
   }
   const [argument] = args;
