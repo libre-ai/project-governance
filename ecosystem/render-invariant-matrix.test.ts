@@ -334,8 +334,8 @@ describe("buildInvariantMatrix — a register that says nothing is red, never an
     expect(result.report.violations.join("\n")).toContain("zero `| I-nn |` rows");
   });
 
-  // Two readers are composed; a row only one of them sees has no agreed state,
-  // so it is refused rather than defaulted to « en vigueur ».
+  // A line the register's one reader does not take as a row is no row: the
+  // correspondence naming its id is refused, never defaulted to « en vigueur ».
   const halfRead: readonly (readonly [string, string, string])[] = [
     [
       "an id past the digits one reader accepts",
@@ -345,7 +345,7 @@ describe("buildInvariantMatrix — a register that says nothing is red, never an
     ["a row without its closing cell delimiter", "| I-04 | **Retiré** sans barre finale", "I-04"],
   ];
   for (const [name, line, id] of halfRead) {
-    test(`a row only one reader sees is a violation: ${name}`, () => {
+    test(`a line that is not a register row is refused: ${name}`, () => {
       const result = build(
         mappingText([
           ["I-01", []],
@@ -355,9 +355,7 @@ describe("buildInvariantMatrix — a register that says nothing is red, never an
         { register: `${REGISTER}${line}\n` },
       );
       expect(result.matrix).toBeNull();
-      expect(result.report.violations.join("\n")).toContain(
-        `${id}: read by only one of the two register readers`,
-      );
+      expect(result.report.violations.join("\n")).toContain(`${id}: named by`);
     });
   }
 

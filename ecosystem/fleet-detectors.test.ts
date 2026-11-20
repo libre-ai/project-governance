@@ -246,6 +246,15 @@ describe("local-paths", () => {
     expect(scanLocalPaths([{ path: "n.txt", text }]).findings).toEqual(["n.txt:2:local-path"]);
   });
 
+  // First fleet run, 2026-11-19: five findings of project-governance were
+  // counts of Dependabot's build home quoted in a review of CI logs. That home
+  // is a hosted build machine like the runner's; a name that only starts with
+  // it is still a workstation home.
+  test("Dependabot's build home is not a finding, a longer name is", () => {
+    const text = "9 /home/dependabot/\ncd /home/dependabot-fan/x\n"; // allow-local-path (fixture)
+    expect(scanLocalPaths([{ path: "n.txt", text }]).findings).toEqual(["n.txt:2:local-path"]);
+  });
+
   // Review M4: `mode === "120000" && false` survived; the link was then read
   // through to its target outside the worktree.
   test("a tracked link is counted, never followed", async () => {
