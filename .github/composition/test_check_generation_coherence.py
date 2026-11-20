@@ -23,6 +23,12 @@ VIOLATING = json.dumps({"scripts": {"check:bun": "bun x/" + GATE, "prepublishOnl
 NO_GATE = json.dumps({"scripts": {"check": "bun test"}})
 
 
+def without_git_environment():
+    # An inherited GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE (a git hook, a
+    # composition) would make the fixtures write into another repository.
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def manifest(*names):
     refs = {"project-governance": GOVERNANCE_REF, "app": APP_REF, "rust": RUST_REF}
     return {"repositories": {n: {"repository": "libre-ai/" + n, "ref": refs.get(n, "d" * 40)} for n in names}}
@@ -228,7 +234,7 @@ class DeclarationTests(unittest.TestCase):
             def git(*args):
                 return subprocess.run(
                     ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
-                    cwd=scratch, check=True, capture_output=True, text=True,
+                    cwd=scratch, check=True, capture_output=True, text=True, env=without_git_environment(),
                 ).stdout.strip()
             git("init", "--quiet", "-b", "trunk")
             target = Path(scratch) / ".github" / "composition" / "manifest.json"
@@ -281,11 +287,33 @@ class GateDriftTests(unittest.TestCase):
     def git(self, *args):
         return subprocess.run(
             ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
-            cwd=self.repository, check=True, capture_output=True, text=True,
+            cwd=self.repository, check=True, capture_output=True, text=True, env=without_git_environment(),
         ).stdout.strip()
 
     def test_identical_gate_files_do_not_drift(self):
         self.assertEqual(module.declared_gate_drift(self.commit, self.governance, self.repository), [])
+
+    def test_an_inherited_git_dir_reaches_neither_the_fixtures_nor_the_declaration(self):
+        # Run from a git hook, GIT_DIR would send the fixtures' commits to the
+        # hook's repository, and `git -C <repository> show` would read it.
+        decoy = Path(self.scratch.name) / "decoy"
+        decoy.mkdir()
+        subprocess.run(["git", "init", "--quiet", str(decoy)], check=True, capture_output=True, env=without_git_environment())
+        committed = (HERE / "manifest.json").read_text()
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(decoy / ".git")}):
+            declaration = self.repository / ".github" / "composition" / "manifest.json"
+            declaration.parent.mkdir(parents=True)
+            declaration.write_text(committed)
+            self.git("add", ".")
+            self.git("commit", "--quiet", "-m", "second")
+            second = self.git("rev-parse", "HEAD")
+            self.assertEqual(module.declared_gate_drift(second, self.governance, self.repository), [])
+            read = module.manifest_at(second, module.load_prepare(), repository=self.repository)
+            self.assertEqual(read, json.loads(committed))
+        self.assertEqual(self.git("rev-list", "--count", "HEAD"), "2")
+        empty = subprocess.run(["git", "-C", str(decoy), "rev-list", "--all", "--count"],
+                               capture_output=True, text=True, env=without_git_environment())
+        self.assertEqual(empty.stdout.strip(), "0")
 
     def test_a_gate_file_that_differs_is_named(self):
         (self.governance / "tools/quality/bun-script-floor.ts").write_text("// an older rule")

@@ -1,9 +1,11 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("composed_paths", HERE / "check-composed-paths.py")
@@ -71,10 +73,16 @@ class CheckTests(unittest.TestCase):
         self.assertIn("not composed by manifest.json", failures[0])
 
 
+def without_git_environment():
+    # An inherited GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE (a git hook, a
+    # composition) would make the fixtures write into another repository.
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def git(cwd, *args):
     return subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
-        cwd=cwd, check=True, capture_output=True, text=True,
+        cwd=cwd, check=True, capture_output=True, text=True, env=without_git_environment(),
     ).stdout.strip()
 
 
@@ -98,6 +106,25 @@ class GitPresenceTests(unittest.TestCase):
             )
             with self.assertRaises(module.PresenceError):
                 presence("r", "e" * 40, ["toolchains/bun.json"])
+
+    def test_an_inherited_git_environment_reaches_neither_the_fixtures_nor_the_oracle(self):
+        # Run from a git hook, GIT_DIR would send the fixtures' commits to the
+        # hook's repository, and GIT_OBJECT_DIRECTORY the oracle's fetch.
+        with tempfile.TemporaryDirectory() as decoy, tempfile.TemporaryDirectory() as repo:
+            git(decoy, "init", "--quiet")
+            Path(repo, "README.md").write_text("fixture\n")
+            inherited = {"GIT_DIR": str(Path(decoy, ".git")), "GIT_OBJECT_DIRECTORY": str(Path(decoy, ".git", "objects"))}
+            with mock.patch.dict(os.environ, inherited):
+                git(repo, "init", "--quiet", "-b", "trunk")
+                git(repo, "add", "-A")
+                git(repo, "commit", "--quiet", "-m", "a")
+                git(repo, "config", "uploadpack.allowAnySHA1InWant", "true")
+                git(repo, "config", "uploadpack.allowFilter", "true")
+                ref = git(repo, "rev-parse", "HEAD")
+                presence = module.GitPresence(url_for=lambda _r: "file://" + repo)
+                self.assertEqual(presence("r", ref, ["README.md", "absent"]), {"README.md"})
+            self.assertEqual([p for p in Path(decoy, ".git", "objects").rglob("*") if p.is_file()], [])
+            self.assertEqual(git(repo, "rev-list", "--all", "--count"), "1")
 
 
 if __name__ == "__main__":

@@ -117,8 +117,10 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d).resolve()
             checkout = root / 'project-governance'
-            subprocess.run([git, 'clone', '--quiet', '--no-hardlinks', '--no-local', str(source), str(checkout)], check=True)
-            head = subprocess.check_output([git, 'rev-parse', 'HEAD'], cwd=checkout, text=True).strip()
+            subprocess.run([git, 'clone', '--quiet', '--no-hardlinks', '--no-local', str(source), str(checkout)],
+                           check=True, env=without_git_environment())
+            head = subprocess.check_output([git, 'rev-parse', 'HEAD'], cwd=checkout, text=True,
+                                           env=without_git_environment()).strip()
             plan = {'checkouts': [{'path': 'project-governance', 'ref': head}]}
             with patch.dict(os.environ, {'PATH': str(pathlib.Path(git).parent) + os.pathsep + os.environ['PATH']}):
                 (checkout / 'generated-untracked.txt').write_text('generated')
@@ -149,11 +151,16 @@ def tool(name):
     return found
 
 
+def without_git_environment():
+    # No inherited GIT_* variable reaches a fixture: GIT_DIR, GIT_WORK_TREE or
+    # GIT_INDEX_FILE (a git hook) would make it write into another repository,
+    # and the runner's own GIT_NO_REPLACE_OBJECTS (run inside a composition)
+    # would hide what git shows a target.
+    return {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
+
+
 def fixture_env():
-    # Run inside a composition, these tests inherit the runner's own
-    # GIT_NO_REPLACE_OBJECTS; the fixtures must see git as a target would.
-    env = {key: value for key, value in os.environ.items() if key != 'GIT_NO_REPLACE_OBJECTS'}
-    return {**env, **GIT_IDENTITY}
+    return {**without_git_environment(), **GIT_IDENTITY}
 
 
 def git(cwd, *argv):
@@ -486,6 +493,23 @@ class CargoSourceTests(unittest.TestCase):
                     return self.m.command(argv, cwd, timeout, capture, stdin)
                 with self.assertRaisesRegex(ValueError, 'Cargo resolved a source other than the composed checkout'):
                     self.m.configure_cargo_sources(composition.plan, composition.root, run)
+
+
+class FixtureEnvironmentTests(unittest.TestCase):
+    def test_fixture_helper_ignores_an_inherited_git_dir(self):
+        # Run from a git hook, GIT_DIR would send the fixtures' init and
+        # commits to the hook's repository.
+        with tempfile.TemporaryDirectory() as d:
+            base = pathlib.Path(d).resolve()
+            decoy, fixture = base / 'decoy', base / 'fixture'
+            decoy.mkdir()
+            fixture.mkdir()
+            git(decoy, 'init', '--quiet')
+            with patch.dict(os.environ, {'GIT_DIR': str(decoy / '.git')}):
+                (fixture / 'README.md').write_text('fixture\n')
+                commit_all(fixture)
+            self.assertEqual(git(decoy, 'rev-list', '--all', '--count'), '0')
+            self.assertEqual(git(fixture, 'rev-list', '--all', '--count'), '1')
 
 
 if __name__ == '__main__':
