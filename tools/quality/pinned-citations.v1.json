@@ -43,6 +43,10 @@
     {
       "owner": "tt-a1i",
       "because": "upstream of the archify drill (MIT, public), cited pinned by ADR-0056 as the source of its five method rules"
+    },
+    {
+      "owner": "NVIDIA",
+      "because": "upstream of the SkillEvaluator drill (Apache-2.0, public), cited pinned by ADR-0071 as the source of the model-judge bounds, of the skill-effect protocol and of the evidence of its refusal"
     }
   ]
 }

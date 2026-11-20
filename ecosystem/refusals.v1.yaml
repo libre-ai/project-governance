@@ -281,3 +281,51 @@ refusals:
     evidence:
       - https://www.humanlayer.com/ (consultée le 2026-10-23)
     reexamine_when: null
+
+  - id: refusal.skillevaluator-harness-and-ci
+    subject: >-
+      SkillEvaluator, évaluateur de skills d'agent (CLI Python et skill),
+      installé dans un harnais ou branché en CI comme gate ou comme second
+      instrument de la flotte. Le rejeu à la main, en espace isolé et sans
+      clé de modèle, n'est pas visé.
+    source: https://github.com/NVIDIA/SkillEvaluator
+    revision: NVIDIA/SkillEvaluator@35af6d9ba8b0f5c1fb975d6d8bee7459b73619a7
+    action: depend
+    origin: inspection
+    decided_on: 2026-11-20
+    reason: >-
+      Le scanner de sécurité que l'outil télécharge à son premier lancement
+      est épinglé par empreinte, mais ses dépendances sont résolues à
+      l'exécution par `uv tool run`, sans verrou (lu dans le code, non
+      exécuté). Dès qu'une clé de modèle est dans l'environnement, un
+      vérificateur par modèle s'active seul, et son verdict `false_positive`
+      de confiance `high` ramène un constat de sécurité à la sévérité INFO
+      (lu, puis rejoué par un second passage). Le début du fichier audité
+      entre dans l'invite de ce vérificateur sous un libellé et entre
+      clôtures de code. Aucune consigne n'y dit de le traiter comme une
+      donnée (quatre formulations cherchées, aucune trouvée ; l'invite
+      système lue n'en porte pas d'autre), et il y est inséré tel quel, sans
+      rien qui l'empêche de refermer la clôture (lu dans le code, non
+      exécuté). L'auteur du contenu audité peut donc tenter de s'adresser à
+      celui qui décide du sort du constat (inféré : aucune attaque n'a été
+      jouée). Constat mesuré
+      le 2026-11-20, que les citations ci-dessous n'établissent pas : la
+      version publiée 1.0.1, lancée sans clé sur les huit skills de
+      `libre-ai/project-governance`, sort 1 et rend `incomplete` sur les
+      huit, son scanner n'ayant pas pu s'installer. Le rejeu à la main, dans
+      un espace isolé et sans clé de modèle dans l'environnement, reste
+      permis ; son résultat ne devient pas le verdict d'un gate.
+    evidence:
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/utils/scanner_install.py:103-119
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/utils/scanner_install.py:122-152
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/tier_workflows.py:32-45
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/tier_workflows.py:91-103
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/finding_verification_policy.py:8-15
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/inference/finding_verifier.py:40-55
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/inference/finding_verifier.py:108-142
+      - NVIDIA/SkillEvaluator@35af6d9:src/skillevaluator/inference/finding_verifier.py:156-171
+    reexamine_when: >-
+      Une révision de l'outil où les dépendances du scanner sont verrouillées
+      avec empreintes pour l'exécution locale et où aucun modèle ne peut
+      abaisser un constat de sécurité, constatée par une lecture datée ; puis
+      une décision du propriétaire sur un second instrument pour les skills.
