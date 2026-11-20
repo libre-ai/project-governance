@@ -1,10 +1,12 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 HERE = Path(__file__).parent
 spec = importlib.util.spec_from_file_location("monotonicity", HERE / "check-ref-monotonicity.py")
@@ -89,10 +91,16 @@ class ExemptionTests(unittest.TestCase):
             module.load_exemptions(json.dumps(document))
 
 
+def without_git_environment():
+    # An inherited GIT_DIR, GIT_WORK_TREE or GIT_INDEX_FILE (a git hook, a
+    # composition) would make the fixtures write into another repository.
+    return {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+
+
 def git(cwd, *args):
     return subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", *args],
-        cwd=cwd, check=True, capture_output=True, text=True,
+        cwd=cwd, check=True, capture_output=True, text=True, env=without_git_environment(),
     ).stdout.strip()
 
 
@@ -128,6 +136,25 @@ class GitAncestryTests(unittest.TestCase):
     def test_an_unknown_commit_is_an_error(self):
         with self.assertRaises(module.AncestryError):
             self.ancestry("r", self.a, "e" * 40)
+
+
+class InheritedGitEnvironmentTests(unittest.TestCase):
+    def test_an_inherited_git_environment_reaches_neither_the_fixtures_nor_the_oracle(self):
+        # Run from a git hook, GIT_DIR would send the fixtures' commits to the
+        # hook's repository, and GIT_OBJECT_DIRECTORY the oracle's fetch.
+        with tempfile.TemporaryDirectory() as decoy, tempfile.TemporaryDirectory() as repo:
+            git(decoy, "init", "--quiet")
+            inherited = {"GIT_DIR": str(Path(decoy, ".git")), "GIT_OBJECT_DIRECTORY": str(Path(decoy, ".git", "objects"))}
+            with mock.patch.dict(os.environ, inherited):
+                git(repo, "init", "--quiet", "-b", "trunk")
+                git(repo, "commit", "--quiet", "--allow-empty", "-m", "a")
+                a = git(repo, "rev-parse", "HEAD")
+                git(repo, "commit", "--quiet", "--allow-empty", "-m", "b")
+                b = git(repo, "rev-parse", "HEAD")
+                git(repo, "config", "uploadpack.allowAnySHA1InWant", "true")
+                self.assertTrue(module.GitAncestry(url_for=lambda _repository: "file://" + repo)("r", a, b))
+            self.assertEqual([p for p in Path(decoy, ".git", "objects").rglob("*") if p.is_file()], [])
+            self.assertEqual(git(repo, "rev-list", "--all", "--count"), "2")
 
 
 class CommandLineTests(unittest.TestCase):

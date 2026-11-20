@@ -1,0 +1,183 @@
+{
+  "depot": "pi-evidence",
+  "note": "Chaque défaut est une substitution exacte, unique dans son fichier. « attendu » dit si une couche devrait rougir : true pour un défaut, false pour un témoin sain (mesure des faux positifs).",
+  "couches": [
+    { "id": "L1a-lint", "cout": 1, "commande": ["bun", "run", "lint"] },
+    { "id": "L1b-types", "cout": 1, "commande": ["bun", "run", "typecheck"] },
+    { "id": "L2-tests", "cout": 2, "commande": ["bun", "test"] },
+    {
+      "id": "L3-controles-depot",
+      "cout": 2,
+      "commande": ["sh", "-c", "bun run check:markers && bun run check:licenses"]
+    },
+    {
+      "id": "L4-execution-reelle",
+      "cout": 3,
+      "commande": ["sh", "{BANC}/pilote-pi-evidence.sh", "{COPIE}"]
+    }
+  ],
+  "cas": [
+    {
+      "id": "D01",
+      "attendu": true,
+      "nature": "logique de verdict",
+      "origine": "phase A, H1",
+      "fichier": "src/verdict.ts",
+      "cherche": "if (interrupted.length > 0 || requiredUnavailable.length > 0) {",
+      "remplace": "if (interrupted.length > 0) {"
+    },
+    {
+      "id": "D02",
+      "attendu": true,
+      "nature": "comparaison de rejeu affaiblie",
+      "origine": "phase A, H2",
+      "fichier": "src/compare.ts",
+      "cherche": "  if (reference.revision.status_sha256 !== candidate.revision.status_sha256)\n    differences.push(\"working tree status differs\");\n",
+      "remplace": ""
+    },
+    {
+      "id": "D03",
+      "attendu": true,
+      "nature": "porte qui laisse passer un verdict non conforme",
+      "origine": "phase A, H3",
+      "fichier": "src/cli.ts",
+      "cherche": "return outcome.value.bundle.verdict === \"conformant\" ? 0 : 1;",
+      "remplace": "return outcome.value.bundle.verdict !== \"failed\" ? 0 : 1;"
+    },
+    {
+      "id": "D04",
+      "attendu": true,
+      "nature": "contrôle de dépôt neutralisé",
+      "origine": "phase A, H4",
+      "fichier": "scripts/check-markers.ts",
+      "cherche": "if (marker.pattern.test(line)) {",
+      "remplace": "if (marker.pattern.test(file)) {"
+    },
+    {
+      "id": "D05",
+      "attendu": true,
+      "nature": "validation d'entrée retirée (sécurité)",
+      "origine": "phase A, H5",
+      "fichier": "src/config.ts",
+      "cherche": "if (typeof value.command !== \"string\" || !COMMAND.test(value.command)) {",
+      "remplace": "if (typeof value.command !== \"string\" || value.command === \"\") {"
+    },
+    {
+      "id": "D06",
+      "attendu": true,
+      "nature": "masquage d'un secret retiré (sécurité)",
+      "origine": "phase A, H6",
+      "fichier": "src/scrub.ts",
+      "cherche": "  { family: \"npm-token\", pattern: /npm_[A-Za-z0-9]{36}/g },\n",
+      "remplace": ""
+    },
+    {
+      "id": "D07",
+      "attendu": true,
+      "nature": "valeur hors du type déclaré",
+      "origine": "écrit à la main",
+      "fichier": "src/verdict.ts",
+      "cherche": "requiredUnavailable.length > 0) {\n    return {\n      verdict: \"incomplete\",",
+      "remplace": "requiredUnavailable.length > 0) {\n    return {\n      verdict: \"incomplet\","
+    },
+    {
+      "id": "D08",
+      "attendu": true,
+      "nature": "environnement du processus journalisé (donnée sensible)",
+      "origine": "écrit à la main",
+      "fichier": "src/cli.ts",
+      "cherche": "        const result = await service.verifyForCi(sessionFromEnv(env));",
+      "remplace": "        console.error(\"env\", JSON.stringify(env));\n        const result = await service.verifyForCi(sessionFromEnv(env));"
+    },
+    {
+      "id": "D09",
+      "attendu": true,
+      "nature": "condition inversée",
+      "origine": "écrit à la main",
+      "fichier": "src/compare.ts",
+      "cherche": "options.headMayDiffer !== true &&",
+      "remplace": "options.headMayDiffer === true &&"
+    },
+    {
+      "id": "D10",
+      "attendu": true,
+      "nature": "délai par défaut divisé par cent",
+      "origine": "écrit à la main",
+      "fichier": "src/config.ts",
+      "cherche": "export const DEFAULT_TIMEOUT_SECONDS = 600;",
+      "remplace": "export const DEFAULT_TIMEOUT_SECONDS = 6;"
+    },
+    {
+      "id": "T01",
+      "attendu": false,
+      "nature": "témoin sain : opérandes d'un ET permutés",
+      "origine": "écrit à la main",
+      "fichier": "src/verdict.ts",
+      "cherche": "origin === \"declared\" && results.some((r) => r.required);",
+      "remplace": "results.some((r) => r.required) && origin === \"declared\";"
+    },
+    {
+      "id": "T02",
+      "attendu": false,
+      "nature": "témoin sain : commentaire ajouté",
+      "origine": "écrit à la main",
+      "fichier": "src/scrub.ts",
+      "cherche": "  { family: \"npm-token\", pattern: /npm_[A-Za-z0-9]{36}/g },",
+      "remplace": "  // npm automation and granular tokens\n  { family: \"npm-token\", pattern: /npm_[A-Za-z0-9]{36}/g },"
+    },
+    {
+      "id": "T03",
+      "attendu": false,
+      "nature": "témoin sain : ternaire inversé, même résultat",
+      "origine": "écrit à la main",
+      "fichier": "src/cli.ts",
+      "cherche": "return outcome.value.bundle.verdict === \"conformant\" ? 0 : 1;",
+      "remplace": "return outcome.value.bundle.verdict !== \"conformant\" ? 1 : 0;"
+    },
+    {
+      "id": "T04",
+      "attendu": false,
+      "nature": "témoin sain : comparaison équivalente",
+      "origine": "écrit à la main",
+      "fichier": "src/compare.ts",
+      "cherche": "  if (differences.length > 0) {",
+      "remplace": "  if (differences.length !== 0) {"
+    },
+    {
+      "id": "T05",
+      "attendu": false,
+      "nature": "témoin sain : condition réécrite par De Morgan",
+      "origine": "écrit à la main",
+      "fichier": "src/config.ts",
+      "cherche": "if (typeof value.id !== \"string\" || !ID.test(value.id)) {",
+      "remplace": "if (!(typeof value.id === \"string\" && ID.test(value.id))) {"
+    },
+    {
+      "id": "T06",
+      "attendu": false,
+      "nature": "témoin sain : commentaire ajouté sur une constante",
+      "origine": "écrit à la main",
+      "fichier": "src/config.ts",
+      "cherche": "export const DEFAULT_OUTPUT_DIR = \".evidence\";",
+      "remplace": "// Relative to the repository root.\nexport const DEFAULT_OUTPUT_DIR = \".evidence\";"
+    },
+    {
+      "id": "T07",
+      "attendu": false,
+      "nature": "témoin sain : changement voulu, une famille de secret de plus est masquée",
+      "origine": "écrit à la main",
+      "fichier": "src/scrub.ts",
+      "cherche": "  { family: \"npm-token\", pattern: /npm_[A-Za-z0-9]{36}/g },",
+      "remplace": "  { family: \"npm-token\", pattern: /npm_[A-Za-z0-9]{36}/g },\n  { family: \"gitlab-token\", pattern: /glpat-[A-Za-z0-9_-]{20,}/g },"
+    },
+    {
+      "id": "T08",
+      "attendu": false,
+      "nature": "témoin sain : changement voulu, identifiant de contrôle plus long admis",
+      "origine": "écrit à la main",
+      "fichier": "src/config.ts",
+      "cherche": "const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;",
+      "remplace": "const ID = /^[a-z0-9][a-z0-9._-]{0,95}$/;"
+    }
+  ]
+}

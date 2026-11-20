@@ -147,7 +147,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^tools\/quality\/pinned-citations\.v1\.json$/,
   // check-pr-negatives.ts: the surface a `Not-added:` negative is confronted to.
   /^tools\/quality\/pr-negatives\.v1\.json$/,
-  // check-threat-model-citations.ts: the scope and the files whose citations are checked.
+  // check-threat-model-citations.ts: the scope, the files whose citations are checked,
+  // and the mentions of a retired invariant it admits.
   /^tools\/quality\/threat-model-citations\.v1\.json$/,
   // check-skills-security.ts: the patterns a skill line is refused on.
   /^tools\/skills\/skills-security-patterns\.v1\.json$/,

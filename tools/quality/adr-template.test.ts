@@ -343,7 +343,7 @@ describe("ADR template: nothing a gate refuses", () => {
     expect(hardcodedLines(template)).toEqual([]);
     const served = servedBranch() ?? "trunk";
     expect(hardcodedLines(`${template}\n- voir origin/${served}\n`)).toHaveLength(1);
-    expect(hardcodedLines(`${template}\n- /home/someone/notes.md\n`)).toHaveLength(1);
+    expect(hardcodedLines(`${template}\n- /home/someone/notes.md\n`)).toHaveLength(1); // allow-local-path (fixture)
   });
 
   test("the doctrine governance script stays green and does not count the template as an ADR", () => {

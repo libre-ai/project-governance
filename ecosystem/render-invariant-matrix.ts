@@ -31,9 +31,9 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join, posix } from "node:path";
 
-import { parseRegister, type ReadFile } from "../tools/quality/check-threat-model-citations";
+import type { ReadFile } from "../tools/quality/check-threat-model-citations";
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
-import { parseInvariants } from "./briques";
+import { parseInvariantsRegister } from "../tools/quality/invariants-register";
 import { gitEnvironment } from "./check-briques";
 
 export const REGISTER_PATH = "docs/decisions/INVARIANTS.md";
@@ -239,23 +239,15 @@ export function buildInvariantMatrix(
 ): { report: GateReport; matrix: InvariantMatrix | null } {
   const report = new GateReport();
 
-  const parsed = parseRegister(register.text ?? "");
-  // Two existing readers, one question each. `parseRegister` gives the rows in
-  // order and names duplicates, but its retirement pattern ends on `\b`, which
-  // never matches after the « é » of « Retiré »: it reads the one retired row
-  // of the register as in force. `parseInvariants` reads the state correctly
-  // and overwrites duplicates in silence. A row is retired if either says so.
-  // The two do not read the same ids (`I-\d+` with a closing `|` against
-  // `I-` and 2-3 digits): a row only one of them sees has no agreed state, so
-  // it is refused below instead of defaulting to « en vigueur ».
-  const standing = parseInvariants(register.text ?? "");
-  const halfRead = [
-    ...[...parsed.entries.keys()].filter((id) => !standing.has(id)),
-    ...[...standing.keys()].filter((id) => !parsed.entries.has(id)),
-  ];
+  // The register's one reader, shared with the threat-model citations gate and
+  // the brick map: rows in order, duplicates named, and the retired standing.
+  // A line it does not take as a row (an id past three digits, a cell without
+  // its closing bar) is no row at all, so a correspondence naming that id is
+  // refused below as absent from the register — never defaulted to in force.
+  const parsed = parseInvariantsRegister(register.text ?? "");
   const ids = [...parsed.entries.values()].map((entry) => ({
     id: entry.id,
-    retired: entry.retired || standing.get(entry.id) === "retiré",
+    retired: entry.retired,
   }));
   const retiredIds = new Set(ids.filter((entry) => entry.retired).map((entry) => entry.id));
   const live = ids.filter((entry) => !entry.retired);
@@ -276,9 +268,6 @@ export function buildInvariantMatrix(
       true,
       `${ids.length} row(s), ${live.length} in force, ${retired} retired`,
     );
-  }
-  for (const id of halfRead) {
-    report.check(id, false, "read by only one of the two register readers: state undecided");
   }
 
   const correspondence: ParsedMapping =

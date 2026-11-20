@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
+import stat
 import subprocess
 import sys
 import time
@@ -34,13 +35,19 @@ def validate_root(root, phase):
     if phase in ('prepare', 'all'):
         if root.exists() and (not root.is_dir() or any(root.iterdir())):
             raise ValueError('Composition root must be new or empty')
+    elif phase == 'verify':
+        # Read-only: a missing root is reported checkout by checkout, not refused.
+        return
     elif not root.is_dir():
         raise ValueError('Prepared composition is missing')
 
 
 def command(argv, cwd, timeout, capture=False, stdin=None):
     """`stdin` bytes switch the call to binary: blob contents are bytes, never text."""
-    env = dict(os.environ)
+    # No inherited GIT_* variable reaches a child: GIT_DIR, GIT_WORK_TREE or
+    # GIT_INDEX_FILE would make git answer about another repository, tree or
+    # index than the directory it is run in.
+    env = {key: value for key, value in os.environ.items() if not key.startswith('GIT_')}
     # GIT_NO_REPLACE_OBJECTS: a `refs/replace/*` entry would let git answer a
     # committed object id with other content.
     env.update(GIT_TERMINAL_PROMPT='0', GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL='/dev/null',
@@ -54,17 +61,225 @@ def fingerprint(plan):
     return hashlib.sha256(json.dumps(plan, sort_keys=True).encode()).hexdigest()
 
 
+RECEIPT = '.composition-state.json'
+# A checkout's own config may name a `core.fsmonitor` program, which `status`
+# runs when it refreshes the index: reading a composition must execute nothing
+# it holds. Passed to every read, whichever subcommand would consult it.
+NO_FSMONITOR = ('-c', 'core.fsmonitor=false')
+
+
+def entry_state(path):
+    """'absent', 'present' or 'unreadable' for `path`, its last component never followed.
+
+    Not `Path.exists()`: on recent Pythons (measured on 3.15) it answers False
+    on any OSError, so a path the caller may not read would pass for one that
+    is not there, and the advice would be to mount it again.
+    """
+    try:
+        os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return 'absent'
+    except OSError:
+        return 'unreadable'
+    return 'present'
+
+
+def root_state(root):
+    """'missing', 'not a directory', 'unreadable' or 'present' for the composition root."""
+    try:
+        mode = os.stat(root).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return 'missing'
+    except OSError:
+        return 'unreadable'
+    if not stat.S_ISDIR(mode):
+        return 'not a directory'
+    try:
+        with os.scandir(root):
+            pass
+    except OSError:
+        return 'unreadable'
+    return 'present'
+
+
+def receipt_verdict(plan, root):
+    """Verdict of the receipt `prepare` leaves in the root, for this plan; reads, never writes.
+
+    The single reader: `check` admits a root on it and `verify` reports it, so
+    `verify` cannot say READY for a root `check` refuses on its receipt.
+    """
+    receipt = root / RECEIPT
+    state = entry_state(receipt)
+    if state != 'present':
+        return state
+    try:
+        if receipt.is_symlink() or not receipt.is_file() or receipt.stat().st_size > 256:
+            return 'unreadable'
+        recorded = json.loads(receipt.read_text())
+    except (OSError, ValueError):
+        return 'unreadable'
+    return 'concordant' if recorded == {'planSha256': fingerprint(plan)} else 'mismatch'
+
+
 def verify_checkouts(plan, root, run):
     for checkout in plan['checkouts']:
         path = root / checkout['path']
         if path.is_symlink() or path.resolve() != path or not path.is_dir():
             raise ValueError('Composition checkout path changed')
-        head = run(['git', 'rev-parse', 'HEAD'], path, 15, True).stdout.strip()
+        head = run(['git', *NO_FSMONITOR, 'rev-parse', 'HEAD'], path, 15, True).stdout.strip()
         if head != checkout['ref']:
             raise ValueError('Composition checkout revision mismatch')
-        status = run(['git', 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+        status = run(['git', *NO_FSMONITOR, 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
         if status.strip():
             raise ValueError('Composition tracked inputs changed')
+
+
+CHILD_FAILURES = (OSError, subprocess.SubprocessError)
+BUN_PIN = ('project-governance', 'toolchains/bun.json')
+BUN_GUIDE = 'docs/LOCAL-COMPOSITION.md'
+
+
+def inspect_checkout(checkout, root, run):
+    """(revision read or None, verdict) of one planned checkout; reads, never writes.
+
+    `--git-dir=.git` switches repository discovery off: a directory without
+    its own `.git` would otherwise be answered by the repository enclosing it.
+    A `.git` that is a file or a link redirects to another repository: it is
+    not read, the verdict is about the directory the plan names.
+    `--no-optional-locks` keeps `status` from writing its refreshed index.
+    """
+    path = root / checkout['path']
+    state = entry_state(path)
+    if state != 'present':
+        return None, state
+    if path.is_symlink() or path.resolve() != path or not path.is_dir():
+        return None, 'unreadable'
+    git_dir = path / '.git'
+    if git_dir.is_symlink() or not git_dir.is_dir():
+        return None, 'unreadable'
+    git = ['git', *NO_FSMONITOR, '--no-optional-locks', '--git-dir=.git']
+    try:
+        head = run([*git, 'rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], path, 15, True).stdout.strip()
+        composition.revision(head)
+    except (*CHILD_FAILURES, ValueError):
+        return None, 'unreadable'
+    if head != checkout['ref']:
+        return head, 'mismatch'
+    try:
+        status = run([*git, 'status', '--porcelain', '--untracked-files=no'], path, 15, True).stdout
+        # `-v` tags every index entry: `H` is a plain one, `S` is skip-worktree,
+        # a lowercase letter is assume-unchanged. `status` does not look at the
+        # file behind either flag, so its silence says nothing about that file.
+        tags = run([*git, 'ls-files', '-v', '-z'], path, 30, True).stdout
+    except CHILD_FAILURES:
+        return head, 'unreadable'
+    if status.strip():
+        return head, 'modified'
+    if any(not record.startswith('H ') for record in tags.split('\0') if record):
+        return head, 'masked'
+    return head, 'concordant'
+
+
+def report_checkouts(plan, root, run, emit):
+    """One line per planned checkout, then the counters. True when every one is concordant."""
+    expected = mounted = concordant = 0
+    verdicts = {}
+    state = root_state(root)
+    if state == 'unreadable':
+        # Not a mount to redo: `prepare` refuses a root that is not new or empty.
+        emit(f'Composition root is unreadable: {root}: restore read access to it, then run --phase verify again')
+    elif state != 'present':
+        emit(f'Composition root is {state}: {root}')
+    for checkout in plan['checkouts']:
+        head, verdict = inspect_checkout(checkout, root, run)
+        verdicts[checkout['path']] = verdict
+        expected += 1
+        mounted += head is not None
+        concordant += verdict == 'concordant'
+        emit(f"{checkout['path']} mounted={head or '-'} expected={checkout['ref']} {verdict}")
+    emit(f"Composition {plan['target']}: {expected} repositories expected, {mounted} mounted, {concordant} concordant")
+    # An empty plan examined nothing: it cannot be a ready composition.
+    return expected > 0 and concordant == expected, verdicts
+
+
+def pinned_bun(root, verdicts):
+    """The Bun revision the composed governance pins, or None when it cannot be trusted or read.
+
+    The same file the workflow hands to install-toolchains.sh. A governance
+    checkout off its pin is not a source: its file may declare another Bun.
+    """
+    if verdicts.get(BUN_PIN[0]) != 'concordant':
+        return None
+    try:
+        with (root / BUN_PIN[0] / BUN_PIN[1]).open('rb') as stream:
+            raw = stream.read(65537)
+        if len(raw) > 65536:
+            return None
+        revision = json.loads(raw, object_pairs_hook=composition.unique_object).get('revision')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if not isinstance(revision, str) or not revision.isprintable() or not 0 < len(revision) <= 64 or ' ' in revision:
+        return None
+    return revision
+
+
+def report_bun(plan, root, run, verdicts, emit):
+    """The Bun on PATH against the pinned one. True when the plan runs no bun step or they match."""
+    steps = [step for group in ('install', 'setup', 'checks') for step in plan[group]]
+    if not any(step['argv'][0] == 'bun' for step in steps):
+        emit('Toolchain: 0 expected, 0 concordant (no step of this plan runs bun)')
+        return True
+    expected = pinned_bun(root, verdicts)
+    try:
+        # Without a root, the caller's own directory: a working directory that
+        # does not exist fails the call and would report an installed Bun as absent.
+        found = run(['bun', '--revision'], root if root.is_dir() else None, 15, True).stdout.strip() or None
+    except CHILD_FAILURES:
+        found = None
+    if expected is None:
+        verdict = 'unreadable'
+    elif found is None:
+        verdict = 'absent'
+    else:
+        verdict = 'concordant' if found == expected else 'mismatch'
+    emit(f"bun found={found or '-'} expected={expected or '-'} {verdict}")
+    emit(f"Toolchain: 1 expected, {int(verdict == 'concordant')} concordant")
+    if verdict in ('absent', 'mismatch'):
+        emit(f'Bun {expected} is the pinned toolchain ({"/".join(BUN_PIN)} of the composition): install it as '
+             f'{BUN_GUIDE} section 2.2 describes and put it first on PATH, then run this phase again.')
+    return verdict == 'concordant'
+
+
+def report_receipt(plan, root, emit):
+    """The receipt `--phase check` demands. True when it is the one of this plan."""
+    verdict = receipt_verdict(plan, root)
+    emit(f'receipt {RECEIPT} expected={fingerprint(plan)} {verdict}')
+    if verdict == 'unreadable':
+        # A receipt is there: the root is not new, and `prepare` would refuse it too.
+        emit('--phase check refuses this root: its receipt is present but cannot be read as one '
+             '(permissions, a link, or other content).')
+    elif verdict != 'concordant':
+        emit('--phase check refuses this root: only --phase prepare, on a new root and for this target and '
+             'revision, writes the receipt it demands.')
+    return verdict == 'concordant'
+
+
+def report(plan, root, run, toolchain, emit=print):
+    """Say whether the mounted composition is the planned one.
+
+    READY is only ever said with the receipt and the toolchain judged
+    (`--phase verify`): without them the sources are mounted, which is not yet
+    a composition a check can run in.
+    """
+    ready, verdicts = report_checkouts(plan, root, run, emit)
+    if not toolchain:
+        emit(f"Sources of {plan['target']}: {'MOUNTED' if ready else 'NOT MOUNTED'}"
+             ' (toolchain not judged by this phase: --phase verify does)')
+        return ready
+    ready = report_receipt(plan, root, emit) and ready
+    ready = report_bun(plan, root, run, verdicts, emit) and ready
+    emit(f"Composition {plan['target']}: {'READY' if ready else 'NOT READY'}")
+    return ready
 
 
 DEPENDENCY_TABLES = ('dependencies', 'dev-dependencies', 'build-dependencies')
@@ -290,7 +505,7 @@ def execute(plan, root, phase):
             raise TimeoutError('Composition deadline exceeded')
         return command(argv, cwd, min(timeout, remaining), capture, stdin)
 
-    receipt = root / '.composition-state.json'
+    receipt = root / RECEIPT
     if phase in ('prepare', 'all'):
         root.mkdir(parents=True, exist_ok=True)
         for checkout in plan['checkouts']:
@@ -303,10 +518,9 @@ def execute(plan, root, phase):
         verify_checkouts(plan, root, run)
         receipt.write_text(json.dumps({'planSha256': fingerprint(plan)}) + '\n')
     else:
-        if receipt.is_symlink() or receipt.stat().st_size > 256:
-            raise ValueError('Invalid prepared composition receipt')
-        if json.loads(receipt.read_text()) != {'planSha256': fingerprint(plan)}:
-            raise ValueError('Prepared composition belongs to another plan')
+        verdict = receipt_verdict(plan, root)
+        if verdict != 'concordant':
+            raise ValueError(f'Prepared composition receipt is {verdict}')
         verify_checkouts(plan, root, run)
     if phase in ('check', 'all'):
         configure_cargo_sources(plan, root, run)
@@ -323,18 +537,39 @@ def main():
     parser.add_argument('--target', required=True)
     parser.add_argument('--revision', required=True)
     parser.add_argument('--root', type=Path, required=True)
-    parser.add_argument('--phase', choices=('prepare', 'check', 'all'), default='all')
+    parser.add_argument('--phase', choices=('prepare', 'check', 'all', 'verify'), default='all')
     parser.add_argument('--plan', action='store_true')
     args = parser.parse_args()
+    failures = (OSError, ValueError, TypeError, TimeoutError, subprocess.SubprocessError)
     try:
         plan = load_plan(args.target, args.revision)
         validate_root(args.root, args.phase)
         if args.plan:
             print(json.dumps(plan, indent=2))
             return 0
-        return execute(plan, args.root, args.phase)
-    except (OSError, ValueError, TypeError, TimeoutError, subprocess.SubprocessError):
+        if args.phase == 'verify':
+            # Mounts nothing, installs nothing, writes nothing: the plan against
+            # what is on disk, the receipt `check` demands, and the Bun on PATH
+            # against the one the composed governance pins.
+            return 0 if report(plan, args.root, command, toolchain=True) else 1
+    except failures:
         print('Composition refused or failed; no subsequent step executed.', file=sys.stderr)
+        return 1
+    try:
+        status = execute(plan, args.root, args.phase)
+        if args.phase == 'prepare':
+            # Bun is installed after this phase, from the composition it mounts:
+            # only `verify` judges the toolchain.
+            return status if report(plan, args.root, command, toolchain=False) else 1
+        return status
+    except failures:
+        print('Composition refused or failed; no subsequent step executed.', file=sys.stderr)
+        if args.phase == 'prepare':
+            # A fetch that failed halfway leaves some checkouts: say which.
+            try:
+                report(plan, args.root, command, toolchain=False)
+            except failures:
+                pass
         return 1
 
 
