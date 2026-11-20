@@ -900,7 +900,7 @@ describe("the token never reaches argv or a message", () => {
       serverUrl: SERVER_URL,
       fetch: NO_FETCH,
       run: recorder.run,
-      env: { PATH: process.env.PATH ?? "", HOME: "/home/inherited", SECRET_OF_THE_RUNNER: "x" },
+      env: { PATH: process.env.PATH ?? "", HOME: "/home/inherited", SECRET_OF_THE_RUNNER: "x" }, // allow-local-path (fixture)
     }).isAncestorOfServedHead("libre-ai/product", FIRST);
     expect(recorder.calls.length).toBeGreaterThan(0);
     for (const call of recorder.calls) {
@@ -914,7 +914,7 @@ describe("the token never reaches argv or a message", () => {
         "HOME",
         "PATH",
       ]);
-      expect(call.env.HOME).not.toBe("/home/inherited");
+      expect(call.env.HOME).not.toBe("/home/inherited"); // allow-local-path (fixture)
       expect(call.env.GIT_CONFIG_GLOBAL).toBe("/dev/null");
       expect(call.env.GIT_CONFIG_NOSYSTEM).toBe("1");
       expect(call.env.GIT_TERMINAL_PROMPT).toBe("0");
