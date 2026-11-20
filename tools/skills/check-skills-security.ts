@@ -33,16 +33,38 @@
  * in a backslash is joined to the next, as a shell joins it (the brief said
  * "each line"; joining is stricter), and a finding names the line it starts on.
  *
+ * Invisible characters (category `invisible-character`, 2026-11-20) are
+ * patterns like the others: the Unicode Tags block, the zero-width characters
+ * and the bidirectional controls, each family one entry of the data file. A
+ * skill is read by a model and reviewed by a person; these characters are what
+ * the first reads and the second does not see. The line shows nothing, so the
+ * finding carries what it hides, in printable ASCII: a Tags run decoded to the
+ * ASCII it shadows, any other character named by its code point and counted.
+ * The no-break space (U+00A0), the narrow no-break space (U+202F) and the
+ * guillemets belong to none of the three families: French prose passes.
+ *
+ * A byte-order mark that opens a file is tolerated: it is an encoding
+ * signature, a single fixed character that carries nothing, and the strict
+ * decoder below removes it before the scan. Any other U+FEFF, a second one
+ * right after the first included, is a zero-width character and is refused.
+ *
  * There is no exemption mechanism, neither a line marker nor an allowlist: a
  * false positive is fixed by tightening the pattern in the data file or by
  * rewriting the skill.
+ * shortcut: no waiver mechanism, upgrade at the first legitimate finding
  *
- * Limit: the gate is coarse by construction. It stops the obvious form of an
- * instruction, not a command rebuilt through an alias or an encoding.
+ * Limits. The gate is coarse by construction: it stops the obvious form of an
+ * instruction, not a command rebuilt through an alias or an encoding. It reads
+ * the content of a file, not its name. Of the characters that display
+ * nothing, it refuses the three families above and no other: the variation
+ * selectors (U+FE00 to U+FE0F, which emoji use, and U+E0100 to U+E01EF), the
+ * soft hyphen (U+00AD) and the Hangul fillers pass. No pattern looks for the
+ * wording of an injected instruction.
  */
 
 import { lstatSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { printable } from "../../ecosystem/fleet-gates";
 
 export const PATTERNS_PATH = "tools/skills/skills-security-patterns.v1.json";
 
@@ -52,6 +74,7 @@ export const SECURITY_CATEGORIES = [
   "environment-export",
   "gate-bypass",
   "write-outside-repository",
+  "invisible-character",
 ] as const;
 
 type SecurityCategory = (typeof SECURITY_CATEGORIES)[number];
@@ -132,6 +155,11 @@ export interface SecurityFinding {
   readonly line: number;
   readonly patternId: string;
   readonly category: SecurityCategory;
+  /**
+   * For an invisible character only: what the line hides, in printable ASCII.
+   * The line shows nothing to whoever opens the file, so the finding has to.
+   */
+  readonly evidence?: string;
 }
 
 /** The lines of a text; the empty segment after a final newline is not a line. */
@@ -161,7 +189,10 @@ function logicalLines(content: string): LogicalLine[] {
     if (parts.length === 0) start = index + 1;
     const trimmed = line.trimEnd();
     if (trimmed.endsWith("\\")) {
-      parts.push(trimmed.slice(0, -1));
+      // Only the backslash is dropped. What follows it stays in the text:
+      // trimEnd counts U+FEFF as a blank, and a character removed here would
+      // never be scanned.
+      parts.push(trimmed.slice(0, -1) + line.slice(trimmed.length));
       return;
     }
     parts.push(line);
@@ -174,6 +205,54 @@ function logicalLines(content: string): LogicalLine[] {
 }
 
 /**
+ * The Unicode Tags block: each of its characters shadows the ASCII one
+ * 0xE0000 below it. Used to decode a match for display, never to find one:
+ * detection stays in the data file.
+ */
+const TAGS_FIRST = 0xe0000;
+const TAGS_LAST = 0xe007f;
+
+/** Decoded characters printed for one Tags run; the rest of the run is counted. */
+const PAYLOAD_SHOWN = 120;
+
+/**
+ * What the matches of an invisible-character pattern hide on one line, in
+ * printable ASCII only: the characters themselves never reach the log, where
+ * they would be as invisible as in the file.
+ *
+ * - A run of the Tags block is decoded to the ASCII it shadows, between
+ *   double quotes. Control characters are escaped by `printable`; a backslash
+ *   and a double quote are escaped first, so the quoted text reads one way.
+ *   The payload is text a stranger wrote for a model to obey: it is printed as
+ *   a quotation, cut at PAYLOAD_SHOWN characters.
+ * - Any other character is named by its code point and counted.
+ */
+function describeHidden(matched: readonly string[]): string {
+  const payloads: string[] = [];
+  const counts = new Map<string, number>();
+  for (const text of matched) {
+    const points = Array.from(text, (character) => character.codePointAt(0) ?? 0);
+    if (points.every((point) => point >= TAGS_FIRST && point <= TAGS_LAST)) {
+      // Only the part that is printed is decoded: a run can be any length.
+      const shown = String.fromCodePoint(
+        ...points.slice(0, PAYLOAD_SHOWN).map((point) => point - TAGS_FIRST),
+      );
+      const quoted = printable(shown.replaceAll("\\", "\\u005c").replaceAll('"', "\\u0022"));
+      const rest = points.length - shown.length;
+      payloads.push(
+        `${points.length} tag character(s) spelling "${quoted}"${rest > 0 ? ` and ${rest} more` : ""}`,
+      );
+      continue;
+    }
+    for (const point of points) {
+      const name = `U+${point.toString(16).toUpperCase().padStart(4, "0")}`;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return [...payloads, ...[...counts].map(([name, count]) => `${name} x${count}`)].join(", ");
+}
+
+/**
  * One finding per (logical line, pattern) that matches, reported on the
  * physical line where the logical line starts. Pure.
  */
@@ -183,20 +262,25 @@ export function scanForSkillRisks(
 ): SecurityFinding[] {
   const compiled = patterns.map((pattern) => ({
     pattern,
-    expression: new RegExp(pattern.regex, "i"),
+    // `g`: `match` then returns every occurrence on the line, which is what
+    // an invisible-character finding describes, and keeps no state between lines.
+    expression: new RegExp(pattern.regex, "gi"),
   }));
   const findings: SecurityFinding[] = [];
   for (const file of files) {
     for (const { start, text } of logicalLines(file.content)) {
       for (const { pattern, expression } of compiled) {
-        if (expression.test(text)) {
-          findings.push({
-            path: file.path,
-            line: start,
-            patternId: pattern.id,
-            category: pattern.category,
-          });
-        }
+        const matched = text.match(expression);
+        if (matched === null) continue;
+        findings.push({
+          path: file.path,
+          line: start,
+          patternId: pattern.id,
+          category: pattern.category,
+          ...(pattern.category === "invisible-character"
+            ? { evidence: describeHidden(matched) }
+            : {}),
+        });
       }
     }
   }
@@ -287,6 +371,8 @@ export function loadSkillTree(root: string): SkillTreeRead {
     try {
       // Strict decoding: a tolerant one would turn a binary into text
       // made of replacement characters, and the scan would call it clean.
+      // `ignoreBOM` is left at its default: the decoder removes one leading
+      // byte-order mark, which is how that mark, and only that one, is tolerated.
       content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch {
       undecodable.push(path);
@@ -370,7 +456,8 @@ async function main(): Promise<void> {
     report.check(
       `${finding.path}:${finding.line}`,
       false,
-      `matches ${finding.patternId} (${finding.category})`,
+      `matches ${finding.patternId} (${finding.category})` +
+        (finding.evidence === undefined ? "" : `: ${finding.evidence}`),
     );
   }
   for (const path of read.undecodable) {

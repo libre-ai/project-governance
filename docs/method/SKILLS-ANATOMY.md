@@ -273,6 +273,13 @@ section ne les recopie pas.
   revue ou d'arbitrage.
 - **Tout fichier compte.** Un lien symbolique, un binaire ou un fichier
   illisible sous `skills/` est un échec nommé, pas un fichier sauté.
+- **Aucun caractère invisible.** Le bloc Unicode « Tags », les caractères de
+  largeur nulle et les contrôles bidirectionnels sont refusés : un modèle les
+  lit, un relecteur ne les voit pas. Le constat imprime ce que la ligne cache,
+  en ASCII. L'espace insécable, l'espace fine insécable et les guillemets
+  français passent ; une marque d'ordre d'octets n'est tolérée qu'en tout
+  début de fichier. Un texte collé depuis une page web ou un traitement de
+  texte est la source habituelle d'un tel caractère.
 - **Le gate est grossier par construction.** Il arrête la forme évidente
   d'une consigne, pas une commande reconstruite par un alias ou un encodage :
   la revue reste nécessaire.

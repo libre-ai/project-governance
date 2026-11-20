@@ -65,6 +65,24 @@
       "category": "write-outside-repository",
       "regex": "\\b(cp|mv|ln|install)\\s+[^|;&\\n]*\\s[\"']?((~|\\$HOME|\\$\\{HOME\\}|/etc|/usr|/var)/|/[^\\s\"']*/\\.\\./)",
       "because": "a copy, move or link into the home directory or a system directory writes outside the repository"
+    },
+    {
+      "id": "invisible-unicode-tags",
+      "category": "invisible-character",
+      "regex": "(\\uDB40[\\uDC00-\\uDC7F])+",
+      "because": "the Unicode Tags block, U+E0000 to U+E007F (written here as its UTF-16 surrogate pairs), displays nothing and shadows ASCII one for one: a model reads the instruction it spells, a reviewer sees none"
+    },
+    {
+      "id": "invisible-zero-width",
+      "category": "invisible-character",
+      "regex": "[\\u180E\\u200B-\\u200D\\u2060-\\u2064\\uFEFF]",
+      "because": "a zero-width character (U+180E, U+200B to U+200D, U+2060 to U+2064, U+FEFF anywhere but as the first character of a file) displays nothing: it splits a word no pattern then matches, and a sequence of them encodes a text nobody sees"
+    },
+    {
+      "id": "invisible-bidi-control",
+      "category": "invisible-character",
+      "regex": "[\\u061C\\u200E\\u200F\\u202A-\\u202E\\u2066-\\u2069]",
+      "because": "a bidirectional control (the Unicode Bidi_Control property: U+061C, U+200E, U+200F, U+202A to U+202E, U+2066 to U+2069) reorders what is displayed: the text a reviewer reads is not the text the agent receives"
     }
   ]
 }
