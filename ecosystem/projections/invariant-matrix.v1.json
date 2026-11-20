@@ -246,12 +246,6 @@
       "etat": "en vigueur",
       "application": "sans gate",
       "gates": []
-    },
-    {
-      "invariant": "I-41",
-      "etat": "en vigueur",
-      "application": "sans gate",
-      "gates": []
     }
   ]
 }

@@ -1,14 +1,14 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# ADR-0071 — Juge par modèle borné (I-41), protocole de mesure de l'effet d'un skill, refus d'installer et de brancher SkillEvaluator
+# ADR-0071 — Juge par modèle borné par une règle de méthode, protocole de mesure de l'effet d'un skill, refus d'installer et de brancher SkillEvaluator
 
-- **Statut :** proposé — deux questions de forme attendent l'arbitrage du propriétaire (section « Questions ouvertes au propriétaire »), et la pull request qui porte cet ADR reste en brouillon jusqu'à ses réponses. L'acceptation est un acte du propriétaire : il répond aux deux questions, ses réponses sont portées dans le texte et dans la ligne d'arbitrage, et ce statut change dans la pull request qu'il fusionne (ADR-0043). Tant que ces lignes n'ont pas changé, ni D1 à D3, ni I-41, ni D117 à D119 ne sont en vigueur, fusionnés ou non. Une revue à rôle séparé a rendu `reject` sur la première rédaction (révision `eee0a11`, six constats majeurs) : cette révision en corrige quatre et pose les deux autres au propriétaire.
-- **Arbitrage :** Owner-arbitration: 2026-11-20 — page de décision structurée, à laquelle le propriétaire a répondu dans la session qui tient la pull request. Réponses retenues : décision 5, « Inscrire la règle seulement » ; décision 6, « Inscrire le protocole seulement » ; décision 7, « Refuser l'installation et le branchement, garder le rejeu à la main ». Ce sont les libellés des options qu'il a choisies sur cette page, pas une phrase de sa main. La rédaction a reçu ces réponses par le mandat du lot : elle a relu la page, où les trois libellés sont bien des options, mais pas les réponses, que la page garde dans le navigateur du propriétaire. Cet arbitrage porte sur le fond des trois décisions. Il ne couvre pas les deux questions de forme que la revue a ouvertes depuis : aucun arbitrage sur elles à ce jour. La section « Acte de signature » cite le texte que la page affichait sous chaque option retenue, nomme tout ce que cet ADR écrit au-delà, et dit ce que la page affichait de faux.
-- **Date de rédaction :** 2026-11-20, première rédaction puis reprise après revue le même jour.
-- **Connexes :** ADR-0045 et I-32 (isolation contre l'injection indirecte : ne vise que les modèles qui détiennent un outil à effet ; D1 (e) couvre le juge, qui n'en détient pas) ; ADR-0056 D3 et I-38 (installation live), D4 (registre des refus, dont D3 est une entrée) ; ADR-0025 et ADR-0050 (admission d'un skill sur échec observé : inchangée) ; D103 (retrait d'I-35, invariant qu'aucun mécanisme ne pouvait rougir : première question ouverte) ; ADR-0068 D3 et I-40 (la fusion par un agent exige une revue à rôle séparé : seconde question ouverte) ; `docs/method/CHALLENGER-EVALUATION.md`, qui porte le protocole de D2 ; `verification/trust-bench/`, où un relecteur par modèle est mesuré sur un banc (l'objet de ce dépôt le plus proche d'un juge : troisième bloc de la vérification empirique).
+- **Statut :** accepted — arbitrage propriétaire du 2026-11-20, par deux pages de décision structurée ; la fusion de cette pull request vaut signature (ADR-0043). Une revue à rôle séparé a rendu `reject` sur la première rédaction (six constats majeurs, aucun bloquant, sur la révision `eee0a11` d'un historique que la réécriture de la branche du 2026-11-20 a remplacé). Quatre de ces constats ont été corrigés à la reprise ; les deux autres portaient sur la forme et la portée de D1, et les réponses du propriétaire, portées ici, les règlent. Aucune revue n'a relu ce texte depuis : une seconde passe à rôle séparé est demandée sur la tête de la pull request avant la signature.
+- **Arbitrage :** Owner-arbitration: 2026-11-20 — libellés d'options choisis en deux temps, le même jour, sur deux pages de décision structurée auxquelles le propriétaire a répondu dans la session qui tient la pull request. Premier temps, sur le fond : décision 5, « Inscrire la règle seulement » ; décision 6, « Inscrire le protocole seulement » ; décision 7, « Refuser l'installation et le branchement, garder le rejeu à la main ». Second temps, après la revue à rôle séparé et la correction de trois affirmations fausses de la première page : « Elles tiennent » (ses réponses 5 et 6, relues avec les motifs corrigés) ; « Règle de méthode et ligne de décision, sans invariant » (forme de D1) ; « L'exclure explicitement, en écrivant le risque » (portée de D1 sur la revue à rôle séparé faite par un agent). Ce sont les libellés des options qu'il a choisies, pas des phrases de sa main. La rédaction les a reçus par mandat, les deux fois. Elle a vérifié que ces six libellés sont bien des options des deux pages ; elle n'a pas vu les réponses, que chaque page garde dans le navigateur du propriétaire. La section « Réponses du propriétaire au second temps » cite ce que la seconde page affichait, options écartées comprises. La section « Acte de signature » cite ce que la première affichait, nomme ce que cet ADR écrit au-delà du texte des options, et dit ce que la première page affichait de faux.
+- **Date de rédaction :** 2026-11-20 : première rédaction, reprise après revue, puis application des réponses du second temps, le même jour.
+- **Connexes :** ADR-0045 et I-32 (isolation contre l'injection indirecte : ne vise que les modèles qui détiennent un outil à effet ; D1 (e) couvre le juge, qui n'en détient pas) ; ADR-0056 D3 et I-38 (installation live), D4 (registre des refus, dont D3 est une entrée) ; ADR-0025 et ADR-0050 (admission d'un skill sur échec observé : inchangée) ; D103 (retrait d'I-35, invariant qu'aucun mécanisme ne pouvait rougir : motif de la forme retenue pour D1) ; ADR-0068 D3 et I-40 (la fusion par un agent exige une revue à rôle séparé : D1 l'exclut par exception nommée et écrit le risque que cela laisse) ; `docs/method/CHALLENGER-EVALUATION.md`, qui porte les six bornes de D1 et le protocole de D2 ; `verification/trust-bench/`, où un relecteur par modèle est mesuré sur un banc (l'objet de ce dépôt le plus proche d'un juge : troisième bloc de la vérification empirique).
 - **Applique :** ADR-0056 D4 (une entrée au registre, à la forme que son gate contrôle) ; I-38 (aucun outil installé par ce lot).
-- **Ne modifie pas :** ADR-0025, ADR-0050 et I-25 (l'admission, la modification et la promotion d'un skill gardent leurs conditions ; D2 n'en ajoute aucune) ; ADR-0045 et I-32 (inchangés : D1 (e) s'y ajoute sans en retoucher une clause) ; `docs/reviews/AGENT-REVIEW-PROTOCOL.md` et ADR-0068 (cet ADR n'en retouche pas une ligne ; que le texte d'I-41 couvre ou non la revue à rôle séparé est la seconde question ouverte).
-- **Invariants :** I-41 (proposé par cet ADR, D117) ; I-32 (complété sans être amendé) ; I-38 (appliqué) ; I-17 (appliqué : invariant, registre et ADR entrent par une pull request que le propriétaire fusionne) ; I-40 (concerné par la seconde question ouverte, non modifié).
+- **Ne modifie pas :** ADR-0025, ADR-0050 et I-25 (l'admission, la modification et la promotion d'un skill gardent leurs conditions ; D2 n'en ajoute aucune) ; ADR-0045 et I-32 (inchangés : D1 (e) pose une borne voisine en règle de méthode, sans en retoucher une clause) ; `docs/reviews/AGENT-REVIEW-PROTOCOL.md` et ADR-0068 (cet ADR n'en retouche pas une ligne : la revue garde ses trois verdicts, la fusion par un agent ses conditions) ; `docs/decisions/INVARIANTS.md` (aucune ligne ajoutée, amendée ni retirée).
+- **Invariants :** aucun invariant n'est inscrit ni amendé par cet ADR : D1 est une règle de méthode et une ligne de décision (réponse du propriétaire au second temps, motif de D103). I-32 (inchangé, voisin de D1 (e)) ; I-38 (appliqué) ; I-17 (appliqué : registre et ADR entrent par une pull request que le propriétaire fusionne, et l'inscription future d'un invariant resterait son acte) ; I-40 (non modifié : la revue à rôle séparé qu'il exige est celle que D1 exclut).
 - **N'autorise pas :** l'installation de l'outil étudié, sur un poste ou dans un harnais ; son branchement en CI, même consultatif ; l'écriture d'un juge par modèle, d'un harnais de qualification ou d'un outil de mesure d'effet ; la reprise verbatim d'un texte de l'outil ; une dépense d'appels de modèle.
 - **Source :** drill du dépôt amont `NVIDIA/SkillEvaluator` (https://github.com/NVIDIA/SkillEvaluator, licence Apache-2.0, commit `35af6d9ba8b0f5c1fb975d6d8bee7459b73619a7`, soit 42 commits après l'étiquette de la version 1.0.1 : `git describe --tags --always` y rend `v1.0.1-42-g35af6d9b`, rejoué à la reprise). Idées seulement : aucun texte n'est repris verbatim. La citation de la source sert la traçabilité, elle n'est pas une recommandation.
 
@@ -63,13 +63,21 @@ Une affirmation de la première rédaction n'est gardée que comme inférence. E
 
 ## Décision
 
-Texte proposé. La forme de D1 (un invariant) et sa portée (la revue à rôle séparé) sont les deux questions ouvertes de la section suivante : cette section garde, sur ces deux points, le texte de la première rédaction.
+D1 a la forme et la portée que le propriétaire a retenues au second temps (section suivante) : une règle de méthode et une ligne de décision, sans invariant, qui exclut la revue à rôle séparé faite par un agent en écrivant le risque. Le contenu des six bornes est celui de la reprise, inchangé.
 
-### D1 — Tout juge par modèle de la flotte est borné (I-41, D117)
+### D1 — Tout juge par modèle de la flotte est borné : règle de méthode, sans invariant (D117)
 
 Un **juge par modèle** est un composant où un modèle rend un verdict sur un contenu (la sortie d'un agent, un fichier, un constat), et où ce verdict sert à noter ce contenu ou ce qui l'a produit, ou à en décider : une note, un taux, le verdict d'un essai, la décision d'un gate.
 
 Un modèle que l'on mesure lui-même contre des attendus n'est pas encore un juge : rien d'autre que lui n'est noté sur ses réponses. C'est le cas du lecteur à froid et du relecteur du banc de confiance (troisième bloc de la vérification empirique). Mesurer ainsi un relecteur est la qualification que (c) exige ; il devient un juge, et tient les six bornes, le jour où un verdict s'appuie sur le sien.
+
+**La revue à rôle séparé faite par un agent n'est pas un juge au sens de cette règle.** Elle est exclue par exception nommée, et non parce que la définition ne la toucherait pas : un modèle y rend un verdict sur un commit. Le risque que cette exclusion laisse est écrit ici, dans la ligne D117 et dans la méthode, pour qu'il ne se perde pas. Il tient à trois faits, lus dans les textes du dépôt :
+
+- ADR-0068 fait dépendre la fusion d'une pull request par un agent d'une revue à rôle séparé du sha exact, qui ne laisse aucun constat bloquant ouvert (D3, condition 6 : `6cf6087:docs/adr/0068-bounded-agent-merge.md:99`) ;
+- le protocole de cette revue lui fait rendre exactement un verdict parmi trois valeurs, `approve`, `approve-with-minor-reservations` et `reject` (`6cf6087:docs/reviews/AGENT-REVIEW-PROTOCOL.md:29`) ;
+- aucun de ces deux textes ne demande que cette revue soit qualifiée contre des cas étiquetés : `grep -n -i -E 'étiquet|label|qualifi' docs/adr/0068-bounded-agent-merge.md` ne rend rien, et la même commande sur `docs/reviews/AGENT-REVIEW-PROTOCOL.md` ne rend qu'une ligne, qui parle de la chaîne d'outils qualifiée (relevé du 2026-11-20). C'est l'absence d'une exigence dans deux textes, pas la preuve qu'aucune mesure de cette revue n'existe ailleurs ; le banc de confiance, lui, mesure un autre relecteur (un modèle local, sur les diffs de son corpus), pas cette revue.
+
+La fusion par un agent s'appuie donc sur le jugement d'un modèle, rendu à trois valeurs, qu'aucun de ces deux textes ne fait qualifier contre des cas étiquetés : (a) et (c) n'y sont pas tenues, et D1 ne les y impose pas. Aucun chantier de mise en conformité n'est ouvert. L'exception se relit à chaque évolution de cette revue ou d'ADR-0068.
 
 Tout juge par modèle écrit ou employé par la flotte, dans un produit comme dans l'outillage, tient six bornes :
 
@@ -80,7 +88,11 @@ Tout juge par modèle écrit ou employé par la flotte, dans un produit comme da
 - **(e) Le contenu jugé est une donnée, et l'invite le dit.** Délimiter le contenu ne suffit pas : l'invite dont cette borne tire sa leçon le délimite. La borne exige deux choses de plus. L'invite porte une consigne explicite, qui déclare le contenu jugé comme une donnée et interdit de suivre une instruction qui s'y trouve. Et le contenu ne peut pas refermer sa propre frontière : il occupe un message ou un champ distinct de celui de la consigne, où aucune instruction ne le suit, ou il est borné par un délimiteur dont l'absence dans le contenu est contrôlée avant l'appel.
 - **(f) Le juge s'enregistre.** Le modèle juge et sa version s'enregistrent par essai. Deux essais jugés par des modèles différents ne se comparent pas : ils ne s'apparient pas et ne s'agrègent pas dans un même taux.
 
-Proposée comme invariant I-41. Nature du constat : `inspection` (ADR-0056 D1) ; aucune défaillance d'un juge de la flotte n'est citée, puisqu'aucun n'est en service.
+**Forme.** Ces six bornes sont une règle de méthode. `docs/method/CHALLENGER-EVALUATION.md` gagne la section « Juge par modèle — six bornes, règle de méthode sans invariant », qui les porte mot pour mot, avec la définition, l'exclusion et son risque, et qui ajoute sous chaque borne ce qu'un premier juge montre pour la tenir ; la ligne D117 du registre des décisions les résume. Aucun invariant n'est inscrit : la règle se lit en revue, au moment où un juge est proposé, et n'a pas la force du registre des invariants.
+
+**Condition qui en ferait un invariant :** le premier juge par modèle de la flotte livre un cas qui fait rougir la règle, c'est-à-dire un cas hors bornes que ce juge, ou le gate qui l'emploie, refuse. L'inscription reste alors un acte du propriétaire (I-17) : ce cas en est la condition, il ne la déclenche pas.
+
+Nature du constat : `inspection` (ADR-0056 D1) ; aucune défaillance d'un juge de la flotte n'est citée, puisqu'aucun n'est en service.
 
 ### D2 — Protocole de mesure de l'effet d'un skill : une règle de méthode, non outillée (D118)
 
@@ -101,47 +113,53 @@ Le rejeu à la main reste permis : dans un espace isolé, sans clé de modèle d
 
 Condition de réexamen : une révision de l'outil où les dépendances du scanner sont verrouillées avec empreintes pour l'exécution locale et où aucun modèle ne peut abaisser un constat de sécurité, constatée par une lecture datée ; puis une décision du propriétaire sur un second instrument pour les skills.
 
-## Questions ouvertes au propriétaire
+## Réponses du propriétaire au second temps
 
-Deux questions de forme, ouvertes par la revue à rôle séparé. La rédaction ne les tranche pas : le texte de D1 est celui de la première rédaction sur ces deux points, et il ne vaut pas réponse. Si la réponse à la première est l'option 3, la seconde ne se pose plus.
+Le 2026-11-20, après la revue à rôle séparé, une seconde page de décision lui a posé trois questions sur cette pull request : une confirmation, puis la forme et la portée de D1. Pour chacune : ce que la page affichait, l'option qu'il a retenue, et les options écartées avec la conséquence que la page affichait sous chacune, citée telle quelle, pour mémoire. La reprise avait écrit ces deux dernières questions dans cet ADR avec ses propres options ; c'est le texte de la page, celui qu'il a eu sous les yeux en répondant, qui est gardé ici.
 
-### Question 1 — I-41 s'inscrit-il comme invariant, alors qu'aucun mécanisme ne peut le rougir ?
+### Réponse 1 — Ses réponses 5 et 6 tiennent après correction
 
-Ce qu'il faut savoir pour répondre :
+Question affichée : « Tes deux réponses “règle seulement” tiennent-elles après ces corrections ? » La page rappelait d'abord les trois affirmations fausses ou trop fortes de la première page (section « Acte de signature »), puis disait que le motif principal de la réponse 5 tient toujours (le constat de sécurité abaissé par un modèle) et que celui de la réponse 6 change : la règle 2 de D2 se justifie par l'attribution, et non par un défaut de l'outil.
 
-- I-35 a été inscrit le 2026-10-10 « dès maintenant, avant tout consommateur », avec une clause qui exigeait de son premier consommateur un vecteur rouge. Il a été retiré le 2026-11-09 par D103, onze jours avant cet ADR, au motif écrit dans le registre : « un invariant qu'aucun mécanisme ne peut rougir n'est pas doctrine » (`6cf6087:docs/decisions/INVARIANTS.md:41`, `6cf6087:docs/decisions/DECISION-REGISTER.md:109`). Il n'avait eu, en un mois, ni consommateur, ni vecteur rouge, ni gate.
-- I-41 est dans ce cas, et un cran en dessous : aucun juge n'est en service, aucun gate, aucun test, aucun vecteur ne lit ses six bornes, et son texte n'exige même pas le vecteur rouge qu'I-35 exigeait. La matrice des invariants l'affiche « sans gate ».
-- L'option retenue le 2026-11-20 affichait bien la forme : « Un invariant et quatre lignes de méthode. Aucun code : il n'y a pas de juge à contraindre aujourd'hui. » La page ne rappelait pas D103.
-- La première rédaction a appliqué le motif de D103 à D2, pour ne pas en faire un invariant (« Alternatives rejetées »), et pas à D1.
+**Retenu : « Elles tiennent ».** Conséquence affichée : « La pull request #273 continue sur ces deux décisions, avec les motifs corrigés qu'elle écrit déjà. »
 
-| Option | Ce qui change dans cette pull request | Conséquence |
-| --- | --- | --- |
-| 1. Garder l'invariant, en exigeant un vecteur rouge de son premier consommateur | La ligne I-41 gagne la clause qu'I-35 portait : le premier juge prouve par un vecteur rouge qu'un juge hors bornes est refusé | La règle a la force du registre dès la fusion. Elle reste sans gate jusqu'au premier juge : c'est la forme exacte qu'I-35 avait et que D103 a retirée. Garder I-41 sous cette forme demande de dire en quoi il diffère d'I-35, ou d'amender D103 |
-| 2. Inscrire les mêmes bornes comme règle de méthode et ligne de décision, sans invariant, avec la condition qui en ferait un invariant | La ligne I-41, son entrée `gates: []` et la matrice sortent ; les six bornes passent dans la méthode ; D117 reste et dit la condition de promotion (un premier juge en service, et un vecteur rouge qui le lit) | Conforme à D103 sans l'amender. Le registre des invariants dit que ce qui n'y figure pas n'est pas doctrine : les bornes deviennent une règle lue en revue, sans la force du registre, jusqu'à leur promotion. Le numéro I-41 n'est pas consommé |
-| 3. Ne rien inscrire avant le premier juge | D1, I-41 et D117 sortent ; restent D2 et D3 ; la règle 2 de D2 ne renvoie plus à des bornes | C'est l'option « Attendre le premier juge » de la page, écartée le 2026-11-20 sous la conséquence qu'elle affichait : « La règle s'écrira avec lui, au risque de s'écrire après. » Le choix du 2026-11-20 serait défait sur ce point |
+| Option écartée | Conséquence affichée |
+| --- | --- |
+| À revoir | « Dis laquelle en commentaire ; #273 attend, rien n'est réécrit avant. » |
 
-### Question 2 — Le texte d'I-41 couvre-t-il la revue à rôle séparé faite par un agent ?
+### Réponse 2 — La forme de D1 : règle de méthode et ligne de décision, sans invariant
 
-Ce qu'il faut savoir pour répondre :
+Question affichée : « Les règles du modèle juge s'inscrivent-elles comme invariant ? » La page disait que la forme « un invariant » lui avait été proposée, puis que la revue avait trouvé un précédent : onze jours plus tôt, D103 a retiré I-35, inscrit avant tout consommateur, sans rien qui puisse le faire rougir, et l'invariant proposé pour D1 était dans le même cas.
 
-- La définition de D1 vise tout composant où un modèle rend, sur un contenu, un verdict qui sert à en décider, « la décision d'un gate » comprise.
-- La revue à rôle séparé est un tel composant, à la lettre : un modèle y rend un verdict sur un commit, et la fusion par un agent exige cette revue, sans constat bloquant ouvert (`6cf6087:docs/adr/0068-bounded-agent-merge.md:99`, I-40).
-- Elle ne tient pas deux des six bornes. Son verdict a trois valeurs, `approve`, `approve-with-minor-reservations` et `reject` (`6cf6087:docs/reviews/AGENT-REVIEW-PROTOCOL.md:29`) : (a) n'est pas tenue. Elle n'est qualifiée contre aucun jeu de cas étiquetés : (c) n'est pas tenue.
-- L'exclusion n'existe aujourd'hui que comme une lecture de la première rédaction (« Ce qui n'est pas décidé ici »). La ligne du registre, qui est exhaustif, ne la porte pas : fusionné tel quel, I-41 serait violé par un composant en service le jour de sa fusion.
+Les faits derrière ce précédent, relus dans le dépôt. I-35 a été inscrit le 2026-10-10 « dès maintenant, avant tout consommateur », avec une clause qui exigeait de son premier consommateur un vecteur rouge. Il a été retiré le 2026-11-09 par D103, au motif écrit dans le registre : « un invariant qu'aucun mécanisme ne peut rougir n'est pas doctrine » (`6cf6087:docs/decisions/INVARIANTS.md:41`, `6cf6087:docs/decisions/DECISION-REGISTER.md:109`). La première rédaction de cet ADR avait appliqué ce motif à D2, pour ne pas en faire un invariant, et pas à D1.
 
-| Option | Ce qui change dans cette pull request | Conséquence |
-| --- | --- | --- |
-| 1. Exclure explicitement la revue à rôle séparé dans la ligne même du registre | La ligne I-41 gagne une incise qui nomme la revue et son protocole | La revue garde ses trois verdicts, ADR-0068 ne bouge pas. Un composant où un modèle décide d'une fusion par agent reste hors des bornes par exception nommée : la ligne doit dire pourquoi, et l'exception se relit à chaque évolution de la revue |
-| 2. Resserrer la définition du juge pour qu'elle ne la couvre pas | La définition de D1 change (par exemple : un verdict qui entre dans une note ou un taux calculé, ou qui porte sur la sortie d'un composant évalué) ; la lecture du relecteur du banc est à refaire sur la nouvelle définition | Pas d'exception nommée. Une définition plus étroite laisse aussi sortir d'autres composants où un modèle décide : ce qu'elle exclut doit être relu avant la fusion |
-| 3. La couvrir, et ouvrir un chantier de mise en conformité de la revue | La ligne « Ne modifie pas » perd `docs/reviews/AGENT-REVIEW-PROTOCOL.md` et ADR-0068 ; un chantier est inscrit : verdicts booléens (a), qualification de la revue contre des cas étiquetés avec taux de faux succès publié (c) | La revue devient le premier juge de la flotte, et le banc de confiance son instrument de qualification le plus proche. Tant que le chantier n'est pas clos, I-41 est violé par un composant en service : il faut une clause de transition datée, ou suspendre la fusion par un agent (ADR-0068), qui repose sur cette revue |
+**Retenu : « Règle de méthode et ligne de décision, sans invariant ».** Conséquence affichée : « Les six bornes s'écrivent dans la méthode, avec la condition qui en ferait un invariant : le premier juge livre un cas rouge. Cohérent avec D103. »
+
+| Option écartée | Conséquence affichée |
+| --- | --- |
+| Garder l'invariant, avec une exigence de cas rouge | « I-41 reste, et exige comme I-35 le faisait que son premier consommateur fournisse un cas qui le fait rougir. Un quarantième invariant sans gate d'ici là. » |
+| Ne rien inscrire avant le premier juge | « La pull request perd sa première décision. Rien n'empêche d'ici là d'écrire un juge sur le modèle de l'outil. » |
+
+Ce que cette réponse change dans la pull request : la ligne d'invariant que la première rédaction ajoutait, son entrée `gates: []` et sa ligne dans la matrice sortent, et ces trois fichiers reviennent à leur contenu de la branche servie ; les six bornes passent dans la méthode ; D117 reste et dit la condition de promotion.
+
+### Réponse 3 — La portée de D1 : la revue à rôle séparé est exclue, et le risque est écrit
+
+Question affichée : « Ces règles couvrent-elles la revue à rôle séparé faite par un agent ? » La page disait qu'à la lettre, oui : dans cette revue, un modèle rend sur un commit un verdict dont dépend une fusion par agent (ADR-0068) ; qu'elle rend trois valeurs et n'est qualifiée contre aucun cas étiqueté, et ne tient donc ni la première ni la troisième borne ; et que la pull request l'excluait alors par une simple lecture, que le registre ne portait pas. D1 écrit ce risque en s'en tenant à ce que les deux textes cités écrivent (plus haut) : ADR-0068 fait dépendre la fusion de l'absence de constat bloquant ouvert dans cette revue, pas de la valeur de son verdict.
+
+**Retenu : « L'exclure explicitement, en écrivant le risque ».** Conséquence affichée : « La ligne du registre dit que la revue à rôle séparé n'est pas un juge au sens de la règle, et que la fusion par agent s'appuie donc sur un verdict de modèle non qualifié. Honnête et sans chantier. » Faute de ligne d'invariant (réponse 2), la ligne du registre qui le dit est D117, au registre des décisions.
+
+| Option écartée | Conséquence affichée |
+| --- | --- |
+| Resserrer la définition du juge | « La définition est réécrite pour ne pas la couvrir. Le texte devient cohérent, mais le risque n'est plus dit nulle part. » |
+| La couvrir et ouvrir sa mise en conformité | « Un chantier : verdicts booléens, cas étiquetés, taux de faux succès publié pour la revue. Tant qu'il n'est pas fait, la fusion par agent contrevient à la règle. » |
+| Sans objet | « À choisir si tu as répondu “ne rien inscrire” à la décision 2. » |
 
 ## Conséquences
 
-Ces conséquences valent si le texte proposé est accepté tel quel ; les réponses aux deux questions ouvertes les modifient.
-
-- I-41 est inscrit au registre des invariants, avec son entrée `gates: []` dans `ecosystem/invariant-gates.v1.yaml` et la projection régénérée. Le registre des décisions gagne D117, D118 et D119. Le registre des refus gagne une entrée.
-- **Aucun mécanisme ne peut rougir sur I-41 aujourd'hui.** Aucun juge n'est en service, et aucun gate, aucun test, aucun vecteur ne lit ces six bornes : la matrice des invariants l'affiche « sans gate ». C'est le motif pour lequel D103 a retiré I-35. La revue d'un juge au moment où il est proposé serait le seul mécanisme d'I-41 : c'est la première question ouverte.
-- **Le premier objet auquel I-41 se lira existe déjà.** Le relecteur du banc de confiance n'est pas un juge au sens de D1, mais il le devient dès qu'un verdict s'appuie sur lui. Cet ADR ne juge pas sa conformité borne par borne : ce banc a été fusionné pendant la rédaction, par un autre travail. Lu en passant, sans valeur de revue : son verdict est un booléen, rendu avec un raisonnement en texte, ce que (a) admet ; une réponse illisible n'est ni verte ni rouge ; sa consigne déclare le diff comme une donnée et interdit de suivre une instruction qui s'y trouve, et le diff entre sous un libellé dans un message distinct de celui de la consigne ; chaque ligne de résultat porte l'étiquette du modèle. Deux points seraient à revoir s'il devenait juge. La version du serveur de modèle y est dite « non consignée » (`aeae0ab:distribution/evidence/2026-11-16-trust-bench-first-measure.md:21`). Et ses deux couches croisées combinent les verdicts de deux modèles sur le même diff (`aeae0ab:distribution/evidence/2026-11-16-trust-bench-first-measure.md:13`) : cette combinaison se lirait contre (f), qui interdit d'agréger dans un même taux des essais jugés par des modèles différents. Cet ADR ne tranche pas cette lecture.
+- **Le registre des invariants ne change pas.** Aucune ligne n'y entre ; `ecosystem/invariant-gates.v1.yaml` et la projection de la matrice sont ceux de la branche servie. Le registre des décisions gagne D117, D118 et D119. Le registre des refus gagne une entrée. La méthode gagne deux sections.
+- **Les six bornes n'ont pas la force du registre.** `docs/decisions/INVARIANTS.md` est exhaustif : ce qui n'y figure pas n'est pas doctrine. Un juge écrit hors bornes ne viole donc aucun invariant ; seule la revue du travail qui le propose peut l'arrêter, en lisant la méthode. Aucun gate, aucun test, aucun vecteur ne lit ces bornes, et aucun juge n'est en service. C'est ce que la forme retenue ne donne pas ; un invariant inscrit aujourd'hui tomberait sous le motif pour lequel D103 a retiré I-35.
+- **La fusion par un agent reste appuyée sur un jugement de modèle que rien ne fait qualifier.** D1 l'écrit et ne le corrige pas : ADR-0068 et le protocole de revue sont inchangés, aucun chantier n'est ouvert. ADR-0068 borne par ailleurs la fusion par un agent aux pull requests dont aucun fichier ne correspond aux chemins gardés ni aux exclusions de son D2 (D115), et la doctrine reste à touche humaine (I-17) : cet ADR n'y change rien non plus.
+- **Le premier objet auquel D1 se lira existe déjà.** Le relecteur du banc de confiance n'est pas un juge au sens de D1, mais il le devient dès qu'un verdict s'appuie sur lui. Cet ADR ne juge pas sa conformité borne par borne : ce banc a été fusionné pendant la rédaction, par un autre travail. Lu en passant, sans valeur de revue : son verdict est un booléen, rendu avec un raisonnement en texte, ce que (a) admet ; une réponse illisible n'est ni verte ni rouge ; sa consigne déclare le diff comme une donnée et interdit de suivre une instruction qui s'y trouve, et le diff entre sous un libellé dans un message distinct de celui de la consigne ; chaque ligne de résultat porte l'étiquette du modèle. Deux points seraient à revoir s'il devenait juge. La version du serveur de modèle y est dite « non consignée » (`aeae0ab:distribution/evidence/2026-11-16-trust-bench-first-measure.md:21`). Et ses deux couches croisées combinent les verdicts de deux modèles sur le même diff (`aeae0ab:distribution/evidence/2026-11-16-trust-bench-first-measure.md:13`) : cette combinaison se lirait contre (f), qui interdit d'agréger dans un même taux des essais jugés par des modèles différents. Cet ADR ne tranche pas cette lecture.
 - Le protocole de D2 ne produit aucune mesure. `eval.json` reste ce qu'il est : des déclencheurs rejoués lexicalement, jamais joués contre un agent.
 - La méthode gagne une valeur d'`evaluationStatus`, `provisional`. Elle vaut pour toute évaluation menée sous cette méthode, pas pour les seuls skills ; rien dans ce dépôt ne valide ce champ par un schéma.
 - D1 (c) et D2 (4) ne fixent aucun seuil : ni taux de faux succès admissible, ni taille de jeu suffisante. Un seuil se fixe en donnée, avant la mesure, par le travail qui outillera l'un ou l'autre.
@@ -150,7 +168,7 @@ Ces conséquences valent si le texte proposé est accepté tel quel ; les répon
 
 ## Alternatives rejetées
 
-Les options écartées sont celles de la page de décision, avec la conséquence qu'elle affichait, citée telle quelle.
+Les options écartées au premier temps sont celles de la première page de décision, avec la conséquence qu'elle affichait, citée telle quelle. Celles du second temps sont dans la section « Réponses du propriétaire au second temps ».
 
 | Décision | Option écartée | Conséquence affichée |
 | --- | --- | --- |
@@ -163,22 +181,25 @@ Les options écartées sont celles de la page de décision, avec la conséquence
 | 7 | Brancher son niveau 1 en CI, en consultatif | « Contredit le cadrage que tu as validé : le code tiers ne s'installe dans aucun harnais. Ses faux positifs arrivent sur chaque PR. » |
 | 7 | Ne rien inscrire | « Le refus reste dans ce dossier d'analyse ; une session future peut reproposer l'outil sans le voir. » |
 
-Écartée par la rédaction : inscrire le protocole de D2 comme invariant. La réponse retenue le range dans la méthode, et un invariant sans mesure possible ajouterait une seconde ligne que rien ne peut rougir. Le même motif vaut contre I-41 : c'est la première question ouverte.
+Écartée par la rédaction : inscrire le protocole de D2 comme invariant. La réponse retenue le range dans la méthode, et un invariant sans mesure possible ajouterait une seconde ligne que rien ne peut rougir. Le même motif valait contre l'invariant que la première rédaction proposait pour D1 : le propriétaire l'a retenu au second temps (réponse 2).
 
 ## Ce qui n'est pas décidé ici
 
-- **Les deux questions ouvertes** ci-dessus : la forme d'I-41 et sa portée sur la revue à rôle séparé.
+- **L'inscription d'un invariant sur le juge par modèle.** Elle attend le premier juge et le cas rouge qu'il livre (D1, « Condition qui en ferait un invariant »), puis un acte du propriétaire.
+- **La mise en conformité de la revue à rôle séparé** avec les bornes (a) et (c). L'option qui l'ouvrait a été écartée au second temps (réponse 3) : le risque est écrit, aucun chantier n'est inscrit, et rien ici ne dit quand la question se reposera, sinon à une évolution de cette revue ou d'ADR-0068.
 - **La vérification de chargement par harnais.** Le drill a relevé que l'outil déclare deux skills de ce dépôt « dégradés » sur trois harnais ; ce constat est celui d'un tiers et n'a été rejoué sur aucun harnais réel. À la question correspondante, le propriétaire a répondu « Attendre », sans condition de reprise. Rien n'est inscrit : ni décision, ni refus, ni condition.
 - **Les seuils** de D1 (c) et de D2 (4), et la forme d'un enregistrement d'essai.
 - **Les autres éléments du drill** (statut d'admission dérivé des preuves, contrôles statiques de sécurité d'un skill, défauts relevés dans ce dépôt) : ni adoptés ni refusés par cet ADR.
 
 ## Acte de signature
 
-Le propriétaire a choisi trois options le 2026-11-20 (ligne « Arbitrage »). Cet ADR n'est accepté que par son acte : ses réponses aux deux questions ouvertes, puis la fusion (ADR-0043). En signant, il confirme ou retire, point par point, ce que cet ADR écrit au-delà du texte que la page affichait.
+Le propriétaire a choisi trois options, puis trois autres, le 2026-11-20 (ligne « Arbitrage »). Cet ADR n'entre en vigueur que par son acte : la fusion (ADR-0043). En signant, il confirme ou retire, point par point, ce que cet ADR écrit au-delà du texte que les deux pages affichaient.
 
-Chaque point porte son origine. **Page** : affiché par la page, donc pas un dépassement. **Mandat** : ajouté par le mandat du lot, d'après le rapport de la première rédaction. **Rédaction** : choix de la première rédaction, d'après le même rapport. **Reprise** : écrit après la revue à rôle séparé. Dix points que la reprise n'avait pas pu attribuer, faute d'avoir lu le mandat propre du lot, l'ont été ensuite par l'orchestrateur du drill, auteur de ce mandat, à partir de son texte : points 4 à 8 et 15 à 19.
+Chaque point porte son origine. **Page** : affiché par la première page, donc pas un dépassement. **Mandat** : ajouté par le mandat du lot, d'après le rapport de la première rédaction. **Rédaction** : choix de la première rédaction, d'après le même rapport. **Reprise** : écrit après la revue à rôle séparé. **Seconde page** : affiché par la seconde page, sous l'option retenue. **Mandat d'application** : demandé par le mandat qui a transmis les réponses du second temps. **Application** : choix de la rédaction qui a appliqué ces réponses. Dix points que la reprise n'avait pas pu attribuer, faute d'avoir lu le mandat propre du lot, l'ont été ensuite par l'orchestrateur du drill, auteur de ce mandat, à partir de son texte : points 4 à 8 et 15 à 19.
 
-**Ce que la page affichait de faux ou de trop fort.** Trois affirmations du contexte des questions 5 et 6 ont été contredites par la revue, puis reconnues par l'orchestrateur du drill après relecture du code. Le propriétaire a répondu avec elles sous les yeux.
+**Ce que les réponses du second temps règlent, et qui n'est plus à confirmer.** La forme de D1 : aucun invariant (point 1). La portée de D1 sur la revue à rôle séparé : exclue, risque écrit (point 9, pour cette seule lecture). Le maintien des décisions 5 et 6 avec leurs motifs corrigés. Le statut et les questions que la reprise laissait ouvertes (point 22). Ce que l'application de ces réponses écrit au-delà du texte de leurs options reste à confirmer : points 24 à 28.
+
+**Ce que la page affichait de faux ou de trop fort.** Trois affirmations du contexte des questions 5 et 6 ont été contredites par la revue, puis reconnues par l'orchestrateur du drill après relecture du code. Le propriétaire a répondu au premier temps avec elles sous les yeux ; la seconde page les lui a dites fausses, et il a confirmé ses réponses 5 et 6 après cette correction (réponse 1 du second temps).
 
 - Question 5 : « aucune de ses invites ne sépare le contenu jugé d'une consigne ». Le contenu y est délimité (libellé et clôtures de code, ou intitulé de section) ; ce qui manque est une consigne disant de le traiter comme une donnée, et une frontière qu'il ne puisse pas refermer. D1 (e) est réécrite en conséquence.
 - Question 6 : « la note composite ne décide de rien ». Elle est le troisième critère de décision d'une tentative, après le but et la sécurité, et peut faire échouer une tentative dont le but est atteint. La règle 2 de D2 ne repose plus sur cette affirmation mais sur l'attribution.
@@ -186,7 +207,7 @@ Chaque point porte son origine. **Page** : affiché par la page, donc pas un dé
 
 **Décision 5 — « Inscrire la règle seulement ».** Conséquence affichée : « Un invariant et quatre lignes de méthode. Aucun code : il n'y a pas de juge à contraindre aujourd'hui. » Le contexte annonçait : « Quatre règles : un juge ne rend que des booléens ; son échec n'est pas un zéro ; il se qualifie contre des étiquettes écrites avant ; il n'abaisse jamais un constat de sécurité. »
 
-1. La forme « invariant » : **page**. Ce que la page ne disait pas, c'est que D103 a retiré I-35 pour ce cas : première question ouverte.
+1. La forme « invariant » : **page**, au premier temps. Ce que cette page ne disait pas, c'est que D103 a retiré I-35 pour ce cas. **Réglé** au second temps : aucun invariant, une règle de méthode et une ligne de décision (**seconde page**).
 2. D1 (e) : **mandat**, depuis l'affirmation de la question 5 corrigée ci-dessus. Sa réécriture (consigne explicite, frontière que le contenu ne peut pas refermer) : **reprise**.
 3. D1 (f), enregistrement du modèle juge par essai et non-comparaison entre modèles juges : **mandat**, depuis la synthèse du drill.
 4. D1 (a), au-delà de « ne rend que des booléens » : toute note calculée sans modèle, **mandat** ; texte de justification admis hors de tout calcul, **reprise**.
@@ -194,8 +215,8 @@ Chaque point porte son origine. **Page** : affiché par la page, donc pas un dé
 6. D1 (c), au-delà de « il se qualifie contre des étiquettes écrites avant » : l'étiquette qui ne vient ni du juge ni de sa sortie, **rédaction** ; le taux de faux succès publié avec numérateur et dénominateur, **mandat**.
 7. D1 (d), au-delà de « il n'abaisse jamais » : « ni ne supprime », **mandat** ; « quelle qu'en soit la source », **rédaction**.
 8. La portée « dans un produit comme dans l'outillage » : **rédaction**. Le mandat disait « tout juge par modèle de la flotte ».
-9. La définition du juge par modèle, et les deux lectures qu'elle emporte : **rédaction**. La revue à rôle séparé n'est pas visée : seconde question ouverte. Le relecteur du banc de confiance, fusionné le 2026-11-20 par la pull request #197, n'est pas un juge tant qu'aucun verdict ne s'appuie sur lui. La page posait que « la flotte n'a aucun juge par modèle » : elle a été écrite avant cette fusion. Si le propriétaire lit ce relecteur comme un juge dès maintenant, I-41 s'y applique dès la signature, et sa conformité est à revoir avant.
-10. Six bornes là où la page annonçait quatre règles et « quatre lignes de méthode » : conséquence des points 2 et 3.
+9. La définition du juge par modèle, et les deux lectures qu'elle emporte : **rédaction**. La revue à rôle séparé n'est pas visée : **réglé** au second temps, par exception nommée et risque écrit (**seconde page**). Reste à confirmer la lecture du banc. Le relecteur du banc de confiance, fusionné le 2026-11-20 par la pull request #197, n'est pas un juge tant qu'aucun verdict ne s'appuie sur lui. La page posait que « la flotte n'a aucun juge par modèle » : elle a été écrite avant cette fusion. Si le propriétaire lit ce relecteur comme un juge dès maintenant, les six bornes s'y lisent dès la signature, et sa conformité est à revoir avant.
+10. Six bornes là où la page annonçait quatre règles et « quatre lignes de méthode » : conséquence des points 2 et 3. La seconde page nomme « les six bornes » dans l'option retenue.
 
 **Décision 6 — « Inscrire le protocole seulement ».** Conséquence affichée : « Le protocole à trois bras entre dans la méthode d'évaluation. L'outillage attend qu'une application consomme un skill et qu'un lieu d'exécution fermé le rejoue. » Le contexte annonçait : « Un protocole à trois bras (sans le skill, avec lui, avec une consigne neutre de même longueur), décidé sur des contrôles exécutables, puis son outillage. »
 
@@ -216,18 +237,28 @@ Chaque point porte son origine. **Page** : affiché par la page, donc pas un dé
 **Hors des trois décisions.**
 
 21. La ligne `NVIDIA` de `tools/quality/pinned-citations.v1.json`, chemin gardé : **rédaction**. Sa portée réelle est dite aux « Conséquences ».
-22. Le statut « proposé » et la section « Questions ouvertes au propriétaire » : **reprise**.
-23. Registre des décisions : D117 à D119. Registre des invariants : I-41.
+22. Le statut « proposé » et la section « Questions ouvertes au propriétaire » de la reprise : **réglé**. Le statut est `accepted`, la section est remplacée par les réponses reçues.
+23. Registre des décisions : D117 à D119. Registre des invariants : aucune ligne.
+
+**Second temps — ce que l'application des réponses écrit au-delà du texte de leurs options.**
+
+24. L'emplacement de la règle : une section de `docs/method/CHALLENGER-EVALUATION.md`, et non un document de méthode à part. **Application**. La seconde page disait « dans la méthode ». Motif : ce document est la méthode d'évaluation de la flotte, un juge par modèle est un instrument d'évaluation, la règle 2 de D2 y renvoie de la section voisine, et D118 y loge déjà son protocole. Écarté : un fichier `docs/method/` propre, qu'aucun autre texte ne citerait encore.
+25. Sous chaque borne, ce qu'un premier juge montre pour la tenir : **mandat d'application**, qui demandait que la règle reste falsifiable par un lecteur ; le contenu de ces six « à montrer » : **application**. Ils n'ajoutent aucune borne, mais la méthode écrit qu'une borne que le juge ne sait pas montrer tenue est lue comme non tenue : **application**.
+26. La condition de promotion. « Le premier juge livre un cas rouge » : **seconde page**. Ce qu'est ce cas (un cas hors bornes que le juge, ou le gate qui l'emploie, refuse) et le fait que l'inscription reste un acte du propriétaire, que ce cas ne déclenche pas : **application**, d'après I-17.
+27. L'écriture du risque. La seconde page disait : « la fusion par agent s'appuie donc sur un verdict de modèle non qualifié ». « À trois valeurs » et la citation d'ADR-0068 et du protocole de revue : **mandat d'application**. La précision que la fusion dépend de l'absence de constat bloquant ouvert, et non de la valeur du verdict ; que « non qualifié » se lit comme l'absence d'une exigence dans deux textes ; et que l'exception se relit à chaque évolution de la revue ou d'ADR-0068 : **application**.
+28. Les trois lieux où l'exclusion et son risque sont écrits. La seconde page disait « la ligne du registre », quand la ligne visée était encore celle d'un invariant. La ligne D117 et la règle de méthode : **mandat d'application**. Cet ADR, en D1 : **application**.
 
 ## Numérotation
 
-ADR-0071, D117 à D119 et I-41 suivent les derniers numéros de la branche servie à `6cf6087`, relevés le 2026-11-20 : `git ls-tree --name-only 6cf6087 docs/adr/ | grep -oE '^docs/adr/[0-9]{4}-[a-z]' | tail -1` rend `docs/adr/0070-t` ; `git show 6cf6087:docs/decisions/DECISION-REGISTER.md | grep -oE '^\| D[0-9]+' | tail -1` rend `| D116` ; `git show 6cf6087:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1` rend `| I-40`. D'autres lots du même drill s'écrivent en parallèle : un conflit de numéro à la fusion se résout par renumérotation, jamais par réutilisation.
+ADR-0071 et D117 à D119 suivent les derniers numéros de la branche servie à `6cf6087`, relevés le 2026-11-20. Aucun numéro d'invariant n'est pris : la première rédaction proposait I-41, qui n'a jamais été fusionné et n'est donc ni consommé ni retiré ; le registre des invariants garde sa dernière ligne, relevée ci-dessous, et le prochain invariant inscrit prendra le numéro qui la suit. Les relevés : `git ls-tree --name-only 6cf6087 docs/adr/ | grep -oE '^docs/adr/[0-9]{4}-[a-z]' | tail -1` rend `docs/adr/0070-t` ; `git show 6cf6087:docs/decisions/DECISION-REGISTER.md | grep -oE '^\| D[0-9]+' | tail -1` rend `| D116` ; `git show 6cf6087:docs/decisions/INVARIANTS.md | grep -oE '^\| I-[0-9]+' | tail -1` rend `| I-40`. D'autres lots du même drill s'écrivent en parallèle : un conflit de numéro à la fusion se résout par renumérotation, jamais par réutilisation.
 
 ## Vérification
 
 - `bun run check:refusals` : sort 0 et imprime un compte d'entrées augmenté de un. Relevé du 2026-11-20 : `10 entrée(s) examinée(s) = 10 conforme(s) + 0 en défaut`, contre 9 sur `6cf6087`.
-- `bun run check:doctrine` : sort 0. Cet ADR est proposé : il n'est pas compté parmi les ADR acceptés, et le gate ne lui demande ni ligne d'arbitrage ni invariant cité.
+- `bun run check:doctrine` : sort 0. Cet ADR est `accepted` : il est compté parmi les ADR acceptés, et le gate lui demande une ligne d'arbitrage et la citation d'un invariant, qu'il a (les invariants appliqués ou voisins de la ligne « Invariants » ; aucun n'est inscrit). Le compte d'ADR acceptés augmente de un par rapport à la reprise.
 - `bun run check:pinned-citations` : sort 0 ; chaque citation épinglée de l'outil dans cet ADR y est résolue (commit, chemin, lignes), ainsi que chaque citation de ce dépôt épinglée sur `6cf6087` ou `aeae0ab`. Le gate ne dit pas que le code cité dit ce que la prose en dit : la rédaction a ouvert chaque plage à la reprise, et cela reste à relire en revue.
-- `bun ecosystem/render-invariant-matrix.ts --check` : sort 0 ; I-41 y figure « en vigueur », « sans gate ». La matrice lit le registre, pas le statut de cet ADR : elle ne dit vrai sur I-41 qu'une fois cet ADR accepté.
-- `grep -c '^| I-41 ' docs/decisions/INVARIANTS.md` rend `1` ; `grep -c -E '^\| D11[789] ' docs/decisions/DECISION-REGISTER.md` rend `3`.
+- `bun ecosystem/render-invariant-matrix.ts --check` : sort 0, avec les comptes de la branche servie : cet ADR n'ajoute aucune ligne au registre des invariants.
+- `git diff --quiet origin/<servie> -- docs/decisions/INVARIANTS.md ecosystem/invariant-gates.v1.yaml ecosystem/projections/invariant-matrix.v1.json` sort 0, `<servie>` étant la branche que rend `git ls-remote --symref origin HEAD` : ces trois fichiers sont ceux de la branche servie.
+- `grep -c -E '^\| D11[789] ' docs/decisions/DECISION-REGISTER.md` rend `3`.
+- Aucun gate ne compare le texte des six bornes de cet ADR à celui de la méthode. Les deux ont été comparés le 2026-11-20 par une commande jetable, retours à la ligne mis à part, et sont identiques ; après la fusion, la méthode fait foi pour le détail.
 - Aucune commande ne vérifie D1 sur un juge ni D2 sur une mesure d'effet : aucun juge n'est en service, et aucune mesure d'effet n'a été faite (voir « Conséquences »).
