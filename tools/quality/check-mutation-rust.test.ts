@@ -403,6 +403,56 @@ const refusesConfiguration =
 const root = (directory: string): string => `--root=${directory}`;
 const WS: string = root(WORKSPACE);
 
+// -------------------------------------------------------------------- cold start
+
+// The first run that reaches `cargo metadata` on a CI runner is slow, and it
+// used to be paid by a test, inside the 5 000 ms limit of the test runner: the
+// verdict then measured the runner, not the gate. It is paid here instead, at
+// module level, where no test limit applies, by the command the gate runs and
+// in the environment the gate gets. Any test whose gate or mutant reaches cargo
+// can be the first one to do so, under a name filter: this is not the affair of
+// the first test of the file alone.
+//
+// Measured on 2026-11-20. On the `Bun quality` job logs of the 60 latest `ci`
+// runs, 59 of which hold this file: the first test took 123.84 ms to
+// 2 948.68 ms and was killed at the limit 4 times; a later test of the same
+// shape (one gate run, one `cargo metadata`) took 34.77 ms to 69.22 ms. In the
+// red logs the tests that follow stayed slow when their run reached cargo,
+// while a run that stops before cargo, in between, took 31.54 ms. The longest
+// cold start (run 44732494384, attempt 1) outlasted three tests killed at the
+// limit and ended in a fourth, after 3 357.34 ms. Behind a cargo that logs its
+// invocations, 40 of the 50 tests of this file, run one by one, reach it.
+//
+// The limit below is for a cargo that never answers: a named failure of this
+// file, not a job that hangs. It is large against the longest cold start above.
+// The line printed gives the duration of each run: read it before these figures
+// are trusted again.
+const COLD_START_LIMIT_MS = 120_000;
+
+const coldStartBegin: number = performance.now();
+const coldStart = spawnSync(
+  "cargo",
+  [
+    "metadata",
+    "--no-deps",
+    "--format-version",
+    "1",
+    "--manifest-path",
+    join(WORKSPACE, "Cargo.toml"),
+  ],
+  { cwd: WORKSPACE, env: cleanEnvironment({}), encoding: "utf8", timeout: COLD_START_LIMIT_MS },
+);
+if (coldStart.status !== 0) {
+  const reason =
+    coldStart.error?.message ?? (coldStart.stderr.trim() || `exit ${coldStart.status}`);
+  throw new Error(
+    `the first cargo metadata failed on the fixture workspace (limit ${COLD_START_LIMIT_MS} ms): ${reason}`,
+  );
+}
+console.warn(
+  `check-mutation-rust.test: first cargo metadata answered in ${Math.round(performance.now() - coldStartBegin)} ms (limit ${COLD_START_LIMIT_MS} ms)`,
+);
+
 // ------------------------------------------------------------------------- cases
 
 describe("the proof harness", () => {
