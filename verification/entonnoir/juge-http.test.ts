@@ -67,6 +67,38 @@ describe("juge HTTP — pannes et réponses illisibles", () => {
     await expect(juge.juger(INVITE)).rejects.toBeInstanceOf(JugeInjoignable);
   });
 
+  test("une redirection n'est pas suivie : l'invite n'atteint jamais l'hôte désigné", async () => {
+    // Deux serveurs locaux, avec le `fetch` réel : la cible tient lieu de n'importe quel hôte,
+    // et le test reste hors réseau.
+    let recus = 0;
+    const cible = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        recus += 1;
+        return Response.json({ choices: [{ message: { content: '{"verdicts":{"q1":true}}' } }] });
+      },
+    });
+    // 307 garde la méthode et le corps : une redirection suivie renverrait l'invite telle quelle.
+    const redirigeant = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response(null, {
+          status: 307,
+          headers: { location: `http://127.0.0.1:${cible.port}/v1/chat/completions` },
+        }),
+    });
+    try {
+      const juge = jugeHttp(`http://127.0.0.1:${redirigeant.port}`, IDENTITE);
+      await expect(juge.juger(INVITE)).rejects.toBeInstanceOf(JugeInjoignable);
+      expect(recus).toBe(0);
+    } finally {
+      redirigeant.stop(true);
+      cible.stop(true);
+    }
+  });
+
   test("une prose est rendue telle quelle, pour être classée hors schéma", async () => {
     const f = recupererFactice(() => reponseModele("I cannot judge this."));
     const juge = jugeHttp("http://127.0.0.1:9", IDENTITE, f.recuperer);

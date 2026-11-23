@@ -99,6 +99,41 @@ describe("relecture", () => {
     }
   });
 
+  test("a redirect is not followed: the diff never reaches the host it points to", async () => {
+    // The target stands for any host: a local one keeps the test off the network.
+    let received = 0;
+    const target = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return Response.json({
+          choices: [{ message: { content: JSON.stringify({ reasoning: "r", defect: true }) } }],
+        });
+      },
+    });
+    // 307 keeps the method and the body: a followed redirect would resend the diff as is.
+    const redirecting = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        new Response(null, {
+          status: 307,
+          headers: { location: `http://127.0.0.1:${target.port}/v1/chat/completions` },
+        }),
+    });
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${redirecting.port}`, diffs, results);
+      expect(received).toBe(0);
+      expect(outcome.code).not.toBe(0);
+      expect(outcome.results).toBe("");
+    } finally {
+      redirecting.stop(true);
+      target.stop(true);
+    }
+  });
+
   test.each([
     ["a string", JSON.stringify({ reasoning: "r", defect: "yes" })],
     ["a number", JSON.stringify({ reasoning: "r", defect: 1 })],

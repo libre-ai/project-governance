@@ -17,7 +17,8 @@ par la PR #273 et n'est pas fusionné : le module suit son texte à cette révis
 bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TMPDIR/resultats.jsonl"
 ```
 
-Avec un juge local (serveur compatible OpenAI, URL `127.0.0.1` ou `localhost` uniquement) :
+Avec un juge local (serveur compatible OpenAI, URL `127.0.0.1` ou `localhost` uniquement ; une
+redirection n'est jamais suivie, le juge est alors injoignable) :
 
 ```sh
 bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TMPDIR/resultats.jsonl" \
@@ -30,12 +31,14 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 | aucun juge configuré | `unavailable` pour chaque cas, jamais réussi | 0 |
 | étage 1 ou 2 en échec | `non_demande`, compté comme saut | 0 |
 | juge en échec, refus, réponse hors schéma | `non_note`, ni 0 ni réussi | 0 |
-| juge demandé mais injoignable | `non_note` marqué injoignable | 1 |
-| juge de la famille du candidat | refusé avant tout appel | 2 |
+| juge demandé mais injoignable, en qualification ou en mesure | `non_note` marqué injoignable | 1 |
+| juge de la famille du candidat, ou de son nom (casse et espaces ignorés) | refusé avant tout appel | 2 |
 | source illisible, vide ou invalide | aucune mesure | 2 |
+| fichier de résultats impossible à écrire | aucun bilan imprimé | 2 |
 
 Sans qualification, ou si le juge qui mesure n'est pas exactement celui qui s'est qualifié
-(modèle et version), le signal est affiché « non qualifié ».
+(modèle, version et famille), le signal est affiché « non qualifié ». Un juge qui ne note aucun
+cas étiqueté en échec n'est pas qualifié : son taux de faux succès n'a pas de dénominateur.
 
 ## Corpus de démonstration
 

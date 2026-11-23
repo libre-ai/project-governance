@@ -6,7 +6,7 @@
 // Sans juge, chaque signal vaut « unavailable », jamais réussi. Avec un juge, les quatre
 // options d'identité sont requises ; --qualification exige un juge.
 // Codes de sortie : 0 mesure faite ; 1 juge demandé mais injoignable (résultats écrits) ;
-// 2 usage, source illisible ou invalide, juge refusé (rien n'est écrit).
+// 2 usage, source illisible ou invalide, juge refusé (rien n'est écrit), sortie impossible à écrire.
 import { writeFileSync } from "node:fs";
 import { REGISTRE } from "./controles";
 import {
@@ -128,7 +128,14 @@ async function principal(argv: readonly string[]): Promise<number> {
     }
     throw cause;
   }
-  writeFileSync(args.sortie, `${lignesResultats(execution).join("\n")}\n`);
+  try {
+    writeFileSync(args.sortie, `${lignesResultats(execution).join("\n")}\n`);
+  } catch (cause) {
+    // Une sortie impossible à écrire est une erreur d'usage, pas une trace de pile : code 2,
+    // et le bilan n'est pas imprimé, pour qu'aucun résumé ne décrive des résultats absents.
+    console.error(`entonnoir : écriture impossible de ${args.sortie} : ${String(cause)}`);
+    return 2;
+  }
   for (const ligne of formaterBilan(execution)) console.log(ligne);
   const code = codeDeSortie(execution);
   if (code !== 0)

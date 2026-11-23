@@ -74,7 +74,8 @@ function enteteCas(
   if (vus.has(id)) throw new SourceInvalide(`${ou} : identifiant ${id} en double`);
   vus.add(id);
   const controles = texteNonVide(brut.controles, `${ou}.controles`);
-  if (registre[controles] === undefined) {
+  // `Object.hasOwn` : « toString » ou « constructor » ne sont pas des contrôles du registre.
+  if (!Object.hasOwn(registre, controles)) {
     throw new SourceInvalide(`${ou} : contrôles inconnus « ${controles} »`);
   }
   if (!("sortie" in brut)) throw new SourceInvalide(`${ou} : « sortie » manquante`);

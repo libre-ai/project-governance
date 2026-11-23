@@ -1,6 +1,7 @@
 // Juge HTTP de l'entonnoir : un serveur compatible OpenAI exécuté sur la machine.
 // Comme verification/trust-bench/relecture.ts, seule une URL locale est admise (127.0.0.1 ou
-// localhost, port explicite) : une URL non locale est refusée à la construction, avant tout appel.
+// localhost, port explicite) : une URL non locale est refusée à la construction, avant tout appel,
+// et une redirection n'est jamais suivie.
 //
 // D1 (e) : la consigne part dans le message système, le contenu jugé seul dans le message
 // utilisateur, en dernier ; aucune instruction ne le suit.
@@ -76,6 +77,9 @@ export function jugeHttp(
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(corpsRequete(invite, identite.modele)),
+          // Une redirection suivie enverrait l'invite à l'hôte que choisit le serveur, hors de la
+          // vérification d'URL locale faite à la construction : elle est une panne, jamais suivie.
+          redirect: "error",
           signal: AbortSignal.timeout(DELAI_MS),
         });
       } catch (cause) {

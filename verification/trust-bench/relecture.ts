@@ -44,6 +44,9 @@ for (const f of fichiers) {
   const debut = performance.now();
   const reponse = await fetch(`${url}/v1/chat/completions`, {
     method: "POST",
+    // Une redirection suivie enverrait le diff à l'hôte que choisit le serveur, hors de la
+    // vérification d'URL locale ci-dessus : elle fait échouer la relecture, jamais suivie.
+    redirect: "error",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       messages: [

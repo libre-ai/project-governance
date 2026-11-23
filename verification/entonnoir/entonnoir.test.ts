@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { REGISTRE } from "./controles";
 import {
@@ -8,6 +10,7 @@ import {
   codeDeSortie,
   construireInvite,
   definirControles,
+  EntreeInvalide,
   type Execution,
   executer,
   formaterBilan,
@@ -23,7 +26,7 @@ import {
   type Registre,
   type ResultatCas,
 } from "./entonnoir";
-import { lireCas, lireEtiquetes } from "./sources";
+import { lireCas, lireEtiquetes, SourceInvalide } from "./sources";
 
 /**
  * Chaque test nomme le critère du brief ou la borne de D1 (ADR-0071) qu'il tient.
@@ -33,6 +36,11 @@ import { lireCas, lireEtiquetes } from "./sources";
 const CANDIDAT: IdentiteModele = { modele: "candidat-fictif", version: "0.0.0", famille: "fam-a" };
 const JUGE: IdentiteModele = { modele: "juge-fictif", version: "1", famille: "fam-b" };
 const CORPUS = join(import.meta.dir, "corpus");
+const racines: string[] = [];
+
+afterAll(() => {
+  for (const racine of racines) rmSync(racine, { recursive: true, force: true });
+});
 
 interface Factice {
   readonly juge: Juge;
@@ -361,6 +369,21 @@ describe("D1 (c) — qualification avant usage", () => {
       echecsNotes: 2,
     });
   });
+
+  test("un juge qui ne note aucun cas étiqueté en échec n'est pas qualifié : rien n'est mesuré", async () => {
+    const etiquetes = etiquetesCorpus();
+    const honnete = jugeHonnete();
+    // Réponse hors schéma sur chaque cas attendu en échec : ce sont eux qui mesurent le faux succès.
+    const f = jugeFactice((invite) => {
+      const etiquete = etiquetes.cas.find(
+        (un) => JSON.stringify(un.sortie, null, 2) === invite.contenu,
+      );
+      return etiquete?.attendu === false ? "refus" : honnete.juge.juger(invite);
+    });
+    const qualification = await qualificationCorpus(f.juge);
+    expect(qualification).toMatchObject({ echecsNotes: 0, fauxSucces: 0, nonNotes: 3 });
+    expect(qualification.qualifie).toBe(false);
+  });
 });
 
 describe("D1 (d) — aucun constat de sécurité abaissé", () => {
@@ -447,6 +470,14 @@ describe("critère 4 — un juge d'une autre famille que le candidat", () => {
   test.each([
     ["de la même famille", { modele: "autre", version: "1", famille: "fam-a" }],
     ["à l'identité du candidat", { modele: "candidat-fictif", version: "9", famille: "fam-z" }],
+    [
+      "de la même famille à la casse et aux espaces près",
+      { modele: "autre", version: "1", famille: " FAM-A " },
+    ],
+    [
+      "à l'identité du candidat à la casse près",
+      { modele: "Candidat-Fictif", version: "9", famille: "fam-z" },
+    ],
   ])("un juge %s est refusé avant tout appel", async (_nom, identite) => {
     const f = jugeFactice(toutes(true), identite);
     await expect(
@@ -481,6 +512,27 @@ describe("critère 5 — sans juge, unavailable ; juge injoignable, sortie non n
     expect(seul(execution).signal).toMatchObject({ etat: "non_note", injoignable: true });
     expect(codeDeSortie(execution)).toBe(1);
   });
+
+  test("un juge injoignable pendant la qualification fait aussi sortir en non nul", async () => {
+    const honnete = jugeHonnete();
+    let rang = 0;
+    const f = jugeFactice((invite) => {
+      rang += 1;
+      if (rang === 1) throw new JugeInjoignable("connexion refusée");
+      return honnete.juge.juger(invite);
+    });
+    const qualification = await qualificationCorpus(f.juge);
+    expect(qualification).toMatchObject({ nonNotes: 1, injoignables: 1 });
+    // La mesure elle-même aboutit : seule la qualification a vu la panne.
+    const execution = await executer([cas("a", CONFORME)], {
+      registre: REGISTRE,
+      juge: f.juge,
+      qualification,
+    });
+    expect(bilan(execution.resultats).injoignables).toBe(0);
+    expect(codeDeSortie(execution)).toBe(1);
+    expect(formaterBilan(execution).join("\n")).toContain("non notés 1 (dont injoignables 1)");
+  });
 });
 
 describe("critère 7 — le succès imprime son volume, une source illisible échoue", () => {
@@ -504,5 +556,33 @@ describe("critère 7 — le succès imprime son volume, une source illisible éc
     ["d'un autre format", "../README.md"],
   ])("une source %s lève une erreur", (_nom, fichier) => {
     expect(() => lireCas(join(CORPUS, fichier), REGISTRE)).toThrow();
+  });
+
+  test.each([
+    "toString",
+    "constructor",
+    "__proto__",
+  ])("une source qui nomme des contrôles hérités du prototype (%s) est refusée à la lecture", (reference) => {
+    const racine = mkdtempSync(join(tmpdir(), "entonnoir-source-"));
+    racines.push(racine);
+    const source = join(racine, "cas.json");
+    writeFileSync(
+      source,
+      JSON.stringify({
+        cas: [{ id: "a", controles: reference, sortie: {}, candidat: CANDIDAT }],
+      }),
+    );
+    expect(() => lireCas(source, REGISTRE)).toThrow(SourceInvalide);
+  });
+
+  test.each([
+    "toString",
+    "constructor",
+    "__proto__",
+  ])("une référence de contrôles héritée du prototype (%s) est inconnue", async (reference) => {
+    const un: Cas = { id: "x", candidat: CANDIDAT, controles: reference, sortie: CONFORME };
+    await expect(
+      executer([un], { registre: REGISTRE, juge: null, qualification: null }),
+    ).rejects.toBeInstanceOf(EntreeInvalide);
   });
 });

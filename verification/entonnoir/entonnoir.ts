@@ -310,6 +310,8 @@ export interface Qualification {
   readonly lances: number;
   readonly notes: number;
   readonly nonNotes: number;
+  /** Parmi les non notés, les essais où le juge n'a pas répondu : ils font sortir en non nul. */
+  readonly injoignables: number;
   /** Numérateur : cas étiquetés en échec que le juge déclare réussis. */
   readonly fauxSucces: number;
   /** Dénominateur : cas étiquetés en échec que le juge a notés. */
@@ -321,7 +323,9 @@ export interface Qualification {
 export type Registre = Readonly<Record<string, Controles>>;
 
 function controlesDe(registre: Registre, reference: string, cas: string): Controles {
-  const controles = registre[reference];
+  // `Object.hasOwn` : une référence comme « toString » ou « constructor » trouverait sinon
+  // une propriété héritée du prototype, qui n'est pas un jeu de contrôles.
+  const controles = Object.hasOwn(registre, reference) ? registre[reference] : undefined;
   if (controles === undefined) {
     throw new EntreeInvalide(`cas ${cas} : contrôles inconnus « ${reference} »`);
   }
@@ -341,6 +345,7 @@ export async function qualifier(
 ): Promise<Qualification> {
   let notes = 0;
   let nonNotes = 0;
+  let injoignables = 0;
   let fauxSucces = 0;
   let echecsNotes = 0;
   for (const cas of etiquetes) {
@@ -356,6 +361,7 @@ export async function qualifier(
     const essai = await essayer(juge, controles.questions, cas.sortie);
     if (essai.etat === "non_note") {
       nonNotes += 1;
+      if (essai.injoignable) injoignables += 1;
       continue;
     }
     notes += 1;
@@ -370,6 +376,7 @@ export async function qualifier(
     lances: etiquetes.length,
     notes,
     nonNotes,
+    injoignables,
     fauxSucces,
     echecsNotes,
     tauxFauxSuccesMax,
@@ -404,10 +411,21 @@ export interface ResultatCas {
   readonly signal: Signal;
 }
 
+/**
+ * Les identités sont déclarées à la main : « Fam-A » et « fam-a » désignent la même famille.
+ * La comparaison les normalise pour que le refus ne dépende pas de la casse ni des espaces.
+ */
+function normaliser(texte: string): string {
+  return texte.trim().toLowerCase();
+}
+
 /** Critère 4 : un juge de la famille du candidat, ou qui porte son identité, est refusé. */
 export function verifierIndependance(juge: IdentiteModele, cas: readonly Cas[]): void {
   for (const un of cas) {
-    if (un.candidat.famille === juge.famille || un.candidat.modele === juge.modele) {
+    if (
+      normaliser(un.candidat.famille) === normaliser(juge.famille) ||
+      normaliser(un.candidat.modele) === normaliser(juge.modele)
+    ) {
       throw new JugeRefuse(
         `cas ${un.id} : le juge ${cleJuge(juge)} (famille ${juge.famille}) juge un candidat ` +
           `${cleJuge(un.candidat)} (famille ${un.candidat.famille}) ; un juge d'une autre famille est requis`,
@@ -569,7 +587,8 @@ export function formaterBilan(execution: Execution): readonly string[] {
   if (q !== null) {
     lignes.push(
       `qualification de ${cleJuge(q.juge)} : faux succès ${q.fauxSucces}/${q.echecsNotes} ` +
-        `(seuil ${q.tauxFauxSuccesMax}) ; lancés ${q.lances} = notés ${q.notes} + non notés ${q.nonNotes} ; ` +
+        `(seuil ${q.tauxFauxSuccesMax}) ; lancés ${q.lances} = notés ${q.notes} + non notés ${q.nonNotes} ` +
+        `(dont injoignables ${q.injoignables}) ; ` +
         (q.qualifie ? "qualifié" : "non qualifié"),
     );
   }
@@ -590,9 +609,14 @@ export function formaterBilan(execution: Execution): readonly string[] {
   return lignes;
 }
 
-/** Critère 5 : un juge demandé mais injoignable fait sortir la commande en non nul. */
+/**
+ * Critère 5 : un juge demandé mais injoignable fait sortir la commande en non nul, que la panne
+ * survienne pendant la qualification ou pendant la mesure.
+ */
 export function codeDeSortie(execution: Execution): number {
-  return bilan(execution.resultats).injoignables > 0 ? 1 : 0;
+  const enMesure = bilan(execution.resultats).injoignables;
+  const enQualification = execution.qualification?.injoignables ?? 0;
+  return enMesure + enQualification > 0 ? 1 : 0;
 }
 
 /**
