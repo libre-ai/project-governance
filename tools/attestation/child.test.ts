@@ -37,16 +37,72 @@ describe("runChild", () => {
   });
 });
 
+/**
+ * A guard of convention, not of security: it reads the source text for the usual ways to start
+ * a child without runChild, and a determined author can still get past it (a computed property
+ * name, `import * as b from "bun"` then `b.spawn`, `globalThis["Bun"]`). What it catches: any
+ * access to `spawn`, `spawnSync` or `$` on `Bun` (dot, optional chaining or a quoted bracket,
+ * with spaces or line breaks anywhere, so an alias `const s = Bun.spawnSync` too), the same
+ * names destructured from `Bun` or imported from "bun", and any `child_process` module name in
+ * quotes or backticks (import, require, dynamic import). Lines that are only a comment are
+ * not read.
+ */
+const directForms: readonly RegExp[] = [
+  /\bBun\s*(?:\??\.\s*|\[\s*["'`]\s*)(?:spawnSync|spawn|\$)(?![\w$])/,
+  /\{[^{}]*(?<![\w$])(?:spawnSync|spawn|\$)(?![\w$])[^{}]*\}\s*=\s*Bun\b/,
+  /\bimport\s*\{[^{}]*(?<![\w$])(?:spawnSync|spawn|\$)(?![\w$])[^{}]*\}\s*from\s*["']bun["']/,
+  /["'`](?:node:)?child_process["'`]/,
+];
+
+function startsChildrenDirectly(source: string): boolean {
+  const code = source
+    .split("\n")
+    .filter((line) => !/^\s*(?:\/\/|\/\*|\*)/.test(line))
+    .join("\n");
+  return directForms.some((form) => form.test(code));
+}
+
 describe("the attestation tests", () => {
+  test("the guard reads the usual direct forms, and not a comment", () => {
+    const direct = [
+      'Bun.spawnSync(["git"]);',
+      'Bun["spawnSync"](["git"]);',
+      "Bun['spawn'](['git']);",
+      "Bun?.spawn(['git']);",
+      "const run = Bun.spawnSync;",
+      'Bun.spawnSync (["git"]);',
+      'Bun.spawnSync\n  (["git"]);',
+      "Bun\n  .spawnSync(['git']);",
+      "const { spawnSync } = Bun;",
+      "const { file, spawn: s } = Bun;",
+      'import { $ } from "bun";',
+      "await Bun.$`git status`;",
+      'import { spawnSync } from "node:child_process";',
+      'const cp = require("child_process");',
+      "const cp = await import(`node:child_process`);",
+    ];
+    const missed = direct.filter((source) => !startsChildrenDirectly(source));
+    expect(missed).toEqual([]);
+    const clean = [
+      "// Bun.spawnSync( was the old way",
+      " * Bun.spawnSync( in a block comment",
+      'runChild(["git"]);',
+      "Bun.sleepSync(10);",
+      "const spawned = Bun.file(path);",
+      'import { expect, test } from "bun:test";',
+    ];
+    expect(clean.filter(startsChildrenDirectly)).toEqual([]);
+  });
+
   test("start every child through runChild, so none can read a kill as an exit code", () => {
-    const direct = /\bBun\.spawn(?:Sync)?\(|["'](?:node:)?child_process["']/;
     const files = readdirSync(import.meta.dir).filter((name) => name.endsWith(".test.ts"));
-    const offenders = files.filter((name) =>
-      readFileSync(join(import.meta.dir, name), "utf8")
-        .split("\n")
-        .some((line) => direct.test(line)),
+    // This file is left out: its fixtures above are the forms it refuses.
+    const offenders = files.filter(
+      (name) =>
+        name !== "child.test.ts" &&
+        startsChildrenDirectly(readFileSync(join(import.meta.dir, name), "utf8")),
     );
-    expect(files.length).toBeGreaterThan(1);
+    expect(files.length).toBeGreaterThan(2);
     expect(offenders).toEqual([]);
   });
 });
