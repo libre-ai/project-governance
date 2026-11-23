@@ -9,7 +9,7 @@
 - **Connexes :** ADR-0042 §5 (D55), qui fixe la v0 « mono-utilisateur : sans tenant, sans rôles, sans approbation tierce » ; ADR-0045 (I-32) ; ADR-0046 (I-33) ; ADR-0012 (I-21, I-22) ; ADR-0043 (signature par la fusion). Implémentation : PR d'implémentation dans libre-ai/ai-work-supervision.
 - **Amende :** ADR-0042 §5 (D55), paragraphe « Dérogation à I-09 » : la v0 reste mono-utilisateur, sans tenant, sans rôles, sans approbation tierce, et admet une seule entrée d'origine tierce, le signal de forge filtré de D1 à D4. Le reste du §5 est inchangé, dont la dérogation à I-09 et sa limite à la seule v0.
 - **Ne modifie pas :** la dérogation à I-09 et sa portée ; le §9 (P40) ; les contrats `agent-review.v1` et `orchestrator-event.v3`, qui ne sont ni modifiés ni consommés (I-03) ; le moratoire de création de dépôt.
-- **Invariants :** aucun invariant modifié. S'appliquent : I-32 (le texte d'un tiers n'entre jamais, D2) ; I-21 (la liste des expéditeurs est une configuration d'instance, hors du dépôt, D3). I-33 ne s'applique pas : voir « Invariants examinés ». I-22 : question ouverte, voir « Ce qui n'est pas décidé ici ».
+- **Invariants :** aucun invariant modifié. S'appliquent : I-32 (le texte d'un tiers n'entre jamais, D2) ; I-21 (la liste des expéditeurs est une configuration d'instance, hors du dépôt, D3). I-33 ne s'applique pas : voir « Invariants examinés ». I-22 : aucune donnée d'une personne tierce n'entre, pas même une empreinte de login (D2).
 - **N'autorise pas :** un client réseau, un jeton ou un secret dans `ws` ; un acteur tiers authentifié, un tenant ou un rôle ; une approbation par un tiers ; la sortie d'un état terminal d'une mission ; l'entrée dans `ws` d'un texte écrit par un tiers.
 
 ## Vérification empirique
@@ -51,7 +51,8 @@ Work Supervision v0 admet une entrée d'origine tierce, une seule : le signal de
 
 - `ws` reste sans réseau, sans jeton et sans secret. Le propriétaire lit la forge avec son propre `gh` et passe la sortie de `gh api …/reviews` ou `gh api …/check-runs` sur l'entrée standard de `ws forge ingest <mission>`, comme il le fait pour `ws hook`.
 - Une mission est liée à une pull request par un événement `mission.forge_linked` (dépôt, numéro de pull request). Seul le propriétaire le pose.
-- `ws` ne garde que des références : identifiants, état ou conclusion pris dans un vocabulaire fermé, sha, empreinte du login de l'expéditeur. Le corps d'une revue, la sortie et le nom d'un check-run, et tout autre texte libre sont jetés avant toute écriture.
+- `ws` ne garde que des références : identifiants, état ou conclusion pris dans un vocabulaire fermé, sha. Le corps d'une revue, la sortie et le nom d'un check-run, et tout autre texte libre sont jetés avant toute écriture.
+- Le login de l'expéditeur n'entre jamais au journal, ni en clair ni en empreinte. Il sert seulement à le comparer à la liste de D3, en mémoire. Un signal admis porte l'identifiant de l'entrée de la liste qui l'a reconnu, choisi par le propriétaire ; un signal ignoré ne porte que sa référence et un motif fermé.
 - L'authenticité de l'expéditeur est celle du `gh` du propriétaire. `ws` ne l'authentifie pas lui-même.
 
 ### D3 — Une liste d'expéditeurs, en donnée, hors du dépôt
@@ -71,9 +72,9 @@ Les sortes `mission.forge_linked`, `forge.signal.ignored` et celle qui porte `wo
 ## Invariants examinés
 
 - **I-32.** La propriété tient par construction. Aucun texte écrit par un tiers n'entre dans `ws` (D2). Le brief de la mission de suite est un gabarit fixe plus des identifiants (D4). Aucune chaîne dérivée d'un contenu non fiable n'atteint donc un exécuteur. L'état et la conclusion viennent d'un vocabulaire fermé : un tiers ne peut pas y écrire de consigne.
-- **I-33.** Ne s'applique pas. I-33 régit l'observation des appels d'outil d'un harness et ce qui en sort. Le signal de forge n'est pas une observation d'appel d'outil, et le journal de `ws` reste sur le poste du propriétaire. L'empreinte du login n'est pas une empreinte d'argument ou de résultat au sens d'I-33. Cet ADR ne lui applique donc pas la règle HMAC sous clé de run.
+- **I-33.** Ne s'applique pas. I-33 régit l'observation des appels d'outil d'un harness et ce qui en sort. Le signal de forge n'est pas une observation d'appel d'outil, et le journal de `ws` reste sur le poste du propriétaire. Aucune empreinte de login n'est d'ailleurs écrite (D2).
 - **I-21.** La liste des expéditeurs est une donnée d'instance. Elle vit dans la configuration privée, jamais dans le dépôt (D3).
-- **I-22.** Voir « Ce qui n'est pas décidé ici ».
+- **I-22.** Aucune donnée d'une personne tierce n'entre dans `ws`. Un expéditeur est une personne physique qui n'utilise pas `ws` ; son login, même haché, serait une donnée pseudonyme, car une empreinte sans clé d'un login public se retrouve en hachant les logins connus (inféré, non mesuré). D2 l'écarte donc entièrement : le journal ne porte que l'identifiant d'entrée de liste choisi par le propriétaire, ou rien pour un signal ignoré. Les deux autres formes envisagées, une empreinte sous clé d'instance et une empreinte réservée aux signaux admis, laissaient une donnée pseudonyme au journal.
 
 ## Conséquences
 
@@ -83,7 +84,6 @@ Les sortes `mission.forge_linked`, `forge.signal.ignored` et celle qui porte `wo
 
 ## Ce qui n'est pas décidé ici
 
-- **I-22 et l'empreinte du login.** Un expéditeur tiers est une personne physique qui n'utilise pas `ws`. Son login est publié par elle sur la forge. Son empreinte entre au journal, aussi pour un signal ignoré (`forge.signal.ignored`). Une empreinte non salée d'un login public se retrouve en hachant les logins connus. Lecture de l'auteur, inférée, à trancher par le propriétaire à la signature : une telle empreinte est une donnée pseudonyme, et I-22 peut s'y appliquer. Formes possibles, non décidées : empreinte sous une clé propre à l'instance ; aucune empreinte pour un signal ignoré ; à la place du login, l'entrée de la liste d'expéditeurs qui a reconnu l'expéditeur.
 - Le format exact de la liste d'expéditeurs et l'identifiant d'un expéditeur de check-run (l'application émettrice ou autre) relèvent de la pull request d'implémentation.
 - Le passage du mode `observe` au mode `active` sur l'instance du propriétaire est un acte de configuration du propriétaire. Cet ADR ne le fait pas.
 
