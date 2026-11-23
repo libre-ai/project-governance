@@ -441,8 +441,8 @@ describe("the allowlist", () => {
     for (const entry of [...list.allowances, ...list.servers]) {
       expect(entry.because.length).toBeGreaterThan(40);
     }
-    // The Notebook, its 'wasm-unsafe-eval' relaxation and its qualification
-    // server were retired by the owner on 2026-11-23.
+    // The owner retired the Notebook app, and with it the only
+    // 'wasm-unsafe-eval' relaxation, on 2026-11-23.
     expect(list.allowances.some((a) => a.token === "'wasm-unsafe-eval'")).toBe(false);
     expect(list.policySource.path).toBe("packages/web-platform/src/response.ts");
   });
