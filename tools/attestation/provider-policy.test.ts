@@ -3,6 +3,8 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runChild } from "./child";
+
 // The readback is a deliberately loose tree that each test edits at an arbitrary depth.
 // biome-ignore lint/suspicious/noExplicitAny: fixture mutation, not production typing
 type Mutable = Record<string, any>;
@@ -30,14 +32,9 @@ interface Verdict {
 function verdict(change: (copy: Mutable) => void): Verdict {
   const copy = structuredClone(readback) as Mutable;
   change(copy);
-  const result = Bun.spawnSync(
-    ["jq", "-c", "--arg", "expected_collaborator", owner, "-f", filter],
-    {
-      stdin: Buffer.from(JSON.stringify(copy)),
-      stdout: "pipe",
-      stderr: "pipe",
-    },
-  );
+  const result = runChild(["jq", "-c", "--arg", "expected_collaborator", owner, "-f", filter], {
+    stdin: Buffer.from(JSON.stringify(copy)),
+  });
   if (result.exitCode !== 0) throw new Error(`jq exited ${result.exitCode}`);
   return (JSON.parse(result.stdout.toString()) as { frozen_check: Verdict }).frozen_check;
 }
@@ -354,14 +351,12 @@ exit 1
 `,
   );
   chmodSync(gh, 0o755);
-  const result = Bun.spawnSync(["sh", script, "fixture/repo", owner], {
+  const result = runChild(["sh", script, "fixture/repo", owner], {
     env: {
       PATH: `${join(directory, "bin")}:${process.env.PATH ?? "/usr/bin:/bin"}`,
       STUB_DIR: directory,
       HOME: root,
     },
-    stdout: "pipe",
-    stderr: "pipe",
   });
   if (result.exitCode !== 0) throw new Error(`provider-policy.sh exited ${result.exitCode}`);
   return JSON.parse(result.stdout.toString()) as Mutable;
@@ -451,11 +446,7 @@ describe("provider-policy.sh against a stub gh", () => {
 
   test("both arguments are required: no default repository, no default owner login", () => {
     const run = (...args: string[]) =>
-      Bun.spawnSync(["sh", script, ...args], {
-        env: { PATH: process.env.PATH ?? "" },
-        stdout: "pipe",
-        stderr: "pipe",
-      });
+      runChild(["sh", script, ...args], { env: { PATH: process.env.PATH ?? "" } });
     expect(run().exitCode).not.toBe(0);
     expect(run("fixture/repo").exitCode).not.toBe(0);
   });

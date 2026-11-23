@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
+import { runChild } from "./child";
 import {
   assertHandledTypes,
   buildManifest,
@@ -97,11 +98,9 @@ function git(
   extra: Record<string, string> = {},
   input?: string | Uint8Array,
 ): string {
-  const result = Bun.spawnSync(["git", "-C", dir, ...args], {
+  const result = runChild(["git", "-C", dir, ...args], {
     env: { ...baseEnvironment, ...extra },
     stdin: input === undefined ? "ignore" : typeof input === "string" ? Buffer.from(input) : input,
-    stdout: "pipe",
-    stderr: "pipe",
   });
   if (result.exitCode !== 0)
     throw new Error(`git ${args[0]} exited ${result.exitCode}: ${result.stderr.toString()}`);
@@ -697,16 +696,14 @@ describe("manifest", () => {
   const script = join(import.meta.dir, "manifest.sh");
 
   function shellManifest(dir: string): { code: number; out: Buffer } {
-    const result = Bun.spawnSync(["sh", script, dir], {
+    const result = runChild(["sh", script, dir], {
       env: { ...baseEnvironment, REPO: "fixture/repo" },
-      stdout: "pipe",
-      stderr: "pipe",
     });
     return { code: result.exitCode, out: Buffer.from(result.stdout) };
   }
 
   test("the shell reference needs jq, and a missing jq is a failure, not a skip", () => {
-    const result = Bun.spawnSync(["jq", "--version"], { env: baseEnvironment });
+    const result = runChild(["jq", "--version"], { env: baseEnvironment });
     expect(result.exitCode).toBe(0);
   });
 
@@ -754,14 +751,9 @@ describe("manifest", () => {
   });
 
   function python(...args: string[]): { code: number; out: string } {
-    const result = Bun.spawnSync(
-      ["python3", "-I", join(import.meta.dir, "canonicalize.py"), ...args],
-      {
-        env: baseEnvironment,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
+    const result = runChild(["python3", "-I", join(import.meta.dir, "canonicalize.py"), ...args], {
+      env: baseEnvironment,
+    });
     return { code: result.exitCode, out: result.stdout.toString() };
   }
 
@@ -837,18 +829,16 @@ function collect(): {
 }
 
 function shellOf(dir: string): { code: number; out: string; err: string } {
-  const result = Bun.spawnSync(["sh", join(import.meta.dir, "manifest.sh"), dir], {
+  const result = runChild(["sh", join(import.meta.dir, "manifest.sh"), dir], {
     env: { ...baseEnvironment, REPO: "fixture/repo" },
-    stdout: "pipe",
-    stderr: "pipe",
   });
   return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
 }
 
 function pythonOf(flags: string[], ...args: string[]): { code: number; out: string } {
-  const result = Bun.spawnSync(
+  const result = runChild(
     ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-    { env: baseEnvironment, stdout: "pipe", stderr: "pipe" },
+    { env: baseEnvironment },
   );
   return { code: result.exitCode, out: result.stdout.toString() };
 }
@@ -994,7 +984,7 @@ describe("tag object refusals", () => {
   test("red:tag-header an extra tag header is refused and passes git fsck --strict", () => {
     const dir = cleanRepo();
     const oid = craftedTag(dir, "x-extra payload\n", Buffer.from("message\n"));
-    const fsck = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict"], { env: baseEnvironment });
+    const fsck = runChild(["git", "-C", dir, "fsck", "--strict"], { env: baseEnvironment });
     expect(fsck.exitCode).toBe(0);
     expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "header-not-handled", oid });
   });
@@ -1030,11 +1020,7 @@ describe("operator input", () => {
   writeFileSync(identitiesPath, JSON.stringify(identities));
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1268,13 +1254,9 @@ function corruptSubtreeRepo(): string {
 }
 
 function pythonWithError(flags: string[], ...args: string[]): { code: number; err: string } {
-  const result = Bun.spawnSync(
+  const result = runChild(
     ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-    {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+    { env: baseEnvironment },
   );
   return { code: result.exitCode, err: result.stderr.toString() };
 }
@@ -1398,10 +1380,10 @@ describe("git reads", () => {
       dir,
       writeObject(dir, "tree", rawTree([{ mode: "0100644", name: "padded", oid: blob }])),
     );
-    const plain = Bun.spawnSync(["git", "-C", dir, "fsck", "--no-dangling"], {
+    const plain = runChild(["git", "-C", dir, "fsck", "--no-dangling"], {
       env: baseEnvironment,
     });
-    const strict = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict", "--no-dangling"], {
+    const strict = runChild(["git", "-C", dir, "fsck", "--strict", "--no-dangling"], {
       env: baseEnvironment,
     });
     expect(plain.exitCode).toBe(0);
@@ -1455,11 +1437,7 @@ describe("operator input, second round", () => {
   writeFileSync(idsPath, JSON.stringify(identities));
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1585,11 +1563,7 @@ describe("third review round", () => {
   };
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1637,13 +1611,9 @@ describe("third review round", () => {
   });
 
   function pythonVerify(flags: string[], ...args: string[]): { code: number; err: string } {
-    const result = Bun.spawnSync(
+    const result = runChild(
       ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-      {
-        env: baseEnvironment,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+      { env: baseEnvironment },
     );
     return { code: result.exitCode, err: result.stderr.toString() };
   }

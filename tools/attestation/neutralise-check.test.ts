@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runChild } from "./child";
 import {
   census,
   judge,
@@ -136,8 +138,24 @@ describe("judge", () => {
     "",
   ].join("\n");
 
+  // Bun prints the timeout notice on the line AFTER the `(fail)` line, and the assertion that
+  // read the killed child's `null` exit code before it (issue #299).
+  const timedOut = [
+    "error: expect(received).toBe(expected)",
+    "Expected: 0",
+    "Received: null",
+    "(fail) group > red:a something [503.44ms]",
+    "  ^ this test timed out after 500ms.",
+    "",
+  ].join("\n");
+
   test("a failure with an assertion message is RED", () => {
-    expect(judge(assertionFailure, "a", 1)).toEqual({ label: "RED", assertions: 1, crashes: 0 });
+    expect(judge(assertionFailure, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 0,
+    });
   });
 
   test("a failure that only crashed is reported as such, not as caught", () => {
@@ -145,7 +163,67 @@ describe("judge", () => {
       label: "RED (crash only)",
       assertions: 0,
       crashes: 1,
+      timeouts: 0,
     });
+  });
+
+  test("a test ended by its time budget is BLOCKED, never RED, whatever assertion it failed", () => {
+    expect(judge(timedOut, "a", 1)).toEqual({
+      label: "BLOCKED (timed out)",
+      assertions: 0,
+      crashes: 0,
+      timeouts: 1,
+    });
+    // A timeout of another id is not this id's business, and does not leak into the next test.
+    expect(judge(`${timedOut.replace("red:a", "red:b")}${assertionFailure}`, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 0,
+    });
+  });
+
+  test("a timeout does not hide another red: test of the same id that failed by assertion", () => {
+    expect(judge(`${timedOut}${assertionFailure}`, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 1,
+    });
+    expect(judge(`${timedOut}${crashFailure}`, "a", 1).label).toBe("BLOCKED (timed out)");
+  });
+
+  test("the timeout notice is read from a real Bun run, not from a transcription of it", () => {
+    const directory = mkdtempSync(join(tmpdir(), "neutralise-timeout-"));
+    try {
+      // The probe of issue #299: a red: test whose child runs past the test's budget. It
+      // reproduces the defect, so it starts its child directly (written so that the guard of
+      // child.test.ts, which keeps raw children out of these test files, does not read it).
+      writeFileSync(
+        join(directory, "probe.test.ts"),
+        [
+          'import { expect, test } from "bun:test";',
+          'test("red:probe-id a child that outlives the test", () => {',
+          '  expect(Bun["spawnSync"](["sleep", "5"]).exitCode).toBe(0);',
+          "}, 300);",
+          "",
+        ].join("\n"),
+      );
+      const run = runChild([process.execPath, "test", "./probe.test.ts"], {
+        cwd: directory,
+        env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory, NO_COLOR: "1" },
+      });
+      const output = `${run.stdout}${run.stderr}`;
+      expect(output).toContain("this test timed out after");
+      expect(judge(output, "probe-id", run.exitCode)).toEqual({
+        label: "BLOCKED (timed out)",
+        assertions: 0,
+        crashes: 0,
+        timeouts: 1,
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   test("an exit code 0, or failures of other ids, are STILL GREEN", () => {

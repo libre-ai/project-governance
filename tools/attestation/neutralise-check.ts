@@ -21,8 +21,13 @@
  *    unbalance the structure and turn everything red for the wrong reason), runs the tests named
  *    `red:<id> `, and requires one to fail BY ASSERTION. A test that only crashes proves the
  *    mutant breaks the program, not that the test checks anything: it is reported as "crash
- *    only" and counted as a problem. The shell checks are mutated by exact text substitution
- *    (`fileMutations`), and the marker ids of that file must equal the substitution ids.
+ *    only" and counted as a problem. A test Bun ended on its time budget proves nothing either,
+ *    whatever assertion it failed on the way (a killed child's exit code reads `null`): it is
+ *    reported as "timed out" and counted as a problem. The tests start their children through
+ *    `child.ts`, which turns a killed child into a thrown error naming the signal, so a child's
+ *    own budget reads as a crash, not as an assertion. The shell checks are mutated by exact
+ *    text substitution (`fileMutations`), and the marker ids of that file must equal the
+ *    substitution ids.
  *
  * The same `red:` test may serve a TypeScript marker and a shell marker of the same id (the
  * shallow and ASCII refusals are asserted on both implementations); that overlap is listed.
@@ -210,29 +215,52 @@ export function neutraliseJq(source: string, id: string): string | null {
 }
 
 export interface Verdict {
-  readonly label: "RED" | "RED (crash only)" | "STILL GREEN";
+  readonly label: "RED" | "RED (crash only)" | "BLOCKED (timed out)" | "STILL GREEN";
   readonly assertions: number;
   readonly crashes: number;
+  readonly timeouts: number;
 }
 
-/** Classify the failures of a `bun test` run for one id. Pure: takes the raw output. */
+/**
+ * Bun's notice that it ended a test on its time budget. It is printed on the line right after
+ * the `(fail)` line of that test.
+ */
+const timeoutNotice = "this test timed out after";
+
+/**
+ * Classify the failures of a `bun test` run for one id. Pure: takes the raw output.
+ *
+ * A failing `red:` test counts in exactly one of three counters. A test Bun ended on its time
+ * budget is a timeout, whatever assertion it failed on the way: when Bun kills a child in
+ * flight, its exit code reads `null` and the assertion on it fails, so that assertion says
+ * nothing about the mutant (issue #299). Only an assertion failure proves the mutant; a run
+ * whose only failures are timeouts is BLOCKED (no verdict), one whose only failures are
+ * crashes is "crash only".
+ */
 export function judge(output: string, id: string, exitCode: number): Verdict {
   let assertions = 0;
   let crashes = 0;
+  let timeouts = 0;
   let chunk: string[] = [];
-  for (const line of output.split("\n")) {
+  const lines = output.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] as string;
     if (line.startsWith("(fail) ")) {
       if (line.includes(`red:${id} `)) {
-        if (chunk.some((text) => /error: expect\(/.test(text))) assertions += 1;
+        if ((lines[index + 1] ?? "").includes(timeoutNotice)) timeouts += 1;
+        else if (chunk.some((text) => /error: expect\(/.test(text))) assertions += 1;
         else crashes += 1;
       }
       chunk = [];
     } else if (line.startsWith("(pass) ")) chunk = [];
     else chunk.push(line);
   }
-  if (exitCode === 0 || assertions + crashes === 0)
-    return { label: "STILL GREEN", assertions, crashes };
-  return { label: assertions > 0 ? "RED" : "RED (crash only)", assertions, crashes };
+  const counts = { assertions, crashes, timeouts };
+  if (exitCode === 0 || assertions + crashes + timeouts === 0)
+    return { label: "STILL GREEN", ...counts };
+  if (assertions > 0) return { label: "RED", ...counts };
+  if (timeouts > 0) return { label: "BLOCKED (timed out)", ...counts };
+  return { label: "RED (crash only)", ...counts };
 }
 
 interface Edit {
@@ -425,6 +453,23 @@ const fileMutations: readonly FileMutation[] = [
     file: scanner,
     edits: [{ find: '"--strict",', replace: "" }],
   },
+  {
+    // A killed child returns its `null` exit code instead of throwing (issue #299).
+    id: "child-signal",
+    file: "child.ts",
+    edits: [
+      {
+        find: "if (exitCode === null || (result.signalCode !== undefined && result.signalCode !== null))",
+        replace: "if (false)",
+      },
+    ],
+  },
+  {
+    // The child runs without a budget of its own.
+    id: "child-timeout",
+    file: "child.ts",
+    edits: [{ find: "timeout: timeoutMs,", replace: "timeout: undefined," }],
+  },
 ];
 
 function runTests(directory: string, filter?: string): { code: number; output: string } {
@@ -480,11 +525,12 @@ function main(requested: readonly string[]): number {
   const work = mkdtempSync(join(tmpdir(), "neutralise-"));
   let markerRuns = 0;
   let substitutionRuns = 0;
-  const tally = new Map<string, { mutated: number; red: number }>();
-  const count = (file: string, red: boolean): void => {
-    const entry = tally.get(file) ?? { mutated: 0, red: 0 };
+  // Every mutant lands in exactly one label, so the labels of a file sum to its mutants.
+  const tally = new Map<string, { mutated: number; labels: Map<Verdict["label"], number> }>();
+  const count = (file: string, label: Verdict["label"]): void => {
+    const entry = tally.get(file) ?? { mutated: 0, labels: new Map() };
     entry.mutated += 1;
-    if (red) entry.red += 1;
+    entry.labels.set(label, (entry.labels.get(label) ?? 0) + 1);
     tally.set(file, entry);
   };
   try {
@@ -509,11 +555,10 @@ function main(requested: readonly string[]): number {
       const result = runTests(work, `red:${id} `);
       writeFileSync(join(target, file), original);
       const verdict = judge(result.output, id, result.code);
-      const red = verdict.label === "RED";
-      count(file, red);
-      if (!red) problems += 1;
+      count(file, verdict.label);
+      if (verdict.label !== "RED") problems += 1;
       console.log(
-        `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es): ${verdict.label}`,
+        `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es), ${verdict.timeouts} timeout(s): ${verdict.label}`,
       );
     };
     for (const { instrument, source, ids } of targets) {
@@ -550,11 +595,16 @@ function main(requested: readonly string[]): number {
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
-  console.log("Neutralised per file (mutated / red by assertion):");
+  console.log(
+    "Neutralised per file (mutated = red by assertion + crash only + timed out + still green):",
+  );
   let total = 0;
   for (const [file, entry] of tally) {
     total += entry.mutated;
-    console.log(`  ${file}: ${entry.mutated} / ${entry.red}`);
+    const of = (label: Verdict["label"]): number => entry.labels.get(label) ?? 0;
+    console.log(
+      `  ${file}: ${entry.mutated} = ${of("RED")} + ${of("RED (crash only)")} + ${of("BLOCKED (timed out)")} + ${of("STILL GREEN")}`,
+    );
   }
   console.log(
     `${total} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${problems} problem(s)`,
