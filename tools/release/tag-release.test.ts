@@ -458,9 +458,11 @@ const MEASURED_PROXY_NAMES = ["http_proxy", "HTTP_PROXY", "ALL_PROXY", "all_prox
  * above, so a child-process test can show the value is never printed while
  * the stand-in proxy is really reachable. `check:secret-scan` exempts a
  * userinfo on `localhost` or a reserved documentation host, but not on
- * 127.0.0.1, and `localhost` may resolve to `::1` first on a runner, where
- * the stand-in proxy does not listen. The URL is therefore built here; tests
- * that need no network write a `proxy.invalid` literal instead.
+ * 127.0.0.1. A `localhost` literal reached the stand-in proxy on macOS
+ * whichever address it listened on; on the Linux CI runners it is not
+ * measured (hypothesis: `localhost` may resolve to `::1` first). Until it is,
+ * the URL is built here; tests that need no network write a `proxy.invalid`
+ * literal instead.
  */
 function credentialedProxyUrl(authority: string): string {
   const url = new URL(`http://${authority}`);
