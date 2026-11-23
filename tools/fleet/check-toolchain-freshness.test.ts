@@ -311,11 +311,41 @@ describe("what each registry answers", () => {
   const channel = (date: string): string =>
     `manifest-version = "2"\ndate = ${date}\n\n[pkg.rust]\nversion = "1.100.0 (0ef1bc386 2026-11-09)"\n`;
 
-  test("rust: the stable version, dated at the end of the manifest's day", () => {
+  test("rust: the stable version, dated at the end of the manifest's day, not before its start", () => {
     expect(latestFromRustChannel(channel('"2026-11-12"'))).toEqual({
       version: "1.100.0",
       publishedAt: "2026-11-13T00:00:00.000Z",
+      publishedNotBefore: "2026-11-12T00:00:00.000Z",
     });
+  });
+
+  // The manifest and the classification together: the day of a Rust release,
+  // its end is ahead of the clock, and that is not a date in the future.
+  test.each([
+    [
+      "the day of the release",
+      "2026-11-23",
+      "too-recent",
+      /published 2026-11-24T00:00:00\.000Z, is younger/,
+    ],
+    [
+      "the day before the release",
+      "2026-11-24",
+      "unreadable",
+      /^1\.100\.0 is dated in the future, 2026-11-24T00:00:00\.000Z$/,
+    ],
+    [
+      "four days after the release",
+      "2026-11-19",
+      "behind",
+      /^1\.100\.0 was published 2026-11-20T00:00:00\.000Z$/,
+    ],
+  ] as const)("rust, read at noon on 2026-11-23, %s (manifest dated %s): %s", (_label, date, state, reason) => {
+    const noon = new Date("2026-11-23T12:00:00Z");
+    const release = latestFromRustChannel(channel(`"${date}"`)) as LatestRelease;
+    const result = classifyPin("rust", pinned("1.99.0"), { kind: "latest", release }, noon);
+    expect(result.state).toBe(state);
+    expect(result.reason).toMatch(reason);
   });
 
   test("rust: a date that is not a day is a null date, a manifest without rust is null", () => {
@@ -735,6 +765,51 @@ describe("the report", () => {
       );
     });
 
+    test("an entry with a key the reader does not know throws: no field is ignored", () => {
+      const scoped = document(entry({ ...VALID, scope: '"*"' }));
+      expect(() => parseFreshnessExceptions(scoped)).toThrow(
+        /exceptions\[0\]: `scope` is not one of tool, held_at, because, until/,
+      );
+    });
+
+    test("a root key the reader does not know throws: a second list is not an empty register", () => {
+      const text = `schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\nexceptions: []\nexemptions:${entry(VALID)}\n`;
+      expect(() => parseFreshnessExceptions(text)).toThrow(
+        /`exemptions` is not one of schema_version, exceptions/,
+      );
+    });
+
+    test("a key written twice throws, in an entry as at the root: the last one does not win", () => {
+      const twice = document(`${entry(VALID)}\n    tool: rust`);
+      expect(() => parseFreshnessExceptions(twice)).toThrow(
+        /exceptions\[0\]: `tool` is written twice/,
+      );
+      expect(() => parseFreshnessExceptions(`${document(" []")}exceptions: []\n`)).toThrow(
+        /`exceptions` is written twice/,
+      );
+    });
+
+    test.each([
+      [
+        "a flow-style entry",
+        `schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\nexceptions: [{tool: bun, held_at: 1.0.0, because: why, until: 2026-12-31, scope: all}]\n`,
+        /1 entries parsed, 0 written in block style/,
+      ],
+      ["a quoted key", document('\n  - "tool": bun'), /line 3 is outside the block style/],
+      [
+        "a value on a second line",
+        document(`${entry(VALID)}\n      continued`),
+        /line 7 is outside the block style/,
+      ],
+    ])("%s escapes the line scan, and throws", (_label, text, message) => {
+      expect(() => parseFreshnessExceptions(text)).toThrow(message);
+    });
+
+    test("a date is read the same quoted or not", () => {
+      const bare = parseFreshnessExceptions(document(entry({ ...VALID, until: "2026-12-31" })));
+      expect(bare).toEqual(parseFreshnessExceptions(document(entry(VALID))));
+    });
+
     test("two entries for one tool throw", () => {
       expect(() => parseFreshnessExceptions(document(entry(VALID) + entry(VALID)))).toThrow(
         /duplicates the entry for bun/,
@@ -824,8 +899,10 @@ describe("the scheduled workflow", () => {
     readonly env?: Record<string, string>;
   }
   interface Job {
+    readonly needs?: string | readonly string[];
+    readonly if?: string;
     readonly permissions?: Record<string, string>;
-    readonly steps: readonly Step[];
+    readonly steps: readonly (Step & { readonly if?: string })[];
   }
   interface Workflow {
     readonly on: Record<string, unknown>;
@@ -869,5 +946,126 @@ describe("the scheduled workflow", () => {
       .filter((step) => (step.uses ?? "").startsWith("actions/checkout@"));
     expect(checkouts.length).toBe(jobs.length);
     for (const checkout of checkouts) expect(checkout.with?.["persist-credentials"]).toBe(false);
+  });
+
+  // The conditions that carry the alert are evaluated, not compared as text:
+  // a rewording that decides the same passes, one that decides otherwise fails.
+  // The subset of the expression language they use: `||`, `&&`, `==`, `!=`,
+  // parentheses, quoted strings, context paths and status functions.
+  type Value = string | boolean;
+  interface Scope {
+    readonly paths: Readonly<Record<string, string>>;
+    readonly functions: Readonly<Record<string, boolean>>;
+  }
+  const TOKEN = /\s*(\|\||&&|==|!=|\(|\)|'[^']*'|[A-Za-z_][\w.-]*)/y;
+  const evaluate = (expression: string, scope: Scope): boolean => {
+    const tokens: string[] = [];
+    TOKEN.lastIndex = 0;
+    while (TOKEN.lastIndex < expression.trimEnd().length) {
+      const match = TOKEN.exec(expression);
+      if (match === null) throw new Error(`unreadable condition: ${expression}`);
+      tokens.push(match[1] ?? "");
+    }
+    let at = 0;
+    const take = (): string => tokens[at++] ?? "";
+    const primary = (): Value => {
+      const token = take();
+      if (token === "(") {
+        const inner = either();
+        if (take() !== ")") throw new Error(`unbalanced condition: ${expression}`);
+        return inner;
+      }
+      if (token.startsWith("'")) return token.slice(1, -1);
+      if (tokens[at] === "(") {
+        at += 2;
+        const known = scope.functions[token];
+        if (known === undefined) throw new Error(`unknown function ${token}`);
+        return known;
+      }
+      const known = scope.paths[token];
+      if (known === undefined) throw new Error(`unknown context ${token}`);
+      return known;
+    };
+    const equality = (): Value => {
+      const left = primary();
+      if (tokens[at] !== "==" && tokens[at] !== "!=") return left;
+      const equal = take() === "==";
+      return (left === primary()) === equal;
+    };
+    const both = (): Value => {
+      let value = equality();
+      while (tokens[at] === "&&") {
+        at += 1;
+        const right = equality();
+        value = Boolean(value) && Boolean(right);
+      }
+      return value;
+    };
+    const either = (): Value => {
+      let value = both();
+      while (tokens[at] === "||") {
+        at += 1;
+        const right = both();
+        value = Boolean(value) || Boolean(right);
+      }
+      return value;
+    };
+    const result = either();
+    if (at !== tokens.length) throw new Error(`trailing tokens in condition: ${expression}`);
+    return Boolean(result);
+  };
+
+  const readerId = Object.keys(workflow.jobs).find((id) => reads(workflow.jobs[id] as Job)) ?? "";
+  const alerter = jobs.find((job) => !reads(job)) as Job;
+  const stepRunning = (suffix: string) =>
+    alerter.steps.find((step) => (step.run ?? "").endsWith(suffix)) as Job["steps"][number];
+  const RESULTS = ["success", "failure", "cancelled", "skipped"] as const;
+  const EVENTS = ["schedule", "workflow_dispatch", "push", "pull_request"] as const;
+  const LOOP_EVENTS: readonly string[] = ["schedule", "workflow_dispatch"];
+  // In a step, the status functions weigh the earlier steps of the job; here
+  // none has failed, so only the result of the reading job can decide.
+  const stepScope = (result: string, event: string): Scope => ({
+    paths: { [`needs.${readerId}.result`]: result, "github.event_name": event },
+    functions: { failure: false, success: true, always: true },
+  });
+
+  test("the alert job needs the reading job, and runs whatever that job concluded", () => {
+    expect([alerter.needs].flat()).toEqual([readerId]);
+    for (const result of RESULTS) {
+      // At job level the status functions weigh the needed jobs.
+      const scope: Scope = {
+        paths: {},
+        functions: { always: true, success: result === "success", failure: result === "failure" },
+      };
+      expect([result, evaluate(alerter.if ?? "success()", scope)]).toEqual([result, true]);
+    }
+  });
+
+  test("the alert step starts on the failure of the reading job only, in a loop run only", () => {
+    const condition = stepRunning("repeat-failure-alert.ts").if ?? "";
+    for (const result of RESULTS) {
+      for (const event of EVENTS) {
+        const expected = result === "failure" && LOOP_EVENTS.includes(event);
+        expect([result, event, evaluate(condition, stepScope(result, event))]).toEqual([
+          result,
+          event,
+          expected,
+        ]);
+      }
+    }
+  });
+
+  test("the closing step starts on the success of the reading job only, in a loop run only", () => {
+    const condition = stepRunning("repeat-failure-alert.ts --resolve").if ?? "";
+    for (const result of RESULTS) {
+      for (const event of EVENTS) {
+        const expected = result === "success" && LOOP_EVENTS.includes(event);
+        expect([result, event, evaluate(condition, stepScope(result, event))]).toEqual([
+          result,
+          event,
+          expected,
+        ]);
+      }
+    }
   });
 });

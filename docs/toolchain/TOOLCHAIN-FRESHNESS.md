@@ -62,7 +62,19 @@ behind knowingly. An entry carries four fields, all required:
 | `tool` | the tool, as `TOOLCHAIN_PINS` names it |
 | `held_at` | the exact pinned version the entry holds |
 | `because` | why the pin stays there, on one line |
-| `until` | the last day the entry holds, a quoted `YYYY-MM-DD` date, in UTC |
+| `until` | the last day the entry holds, a `YYYY-MM-DD` date, in UTC, quoted or not |
+
+The register is a closed world. A key that is not one of these four in an
+entry, a root key other than `schema_version` and `exceptions`, and a key
+written twice all fail the register: a `scope` field or an `exemptions` list
+is never an ignored line. The YAML reader of Bun keeps the last of two
+identical keys without saying so, so the register is also read line by line,
+in one imposed style (bare keys, block style, one line per value), the way
+`tools/quality/check-third-parties.ts` reads its own; a line outside that
+style fails the register.
+
+`until` has no ceiling: an entry dated ten years ahead is accepted. How far a
+hold may reach is a number the owner has not set.
 
 An applied entry prints one `held` line on every run, with its reason and its
 date, and does not turn the run red. An entry fails the run, and leaves its pin
@@ -150,9 +162,15 @@ Declared limits:
   the latest is younger than the floor, reads `too-recent` until that latest
   passes the floor.
 - Only crates.io lists every version. On the other sources a pinned version
-  that was withdrawn is seen only when it is above the latest release.
-- The Rust channel manifest dates a release by its day. The end of that day is
-  kept, so a release is never read as older than it is.
+  that was withdrawn is seen only when it is a stable version above the latest
+  release. A withdrawn version below the latest release reads `behind` or
+  `too-recent`, and a withdrawn pre-release of a version above the latest
+  release reads `up-to-date` (pin `2.0.0-rc.1`, latest `1.9.0`): neither is
+  seen.
+- The Rust channel manifest dates a release by its day. Its age is counted
+  from the end of that day, so a release is never read as older than it is; it
+  is "dated in the future", and `unreadable`, only when that day has not begun.
+  On the day itself it reads `too-recent`.
 - For the five cargo tools the date is the publication of the crate. The
   release archive the fleet downloads may follow it.
 - shellcheck is pinned by image digest; the version compared is the comment

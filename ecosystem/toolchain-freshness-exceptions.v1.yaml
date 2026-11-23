@@ -3,12 +3,15 @@ schema_version: libre-ai.toolchain-freshness-exceptions.v1
 # Read by tools/fleet/check-toolchain-freshness.ts. Each entry names the `tool`
 # (as TOOLCHAIN_PINS names it), `held_at`: the exact pinned version the entry
 # holds, `because`: why the pin stays there, on one line, and `until`: the last
-# day the entry holds, a quoted YYYY-MM-DD date.
+# day the entry holds, a YYYY-MM-DD date. No other key is read: a key that is
+# not one of these four, or a key written twice, fails the register, and so
+# does a root key other than `schema_version` and `exceptions`. Style imposed:
+# bare keys, block style, one line per value.
 #
 #   - tool: cargo-deny
 #     held_at: 0.19.5
 #     because: why this pin stays behind
-#     until: "2027-01-31"
+#     until: 2027-01-31
 #
 # An applied entry prints one `held` line on every run, with its reason and its
 # date. An entry fails the run when the pin is no longer `held_at`, when

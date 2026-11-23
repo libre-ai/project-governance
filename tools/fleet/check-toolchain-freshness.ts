@@ -293,6 +293,12 @@ export interface LatestRelease {
   /** As the registry wrote it; null when it gave none. Normalised before any use. */
   readonly publishedAt: string | null;
   /**
+   * The earliest instant the release can have been published, when the source
+   * dates it by a period (a day) and `publishedAt` is the end of that period.
+   * Absent when `publishedAt` is an instant.
+   */
+  readonly publishedNotBefore?: string;
+  /**
    * Every version the source publishes and has not withdrawn, when its answer
    * lists them. Absent when the source only names its latest release.
    */
@@ -366,7 +372,12 @@ export function classifyPin(
   if (instant === null) return unreadable(pinned, `${latest} has no readable publication date`);
   const ageSeconds = Math.floor((now.getTime() - Date.parse(instant)) / 1000);
   // A release dated after now would stay "too recent", and green, for ever.
-  if (ageSeconds < 0) return unreadable(pinned, `${latest} is dated in the future, ${instant}`);
+  // A release dated by its day is in the future only when that day has not
+  // begun: on the day itself its end is ahead of now, and it is too recent.
+  const earliest = normalisedInstant(upstream.release.publishedNotBefore ?? instant);
+  if (earliest === null || now.getTime() < Date.parse(earliest)) {
+    return unreadable(pinned, `${latest} is dated in the future, ${earliest ?? instant}`);
+  }
   if (ageSeconds < minimumAgeSeconds) {
     const reason = `${latest}, published ${instant}, is younger than ${minimumAgeSeconds} seconds`;
     return { tool, state: "too-recent", pinned, reason, sites };
@@ -438,9 +449,11 @@ export function latestFromRustChannel(text: string): LatestRelease | null {
   if (version === undefined) return null;
   const { date } = manifest;
   const start = typeof date === "string" && DAY.test(date) ? Date.parse(`${date}T00:00:00Z`) : NaN;
+  if (Number.isNaN(start)) return { version, publishedAt: null };
   return {
     version,
-    publishedAt: Number.isNaN(start) ? null : new Date(start + DAY_MILLISECONDS).toISOString(),
+    publishedAt: new Date(start + DAY_MILLISECONDS).toISOString(),
+    publishedNotBefore: new Date(start).toISOString(),
   };
 }
 
@@ -595,8 +608,62 @@ export interface FreshnessException {
   readonly until: string;
 }
 
-/** The exception register; a malformed entry throws, so the report never runs on half a register. */
+const ROOT_KEYS: readonly string[] = ["schema_version", "exceptions"];
+const ENTRY_KEYS: readonly string[] = ["tool", "held_at", "because", "until"];
+const ROOT_LINE = /^([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+const ENTRY_START = /^ {2}- ([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+const ENTRY_FIELD = /^ {4}([A-Za-z_][A-Za-z0-9_-]*):(?:\s|$)/;
+
+/**
+ * The keys of the register as its lines write them. `Bun.YAML.parse` keeps the
+ * last of two identical keys without saying so (measured: `tool: bun` then
+ * `tool: rust` in one entry reads `rust`), so the register is also read line
+ * by line, in the one block style it is written in, the way
+ * `tools/quality/check-third-parties.ts` reads its own. A line outside that
+ * style throws: a key written quoted, in flow style or as `? key` would
+ * otherwise escape the scan.
+ */
+function writtenKeys(yamlText: string): { root: string[]; entries: string[][] } {
+  const root: string[] = [];
+  const entries: string[][] = [];
+  for (const [index, line] of yamlText.split("\n").entries()) {
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+    const rootKey = ROOT_LINE.exec(line)?.[1];
+    const startKey = ENTRY_START.exec(line)?.[1];
+    const fieldKey = ENTRY_FIELD.exec(line)?.[1];
+    if (rootKey !== undefined) root.push(rootKey);
+    else if (startKey !== undefined) entries.push([startKey]);
+    else if (fieldKey !== undefined && entries.length > 0) entries.at(-1)?.push(fieldKey);
+    else {
+      throw new Error(
+        `${EXCEPTIONS_PATH}: line ${index + 1} is outside the block style the register is written in`,
+      );
+    }
+  }
+  return { root, entries };
+}
+
+/** Throws on a key written twice, or on a key that is not one of `allowed`. */
+function refuseKeys(at: string, keys: readonly string[], allowed: readonly string[]): void {
+  const twice = keys.find((key, index) => keys.indexOf(key) !== index);
+  if (twice !== undefined) throw new Error(`${at}: \`${twice}\` is written twice`);
+  const unknown = keys.find((key) => !allowed.includes(key));
+  if (unknown !== undefined) {
+    throw new Error(`${at}: \`${unknown}\` is not one of ${allowed.join(", ")}`);
+  }
+}
+
+/**
+ * The exception register; a malformed entry throws, so the report never runs
+ * on half a register. Closed world: a key this reader does not know is a
+ * failure, never an ignored line, at the root as in an entry.
+ */
 export function parseFreshnessExceptions(yamlText: string): FreshnessException[] {
+  const written = writtenKeys(yamlText);
+  refuseKeys(EXCEPTIONS_PATH, written.root, ROOT_KEYS);
+  for (const [index, keys] of written.entries.entries()) {
+    refuseKeys(`${EXCEPTIONS_PATH}: exceptions[${index}]`, keys, ENTRY_KEYS);
+  }
   const document: unknown = Bun.YAML.parse(yamlText);
   if (!isRecord(document) || document.schema_version !== EXCEPTIONS_SCHEMA_VERSION) {
     throw new Error(`${EXCEPTIONS_PATH}: schema_version must be ${EXCEPTIONS_SCHEMA_VERSION}`);
@@ -604,6 +671,11 @@ export function parseFreshnessExceptions(yamlText: string): FreshnessException[]
   const entries = document.exceptions;
   if (!Array.isArray(entries)) {
     throw new Error(`${EXCEPTIONS_PATH}: \`exceptions\` must be a list`);
+  }
+  if (entries.length !== written.entries.length) {
+    throw new Error(
+      `${EXCEPTIONS_PATH}: ${entries.length} entries parsed, ${written.entries.length} written in block style`,
+    );
   }
   const seen = new Set<string>();
   return (entries as unknown[]).map((entry, index) => {
@@ -619,7 +691,7 @@ export function parseFreshnessExceptions(yamlText: string): FreshnessException[]
       throw new Error(`${at}.held_at must be an exact version`);
     }
     if (!isIsoDate(until)) {
-      throw new Error(`${at}.until is required, as a quoted YYYY-MM-DD date`);
+      throw new Error(`${at}.until is required, as a YYYY-MM-DD date`);
     }
     if (seen.has(tool as string)) throw new Error(`${at} duplicates the entry for ${tool}`);
     seen.add(tool as string);
