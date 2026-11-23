@@ -18,6 +18,7 @@ Verdict: approve-with-minor-reservations
 | `pkw-servers-r-2` | `b15313962342a64d44f2c4aabfed33b11f65d417` | `approve-with-minor-reservations` |
 | `pkw-servers-r-3` | `20092f7cfc897881c17799f5ceabd52c34f5c53b` | `approve-with-minor-reservations` |
 | `pkw-servers-r-4` | `396d74f6d998e2326c15acc41895f27632782a36` | `approve-with-minor-reservations` |
+| `pkw-servers-r-5` | `60a4a53419fe5de0cdac14fbdcac34cb77a317fb` | `approve-with-minor-reservations` |
 
 Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 
@@ -182,10 +183,10 @@ La branche servie a reçu `a787af8`, la pull request #295 du propriétaire, qui 
 
 ## Changement fait après `pkw-servers-r-4`
 
-Un commit, postérieur à `396d74f`, qui porte aussi cette version du dossier ; relu par aucune passe. Il change le test et ce dossier, pas le workflow ni le runner : `git diff 396d74f -- .github/` est vide.
+`4986783`, qui porte aussi le dossier à cette date ; relu par la passe `pkw-servers-r-5` ci-dessous. Il change le test et ce dossier, pas le workflow ni le runner : `git diff 396d74f -- .github/` est vide.
 
 - **N3 corrigé.** `tools/quality/validate-composition-gates.test.ts` exige que `jobs.validate` n'ait ni `if:` ni `continue-on-error`, et que son `env` pose `INPUT_TARGET: ${{ inputs.target }}`. Aucune étape de porte (native, WASM, suite navigateur) ne porte `continue-on-error`. La présence de la clé est testée, pas sa valeur : `continue-on-error: false` est refusé aussi.
-- **N4 corrigé.** Le `run` de chaque étape de porte contient exactement un appel à `check-products.py`, dont toutes les valeurs `--gate` égalent la porte de l'étape et toutes les valeurs `--target` égalent `"$INPUT_TARGET"`.
+- **N4 corrigé.** Le `run` de chaque étape de porte contient exactement un appel à `check-products.py`. Toutes les valeurs écrites sous la forme `--gate <v>` égalent la porte de l'étape, et toutes les valeurs `--target` égalent `"$INPUT_TARGET"`. Les formes `--gate=<v>` et préfixe abrégé (`--ga <v>`) ne sont pas lues : constat N7 de la passe `pkw-servers-r-5`.
 - **N5 corrigé.** `duplicateKeys` devient `scanKeys`, qui classe chaque ligne du fichier dans quatre compteurs : clé en style bloc, corps de scalaire de bloc, ligne vide ou commentaire, ligne non classée. Leur somme doit égaler le nombre de lignes. Un mapping de flux (`{` en tête d'élément ou de valeur, ou dans une séquence de flux) et une clé explicite `?` sont des formes refusées, comptées et nommées. Le test échoue sur toute forme refusée, toute ligne non classée et toute clé en double. Les lignes du corps d'un scalaire de bloc (`|`, `>`) ont leur propre compteur. Toute autre ligne qui n'est ni une clé, ni vide, ni un commentaire est non classée, par exemple une ligne de continuation d'un scalaire simple. À la tête, il imprime : `scanKeys: 301 lines = 120 key + 132 block-scalar body + 49 blank or comment + 0 unclassified; 0 duplicate key(s), 0 refused form(s)`.
 - **Limites écrites dans le commentaire du test :**
   - ce n'est pas un parseur de la sémantique de GitHub : il n'évalue aucune expression et n'admet que deux formes littérales ;
@@ -216,6 +217,30 @@ La base a reçu `a120cbf` (#284, trust-bench). Après le commit qui porte ce dos
 - Condition de transfert de la passe `r-4` : l'arbre du commit de fusion doit égaler `git merge-tree --write-tree <commit qui porte ce dossier> a120cbf`. Cette égalité est vérifiée avant le push. Les deux empreintes sont dans la description de la pull request : ce dossier ne peut pas citer l'arbre qui le contient.
 - La fusion ne change rien dans le périmètre de #293 : `git diff --name-only origin/migrate/recover-code...HEAD` liste les mêmes 9 fichiers.
 
+## Passe `pkw-servers-r-5` (indépendante, commit final)
+
+**Rôle :** passe `candidate-integration` en revue seule, à rôle séparé, sur le commit final. Sous-agent sans délégation, en lecture seule, dans un nouveau clone jetable effacé en fin de passe. Il n'a pas écrit ce qu'il relit ; il a reçu le résumé du delta dans son mandat et a lu ce dossier. Modèle `claude-opus-5-5` ; session du harnais `c79598a7-9e1e-42cf-bfbc-e29615fbe251` ; identifiant de sous-agent non exposé. **Not a role-specific promotion approval.** Aucun constat bloquant ni majeur, aucune preuve requise ouverte.
+
+**Axes couverts :** sécurité (rien d'élargi) ; correction (`4986783` et la fusion `60a4a53` lus ; arbre de fusion recalculé) ; valeur des tests (onze mutations : six tuées, cinq survivantes : N7 ×2, N8, N9 ×2) ; chaîne d'approvisionnement (rien d'ajouté).
+
+| Constat | Gravité | Disposition |
+| --- | --- | --- |
+| N3, N4, N5 : corrigés par `4986783` (`if:` de job, `continue-on-error` sur l'étape WASM, `--gate native`, mapping de flux simple : 1 échec chacun). | minor | prêt |
+| **N7** : le test ne lit que `--gate\s+(\S+)`. Mesuré : `check-products.py … --gate wasm --gate=native --plan` et `… --gate wasm --ga native --plan` planifient `["native"]` (argparse garde le dernier et accepte les préfixes) ; les deux mutations dans l'étape WASM, `27 pass`. Correctif : `allow_abbrev=False` dans le runner, ou une regex `--ga\w*(?:=\|\s+)`. | minor | suggestion |
+| **N8** : `env.INPUT_TARGET` d'une étape de porte n'est pas lu. Mesuré : `env: INPUT_TARGET: ai-model-policy` sur l'étape WASM, `27 pass` ; `ai-model-policy` est une dépendance de PKW dans `manifest.json`. Inféré : l'étape construit le WASM d'`ai-model-policy` à la place de celui de PKW. Correctif : aucune étape de porte ne pose `env.INPUT_TARGET`. | minor | suggestion |
+| **N9** : un mapping de flux précédé d'une ancre ou d'un tag n'est pas refusé. Mesuré : `permissions: &p {contents: read, contents: write}` et `permissions: !!map {…}`, `27 pass`, `0 refused form(s)`, `0 duplicate key(s)` ; Bun.YAML charge `{"contents":"write"}`. Contredit « failing on any other form » (commentaire du test). Correctif : refuser `{` après les préfixes `&ancre` et `!tag`. | minor | suggestion |
+| M4 : inchangé, risque résiduel. | minor | suggestion |
+
+**Commandes et sorties de la passe :**
+
+- `bun test tools/quality/validate-composition-gates.test.ts` à la tête : `27 pass`, `0 fail`, `scanKeys: 301 lines = 120 key + 132 block-scalar body + 49 blank or comment + 0 unclassified; 0 duplicate key(s), 0 refused form(s)`. `python3 -B -m unittest discover -s .github/composition -p 'test_*.py'` : `Ran 164 tests`, `OK`.
+- Mutations, chacune faite à l'outil Edit puis restaurée (`git status --short` vide à la fin) : `if:` de job, 1 échec ; `continue-on-error: true` sur l'étape WASM, 1 échec ; `--gate native`, 1 échec ; `permissions: {contents: read}`, 1 échec (`1 refused form(s)`) ; `--gate wasm --gate=native`, 0 échec ; `--gate wasm --ga native`, 0 échec ; `env: INPUT_TARGET: ai-model-policy` sur l'étape WASM, 0 échec ; `permissions: &p {…}` et `permissions: !!map {…}` avec clé en double, 0 échec.
+- `git merge-tree --write-tree 4986783 a120cbf` = `60a4a53^{tree}` = `95baa8d0f2d7610b1a49f7917ddae6a48176e556` ; `git diff --stat 396d74f 60a4a53 -- .github/` vide.
+- `git diff --name-only a120cbf...60a4a53 | bun tools/skills/bounded-merge-scope.ts`, depuis `a120cbf` : `examined=9 admitted=1 refused=8 gated-patterns=32 excluded-patterns=18`, exit 1 ; #284 disjoint des 9 fichiers.
+- `bash tools/quality/check-context-hygiene.sh` : `1218 tracked file(s) scanned`. 17 check-runs de `60a4a53`, tous `completed/success` ; `mergeStateStatus: CLEAN`.
+
+**Limites :** `bun test` non lancé en entier ; #294 non relue ; comportement de GitHub non mesuré sur une clé en double, un job sauté, `continue-on-error` et un mapping de flux ancré.
+
 ## Risques résiduels
 
 - La fusion de #293 ne change rien pour PKW tant que son épingle d'outillage reste à `a00daec8`. Inversement, PKW #55 reste rouge à `composition / validate` tant que l'épingle ne passe pas à la génération qui porte #293. Le vert de PKW après la montée d'épingle est inféré, pas mesuré.
@@ -225,6 +250,9 @@ La base a reçu `a120cbf` (#284, trust-bench). Après le commit qui porte ce dos
 - Hors périmètre : `notebook-webkit-macos.yml` de PKW #55 garde deux étapes « Install PostgreSQL 16 for the P02 database tests », après le retrait de `p02-api`.
 - Le test de composition n'est pas un parseur de la sémantique de GitHub. Ses limites sont écrites dans son commentaire et dans la section « Changement fait après `pkw-servers-r-4` ». Le traitement par GitHub d'une clé en double, d'un job sauté et de `continue-on-error` n'est pas mesuré.
 - La règle de la branche servie exige une branche à jour (`strict_required_status_checks_policy: true`). Toute nouvelle fusion de la base avant la fusion de #293 tombe hors de toute passe, sauf si son arbre égale `git merge-tree --write-tree <dernier commit relu ou vérifié> <base>`.
+- N7 (consigné, pas corrigé ; issue #307) : le test ne lit que `--gate <v>` ; `--gate=native` ou `--ga native` après `--gate wasm` lance la porte native et laisse le test vert.
+- N8 (consigné, pas corrigé ; issue #307) : un `env.INPUT_TARGET` posé sur une étape de porte n'est pas lu, et peut faire construire la porte d'une autre cible.
+- N9 (consigné, pas corrigé ; issue #307) : un mapping de flux précédé d'une ancre (`&p {…}`) ou d'un tag (`!!map {…}`) n'est pas refusé, et ses clés en double ne sont pas vues.
 
 ## Non relu
 
@@ -233,6 +261,7 @@ Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse.
 Couverture des commits par les passes :
 - `b153139` : relu par la passe `pkw-servers-r-2` ;
 - `20092f7` : relu par la passe `pkw-servers-r-3` ;
-- `dd87f67`, la fusion `3c606e0` et le dossier à `396d74f` : relus par la passe `pkw-servers-r-4`.
+- `dd87f67`, la fusion `3c606e0` et le dossier à `396d74f` : relus par la passe `pkw-servers-r-4` ;
+- `4986783` (correction de N3, N4 et N5) et la fusion de la base `60a4a53` : relus par la passe `pkw-servers-r-5`.
 
-Le commit qui corrige N3, N4 et N5 et porte ce dossier dans son état final n'a été relu par aucune passe. La fusion de la base `a120cbf` qui le suit n'a pas été relue non plus : seule l'égalité d'arbre décrite plus haut a été vérifiée.
+Le seul commit non relu est celui qui enregistre la passe `pkw-servers-r-5` dans ce dossier. Il ne touche que ce dossier : `git diff --name-only 60a4a53 HEAD` ne liste que `docs/reviews/pkw-servers-retirement-2026-11-23/REVIEW.md`.
