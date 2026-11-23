@@ -384,6 +384,34 @@ describe("D1 (c) — qualification avant usage", () => {
     });
   });
 
+  // Le seuil s'écrit en décimal (0,57) : en flottant, 0.57 × 100 vaut 56,999…, et un taux égal au
+  // seuil serait refusé. La borne est inclusive (« au plus ») : à la limite exacte, le juge passe.
+  test.each([
+    [57, 100, 0.57, true],
+    [29, 100, 0.29, true],
+    [58, 100, 0.57, false],
+    [30, 100, 0.29, false],
+  ])("à %i faux succès sur %i et un seuil de %d, le juge est qualifié : %p", async (faux, total, seuil, attendu) => {
+    let rang = 0;
+    // Chaque cas est étiqueté en échec ; le juge en déclare réussis exactement `faux`.
+    const f = jugeFactice((invite) => {
+      rang += 1;
+      return toutes(rang <= faux)(invite);
+    });
+    const etiquetes = Array.from({ length: total }, (_, i) => ({
+      id: `echec-${i}`,
+      controles: "carte.v1",
+      sortie: CONFORME,
+      attendu: false,
+    }));
+    const qualification = await qualifier(f.juge, etiquetes, REGISTRE, seuil);
+    expect(qualification).toMatchObject({
+      fauxSucces: faux,
+      echecsNotes: total,
+      qualifie: attendu,
+    });
+  });
+
   test("un juge qui ne note aucun cas étiqueté en échec n'est pas qualifié : rien n'est mesuré", async () => {
     const etiquetes = etiquetesCorpus();
     const honnete = jugeHonnete();

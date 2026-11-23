@@ -54,29 +54,9 @@ let illisibles = 0;
 for (const f of fichiers) {
   const diff = readFileSync(join(diffsDir, f), "utf8");
   const debut = performance.now();
-  const reponse = await fetch(`${url}/v1/chat/completions`, {
-    method: "POST",
-    // Une redirection suivie enverrait le diff à l'hôte que choisit le serveur, hors de la
-    // vérification d'URL locale ci-dessus : elle fait échouer la relecture, jamais suivie.
-    redirect: "error",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      messages: [
-        { role: "system", content: CONSIGNE },
-        { role: "user", content: `Diff to review:\n\n${diff}` },
-      ],
-      temperature: 0,
-      seed: 1,
-      // Large : un modèle à raisonnement consomme des tokens avant le JSON ; une réponse tronquée est illisible.
-      max_tokens: 4000,
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "review", strict: true, schema: SCHEMA },
-      },
-    }),
-  });
+  const reponse = await demander(f, diff);
   const ms = Math.round(performance.now() - debut);
-  const corps = (await reponse.json()) as {
+  const corps = (await reponse.json().catch(() => ({}))) as {
     choices?: { message?: { content?: string } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
@@ -111,3 +91,51 @@ console.log(
 );
 // Une réponse illisible n'est ni un vert ni un rouge : le lanceur sort en échec pour qu'elle soit vue.
 if (illisibles > 0) process.exit(1);
+
+/**
+ * Une requête qui n'aboutit pas (serveur absent, redirection refusée) ou un statut d'erreur n'est
+ * pas une réponse du modèle : la relecture s'arrête sans rien écrire, car un fichier partiel se lirait
+ * comme une mesure complète. Un corps d'erreur au format d'un verdict ne compte jamais comme verdict.
+ */
+async function demander(fichier: string, diff: string): Promise<Response> {
+  let reponse: Response;
+  try {
+    reponse = await envoyer(diff);
+  } catch (cause) {
+    console.error(
+      `relecture : ${fichier} : requête impossible (${String(cause)}) ; aucun résultat écrit`,
+    );
+    process.exit(1);
+  }
+  if (!reponse.ok) {
+    console.error(
+      `relecture : ${fichier} : le serveur a répondu HTTP ${reponse.status} ; aucun résultat écrit`,
+    );
+    process.exit(1);
+  }
+  return reponse;
+}
+
+function envoyer(diff: string): Promise<Response> {
+  return fetch(`${url}/v1/chat/completions`, {
+    method: "POST",
+    // Une redirection suivie enverrait le diff à l'hôte que choisit le serveur, hors de la
+    // vérification d'URL locale ci-dessus : elle fait échouer la relecture, jamais suivie.
+    redirect: "error",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      messages: [
+        { role: "system", content: CONSIGNE },
+        { role: "user", content: `Diff to review:\n\n${diff}` },
+      ],
+      temperature: 0,
+      seed: 1,
+      // Large : un modèle à raisonnement consomme des tokens avant le JSON ; une réponse tronquée est illisible.
+      max_tokens: 4000,
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "review", strict: true, schema: SCHEMA },
+      },
+    }),
+  });
+}

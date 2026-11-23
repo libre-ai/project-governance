@@ -375,7 +375,10 @@ export async function qualifier(
       if (essai.etat === "reussi") fauxSucces += 1;
     }
   }
-  const qualifie = echecsNotes > 0 && fauxSucces <= tauxFauxSuccesMax * echecsNotes;
+  // Le quotient, pas le produit : la division IEEE est arrondie au plus proche, donc 57/100 tombe
+  // sur le même flottant que le seuil écrit 0.57, alors que 0.57 × 100 vaut 56,999… et refuserait
+  // un taux égal au seuil.
+  const qualifie = echecsNotes > 0 && fauxSucces / echecsNotes <= tauxFauxSuccesMax;
   return {
     juge: juge.identite,
     lances: etiquetes.length,

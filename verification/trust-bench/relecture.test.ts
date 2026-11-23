@@ -133,11 +133,63 @@ describe("relecture", () => {
       const { diffs, results } = workspace();
       const outcome = await review(`http://127.0.0.1:${redirecting.port}`, diffs, results);
       expect(received).toBe(0);
-      expect(outcome.code).not.toBe(0);
+      // A reported failure, not an uncaught exception: the run names the diff it stopped on.
+      expect(outcome.code).toBe(1);
+      expect(outcome.stderr).toContain("relecture : D01.diff : requête impossible");
       expect(outcome.results).toBe("");
     } finally {
       redirecting.stop(true);
       target.stop(true);
+    }
+  });
+
+  test("a successful status whose body is not JSON is unreadable, written as such", async () => {
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response("not json", { status: 200 }),
+    });
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results);
+      expect(outcome.code).toBe(1);
+      expect(JSON.parse(outcome.results)).toMatchObject({
+        cas: "D01",
+        defaut: null,
+        illisible: true,
+      });
+    } finally {
+      local.stop(true);
+    }
+  });
+
+  // An error status is not an answer, whatever its body says: a verdict-shaped body on a 500
+  // would otherwise be written as the model's verdict.
+  test.each([
+    [
+      "a verdict-shaped JSON body",
+      500,
+      JSON.stringify({
+        choices: [{ message: { content: JSON.stringify({ reasoning: "r", defect: true }) } }],
+      }),
+    ],
+    ["a body that is not JSON", 503, "upstream down"],
+  ])("an error status with %s stops the run and writes nothing", async (_name, status, body) => {
+    const failing = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response(body, { status, headers: { "content-type": "application/json" } }),
+    });
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${failing.port}`, diffs, results);
+      expect(outcome.code).toBe(1);
+      expect(outcome.stderr).toContain(
+        `relecture : D01.diff : le serveur a répondu HTTP ${status}`,
+      );
+      expect(outcome.results).toBe("");
+    } finally {
+      failing.stop(true);
     }
   });
 
