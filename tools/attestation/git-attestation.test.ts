@@ -58,8 +58,8 @@ const options: ScanOptions = { identities, trustedRef: "refs/heads/main" };
 // mid-test, Bun killed the child in flight, and the kill surfaced as an exit code of null in
 // whatever assertion read it ("Expected: 0, Received: null" on the shell manifest, issue #289).
 // The budget is raised for this file only (setDefaultTimeout is reset between files); the
-// assertions are unchanged. Measured on 2026-11-23: that test takes about 0.2 s alone and up to
-// 6.8 s with 96 copies of it running in parallel on 14 cores.
+// assertions are unchanged. Measured on 2026-11-23 (PR #297 and its review): that test takes
+// about 0.5 s alone, and up to 7.1 s of wall time with 96 copies of it in parallel on 14 cores.
 setDefaultTimeout(120_000);
 
 const root = mkdtempSync(join(tmpdir(), "attestation-test-"));
