@@ -161,13 +161,13 @@ briques:
     preuve: []
   - id: PLT-10
     nom: Interface générée sous catalogue fermé
-    role: "Rend dans un produit une interface qu'un agent décrit en données, après une validation stricte contre un catalogue fermé et désigné par son empreinte ; aucune action à effet sans geste de la personne et approbation liée à l'appel exact, aucune ressource chargée hors de ce que l'hôte résout."
+    role: "Rend dans un produit une interface qu'un agent décrit en données, après une validation stricte de sa structure contre un catalogue fermé et désigné par son empreinte ; ses valeurs restent des données non fiables, aucune action à effet sans politique d'argument, geste de la personne et approbation liée à l'appel exact, aucune ressource chargée hors de ce que l'hôte résout."
     depend_de: [PLT-02]
     invariants: [I-32]
     decisions: [ADR-0045, ADR-0057, ADR-0064]
-    # Aucun porteur : au 2026-11-23, aucun produit du catalogue n'affiche une
-    # interface décrite par un agent, et P34, P13 et P23 n'ont pas de dépôt
-    # (`depot: null` dans leurs fiches).
+    # Aucun porteur : P34, P13 et P23, les produits qui en auraient l'usage,
+    # n'ont pas de dépôt (`depot: null` dans leurs fiches au 2026-11-23). Le
+    # périmètre lu pour l'absence de contrat et de code est dans la fiche.
     depots: []
     origine:
       type: propre
