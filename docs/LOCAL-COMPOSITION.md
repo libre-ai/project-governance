@@ -105,7 +105,7 @@ Le répertoire choisi par `rustup which` place Cargo et rustc 1.97 en tête du `
 
 Ces blocs ne lisent que `WORKSPACE` et `COMPOSITION`, et demandent que la section 2.1 ou la recette agent ait monté les sources. Les fiches de Bun, de Node et de cargo-deny sont lues dans `"$COMPOSITION/project-governance/toolchains"`, la gouvernance **composée** : ce sont les fichiers que le pipeline donne à son installateur, et celui auquel `verify` compare Bun. Seule la fiche d’osv-scanner vient de l’outillage (`$WORKSPACE/tooling`), comme dans le pipeline. Lire Bun dans l’outillage installerait, dès que l’outillage et la gouvernance composée épinglent deux Bun, celui que `verify` refuse.
 
-Bun doit être exactement `1.4.0-canary.1+57f349f63`. La composition installe Node `26.5.0`, épinglé avec le SHA de son exécutable dans `toolchains/notebook-qualification.json` (nom hérité de la qualification du Notebook). Les installateurs ci-dessous lisent les empreintes depuis les manifestes épinglés, vérifient les archives avant extraction et n’activent les chemins qu’après tous les contrôles. Leurs fichiers `GITHUB_PATH` et `GITHUB_ENV` sont ici de simples sorties locales ; aucun fichier d’environnement n’est exécuté.
+Bun doit être exactement `1.4.0-canary.1+57f349f63`. Les builds Notebook utilisent Node `26.5.0` et vérifient aussi le SHA de son exécutable. Les installateurs ci-dessous lisent les empreintes depuis les manifestes épinglés, vérifient les archives avant extraction et n’activent les chemins qu’après tous les contrôles. Leurs fichiers `GITHUB_PATH` et `GITHUB_ENV` sont ici de simples sorties locales ; aucun fichier d’environnement n’est exécuté.
 
 ```sh
 export RUNNER_TEMP="$WORKSPACE"
@@ -175,7 +175,7 @@ Cette phase exécute les installations gelées `--frozen-lockfile --ignore-scrip
 
 ## 4. Compléments Notebook et Model Policy
 
-Le 2026-11-23, le propriétaire a décidé de retirer de `personal-knowledge-workspace` l'app Notebook, sa suite de navigateurs et ses qualifications `notebook-core-v2`. À partir de l'outillage qui porte ce retrait, `check-products.py` refuse les portes `wasm` et `e2e` de `personal-knowledge-workspace`, et l'installateur Linux n'écrit plus `NOTEBOOK_QUALIFICATION_NODE`. L'exemple de cette page reste épinglé à un commit du Notebook et à l'outillage `ed87f3fa`, où ces portes et cette variable existent : il reste rejouable tel quel, mais il ne décrit plus la composition courante de ce dépôt. Avec l'outillage courant, la porte WASM ne vaut que pour `ai-model-policy`.
+Le 2026-11-23, le propriétaire a décidé de retirer de `personal-knowledge-workspace` l'app Notebook et sa suite de navigateurs ; la qualification du cœur `notebook-core-v2` reste. À partir de l'outillage qui porte ce retrait, `check-products.py` refuse la porte `e2e` de `personal-knowledge-workspace` ; sa porte `wasm` et `NOTEBOOK_QUALIFICATION_NODE` sont inchangées. L'exemple de cette page reste épinglé à un commit du Notebook et à l'outillage `ed87f3fa`, où cette porte `e2e` existe : il reste rejouable tel quel, mais le paragraphe des navigateurs, en fin de section, ne décrit plus la composition courante de ce dépôt pour `personal-knowledge-workspace`.
 
 Préchargez les dépendances avant une commande Cargo hors ligne :
 

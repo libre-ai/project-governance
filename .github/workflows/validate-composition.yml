@@ -157,18 +157,18 @@ jobs:
             --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate native \
             --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
 
-      # personal-knowledge-workspace has neither a WASM nor a browser gate since
-      # the owner retired its Notebook app and notebook-core-v2 qualifications
-      # (2026-11-23); check-products.py refuses both for it, so listing it here
-      # would turn its composition red, not skip it.
       - name: Build and verify current product WASM
-        if: inputs.target == 'ai-model-policy'
+        if: inputs.target == 'ai-model-policy' || inputs.target == 'personal-knowledge-workspace'
         shell: bash
         run: |
           python3 -B tooling/.github/composition/check-products.py \
             --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate wasm \
             --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
 
+      # personal-knowledge-workspace has no browser gate since the owner retired
+      # its Notebook app and the app's browser suite (2026-11-23):
+      # check-products.py refuses e2e for it, so listing it in the two browser
+      # steps would turn its composition red, not skip it.
       - name: Install browsers for the selected product
         if: contains(fromJSON('["ai-work-supervision","project-website"]'), inputs.target)
         shell: bash
@@ -295,5 +295,6 @@ jobs:
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
           This job validates the selected target and its pinned local source composition.
           Root, native, WASM and browser steps report their own outcomes; a skipped step is not a passed gate.
+          Existing macOS Notebook evidence does not qualify this Linux execution.
           No Harness-wide coverage, deployment or package publication is claimed.
           EOF

@@ -107,7 +107,7 @@ class InstallerTests(unittest.TestCase):
     with self.assertRaises(ValueError):self.ns['main']()
     self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
     outputs['osv-scanner']=b'osv-scanner version: 2.7.0\nosv-scalibr version: 0.5.3\ncommit: fixture\n';self.ns['main']()
-   self.assertIn('libre-ai-toolchains-',gp.read_text());self.assertNotIn('NOTEBOOK_QUALIFICATION_NODE=',ge.read_text())
+   self.assertIn('libre-ai-toolchains-',gp.read_text());self.assertIn('NOTEBOOK_QUALIFICATION_NODE=',ge.read_text())
    self.assertIn('LIBRE_AI_CARGO_DENY='+str(pathlib.Path(gp.read_text().strip())/'cargo-deny')+'\n',ge.read_text())
    self.assertIn('LIBRE_AI_OSV_SCANNER='+str(pathlib.Path(gp.read_text().strip())/'osv-scanner')+'\n',ge.read_text())
    self.assertEqual((pathlib.Path(gp.read_text().strip())/'osv-scanner').read_bytes(),b'osv')

@@ -20,8 +20,6 @@ class ProductChecks(unittest.TestCase):
         self.tool.write_text('#!' + sys.executable + '\nimport os,sys,json,time\nfrom pathlib import Path\nwith Path(os.environ["TEST_LOG"]).open("a") as f: f.write(json.dumps({"args":sys.argv[1:],"cwd":os.getcwd(),"node":os.environ.get("NOTEBOOK_QUALIFICATION_NODE")})+"\\n")\nif os.environ.get("TEST_SLEEP"): time.sleep(10)\nsys.exit(int(os.environ.get("TEST_EXIT","0")))\n')
         self.tool.chmod(0o755)
         self.env = {**os.environ, 'TEST_LOG': str(self.log)}
-        # An inherited value would hide whether the runner itself exports it.
-        self.env.pop('NOTEBOOK_QUALIFICATION_NODE', None)
 
     def call(self, *args):
         return subprocess.run([sys.executable, '-B', str(SCRIPT), '--root', str(self.root), '--bun', str(self.tool), '--node', str(self.tool), '--cargo', str(self.tool), *args], env=self.env, capture_output=True, text=True, timeout=15)
@@ -51,9 +49,7 @@ class ProductChecks(unittest.TestCase):
         result = self.call('--target', 'project-website', '--gate', 'root')
         self.assertEqual(result.returncode, 0, result.stderr)
         calls = [json.loads(x) for x in self.log.read_text().splitlines()]
-        # The Notebook qualification Node variable left with the Notebook
-        # (owner decision of 2026-11-23): no child receives it any more.
-        self.assertEqual(calls, [{'args':['run','check'],'cwd':str(self.root/'project-website'),'node':None}])
+        self.assertEqual(calls, [{'args':['run','check'],'cwd':str(self.root/'project-website'),'node':str(self.tool)}])
         self.assertTrue(json.loads(result.stdout)['executed'])
 
     def test_missing_later_directory_prevents_every_child(self):
@@ -84,30 +80,32 @@ class ProductChecks(unittest.TestCase):
         self.assertTrue(all(x['argv'][-1]=='--workers=1' for x in plan['steps']))
         self.assertFalse(plan['linuxQualificationClaimed'])
 
-    def test_retired_notebook_gates_are_refused_not_skipped(self):
-        # The owner retired the Notebook app and its notebook-core-v2
-        # qualifications on 2026-11-23: personal-knowledge-workspace keeps its
-        # root and native gates, and asking for its browser or WASM gate is a
-        # refusal, never an empty success.
-        for gate in ('e2e','wasm'):
-            result=self.call('--target','personal-knowledge-workspace','--gate',gate,'--plan')
-            self.assertNotEqual(result.returncode,0,gate)
-            self.assertIn('No applicable gate',result.stderr)
+    def test_retired_notebook_browser_gate_is_refused_not_skipped(self):
+        # The owner retired the Notebook app and its browser suite on
+        # 2026-11-23; the notebook-core-v2 core qualification stays. Asking
+        # personal-knowledge-workspace for e2e is a refusal, never an empty
+        # success, and its full plan keeps root, native and the core build.
+        result=self.call('--target','personal-knowledge-workspace','--gate','e2e','--plan')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('No applicable gate',result.stderr)
         plan=json.loads(self.call('--target','personal-knowledge-workspace','--gate','all','--plan').stdout)
-        self.assertEqual([x['gate'] for x in plan['steps']],['root','native'])
-        self.assertFalse(any('notebook' in part for x in plan['steps'] for part in [x['cwd'],*x['argv']]))
+        self.assertEqual([x['gate'] for x in plan['steps']],['root','native','wasm'])
+        self.assertEqual(plan['steps'][2]['argv'][1:],['tools/qualification/notebook-core-v2/build.ts'])
+        self.assertFalse(any('apps/notebook' in x['cwd'] for x in plan['steps']))
 
     def test_unsupported_gate_refuses_empty_success(self):
         self.assertNotEqual(self.call('--target','travel-itinerary-planner','--gate','native','--plan').returncode,0)
 
     def test_action_incremental_default_is_removed_only_for_qualified_builds(self):
         self.directories("ai-model-policy")
+        self.directories("personal-knowledge-workspace")
         self.tool.write_text("#!"+sys.executable+"\nimport json,os\nfrom pathlib import Path\nwith Path(os.environ[\"TEST_LOG\"]).open(\"a\") as f: f.write(json.dumps({k:os.environ[k] for k in [\"CARGO_INCREMENTAL\",\"RUSTFLAGS\"] if k in os.environ})+\"\\n\")\n")
         self.env["CARGO_INCREMENTAL"]="0"
-        result=self.call("--target","ai-model-policy","--gate","wasm")
-        self.assertEqual(result.returncode,0,result.stderr)
+        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-workspace","wasm")]:
+            result=self.call("--target",target,"--gate",gate)
+            self.assertEqual(result.returncode,0,result.stderr)
         values=[json.loads(line) for line in self.log.read_text().splitlines()]
-        self.assertEqual(values,[{}, {}])
+        self.assertEqual(values,[{}, {}, {}])
         self.assertEqual(self.env["CARGO_INCREMENTAL"],"0")
 
     def test_unexpected_controls_and_nonbuild_steps_remain_visible(self):
