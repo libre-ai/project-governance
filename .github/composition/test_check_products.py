@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -125,5 +126,71 @@ class ProductChecks(unittest.TestCase):
         self.env['TEST_SLEEP']='1'
         with self.assertRaises(module.CheckFailure):
             module.run_step({'argv':[str(self.tool)],'cwd':'.','target':'synthetic','gate':'root'}, self.root,self.env, timeout=0.05)
+
+
+WORKFLOW = Path(__file__).parents[1] / 'workflows' / 'validate-composition.yml'
+
+
+class WorkflowMatchesRunner(unittest.TestCase):
+    """The `if:` of each gate step of validate-composition.yml selects exactly
+    the targets for which check-products.py plans that gate.
+
+    A target missing from a step's condition is skipped, and a skipped step
+    leaves the job green: without this test, dropping
+    personal-knowledge-workspace from the WASM step passed every test.
+    A target listed for a gate the runner refuses turns its composition red.
+    """
+
+    STEPS = {
+        'native': 'Run native product tests',
+        'wasm': 'Build and verify current product WASM',
+        'e2e': 'Run selected browser suite sequentially',
+    }
+
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('checks_for_workflow', SCRIPT)
+        cls.module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.module)
+        cls.lines = WORKFLOW.read_text().splitlines()
+
+    def step_targets(self, name):
+        # The workflow is read as text: the standard library has no YAML
+        # parser, and these steps keep `if:` on the line after `- name:`.
+        starts = [i for i, line in enumerate(self.lines) if line.strip() == f'- name: {name}']
+        self.assertEqual(len(starts), 1, f'step "{name}" must appear exactly once')
+        condition = self.lines[starts[0] + 1].strip()
+        self.assertTrue(condition.startswith('if: '), f'step "{name}" has no if: on its next line')
+        targets = set(re.findall(r'["\']([a-z][a-z0-9-]*)["\']', condition))
+        self.assertTrue(targets, f'no target read in {condition!r}')
+        unknown = targets - set(self.module.TARGETS)
+        self.assertFalse(unknown, f'step "{name}" names unknown targets {sorted(unknown)}')
+        return targets
+
+    def planned(self, gate):
+        tools = {'bun': 'bun', 'node': 'node', 'cargo': 'cargo'}
+        found = set()
+        for target in self.module.TARGETS:
+            try:
+                self.module.make_plan(target, gate, tools)
+            except self.module.CheckFailure:
+                continue
+            found.add(target)
+        return found
+
+    def test_each_gate_step_selects_exactly_the_planned_targets(self):
+        for gate, name in self.STEPS.items():
+            with self.subTest(gate=gate):
+                self.assertEqual(self.step_targets(name), self.planned(gate))
+
+    def test_browser_install_matches_the_suite_and_its_child_directories(self):
+        self.assertEqual(
+            self.step_targets('Install browsers for the selected product'),
+            self.step_targets(self.STEPS['e2e']),
+        )
+        text = '\n'.join(self.lines)
+        children = dict(re.findall(r"^\s+'([a-z][a-z0-9-]*)': '([^']*)',$", text, re.MULTILINE))
+        self.assertEqual(children, {target: child for target, (child, _) in self.module.E2E.items()})
+
 
 if __name__=='__main__': unittest.main()

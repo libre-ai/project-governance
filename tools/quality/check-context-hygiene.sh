@@ -12,10 +12,12 @@
 # mention, plus grep-proof compliance of the tree). Text files only (-I):
 # identifiers embedded in binary evidence would escape these checks.
 # Exemption: lines carrying the 'allow-local-path' marker. The file-by-file
-# exemption of the sealed notebook-core-v2 Gate A reports is gone: no
-# repository of the organization carries their path any more (`gh search code
-# --owner libre-ai "gate-a/a28e116"` finds only this exemption, 2026-11-23),
-# and the owner retired the Notebook the same day.
+# exemption of the sealed notebook-core-v2 Gate A reports is gone because the
+# path exists nowhere any more: on 2026-11-23, `gh search code --owner
+# libre-ai "gate-a/a28e116"` found it only in this exemption, and the
+# recursive tree of every served branch of the organization holds no such
+# file. Restoring those immutable reports would require restoring the
+# exemption.
 #
 # Scope is the tracked tree (`git grep`, `git ls-files`): a file must be added
 # to be judged.
