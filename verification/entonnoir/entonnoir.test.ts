@@ -547,11 +547,15 @@ describe("D1 (c) — qualification avant usage", () => {
     expect(auPlus(numerateur, denominateur, seuilDecimal(seuil))).toBe(attendu);
   });
 
+  // NaN, Infinity et -0.1 n'ont pas d'écriture que la regex décimale accepte : seuls les trois
+  // derniers, qu'elle lit comme des décimaux, ne sont refusés que par la garde de plage.
   test.each([
     Number.NaN,
     Number.POSITIVE_INFINITY,
     -0.1,
     1.5,
+    2,
+    1e21,
   ])("un seuil de %p est refusé avant le premier appel au juge", async (seuil) => {
     const f = jugeFactice(toutes(true));
     const etiquetes = [{ id: "echec-0", controles: "carte.v1", sortie: CONFORME, attendu: false }];
