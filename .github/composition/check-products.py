@@ -21,9 +21,11 @@ TARGETS = (
     "project-website",
 )
 GATES = ("root", "native", "wasm", "e2e")
+# personal-knowledge-workspace has no browser or WASM gate: the owner retired
+# its Notebook app, the app's browser suite and the notebook-core-v2
+# qualifications on 2026-11-23. Asking for either gate is refused below.
 E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
-    "personal-knowledge-workspace": ("apps/notebook", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }
 
@@ -56,8 +58,6 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
             elif kind == "wasm" and name == "ai-model-policy":
                 add(name, kind, "node", ["tools/quality/build-policy-core-wasm.ts"])
                 add(name, kind, "bun", ["tools/quality/policy-core-wasm-conformance.ts"])
-            elif kind == "wasm" and name == "personal-knowledge-workspace":
-                add(name, kind, "node", ["tools/qualification/notebook-core-v2/build.ts"])
             elif kind == "e2e" and name in E2E:
                 child, script = E2E[name]
                 add(name, kind, "bun", ["run", script, "--workers=1"], child)
@@ -73,7 +73,7 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
             "UI dist built; data/contracts/web-platform packages installed",
             "Bun canary 57f349f63, Rust 1.97.0 and wasm32-unknown-unknown target",
             "Cargo dependencies preloaded for offline native tests",
-            "Node 26.5.0 matching the Notebook platform executable pin",
+            "Node 26.5.0 verified against toolchains/notebook-qualification.json",
             "Browsers of each product's locked Playwright version installed before E2E",
         ],
         "limits": [
@@ -149,13 +149,10 @@ def main() -> int:
         environment = {
             **os.environ,
             "PATH": os.pathsep.join([*directories, os.environ.get("PATH", "")]),
-            "NOTEBOOK_QUALIFICATION_NODE": tools["node"],
         }
         for step in plan["steps"]:
             child_environment = environment.copy()
-            qualified_build = step["gate"] == "wasm" or (
-                step["target"] == "personal-knowledge-workspace" and step["gate"] == "e2e"
-            )
+            qualified_build = step["gate"] == "wasm"
             # The Rust setup action exports this default. Qualification builds
             # derive controls from repository inputs; all unexpected controls
             # remain visible to their unchanged rejection checks.

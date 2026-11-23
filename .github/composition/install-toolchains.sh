@@ -182,7 +182,6 @@ def main():
     with outputs[0].open('a') as stream:
         stream.write(str(root) + '\n')
     with outputs[1].open('a') as stream:
-        stream.write('NOTEBOOK_QUALIFICATION_NODE=' + str(root / 'node') + '\n')
         stream.write('LIBRE_AI_CARGO_DENY=' + str(root / 'cargo-deny') + '\n')
         stream.write('LIBRE_AI_OSV_SCANNER=' + str(root / 'osv-scanner') + '\n')
     print('Bun, Node, cargo-deny ' + CARGO_DENY_VERSION + ' and osv-scanner ' + OSV_SCANNER_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')

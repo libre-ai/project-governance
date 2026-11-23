@@ -419,12 +419,7 @@ export const NOT_GATED: readonly NotGated[] = [
   {
     path: "toolchains/notebook-qualification.json",
     because:
-      "the Node and Playwright versions of the notebook qualification, with their digests, verified by install-toolchains.sh before use",
-  },
-  {
-    path: "toolchains/notebook-resource-classes.json",
-    because:
-      "the qualification policy of the notebook product (resource classes, minimum candidate class, storage quota); no gate of this repository reads it (`git grep -l notebook-resource-classes` finds records only)",
+      "the Node and Playwright versions first pinned for the notebook qualification, with their digests, verified by install-toolchains.sh before use; the composition installs this Node for every target, and consumers read the file by this name, which outlives the notebook retired on 2026-11-23",
   },
   {
     path: "toolchains/notices/",

@@ -11,9 +11,11 @@
 # human-readable form (obfuscation, not encryption: the goal is zero readable
 # mention, plus grep-proof compliance of the tree). Text files only (-I):
 # identifiers embedded in binary evidence would escape these checks.
-# Exemptions: lines carrying the 'allow-local-path' marker, and SHA-sealed
-# Gate A evidence reports (immutable records, digest-verified by
-# check:notebook-core-v2) — exempted file by file, never whole directories.
+# Exemption: lines carrying the 'allow-local-path' marker. The file-by-file
+# exemption of the sealed notebook-core-v2 Gate A reports is gone: no
+# repository of the organization carries their path any more (`gh search code
+# --owner libre-ai "gate-a/a28e116"` finds only this exemption, 2026-11-23),
+# and the owner retired the Notebook the same day.
 #
 # Scope is the tracked tree (`git grep`, `git ls-files`): a file must be added
 # to be judged.
@@ -34,8 +36,7 @@ fi
 # --- Machine-local identifiers and paths ------------------------------------
 generic='/Users/[A-Za-z0-9._-]+' # allow-local-path (pattern definition)
 hits="$(git grep -I -n -E -e "$generic" -e "$user_pat" -- . \
-  | grep -v 'allow-local-path' \
-  | grep -vE '^docs/reviews/notebook-core-v2/gate-a/a28e116/(ARCHITECTURE|SECURITY|CRYPTOGRAPHY)\.md:' || true)"
+  | grep -v 'allow-local-path' || true)"
 if [ -n "$hits" ]; then
   printf '%s\n' "$hits"
   echo "Machine-local identifier or path found in tracked files."
