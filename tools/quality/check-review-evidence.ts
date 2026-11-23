@@ -85,6 +85,11 @@ import { listChangedPaths, readGit, runGit } from "./git-diff";
  * proposed): removing an entry or moving a date away loosens what
  * `check-third-parties.ts` holds the fleet to.
  *
+ * `tools/skills/skills-security-patterns.v1.json` joined on 2026-11-20, the
+ * day `check:skills-security` became a step of `bun run check` (owner
+ * decision of that day). Until then the file loosened a gate no chain ran;
+ * from then on, removing a pattern lifts a refusal of the aggregate.
+ *
  * Which files belong here is not left to a name heuristic. Every tracked file
  * that is neither source code nor Markdown is either gated by this list or
  * declared not gated, with its reason, in `check-data-inventory.ts`, which
@@ -145,6 +150,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   // check-threat-model-citations.ts: the scope, the files whose citations are checked,
   // and the mentions of a retired invariant it admits.
   /^tools\/quality\/threat-model-citations\.v1\.json$/,
+  // check-skills-security.ts: the patterns a skill line is refused on.
+  /^tools\/skills\/skills-security-patterns\.v1\.json$/,
   // check-ref-monotonicity.py: a composed ref allowed to move backwards or sideways.
   /^\.github\/composition\/ref-monotonicity-exemptions\.json$/,
   // check-release-age.ts: packages admitted younger than the release-age floor.
@@ -203,6 +210,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "tools/quality/pinned-citations.v1.json",
   "tools/quality/pr-negatives.v1.json",
   "tools/quality/threat-model-citations.v1.json",
+  "tools/skills/skills-security-patterns.v1.json",
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
   "ecosystem/staleness-exceptions.v1.yaml",

@@ -6,6 +6,10 @@
  * refuses every line, in every file under the skills root, that matches a
  * pattern of `skills-security-patterns.v1.json`.
  *
+ * A step of `bun run check` since 2026-11-20 (`check:skills-security`, owner
+ * decision of that day). Its patterns file is on the guarded surface of
+ * check-review-evidence: removing a pattern lifts a refusal of the aggregate.
+ *
  * Universe: every entry met while walking the root recursively, the root
  * included, whatever its name or extension (SKILL.md, references, eval.json, a
  * script, a hook, a binary). Each entry falls in exactly one of four counts,
