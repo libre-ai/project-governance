@@ -80,7 +80,7 @@ def validate_cargo_deny(policy):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete cargo-deny policy') from error
 
-OSV_SCANNER_VERSION = '2.7.0'
+OSV_SCANNER_VERSION = '2.7.1'
 OSV_SCANNER_ASSET = 'osv-scanner_linux_amd64'
 
 def validate_osv_scanner(policy):
