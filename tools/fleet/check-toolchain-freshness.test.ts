@@ -1,9 +1,13 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { MINIMUM_RELEASE_AGE_SECONDS } from "../../ecosystem/check-release-age";
 import {
+  applyExceptions,
   classifyAll,
   classifyPin,
+  EXCEPTIONS_PATH,
+  EXCEPTIONS_SCHEMA_VERSION,
   type FileReader,
+  type FreshnessException,
   freshnessReport,
   type LatestRelease,
   latestFromCratesIndex,
@@ -14,6 +18,7 @@ import {
   main,
   PIN_STATES,
   type PinReading,
+  parseFreshnessExceptions,
   parsePinned,
   readPin,
   readRepositoryFile,
@@ -43,16 +48,20 @@ const pinOf = (tool: string, ...files: string[]): ToolchainPin => ({
   source: { kind: "crates", name: tool },
 });
 
-const pinned = (version: string): PinReading => ({ kind: "pinned", version });
-const latest = (version: string, publishedAt: string | null = OLD): UpstreamAnswer => ({
+const pinned = (version: string): PinReading => ({ kind: "pinned", version, sites: 1 });
+const latest = (
+  version: string,
+  publishedAt: string | null = OLD,
+  listed?: readonly string[],
+): UpstreamAnswer => ({
   kind: "latest",
-  release: { version, publishedAt },
+  release: { version, publishedAt, ...(listed === undefined ? {} : { listed }) },
 });
 
 describe("readPin", () => {
   test("a site that cannot be read makes the pin unreadable", () => {
     const reading = readPin(pinOf("tool", "a", "b"), filesOf({ a: "version = 1.0.0\n" }));
-    expect(reading).toEqual({ kind: "unreadable", reason: "b cannot be read" });
+    expect(reading).toEqual({ kind: "unreadable", reason: "b cannot be read", sites: 1 });
   });
 
   test("a site that holds no pin makes the pin unreadable", () => {
@@ -60,6 +69,7 @@ describe("readPin", () => {
     expect(readPin(pinOf("tool", "a", "b"), files)).toEqual({
       kind: "unreadable",
       reason: "no pin found in b",
+      sites: 1,
     });
   });
 
@@ -68,6 +78,16 @@ describe("readPin", () => {
     expect(readPin(pinOf("tool", "a", "b"), files)).toEqual({
       kind: "unreadable",
       reason: 'ambiguous: "1.0.0" in a, "1.1.0" in b',
+      sites: 2,
+    });
+  });
+
+  test("the sites read are counted, one per declared site that held a pin", () => {
+    const files = filesOf({ a: "version = 1.0.0\nversion = 1.0.0\n", b: "version = 1.0.0\n" });
+    expect(readPin(pinOf("tool", "a", "b"), files)).toEqual({
+      kind: "pinned",
+      version: "1.0.0",
+      sites: 2,
     });
   });
 
@@ -85,7 +105,7 @@ describe("readPin", () => {
     const files = filesOf({
       "policy.json": '{"version":"9.9.9","node":{"version":"1.2.3","major":1}}',
     });
-    expect(readPin(pin("version"), files)).toEqual({ kind: "pinned", version: "1.2.3" });
+    expect(readPin(pin("version"), files)).toEqual({ kind: "pinned", version: "1.2.3", sites: 1 });
     expect(readPin(pin("major"), files).kind).toBe("unreadable");
     expect(readPin(pin("absent"), files).kind).toBe("unreadable");
   });
@@ -121,10 +141,49 @@ describe("classifyPin", () => {
     expect(classify("1.2.3", latest("1.2.3")).state).toBe("up-to-date");
   });
 
-  test("a pin ahead of the latest release is up to date, pre-release included", () => {
+  test("a pre-release of a version above the latest release is up to date", () => {
     const result = classify("1.4.0-canary.1+57f349f63", latest("1.3.14"));
     expect(result.state).toBe("up-to-date");
-    expect(result.reason).toBe("ahead of the latest release 1.3.14");
+    expect(result.reason).toBe("pre-release ahead of the latest release 1.3.14");
+  });
+
+  test.each([
+    ["9.9.9", "1.0.0"],
+    ["0.23.0", "0.22.0"],
+  ])("a stable pin %s above the latest release %s is unreadable, never ahead", (pin, published) => {
+    const result = classify(pin, latest(published));
+    expect(result.state).toBe("unreadable");
+    expect(result.reason).toBe(`the pin is above the latest release ${published}`);
+  });
+
+  test.each([
+    ["withdrawn, and above what is left", "0.23.0", "0.22.0", ["0.21.0", "0.22.0"]],
+    ["withdrawn, and below the latest", "0.21.0", "0.22.0", ["0.20.0", "0.22.0"]],
+    ["never published, and equal to nothing listed", "0.22.1", "0.23.0", ["0.22.0", "0.23.0"]],
+  ])("a pin %s, is unreadable when the source lists its versions", (_label, pin, published, listed) => {
+    const result = classify(pin, latest(published, OLD, listed));
+    expect(result.state).toBe("unreadable");
+    expect(result.reason).toBe("the source does not publish the pinned version, or withdrew it");
+  });
+
+  test("a pin the source lists is compared as usual", () => {
+    expect(classify("0.22.0", latest("0.22.0", OLD, ["0.21.0", "0.22.0"])).state).toBe(
+      "up-to-date",
+    );
+    expect(classify("0.21.0", latest("0.22.0", OLD, ["0.21.0", "0.22.0"])).state).toBe("behind");
+  });
+
+  test("a release dated in the future is unreadable, never too recent", () => {
+    const result = classify("1.2.3", latest("1.3.0", "2099-01-01T00:00:00Z"));
+    expect(result.state).toBe("unreadable");
+    expect(result.reason).toBe("1.3.0 is dated in the future, 2099-01-01T00:00:00.000Z");
+    expect(classify("1.2.3", latest("1.3.0", secondsAgo(0))).state).toBe("too-recent");
+  });
+
+  test("the pre-release and build parts of a pin are bounded", () => {
+    expect(parsePinned(`1.2.3-${"a".repeat(32)}+${"b".repeat(32)}`)).not.toBeNull();
+    expect(parsePinned(`1.2.3-${"a".repeat(33)}`)).toBeNull();
+    expect(parsePinned(`1.2.3+${"b".repeat(33)}`)).toBeNull();
   });
 
   test("a pre-release of the latest release is behind it", () => {
@@ -170,18 +229,20 @@ describe("classifyPin", () => {
 
   test("an unreadable pin and an unreadable registry keep their reason", () => {
     const upstream: UpstreamAnswer = { kind: "unreadable", reason: "registry reason" };
-    const reading: PinReading = { kind: "unreadable", reason: "pin reason" };
+    const reading: PinReading = { kind: "unreadable", reason: "pin reason", sites: 0 };
     expect(classifyPin("tool", reading, latest("1.0.0"), NOW)).toEqual({
       tool: "tool",
       state: "unreadable",
       pinned: null,
       reason: "pin reason",
+      sites: 0,
     });
     expect(classify("1.2.3", upstream)).toEqual({
       tool: "tool",
       state: "unreadable",
       pinned: "1.2.3",
       reason: "registry reason",
+      sites: 1,
     });
   });
 });
@@ -215,7 +276,17 @@ describe("what each registry answers", () => {
     expect(latestFromCratesIndex(index, "cargo-deny")).toEqual({
       version: "0.22.0",
       publishedAt: "2026-11-19T16:23:37Z",
+      listed: ["0.22.0", "0.9.0", "0.24.0-rc.1"],
     });
+  });
+
+  test("crates.io: a pin on a yanked version, above what is left, is unreadable", () => {
+    const index = [crate("0.22.0"), crate("0.23.0", { yanked: true })].join("\n");
+    const release = latestFromCratesIndex(index, "cargo-deny");
+    expect(release?.listed).toEqual(["0.22.0"]);
+    const upstream: UpstreamAnswer = { kind: "latest", release: release as LatestRelease };
+    expect(classifyPin("cargo-deny", pinned("0.23.0"), upstream, NOW).state).toBe("unreadable");
+    expect(classifyPin("cargo-deny", pinned("0.22.0"), upstream, NOW).state).toBe("up-to-date");
   });
 
   test("crates.io: a version without a publication time keeps a null date", () => {
@@ -223,6 +294,7 @@ describe("what each registry answers", () => {
     expect(latestFromCratesIndex(index, "cargo-deny")).toEqual({
       version: "1.0.0",
       publishedAt: null,
+      listed: ["1.0.0"],
     });
   });
 
@@ -362,6 +434,22 @@ describe("readUpstream", () => {
     expect(calls[0]?.init.headers).toEqual({ Accept: "application/vnd.github+json" });
   });
 
+  test("by default the token is the GH_TOKEN of the environment, trimmed", async () => {
+    const before = process.env.GH_TOKEN;
+    process.env.GH_TOKEN = " from-the-environment\n";
+    try {
+      const { calls, request } = serving({});
+      await readUpstream(github, request).catch(() => null);
+      expect(calls[0]?.init.headers).toEqual({
+        Accept: "application/vnd.github+json",
+        Authorization: "Bearer from-the-environment",
+      });
+    } finally {
+      if (before === undefined) delete process.env.GH_TOKEN;
+      else process.env.GH_TOKEN = before;
+    }
+  });
+
   test("github: the latest release of the repository is the answer", async () => {
     const { request } = serving({
       [GITHUB]: json({ tag_name: "v2.7.1", published_at: OLD, draft: false, prerelease: false }),
@@ -403,6 +491,7 @@ describe("classifyAll", () => {
       state: "unreadable",
       pinned: "1.0.0",
       reason: "the registry gave no usable answer",
+      sites: 1,
     });
   });
 
@@ -434,91 +523,351 @@ describe("the report", () => {
   };
   const read = async (source: UpstreamSource): Promise<LatestRelease | null> =>
     source.kind === "crates" ? (releases[source.name] ?? null) : null;
-  const report = (...tools: string[]) =>
+  const hold = (tool: string, extra: Partial<FreshnessException> = {}): FreshnessException => ({
+    tool,
+    heldAt: "1.0.0",
+    because: "kept on purpose",
+    until: "2026-12-31",
+    ...extra,
+  });
+  const report = (tools: readonly string[], exceptions: readonly FreshnessException[] = []) =>
     freshnessReport(
       tools.map((tool) => pinOf(tool, tool)),
+      exceptions,
       files,
       read,
       NOW,
     );
+  const YOUNG = `1.1.0, published ${secondsAgo(60)}, is younger than ${MINIMUM_RELEASE_AGE_SECONDS} seconds`;
 
   test("every state is printed, then a volume line that sums to the pins", async () => {
-    const { lines, status } = await report("current", "late", "young", "mute");
+    const tools = ["current", "late", "young", "mute", "kept"];
+    const keptFiles: Record<string, LatestRelease | null | undefined> = {
+      ...releases,
+      kept: releases.late,
+    };
+    const { lines, status } = await freshnessReport(
+      tools.map((tool) => pinOf(tool, tool === "kept" ? "late" : tool)),
+      [hold("kept")],
+      files,
+      async (source) => (source.kind === "crates" ? (keptFiles[source.name] ?? null) : null),
+      NOW,
+    );
     expect(lines).toEqual([
       "up-to-date: current 1.0.0: the latest release",
       `behind: late 1.0.0: 1.1.0 was published ${OLD}`,
-      `too-recent: young 1.0.0: 1.1.0, published ${secondsAgo(60)}, is younger than ${MINIMUM_RELEASE_AGE_SECONDS} seconds`,
+      `too-recent: young 1.0.0: ${YOUNG}`,
       "unreadable: mute 1.0.0: the registry gave no usable answer",
-      "examined: pins=4 up-to-date=1 behind=1 too-recent=1 unreadable=1",
+      `held: kept 1.0.0: 1.1.0 was published ${OLD}; held until 2026-12-31: kept on purpose`,
+      "examined: pins=5 sites=5/5 up-to-date=1 behind=1 too-recent=1 held=1 unreadable=1 exceptions=1 exception-failures=0",
     ]);
     expect(status).toBe(1);
   });
 
-  test("up to date and too recent are green", async () => {
-    expect((await report("current", "young")).status).toBe(0);
+  test("up to date, too recent and held are green", async () => {
+    expect((await report(["current", "young"])).status).toBe(0);
+    expect((await report(["current", "late"], [hold("late")])).status).toBe(0);
   });
 
   test("a pin behind alone is red", async () => {
-    expect((await report("current", "late")).status).toBe(1);
+    expect((await report(["current", "late"])).status).toBe(1);
   });
 
   test("an unreadable pin alone is red", async () => {
-    expect((await report("current", "mute")).status).toBe(1);
+    expect((await report(["current", "mute"])).status).toBe(1);
   });
 
   test("no pin at all is red", async () => {
-    const { lines, status } = await report();
-    expect(lines).toEqual(["examined: pins=0 up-to-date=0 behind=0 too-recent=0 unreadable=0"]);
+    const { lines, status } = await report([]);
+    expect(lines).toEqual([
+      "examined: pins=0 sites=0/0 up-to-date=0 behind=0 too-recent=0 held=0 unreadable=0 exceptions=0 exception-failures=0",
+    ]);
     expect(status).toBe(1);
   });
 
-  test("the volume holds only when every declared pin has a state", () => {
-    const classified = [
-      { tool: "a", state: "behind", pinned: "1.0.0", reason: "" },
-      { tool: "b", state: "up-to-date", pinned: "1.0.0", reason: "" },
-    ] as const;
-    expect(volumeHolds(tallyOf(2, classified))).toBe(true);
-    expect(volumeHolds(tallyOf(3, classified))).toBe(false);
-    expect(volumeLine(tallyOf(2, classified))).toBe(
-      "examined: pins=2 up-to-date=1 behind=1 too-recent=0 unreadable=0",
+  test("a tool declared twice breaks the sum of the volume line, and the run is red", async () => {
+    const { lines, status } = await report(["current", "current"]);
+    expect(lines.at(-1)).toBe(
+      "examined: pins=2 sites=2/2 up-to-date=1 behind=0 too-recent=0 held=0 unreadable=0 exceptions=0 exception-failures=0",
     );
-    expect(PIN_STATES).toHaveLength(4);
+    expect(status).toBe(1);
   });
 
-  test("the command takes no argument, and prints the report otherwise", async () => {
-    const error = spyOn(console, "error").mockImplementation(() => {});
-    const log = spyOn(console, "log").mockImplementation(() => {});
-    try {
-      expect(await main(["--anything"], [], files, read, NOW)).toBe(2);
-      expect(log).not.toHaveBeenCalled();
-      expect(await main([], [pinOf("late", "late")], files, read, NOW)).toBe(1);
-      expect(log.mock.calls.map(([line]) => line)).toEqual([
-        `behind: late 1.0.0: 1.1.0 was published ${OLD}`,
-        "examined: pins=1 up-to-date=0 behind=1 too-recent=0 unreadable=0",
+  test("the sites read fall short of the sites declared when one is missing", async () => {
+    const pin = pinOf("current", "current", "absent");
+    const { lines } = await freshnessReport([pin], [], files, read, NOW);
+    expect(lines.at(-1)).toContain("pins=1 sites=1/2 ");
+  });
+
+  test("the volume holds when the states sum to the pins, and the five states are counted", () => {
+    const classified = [
+      { tool: "a", state: "behind", pinned: "1.0.0", reason: "", sites: 2 },
+      { tool: "b", state: "held", pinned: "1.0.0", reason: "", sites: 1 },
+    ] as const;
+    const two = [pinOf("a", "x", "y"), pinOf("b", "z")];
+    expect(volumeHolds(tallyOf(two, classified))).toBe(true);
+    expect(volumeHolds(tallyOf([...two, pinOf("c")], classified))).toBe(false);
+    expect(volumeLine(tallyOf(two, classified), 1, 0)).toBe(
+      "examined: pins=2 sites=3/3 up-to-date=0 behind=1 too-recent=0 held=1 unreadable=0 exceptions=1 exception-failures=0",
+    );
+    expect(PIN_STATES).toEqual(["up-to-date", "behind", "too-recent", "held", "unreadable"]);
+  });
+
+  describe("an exception", () => {
+    const failuresOf = async (
+      tools: readonly string[],
+      exceptions: readonly FreshnessException[],
+      now: Date = NOW,
+    ) => {
+      const pins = tools.map((tool) => pinOf(tool, tool));
+      const measured = await classifyAll(pins, files, read, now);
+      return applyExceptions(measured, exceptions, now);
+    };
+
+    test("holds a pin behind, at the exact pinned version, with its reason and its date", async () => {
+      const { classifications, failures } = await failuresOf(["late"], [hold("late")]);
+      expect(failures).toEqual([]);
+      expect(classifications[0]).toMatchObject({
+        state: "held",
+        reason: `1.1.0 was published ${OLD}; held until 2026-12-31: kept on purpose`,
+      });
+    });
+
+    test("holds a pin whose higher release is still too recent", async () => {
+      const { classifications, failures } = await failuresOf(["young"], [hold("young")]);
+      expect(failures).toEqual([]);
+      expect(classifications[0]?.state).toBe("held");
+    });
+
+    test("for another version than the pinned one is stale: a failure, the pin stays behind", async () => {
+      const stale = [hold("late", { heldAt: "0.9.0" })];
+      const { classifications, failures } = await failuresOf(["late"], stale);
+      expect(failures).toEqual([
+        "stale exception: late is held at 0.9.0 and pinned at 1.0.0; remove the entry",
       ]);
-    } finally {
-      error.mockRestore();
-      log.mockRestore();
-    }
+      expect(classifications[0]?.state).toBe("behind");
+      expect((await report(["late"], stale)).status).toBe(1);
+    });
+
+    test("holds through its last day and fails the day after", async () => {
+      const lastDay = new Date("2026-12-31T23:59:59Z");
+      const dayAfter = new Date("2027-01-01T00:00:00Z");
+      expect((await failuresOf(["late"], [hold("late")], lastDay)).failures).toEqual([]);
+      const { classifications, failures } = await failuresOf(["late"], [hold("late")], dayAfter);
+      expect(failures).toEqual(["expired exception: late was held until 2026-12-31"]);
+      expect(classifications[0]?.state).toBe("behind");
+    });
+
+    test("for a tool that is up to date is dead: a failure on a pin that is green", async () => {
+      const dead = [hold("current")];
+      const { classifications, failures } = await failuresOf(["current"], dead);
+      expect(failures).toEqual(["dead exception: current is up to date; remove the entry"]);
+      expect(classifications[0]?.state).toBe("up-to-date");
+      const { lines, status } = await report(["current"], dead);
+      expect(lines).toEqual([
+        "up-to-date: current 1.0.0: the latest release",
+        "dead exception: current is up to date; remove the entry",
+        "examined: pins=1 sites=1/1 up-to-date=1 behind=0 too-recent=0 held=0 unreadable=0 exceptions=1 exception-failures=1",
+      ]);
+      expect(status).toBe(1);
+    });
+
+    test("for a tool that is not a declared pin is dead", async () => {
+      const { failures } = await failuresOf(["current"], [hold("ghost")]);
+      expect(failures).toEqual(["dead exception: ghost is not a declared pin"]);
+    });
+
+    test("of a pin that could not be read is not judged, and the pin stays unreadable", async () => {
+      const { classifications, failures } = await failuresOf(["mute"], [hold("mute")]);
+      expect(failures).toEqual([]);
+      expect(classifications[0]?.state).toBe("unreadable");
+    });
+  });
+
+  describe("the exception register", () => {
+    const document = (entries: string): string =>
+      `schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\nexceptions:${entries}\n`;
+    const entry = (fields: Record<string, string>): string =>
+      `\n  - ${Object.entries(fields)
+        .map(([key, value]) => `${key}: ${value}`)
+        .join("\n    ")}`;
+    const VALID = {
+      tool: "bun",
+      held_at: "1.4.0-canary.1+57f349f63",
+      because: "why",
+      until: '"2026-12-31"',
+    };
+
+    test("an empty register is accepted", () => {
+      expect(parseFreshnessExceptions(document(" []"))).toEqual([]);
+    });
+
+    test("a well-formed entry is returned", () => {
+      expect(parseFreshnessExceptions(document(entry(VALID)))).toEqual([
+        { tool: "bun", heldAt: "1.4.0-canary.1+57f349f63", because: "why", until: "2026-12-31" },
+      ]);
+    });
+
+    test.each([
+      ["no tool", { ...VALID, tool: '""' }, /\.tool is required/],
+      ["no held version", { ...VALID, held_at: '""' }, /\.held_at is required/],
+      [
+        "a held version that is not exact",
+        { ...VALID, held_at: "latest" },
+        /held_at must be an exact version/,
+      ],
+      ["no reason", { ...VALID, because: '" "' }, /\.because is required/],
+      [
+        "a reason on two lines",
+        { ...VALID, because: '"one\\ntwo"' },
+        /\.because is required, on one line/,
+      ],
+      ["a date that does not exist", { ...VALID, until: '"2026-02-30"' }, /\.until is required/],
+      ["a date that is not a day", { ...VALID, until: "soon" }, /\.until is required/],
+    ])("an entry with %s throws", (_label, fields, message) => {
+      expect(() => parseFreshnessExceptions(document(entry(fields)))).toThrow(message);
+    });
+
+    test("an entry without a date throws: a hold always ends", () => {
+      const { until: _until, ...undated } = VALID;
+      expect(() => parseFreshnessExceptions(document(entry(undated)))).toThrow(
+        /\.until is required/,
+      );
+    });
+
+    test("two entries for one tool throw", () => {
+      expect(() => parseFreshnessExceptions(document(entry(VALID) + entry(VALID)))).toThrow(
+        /duplicates the entry for bun/,
+      );
+    });
+
+    test("a register without the schema version or without a list throws", () => {
+      expect(() => parseFreshnessExceptions("exceptions: []\n")).toThrow(/schema_version/);
+      expect(() =>
+        parseFreshnessExceptions(`schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\n`),
+      ).toThrow(/must be a list/);
+    });
+
+    // Read in the tracked tree, against the tracked pins: no registry is asked.
+    test("the committed register parses, and each entry holds the version its pin is at", () => {
+      const committed = parseFreshnessExceptions(readRepositoryFile(EXCEPTIONS_PATH) ?? "");
+      expect(committed.length).toBeGreaterThan(0);
+      for (const { tool, heldAt } of committed) {
+        const pin = TOOLCHAIN_PINS.find((candidate) => candidate.tool === tool);
+        expect(pin).toBeDefined();
+        expect(readPin(pin as ToolchainPin, readRepositoryFile)).toMatchObject({ version: heldAt });
+      }
+    });
+  });
+
+  describe("the command", () => {
+    const withRegister = (register: string | null): FileReader => {
+      const read = filesOf({ late: "version = 1.0.0\n" });
+      return (path) => (path === EXCEPTIONS_PATH ? register : read(path));
+    };
+    const EMPTY = `schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\nexceptions: []\n`;
+    const run = async (argv: readonly string[], register: string | null) => {
+      const error = spyOn(console, "error").mockImplementation(() => {});
+      const log = spyOn(console, "log").mockImplementation(() => {});
+      try {
+        const status = await main(argv, [pinOf("late", "late")], withRegister(register), read, NOW);
+        return {
+          status,
+          printed: log.mock.calls.map(([line]) => line as string),
+          errors: error.mock.calls.map(([line]) => line as string),
+        };
+      } finally {
+        error.mockRestore();
+        log.mockRestore();
+      }
+    };
+
+    test("takes no argument", async () => {
+      expect(await run(["--anything"], EMPTY)).toMatchObject({ status: 2, printed: [] });
+    });
+
+    test("prints the report and exits 1 on a pin behind", async () => {
+      const { status, printed } = await run([], EMPTY);
+      expect(status).toBe(1);
+      expect(printed).toEqual([
+        `behind: late 1.0.0: 1.1.0 was published ${OLD}`,
+        "examined: pins=1 sites=1/1 up-to-date=0 behind=1 too-recent=0 held=0 unreadable=0 exceptions=0 exception-failures=0",
+      ]);
+    });
+
+    test("applies the register it reads at its path", async () => {
+      const register = `schema_version: ${EXCEPTIONS_SCHEMA_VERSION}\nexceptions:\n  - tool: late\n    held_at: 1.0.0\n    because: why\n    until: "2026-12-31"\n`;
+      const { status, printed } = await run([], register);
+      expect(status).toBe(0);
+      expect(printed[0]).toBe(
+        `held: late 1.0.0: 1.1.0 was published ${OLD}; held until 2026-12-31: why`,
+      );
+    });
+
+    test.each([
+      ["missing", null, /cannot be read/],
+      ["malformed", "exceptions: []\n", /schema_version/],
+    ])("fails before reading anything when the register is %s", async (_label, register, message) => {
+      const { status, printed, errors } = await run([], register);
+      expect(status).toBe(1);
+      expect(printed).toEqual([]);
+      expect(errors.join("\n")).toMatch(message);
+    });
   });
 });
 
 describe("the scheduled workflow", () => {
+  interface Step {
+    readonly uses?: string;
+    readonly run?: string;
+    readonly with?: Record<string, unknown>;
+    readonly env?: Record<string, string>;
+  }
+  interface Job {
+    readonly permissions?: Record<string, string>;
+    readonly steps: readonly Step[];
+  }
   interface Workflow {
     readonly on: Record<string, unknown>;
-    readonly jobs: Record<string, { readonly steps: readonly { readonly run?: string }[] }>;
+    readonly jobs: Record<string, Job>;
   }
   const workflow = Bun.YAML.parse(
     readRepositoryFile(".github/workflows/toolchain-freshness.yml") ?? "",
   ) as Workflow;
+  const jobs = Object.values(workflow.jobs);
+  const reads = (job: Job): boolean =>
+    job.steps.some((step) => (step.run ?? "").includes("check-toolchain-freshness"));
 
   test("runs on a schedule and by hand, never on a pull request or a push", () => {
     expect(Object.keys(workflow.on).sort()).toEqual(["schedule", "workflow_dispatch"]);
   });
 
   test("runs this command once, with no argument", () => {
-    const steps = Object.values(workflow.jobs).flatMap((job) => [...job.steps]);
-    const runs = steps.filter((step) => (step.run ?? "").includes("check-toolchain-freshness"));
+    const runs = jobs
+      .flatMap((job) => [...job.steps])
+      .filter((step) => (step.run ?? "").includes("check-toolchain-freshness"));
     expect(runs.map((step) => step.run)).toEqual(["bun tools/fleet/check-toolchain-freshness.ts"]);
+  });
+
+  test("the job that reads the outside world holds a token that can only read", () => {
+    const readers = jobs.filter(reads);
+    expect(readers).toHaveLength(1);
+    expect(readers[0]?.permissions).toEqual({ contents: "read" });
+  });
+
+  test("the job that may write an issue never runs the command that reads the outside world", () => {
+    const alerters = jobs.filter((job) =>
+      job.steps.some((step) => (step.run ?? "").includes("repeat-failure-alert")),
+    );
+    expect(alerters).toHaveLength(1);
+    expect(alerters.some(reads)).toBe(false);
+  });
+
+  test("no checkout leaves its credentials in the working tree", () => {
+    const checkouts = jobs
+      .flatMap((job) => [...job.steps])
+      .filter((step) => (step.uses ?? "").startsWith("actions/checkout@"));
+    expect(checkouts.length).toBe(jobs.length);
+    for (const checkout of checkouts) expect(checkout.with?.["persist-credentials"]).toBe(false);
   });
 });

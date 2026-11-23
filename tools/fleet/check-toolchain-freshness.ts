@@ -9,39 +9,54 @@
  * on a schedule, never on a pull request: a tool publishing a release is not a
  * defect of the change under review.
  *
- * A pin is one tool and every site that writes its version (`TOOLCHAIN_PINS`).
- * Each pin lands in exactly one state:
+ * A pin is one tool and the sites listed for it in `TOOLCHAIN_PINS`. Each pin
+ * lands in exactly one state:
  *
- *   up-to-date  the pinned version is the latest release, or ahead of it (a
- *               pre-release of a later version is not late);
+ *   up-to-date  the pinned version is the latest release, or a pre-release of
+ *               a version above it;
  *   behind      a higher release exists and is older than the release-age floor;
  *   too-recent  a higher release exists and is younger than that floor, the one
  *               `ecosystem/check-release-age.ts` holds the fleet's dependencies to;
- *   unreadable  a site is missing, holds no pin or disagrees with another site,
- *               the pinned text is not an exact version, or the registry gave no
- *               usable answer. A failure, never an "up-to-date".
+ *   held        a higher release exists and an entry of the exception register
+ *               holds the pin at exactly this version, until a date not passed;
+ *   unreadable  a site is missing, holds no pin or disagrees with another site;
+ *               the pinned text is not an exact version; the source gave no
+ *               usable answer, dates its latest release in the future, does not
+ *               list the pinned version, or names a latest release below a
+ *               stable pin. A failure, never an "up-to-date".
  *
- * Counters sum: pins = up-to-date + behind + too-recent + unreadable.
+ * Counters sum: pins = up-to-date + behind + too-recent + held + unreadable.
+ * States are counted per tool, so a tool declared twice breaks the sum and
+ * fails the run.
+ *
+ * The exception register is `ecosystem/toolchain-freshness-exceptions.v1.yaml`.
+ * An entry names a tool, the exact version it is held at, why, and until when.
+ * It fails the run when the pin is no longer that version, when its date has
+ * passed, when the tool is up to date, or when the tool is not a declared pin.
+ * A register that is missing or malformed fails the run before anything is read.
  *
  * Only the latest release is compared. A pin behind an older release while the
  * latest is still young reads `too-recent` until that latest passes the floor.
  *
- * Sources. A tool published on a registry is read there, by the protocol its
- * own installer uses, anonymously and without a quota: the npm registry, the
- * crates.io sparse index, the Rust stable channel manifest, the PyPI JSON
- * document. shellcheck and osv-scanner publish on GitHub Releases only: they
- * are read through the GitHub REST API, which has a quota (60 requests an hour
- * for an anonymous address, 1000 for the token of a workflow run). `GH_TOKEN`,
- * when set, is sent to that API and to no other host. Every source is a third
- * party `ecosystem/third-parties.v1.yaml` already lists; none is added.
+ * Sources. Bun is read on the npm registry, the cargo tools on the crates.io
+ * sparse index, the Rust toolchain on the stable channel manifest, reuse on
+ * the PyPI JSON document: anonymous reads, without a quota. shellcheck and
+ * osv-scanner publish on GitHub Releases only: they are read through the
+ * GitHub REST API, which has a quota (60 requests an hour for an anonymous
+ * address, 1000 for the token of a workflow run). `GH_TOKEN`, when set, is sent
+ * to that API and to no other host. Every source is a third party
+ * `ecosystem/third-parties.v1.yaml` already lists; none is added.
  *
- * Exit status: 0 every pin up to date or too recent; 1 a pin behind or
- * unreadable; 2 usage (the command takes no argument).
+ * Exit status: 0 every pin up to date, too recent or held; 1 a pin behind or
+ * unreadable, an exception that fails, a register that cannot be read, a
+ * volume that does not sum, or no pin declared; 2 usage (the command takes no
+ * argument).
  */
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MINIMUM_RELEASE_AGE_SECONDS } from "../../ecosystem/check-release-age";
+import { isIsoDate } from "../quality/check-refusals";
 import {
   compareVersions,
   isExactVersion,
@@ -51,7 +66,7 @@ import {
   readRegistry,
 } from "./plan-bun-update";
 
-export const PIN_STATES = ["up-to-date", "behind", "too-recent", "unreadable"] as const;
+export const PIN_STATES = ["up-to-date", "behind", "too-recent", "held", "unreadable"] as const;
 export type PinState = (typeof PIN_STATES)[number];
 
 /**
@@ -79,11 +94,13 @@ export interface ToolchainPin {
 const COMPOSITION_INSTALLER = ".github/composition/install-toolchains.sh";
 const COMPOSITION_WORKFLOW = ".github/workflows/validate-composition.yml";
 const DEPENDENCY_POLICY_WORKFLOW = ".github/workflows/reusable-dependency-policy.yml";
+const API_COMPAT_WORKFLOW = ".github/workflows/reusable-api-compat.yml";
+const LOCAL_COMPOSITION = "docs/LOCAL-COMPOSITION.md";
 
 /**
- * The pins this repository declares. The Bun archive URL that workflows repeat
- * is not listed: `ecosystem/check-toolchain-source.ts` already holds every copy
- * to `toolchains/bun.json`. `tools/fleet/check-toolchain-freshness.test.ts`
+ * The pins this repository declares, and the sites read for each. Sites that
+ * carry a version and are NOT read are named in
+ * `docs/toolchain/TOOLCHAIN-FRESHNESS.md`. `check-toolchain-freshness.test.ts`
  * reads every site below in the tracked tree, so a pin that moves or changes
  * shape fails the test suite of the pull request that moves it.
  */
@@ -94,6 +111,7 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
       { file: "toolchains/bun.json", json: ["revision"] },
       { file: COMPOSITION_INSTALLER, pattern: /bun\['revision'\] != '([^']+)'/g },
       { file: COMPOSITION_INSTALLER, pattern: /'bun', '--revision', '([^']+)'/g },
+      { file: LOCAL_COMPOSITION, pattern: /Bun doit être exactement `([^`]+)`/g },
     ],
     source: { kind: "npm", name: "bun" },
   },
@@ -102,6 +120,9 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     sites: [
       { file: "rust-toolchain.toml", pattern: /^channel = "([^"]+)"$/gm },
       { file: COMPOSITION_WORKFLOW, pattern: /^\s+toolchain: (\S+)$/gm },
+      { file: LOCAL_COMPOSITION, pattern: /rustup toolchain install (\S+) /g },
+      { file: LOCAL_COMPOSITION, pattern: /rustup which --toolchain (\S+) /g },
+      { file: ".github/composition/check-products.py", pattern: /Rust (\d\S*) and wasm32/g },
     ],
     source: { kind: "rust-stable" },
   },
@@ -109,22 +130,35 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     tool: "cargo-deny",
     sites: [
       { file: "toolchains/cargo-deny.json", json: ["version"] },
+      {
+        file: "toolchains/cargo-deny.json",
+        pattern: /cargo-deny\/releases\/(?:tag|download)\/([^/"\s]+)/g,
+      },
       { file: COMPOSITION_INSTALLER, pattern: /^CARGO_DENY_VERSION = '([^']+)'$/gm },
       { file: DEPENDENCY_POLICY_WORKFLOW, pattern: /^\s+CARGO_DENY_VERSION: (\S+)$/gm },
+      {
+        file: DEPENDENCY_POLICY_WORKFLOW,
+        pattern: /cargo-deny\/releases\/download\/([^/\s]+)\//g,
+      },
+      { file: LOCAL_COMPOSITION, pattern: /cargo-deny `([^`]+)`/g },
     ],
     source: { kind: "crates", name: "cargo-deny" },
   },
   {
     tool: "cargo-audit",
-    sites: [{ file: DEPENDENCY_POLICY_WORKFLOW, pattern: /^\s+CARGO_AUDIT_VERSION: (\S+)$/gm }],
+    sites: [
+      { file: DEPENDENCY_POLICY_WORKFLOW, pattern: /^\s+CARGO_AUDIT_VERSION: (\S+)$/gm },
+      { file: DEPENDENCY_POLICY_WORKFLOW, pattern: /download\/cargo-audit%2Fv([^/\s]+)\//g },
+    ],
     source: { kind: "crates", name: "cargo-audit" },
   },
   {
     tool: "cargo-semver-checks",
     sites: [
+      { file: API_COMPAT_WORKFLOW, pattern: /^\s+CARGO_SEMVER_CHECKS_VERSION: (\S+)$/gm },
       {
-        file: ".github/workflows/reusable-api-compat.yml",
-        pattern: /^\s+CARGO_SEMVER_CHECKS_VERSION: (\S+)$/gm,
+        file: API_COMPAT_WORKFLOW,
+        pattern: /cargo-semver-checks\/releases\/download\/v([^/\s]+)\//g,
       },
     ],
     source: { kind: "crates", name: "cargo-semver-checks" },
@@ -133,6 +167,7 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     tool: "cargo-llvm-cov",
     sites: [
       { file: COMPOSITION_WORKFLOW, pattern: /cargo install cargo-llvm-cov --version (\S+)/g },
+      { file: LOCAL_COMPOSITION, pattern: /cargo install cargo-llvm-cov --version (\S+)/g },
     ],
     source: { kind: "crates", name: "cargo-llvm-cov" },
   },
@@ -140,6 +175,10 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     tool: "cargo-mutants",
     sites: [
       { file: "toolchains/cargo-mutants.json", json: ["version"] },
+      {
+        file: "toolchains/cargo-mutants.json",
+        pattern: /cargo-mutants\/releases\/(?:tag|download)\/v([^/"\s]+)/g,
+      },
       {
         file: ".github/workflows/reusable-mutation-rust.yml",
         pattern: /cargo-mutants\/releases\/download\/v([^/\s]+)\//g,
@@ -152,6 +191,7 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     sites: [
       { file: "tools/licensing/requirements.txt", pattern: /^reuse(?:\[[^\]]*\])?==(\S+)$/gm },
       { file: COMPOSITION_WORKFLOW, pattern: /pipx install reuse==(\S+)/g },
+      { file: LOCAL_COMPOSITION, pattern: /pip install reuse==(\S+)/g },
     ],
     source: { kind: "pypi", name: "reuse" },
   },
@@ -171,7 +211,13 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
     tool: "osv-scanner",
     sites: [
       { file: "toolchains/osv-scanner.json", json: ["version"] },
+      {
+        file: "toolchains/osv-scanner.json",
+        pattern: /osv-scanner\/releases\/(?:tag|download)\/v([^/"\s]+)/g,
+      },
       { file: COMPOSITION_INSTALLER, pattern: /^OSV_SCANNER_VERSION = '([^']+)'$/gm },
+      { file: LOCAL_COMPOSITION, pattern: /osv-scanner `([^`]+)`/g },
+      { file: "docs/toolchain/OSV-ADVISORY-DATABASE.md", pattern: /`osv-scanner` (\d\S*),/g },
     ],
     source: { kind: "github-release", repository: "google/osv-scanner" },
   },
@@ -180,9 +226,10 @@ export const TOOLCHAIN_PINS: readonly ToolchainPin[] = [
 /** The text of a tracked file by its repository-relative path, or null when it cannot be read. */
 export type FileReader = (path: string) => string | null;
 
+/** `sites` is the number of declared sites that were read and held a pin. */
 export type PinReading =
-  | { readonly kind: "pinned"; readonly version: string }
-  | { readonly kind: "unreadable"; readonly reason: string };
+  | { readonly kind: "pinned"; readonly version: string; readonly sites: number }
+  | { readonly kind: "unreadable"; readonly reason: string; readonly sites: number };
 
 function siteValues(site: PinSite, text: string): string[] {
   if ("pattern" in site) return [...text.matchAll(site.pattern)].map((match) => match[1] ?? "");
@@ -206,26 +253,31 @@ function siteValues(site: PinSite, text: string): string[] {
  */
 export function readPin(pin: ToolchainPin, readFile: FileReader): PinReading {
   const found = new Map<string, string>();
+  let sites = 0;
   for (const site of pin.sites) {
     const text = readFile(site.file);
-    if (text === null) return { kind: "unreadable", reason: `${site.file} cannot be read` };
+    if (text === null) {
+      return { kind: "unreadable", reason: `${site.file} cannot be read`, sites };
+    }
     const values = siteValues(site, text);
     if (values.length === 0) {
-      return { kind: "unreadable", reason: `no pin found in ${site.file}` };
+      return { kind: "unreadable", reason: `no pin found in ${site.file}`, sites };
     }
+    sites += 1;
     for (const value of values) if (!found.has(value)) found.set(value, site.file);
   }
   const [first, ...others] = [...found];
-  if (first === undefined) return { kind: "unreadable", reason: "no site is declared" };
+  if (first === undefined) return { kind: "unreadable", reason: "no site is declared", sites };
   if (others.length > 0) {
     const sightings = [...found].map(([value, file]) => `${JSON.stringify(value)} in ${file}`);
-    return { kind: "unreadable", reason: `ambiguous: ${sightings.join(", ")}` };
+    return { kind: "unreadable", reason: `ambiguous: ${sightings.join(", ")}`, sites };
   }
-  return { kind: "pinned", version: first[0] };
+  return { kind: "pinned", version: first[0], sites };
 }
 
+/** The pre-release and build parts are bounded: a pin is printed, never a document. */
 const PINNED_VERSION =
-  /^((?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8}))(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+  /^((?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8})\.(?:0|[1-9]\d{0,8}))(-[0-9A-Za-z.-]{1,32})?(\+[0-9A-Za-z.-]{1,32})?$/;
 
 /** The release a pinned version belongs to, and whether it is a pre-release of it. */
 export function parsePinned(
@@ -240,6 +292,11 @@ export interface LatestRelease {
   readonly version: string;
   /** As the registry wrote it; null when it gave none. Normalised before any use. */
   readonly publishedAt: string | null;
+  /**
+   * Every version the source publishes and has not withdrawn, when its answer
+   * lists them. Absent when the source only names its latest release.
+   */
+  readonly listed?: readonly string[];
 }
 
 export type UpstreamAnswer =
@@ -251,6 +308,8 @@ export interface PinClassification {
   readonly state: PinState;
   readonly pinned: string | null;
   readonly reason: string;
+  /** Declared sites read for this pin. */
+  readonly sites: number;
 }
 
 /**
@@ -258,6 +317,10 @@ export interface PinClassification {
  * pinned version, a stable `x.y.z` latest, and an instant rebuilt from the
  * parsed date. A latest that is not a stable release is unreadable rather than
  * compared, and so is a higher release whose age cannot be proved.
+ *
+ * "Ahead" is a pre-release only. A stable pin above the latest release is a
+ * source that contradicts the pin (the pinned release was withdrawn, or the
+ * source is not the one the pin comes from): unreadable, never up to date.
  */
 export function classifyPin(
   tool: string,
@@ -266,42 +329,49 @@ export function classifyPin(
   now: Date,
   minimumAgeSeconds: number = MINIMUM_RELEASE_AGE_SECONDS,
 ): PinClassification {
-  if (reading.kind === "unreadable") {
-    return { tool, state: "unreadable", pinned: null, reason: reading.reason };
-  }
+  const { sites } = reading;
+  const unreadable = (pinned: string | null, reason: string): PinClassification => ({
+    tool,
+    state: "unreadable",
+    pinned,
+    reason,
+    sites,
+  });
+  if (reading.kind === "unreadable") return unreadable(null, reading.reason);
   const pinned = reading.version;
   const parsed = parsePinned(pinned);
-  if (parsed === null) {
-    const reason = `${JSON.stringify(pinned)} is not an exact version`;
-    return { tool, state: "unreadable", pinned: null, reason };
-  }
-  if (upstream.kind === "unreadable") {
-    return { tool, state: "unreadable", pinned, reason: upstream.reason };
-  }
+  if (parsed === null) return unreadable(null, `${JSON.stringify(pinned)} is not an exact version`);
+  if (upstream.kind === "unreadable") return unreadable(pinned, upstream.reason);
   const latest = upstream.release.version;
   if (!isExactVersion(latest)) {
-    const reason = "the latest release is not a stable version";
-    return { tool, state: "unreadable", pinned, reason };
+    return unreadable(pinned, "the latest release is not a stable version");
+  }
+  const { listed } = upstream.release;
+  if (listed !== undefined && !listed.includes(pinned)) {
+    return unreadable(pinned, "the source does not publish the pinned version, or withdrew it");
   }
   const order = compareVersions(parsed.release, latest);
+  if (order > 0 && !parsed.preRelease) {
+    return unreadable(pinned, `the pin is above the latest release ${latest}`);
+  }
   if (order > 0) {
-    return { tool, state: "up-to-date", pinned, reason: `ahead of the latest release ${latest}` };
+    const reason = `pre-release ahead of the latest release ${latest}`;
+    return { tool, state: "up-to-date", pinned, reason, sites };
   }
   if (order === 0 && !parsed.preRelease) {
-    return { tool, state: "up-to-date", pinned, reason: "the latest release" };
+    return { tool, state: "up-to-date", pinned, reason: "the latest release", sites };
   }
   const { publishedAt } = upstream.release;
   const instant = publishedAt === null ? null : normalisedInstant(publishedAt);
-  if (instant === null) {
-    const reason = `${latest} has no readable publication date`;
-    return { tool, state: "unreadable", pinned, reason };
-  }
+  if (instant === null) return unreadable(pinned, `${latest} has no readable publication date`);
   const ageSeconds = Math.floor((now.getTime() - Date.parse(instant)) / 1000);
+  // A release dated after now would stay "too recent", and green, for ever.
+  if (ageSeconds < 0) return unreadable(pinned, `${latest} is dated in the future, ${instant}`);
   if (ageSeconds < minimumAgeSeconds) {
     const reason = `${latest}, published ${instant}, is younger than ${minimumAgeSeconds} seconds`;
-    return { tool, state: "too-recent", pinned, reason };
+    return { tool, state: "too-recent", pinned, reason, sites };
   }
-  return { tool, state: "behind", pinned, reason: `${latest} was published ${instant}` };
+  return { tool, state: "behind", pinned, reason: `${latest} was published ${instant}`, sites };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -318,12 +388,14 @@ export function latestFromPackument(value: unknown, name: string): LatestRelease
 }
 
 /**
- * The highest stable, non-yanked version of a crates.io sparse-index file: one
- * JSON document per published version. A line that is not such a document makes
- * the whole file unreadable, never a shorter list.
+ * The highest stable, non-yanked version of a crates.io sparse-index file, and
+ * every non-yanked version it lists: one JSON document per published version.
+ * A line that is not such a document makes the whole file unreadable, never a
+ * shorter list.
  */
 export function latestFromCratesIndex(text: string, name: string): LatestRelease | null {
-  let latest: LatestRelease | null = null;
+  let latest: { version: string; publishedAt: string | null } | null = null;
+  const listed: string[] = [];
   for (const line of text.split("\n")) {
     if (line.trim() === "") continue;
     let entry: unknown;
@@ -335,11 +407,13 @@ export function latestFromCratesIndex(text: string, name: string): LatestRelease
     if (!isRecord(entry) || entry.name !== name) return null;
     const { vers, yanked, pubtime } = entry;
     if (typeof vers !== "string" || typeof yanked !== "boolean") return null;
-    if (yanked || !isExactVersion(vers)) continue;
+    if (yanked) continue;
+    listed.push(vers);
+    if (!isExactVersion(vers)) continue;
     if (latest !== null && compareVersions(vers, latest.version) <= 0) continue;
     latest = { version: vers, publishedAt: typeof pubtime === "string" ? pubtime : null };
   }
-  return latest;
+  return latest === null ? null : { ...latest, listed };
 }
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
@@ -509,28 +583,147 @@ export async function classifyAll(
   );
 }
 
-export type FreshnessTally = Readonly<Record<PinState, number>> & { readonly pins: number };
+export const EXCEPTIONS_PATH = "ecosystem/toolchain-freshness-exceptions.v1.yaml";
+export const EXCEPTIONS_SCHEMA_VERSION = "libre-ai.toolchain-freshness-exceptions.v1";
 
-/** `declared` is the number of pins handed in, not of classifications received. */
+/** A pin knowingly held behind its latest release, at one exact version, until a date. */
+export interface FreshnessException {
+  readonly tool: string;
+  readonly heldAt: string;
+  readonly because: string;
+  /** Last day the entry holds, `YYYY-MM-DD`, in UTC. */
+  readonly until: string;
+}
+
+/** The exception register; a malformed entry throws, so the report never runs on half a register. */
+export function parseFreshnessExceptions(yamlText: string): FreshnessException[] {
+  const document: unknown = Bun.YAML.parse(yamlText);
+  if (!isRecord(document) || document.schema_version !== EXCEPTIONS_SCHEMA_VERSION) {
+    throw new Error(`${EXCEPTIONS_PATH}: schema_version must be ${EXCEPTIONS_SCHEMA_VERSION}`);
+  }
+  const entries = document.exceptions;
+  if (!Array.isArray(entries)) {
+    throw new Error(`${EXCEPTIONS_PATH}: \`exceptions\` must be a list`);
+  }
+  const seen = new Set<string>();
+  return (entries as unknown[]).map((entry, index) => {
+    const at = `${EXCEPTIONS_PATH}: exceptions[${index}]`;
+    if (!isRecord(entry)) throw new Error(`${at} must be a mapping`);
+    const { tool, held_at: heldAt, because, until } = entry;
+    for (const [key, value] of Object.entries({ tool, held_at: heldAt, because })) {
+      if (typeof value !== "string" || value.trim() === "" || /[\r\n]/.test(value)) {
+        throw new Error(`${at}.${key} is required, on one line`);
+      }
+    }
+    if (parsePinned(heldAt as string) === null) {
+      throw new Error(`${at}.held_at must be an exact version`);
+    }
+    if (!isIsoDate(until)) {
+      throw new Error(`${at}.until is required, as a quoted YYYY-MM-DD date`);
+    }
+    if (seen.has(tool as string)) throw new Error(`${at} duplicates the entry for ${tool}`);
+    seen.add(tool as string);
+    return {
+      tool: tool as string,
+      heldAt: heldAt as string,
+      because: because as string,
+      until: until as string,
+    };
+  });
+}
+
+export interface ExceptionVerdict {
+  readonly classifications: readonly PinClassification[];
+  /** One line per entry of the register that fails the run. */
+  readonly failures: readonly string[];
+}
+
+/**
+ * Confronts the register with what was measured. An entry turns a pin with a
+ * higher release (`behind`, or `too-recent`: the pin would flap red three days
+ * after every release otherwise) into `held`, and only when it names the exact
+ * pinned version and its date has not passed. Every other entry is a failure,
+ * and its pin keeps the state that was measured. The entry of a pin that could
+ * not be read is not judged: nothing was established about that pin.
+ */
+export function applyExceptions(
+  classifications: readonly PinClassification[],
+  exceptions: readonly FreshnessException[],
+  now: Date,
+): ExceptionVerdict {
+  const today = now.toISOString().slice(0, 10);
+  const byTool = new Map(exceptions.map((exception) => [exception.tool, exception]));
+  const met = new Set<string>();
+  const failures: string[] = [];
+  const judged = classifications.map((classification) => {
+    const { tool, state, pinned, reason } = classification;
+    const exception = byTool.get(tool);
+    if (exception === undefined) return classification;
+    met.add(tool);
+    if (state === "unreadable") return classification;
+    if (state === "up-to-date") {
+      failures.push(`dead exception: ${tool} is up to date; remove the entry`);
+      return classification;
+    }
+    if (exception.heldAt !== pinned) {
+      failures.push(
+        `stale exception: ${tool} is held at ${exception.heldAt} and pinned at ${pinned}; remove the entry`,
+      );
+      return classification;
+    }
+    // `YYYY-MM-DD` strings order like the dates they name.
+    if (today > exception.until) {
+      failures.push(`expired exception: ${tool} was held until ${exception.until}`);
+      return classification;
+    }
+    const held = `${reason}; held until ${exception.until}: ${exception.because}`;
+    return { ...classification, state: "held" as const, reason: held };
+  });
+  for (const { tool } of exceptions) {
+    if (!met.has(tool)) failures.push(`dead exception: ${tool} is not a declared pin`);
+  }
+  return { classifications: judged, failures };
+}
+
+export interface FreshnessTally extends Readonly<Record<PinState, number>> {
+  readonly pins: number;
+  readonly sitesDeclared: number;
+  readonly sitesRead: number;
+}
+
+/**
+ * States are counted once per tool while `pins` is the number of declared
+ * entries: a tool declared twice is classified twice and counted once, so the
+ * sum falls short of the pins and the volume does not hold.
+ */
 export function tallyOf(
-  declared: number,
+  pins: readonly Pick<ToolchainPin, "tool" | "sites">[],
   classifications: readonly PinClassification[],
 ): FreshnessTally {
   const counts = Object.fromEntries(PIN_STATES.map((state) => [state, 0])) as Record<
     PinState,
     number
   >;
-  for (const { state } of classifications) counts[state] += 1;
-  return { ...counts, pins: declared };
+  const byTool = new Map(
+    classifications.map((classification) => [classification.tool, classification]),
+  );
+  for (const { state } of byTool.values()) counts[state] += 1;
+  return {
+    ...counts,
+    pins: pins.length,
+    sitesDeclared: pins.reduce((sum, pin) => sum + pin.sites.length, 0),
+    sitesRead: classifications.reduce((sum, classification) => sum + classification.sites, 0),
+  };
 }
 
 export function volumeHolds(tally: FreshnessTally): boolean {
   return PIN_STATES.reduce((sum, state) => sum + tally[state], 0) === tally.pins;
 }
 
-export function volumeLine(tally: FreshnessTally): string {
+export function volumeLine(tally: FreshnessTally, exceptions: number, failures: number): string {
   const parts = PIN_STATES.map((state) => `${state}=${tally[state]}`).join(" ");
-  return `examined: pins=${tally.pins} ${parts}`;
+  const sites = `sites=${tally.sitesRead}/${tally.sitesDeclared}`;
+  return `examined: pins=${tally.pins} ${sites} ${parts} exceptions=${exceptions} exception-failures=${failures}`;
 }
 
 export function renderPins(classifications: readonly PinClassification[]): string[] {
@@ -555,19 +748,30 @@ export interface FreshnessReport {
   readonly status: 0 | 1;
 }
 
-/** One line per pin, then the volume line; status 1 when a pin is behind or unreadable. */
+/**
+ * One line per pin, one per failing exception, then the volume line. Status 1
+ * when a pin is behind or unreadable, an exception fails, or the volume does
+ * not sum to the pins.
+ */
 export async function freshnessReport(
   pins: readonly ToolchainPin[],
+  exceptions: readonly FreshnessException[],
   readFile: FileReader,
   read: UpstreamReader,
   now: Date,
 ): Promise<FreshnessReport> {
-  const classifications = await classifyAll(pins, readFile, read, now);
-  const tally = tallyOf(pins.length, classifications);
-  const lines = [...renderPins(classifications), volumeLine(tally)];
+  const measured = await classifyAll(pins, readFile, read, now);
+  const { classifications, failures } = applyExceptions(measured, exceptions, now);
+  const tally = tallyOf(pins, classifications);
+  const lines = [
+    ...renderPins(classifications),
+    ...failures,
+    volumeLine(tally, exceptions.length, failures.length),
+  ];
   // No pin at all is a list that moved, not a fleet that is up to date.
   if (tally.pins === 0 || !volumeHolds(tally)) return { lines, status: 1 };
-  return { lines, status: tally.behind > 0 || tally.unreadable > 0 ? 1 : 0 };
+  const red = tally.behind > 0 || tally.unreadable > 0 || failures.length > 0;
+  return { lines, status: red ? 1 : 0 };
 }
 
 export async function main(
@@ -581,7 +785,18 @@ export async function main(
     console.error("this command takes no argument");
     return 2;
   }
-  const { lines, status } = await freshnessReport(pins, readFile, read, now);
+  // The register is read first: a report that cannot tell a held pin from a
+  // late one would print states nobody declared.
+  const register = readFile(EXCEPTIONS_PATH);
+  let exceptions: FreshnessException[];
+  try {
+    if (register === null) throw new Error(`${EXCEPTIONS_PATH} cannot be read`);
+    exceptions = parseFreshnessExceptions(register);
+  } catch (error) {
+    console.error(`exception register unreadable: ${(error as Error).message}`);
+    return 1;
+  }
+  const { lines, status } = await freshnessReport(pins, exceptions, readFile, read, now);
   for (const line of lines) console.log(line);
   return status;
 }

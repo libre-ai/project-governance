@@ -1,0 +1,23 @@
+schema_version: libre-ai.toolchain-freshness-exceptions.v1
+# Toolchain pins knowingly held behind the latest release of their tool.
+# Read by tools/fleet/check-toolchain-freshness.ts. Each entry names the `tool`
+# (as TOOLCHAIN_PINS names it), `held_at`: the exact pinned version the entry
+# holds, `because`: why the pin stays there, on one line, and `until`: the last
+# day the entry holds, a quoted YYYY-MM-DD date.
+#
+#   - tool: cargo-deny
+#     held_at: 0.19.5
+#     because: why this pin stays behind
+#     until: "2027-01-31"
+#
+# An applied entry prints one `held` line on every run, with its reason and its
+# date. An entry fails the run when the pin is no longer `held_at`, when
+# `until` has passed, when the tool is up to date, or when the tool is not a
+# declared pin: remove it, or renew it, in a reviewed pull request. Adding an
+# entry loosens the report: this file is on the surface of
+# tools/quality/check-review-evidence.ts.
+exceptions:
+  - tool: bun
+    held_at: 1.4.0-canary.1+57f349f63
+    because: "toolchains/bun.json releasePolicy: this exact pre-release serves bootstrap CI until the first qualified stable Rust release replaces it at G2"
+    until: "2026-12-31"

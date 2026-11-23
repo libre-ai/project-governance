@@ -10,8 +10,9 @@ name: Toolchain freshness
 # The detection lives in tools/fleet/check-toolchain-freshness.ts (unit-tested,
 # documented in docs/toolchain/TOOLCHAIN-FRESHNESS.md). It reads where each tool
 # is published, sends no mutation and files no issue: a pin is moved by a pull
-# request, by hand. The only write of this workflow is the repeat-failure issue
-# on this repository, below.
+# request, by hand, or held until a date in
+# ecosystem/toolchain-freshness-exceptions.v1.yaml. The only write of this
+# workflow is the repeat-failure issue on this repository, in its second job.
 #
 # Not a pull request gate on purpose: a tool publishing a release is not a
 # defect of the change under review.
@@ -20,6 +21,9 @@ on:
     - cron: "27 6 * * 2"
   workflow_dispatch:
 
+# The ceiling of the workflow. `issues: write` is here because the alert job
+# needs it (tools/security/scheduled-loop-alerting.test.ts reads it here); the
+# job that reads the outside world narrows its own token to `contents: read`.
 permissions:
   contents: read
   issues: write
@@ -28,8 +32,12 @@ jobs:
   toolchain-freshness:
     name: Toolchain pins against the latest releases
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Install archived Bun toolchain
         env:
           BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
@@ -43,18 +51,43 @@ jobs:
         run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       # Bun built-ins and repository-local imports only, no `bun install`: the
       # report stays independent from the dependency supply chain, like
-      # fleet-staleness.yml. The token is sent to api.github.com alone, for the
-      # two tools that publish on GitHub Releases only; every other read is
-      # anonymous.
+      # fleet-staleness.yml. The token of this job can read and nothing else;
+      # the command sends it to api.github.com alone, for the two tools that
+      # publish on GitHub Releases only. Every other read is anonymous.
       - name: Compare every toolchain pin with the latest release of its tool
         env:
           GH_TOKEN: ${{ github.token }}
         run: bun tools/fleet/check-toolchain-freshness.ts
+
+  # The only job whose token may write an issue. It reads nothing from outside
+  # this repository's forge, and runs whatever the report job concluded.
+  repeat-failure-alert:
+    name: Repeat-failure issue of the toolchain report
+    needs: toolchain-freshness
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install archived Bun toolchain
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify exact CI revision
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
       # A red run here is only visible to someone who opens the Actions tab
       # (AGENTIC-LOOP-INVENTORY.md). One red run stays a run; two in a row
-      # files a deduplicated governance issue.
+      # files a deduplicated governance issue. The result of the report job is
+      # read by name: this step does not depend on how `failure()` weighs a
+      # needed job.
       - name: File an issue if this is the second consecutive failed run
-        if: failure() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        if: (failure() || needs.toolchain-freshness.result == 'failure') && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_NAME: Toolchain freshness
@@ -64,7 +97,7 @@ jobs:
       # The green run closes the issue the alert opened (idempotent: nothing
       # open, nothing closed), so the issue never outlives the failure.
       - name: Close the repeat-failure issue now that the loop is green
-        if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        if: success() && needs.toolchain-freshness.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
         env:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW_NAME: Toolchain freshness
