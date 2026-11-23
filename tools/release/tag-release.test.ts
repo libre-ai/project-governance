@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type TagReleaseResult, tagRelease } from "./tag-release";
+import { apiUrl, type TagReleaseResult, tagRelease } from "./tag-release";
 
 // Every expectation below comes from the lot brief, not from the tool's output:
 // codes 0 done or already done, 1 refusal, 2 usage, 3 forge or git unreachable
@@ -440,5 +440,168 @@ describe("tag-release refusals and usage", () => {
   test("the volume read on the remote is printed", async () => {
     const result = await run(["--check"]);
     expect(result.lines.some((line) => /^remote: \d+ ref line\(s\) read/.test(line))).toBe(true);
+  });
+});
+
+// Issue #287: Bun's `fetch` sends even a loopback request to the proxy the
+// environment names, so the token would reach it in cleartext. Under
+// `bun test`, an in-process `fetch` does not apply the proxy (measured): only a
+// `bun` child running the real entry point, with an explicit environment, can
+// show whether a request leaves for the proxy. The stand-in proxy counts the
+// connections it receives and answers 502.
+
+const PROXY_SECRET = "proxy-credential-7d3a41";
+const MEASURED_PROXY_NAMES = ["http_proxy", "HTTP_PROXY", "ALL_PROXY", "all_proxy"];
+
+/**
+ * A proxy URL whose userinfo carries the fixture credential above, so a test
+ * can show the value is never printed. Built through the URL API: a userinfo
+ * literal on a source line is what `check:secret-scan` refuses, and this
+ * fixture is not a credential.
+ */
+function credentialedProxyUrl(authority: string): string {
+  const url = new URL(`http://${authority}`);
+  url.username = "fixture-user";
+  url.password = PROXY_SECRET;
+  return url.href;
+}
+
+interface ChildRun {
+  readonly code: number;
+  readonly output: string;
+  readonly proxied: number;
+}
+
+async function runChild(extra: (proxyUrl: string) => Record<string, string>): Promise<ChildRun> {
+  let proxied = 0;
+  const proxy = Bun.listen({
+    hostname: "127.0.0.1",
+    port: 0,
+    socket: {
+      open() {
+        proxied += 1;
+      },
+      data(socket) {
+        socket.write("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        socket.end();
+      },
+    },
+  });
+  try {
+    // The entry point reads VERSION two levels above its own directory: a copy
+    // of the script under the fixture checkout runs the real entry on it.
+    const script = join(checkout, "tools", "release", "tag-release.ts");
+    await mkdir(join(checkout, "tools", "release"), { recursive: true });
+    await copyFile(join(import.meta.dir, "tag-release.ts"), script);
+    const proxyUrl = credentialedProxyUrl(`127.0.0.1:${proxy.port}`);
+    const child = Bun.spawn([process.execPath, script], {
+      cwd: checkout,
+      env: { PATH: process.env.PATH ?? "", HOME: workspace, ...environment(), ...extra(proxyUrl) },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    const output = `${stdout}${stderr}`;
+    expect(output).not.toContain(TOKEN);
+    return { code, output, proxied };
+  } finally {
+    proxy.stop(true);
+  }
+}
+
+describe("tag-release under a proxy variable (issue #287)", () => {
+  test("control: without a proxy variable the child reaches the release API", async () => {
+    const result = await runChild(() => ({}));
+    expect(result.code).toBe(0);
+    expect(result.output).toContain("result: v1.2.3 created");
+    expect(posted).toHaveLength(1);
+    expect(result.proxied).toBe(0);
+  });
+
+  for (const name of MEASURED_PROXY_NAMES) {
+    test(`${name} on an http: loopback API is a usage error: nothing reaches the proxy or the API`, async () => {
+      const result = await runChild((proxyUrl) => ({ [name]: proxyUrl }));
+      expect(result.proxied).toBe(0);
+      expect(posted).toHaveLength(0);
+      expect(result.code).toBe(2);
+      // The refusal comes at the API step, not from an earlier usage error.
+      expect(result.output).toContain("mode: tag");
+      expect(result.output).toContain(`(${name})`);
+      // Names only: the value, credentials included, is never printed.
+      expect(result.output).not.toContain(PROXY_SECRET);
+      expect(result.output).not.toContain("fixture-user");
+    });
+  }
+
+  test("NO_PROXY naming the loopback grants no exemption", async () => {
+    const result = await runChild((proxyUrl) => ({
+      http_proxy: proxyUrl,
+      NO_PROXY: "127.0.0.1",
+    }));
+    expect(result.proxied).toBe(0);
+    expect(posted).toHaveLength(0);
+    expect(result.code).toBe(2);
+    expect(result.output).toContain("(http_proxy)");
+    expect(result.output).not.toContain(PROXY_SECRET);
+  });
+});
+
+describe("apiUrl and proxy variables, without network", () => {
+  const proxyValue = credentialedProxyUrl("proxy.example:3128");
+
+  test("an https: API URL is not refused by the proxy guard", () => {
+    const environment = {
+      GITHUB_API_URL: "https://api.example.org/",
+      HTTPS_PROXY: proxyValue,
+      http_proxy: proxyValue,
+      ALL_PROXY: proxyValue,
+    };
+    expect(apiUrl(environment)).toBe("https://api.example.org");
+  });
+
+  test("every loopback host is refused under a proxy variable, by name, never by value", () => {
+    // The fixture value does carry the credential, so its absence below means something.
+    expect(proxyValue).toContain(`fixture-user:${PROXY_SECRET}@`);
+    for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
+      const environment = {
+        GITHUB_API_URL: `http://${host}:8080`,
+        all_proxy: proxyValue,
+        Some_Proxy_Setting: proxyValue,
+      };
+      let message = "";
+      try {
+        apiUrl(environment);
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toContain("(Some_Proxy_Setting, all_proxy)");
+      expect(message).not.toContain(PROXY_SECRET);
+      expect(message).not.toContain("proxy.example");
+    }
+  });
+
+  test("no_proxy in any case, or an empty proxy variable, is not a proxy", () => {
+    const environment = {
+      GITHUB_API_URL: "http://127.0.0.1:8080",
+      no_proxy: "127.0.0.1",
+      NO_PROXY: "127.0.0.1",
+      No_Proxy: "127.0.0.1",
+      http_proxy: "",
+      HTTP_PROXY: undefined,
+    };
+    expect(apiUrl(environment)).toBe("http://127.0.0.1:8080");
+  });
+
+  test("a crafted variable name cannot start a log line", () => {
+    const environment = {
+      GITHUB_API_URL: "http://127.0.0.1:8080",
+      "x\n::error::injected_proxy": "1",
+    };
+    expect(() => apiUrl(environment)).toThrow("(x???error??injected_proxy)");
   });
 });
