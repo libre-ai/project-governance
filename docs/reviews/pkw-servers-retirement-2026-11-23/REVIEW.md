@@ -5,9 +5,9 @@ Verdict: approve-with-minor-reservations
 # Retrait des serveurs de `personal-knowledge-workspace` : revue des listes d'autorisation
 
 **Date :** 2026-11-23
-**Objet :** les entrées retirées de `ecosystem/sql-construction-allowlist.v1.yaml` et de `ecosystem/web-headers-allowlist.v1.yaml` par la pull request #293, avec le reste de son diff (gate de composition, exemption de context hygiene, notes datées).
+**Objet :** la pull request #293 : gate de composition (porte `e2e` de PKW retirée, test qui lie le workflow au runner), exemption de context hygiene, notes datées. Les passes `g-1` à `r-3` ont aussi relu les entrées `p02-api` qu'elle retirait de `ecosystem/sql-construction-allowlist.v1.yaml` et de `ecosystem/web-headers-allowlist.v1.yaml`. Depuis la mise à jour de la branche sur la base (section dédiée plus bas), ce retrait n'est plus dans son diff : la pull request #295 du propriétaire (`a787af8`) l'a fusionné avant elle.
 **Nature :** dossier de revue d'une pull request écrite par un agent, après les décisions du propriétaire du 2026-11-23 en chat (« Retirer les deux », « Retirer l'app notebook entière »). Ces décisions retirent les serveurs ; elles ne tranchent pas les entrées une à une. Ce dossier rend compte des relectures qui les ont examinées et ne vaut pas arbitrage du propriétaire. Aucune des passes n'est une approbation de promotion par rôle : **not a role-specific promotion approval**.
-**Fusion :** `git diff --name-only 70fb8fa...20092f7 | bun tools/skills/bounded-merge-scope.ts` sort en code 1 (`examined=10 admitted=1 refused=9`) : la fusion revient au propriétaire (ADR-0068), pas à un agent.
+**Fusion :** `git diff --name-only origin/migrate/recover-code...HEAD | bun tools/skills/bounded-merge-scope.ts`, base `a787af8`, tête `3c606e0` (fusion de la base) : `examined=9 admitted=1 refused=8 gated-patterns=32 excluded-patterns=18`, exit 1. La fusion revient au propriétaire (ADR-0068), pas à un agent.
 
 ## Les passes
 
@@ -70,7 +70,7 @@ Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 - Arbre des branches servies (`git/trees/<servie>?recursive=1`) des 27 dépôts de `libre-ai` (24 non archivés, dont 4 privés, et 3 archivés) : aucun ne contient `gate-a/a28e116`, aucun arbre tronqué, aucun illisible.
 - Appelants de la flotte : épingles par SHA complet (`a00daec8` ×23, `75d6ea08` ×5, `1cebcb49` ×2), aucune par branche. `manifest.json` : aucune cible ne dépend de PKW.
 - `git diff --name-only 70fb8fa...1cae9d1 | bun tools/skills/bounded-merge-scope.ts` : `examined=10 admitted=1 refused=9 gated-patterns=32 excluded-patterns=18`, exit 1.
-- Ordre de fusion. Sur la base, le run `schedule` 45260673290 échoue avec exactement les deux lignes `stale` de `apps/p02-api` (SQL et web headers) et `1 of 40 assertion(s)` ; le passage de 40 à 39 assertions à la tête correspond à la déclaration retirée. Sur PKW #55 (tête `05f59a7`), le job de composition passe les étapes native et WASM et n'échoue qu'à l'installation des navigateurs (étape 16), faute d'`apps/notebook`. Le `notebook-webkit-macos.yml` de #55 n'appelle que les portes `native` et `wasm`.
+- Ordre de fusion. Sur la base, le run `schedule` 45260673290 échoue avec exactement les deux lignes `stale` de `apps/p02-api` (SQL et web headers) et `1 of 40 assertion(s)` ; le passage de 40 à 39 assertions à la tête correspond à la déclaration retirée (mesure à `1cae9d1` ; depuis `a787af8`, la base porte elle-même ce retrait et compte 39 assertions). Sur PKW #55 (tête `05f59a7`), le job de composition passe les étapes native et WASM et n'échoue qu'à l'installation des navigateurs (étape 16), faute d'`apps/notebook`. Le `notebook-webkit-macos.yml` de #55 n'appelle que les portes `native` et `wasm`.
 
 **Limites de la passe :** `bun test` non lancé en entier (la CI « Bun quality » était verte) ; #294 non relue.
 
@@ -138,7 +138,17 @@ Un commit, postérieur à `20092f7`, relu par aucune passe :
 - **N2 et D corrigés.** Le contrôle lit désormais le workflow avec un vrai parseur YAML, sans dépendance ajoutée : `tools/quality/validate-composition-gates.test.ts`, test Bun qui charge le fichier avec `Bun.YAML` (le parseur du runtime). Il compare la valeur `if:` chargée de chaque étape de porte (native, WASM, suite navigateur) aux cibles pour lesquelles `.github/composition/check-products.py` planifie la porte, obtenues en appelant le script avec `--plan`, et garde l'exigence des deux formes admises sur la valeur chargée. L'étape d'installation des navigateurs doit sélectionner les cibles de la suite, et son dictionnaire `children` doit correspondre aux répertoires du plan e2e. `Bun.YAML` garde sans rien dire la dernière de deux clés égales (mesuré sur Bun 1.4.0 : `if: x == 1` puis `if: y == 2` donne `y == 2`) : les clés en double sont donc trouvées par un contrôle dédié, `duplicateKeys`, qui parcourt les mappings en style bloc du même texte et saute le corps des scalaires de bloc. `WorkflowMatchesRunner`, la version texte en Python, est retirée : le nouveau test couvre tout ce qu'elle couvrait.
 - Commande : `bun --no-env-file test tools/quality/validate-composition-gates.test.ts`, 17 tests, 0 échec. Mutations, chacune rejouée puis restaurée : B1, commentaire `# 'personal-knowledge-workspace'`, 1 échec ; B2, `&& false` sur la ligne, 1 échec (`has neither admitted shape`) ; tabulation dans la condition, 1 échec ; guillemets doubles autour de PKW, 1 échec ; `contains(…, inputs.target` sans parenthèse fermante, 2 échecs ; PKW retiré de la condition WASM, 1 échec ; PKW remis dans la suite navigateur, 2 échecs ; `apps/notebook` remis dans `children`, 1 échec ; N2, ligne de continuation `&& false`, 1 échec (`has neither admitted shape`) ; D, second `if:` sans PKW, 2 échecs (`line 163: if`) ; D bis, second `if:` identique au premier, 1 échec, du seul contrôle de clés en double.
 
-**Effet sur les verdicts.** Ce commit remplace un test par un test plus strict : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`. Aucune passe ne couvre ce commit, qui devient le commit final.
+**Effet sur les verdicts.** Ce commit remplace un test par un test plus strict : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`.
+
+## Mise à jour de la branche sur la base : `3c606e0`
+
+La branche servie a reçu `a787af8`, la pull request #295 du propriétaire, qui retire les deux mêmes entrées `p02-api` des listes d'autorisation. La branche a été mise à jour par un commit de fusion signé DCO (`git merge --signoff --no-edit origin/migrate/recover-code`, sans conflit), sans rebase ni push en force.
+
+- `git diff --stat origin/migrate/recover-code...HEAD` : 9 fichiers, aucun sous `ecosystem/`. Le retrait des entrées `p02-api` n'est plus dans le diff de #293 ; `git grep -n -I 'p02-api' HEAD -- ecosystem/` ne trouve plus rien.
+- Gates des listes d'autorisation rejoués sur l'arbre fusionné, contre la flotte vivante (`bun --no-env-file ecosystem/check-sql-construction.ts` et `ecosystem/check-web-headers.ts`, jeton GitHub en lecture dans `GITHUB_TOKEN`) : `SQL construction verified: 32 assertion(s) hold`, 24 sites trouvés, 24 couverts ; `Web headers verified: 39 assertion(s) hold`, 0 surface en violation, 11 serveurs déclarés.
+- Tests rejoués : `python3 -B -m unittest discover -s .github/composition -p 'test_*.py'`, 164 tests OK ; `bun --no-env-file test tools/quality/validate-composition-gates.test.ts`, 17 pass, 0 fail.
+
+Aucune passe ne couvre `dd87f67`, la fusion de la base ni cette mise à jour du dossier.
 
 ## Risques résiduels
 
@@ -150,4 +160,4 @@ Un commit, postérieur à `20092f7`, relu par aucune passe :
 
 ## Non relu
 
-Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. `b153139` est relu par la passe `pkw-servers-r-2`, et `20092f7` par la passe `pkw-servers-r-3`. Le commit qui corrige N2 et D, et ce dossier dans son état final, n'ont été relus par aucune passe.
+Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. `b153139` est relu par la passe `pkw-servers-r-2`, et `20092f7` par la passe `pkw-servers-r-3`. Le commit qui corrige N2 et D (`dd87f67`), la fusion de la base (`3c606e0`) et ce dossier dans son état final n'ont été relus par aucune passe.
