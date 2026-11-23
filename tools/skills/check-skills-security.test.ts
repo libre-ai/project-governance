@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { auditInventory, NOT_GATED, reportInventory } from "../quality/check-data-inventory";
+import { touchesGatedPaths } from "../quality/check-review-evidence";
 import {
   formatSecurityVolume,
   loadSkillTree,
@@ -495,24 +496,40 @@ describe("this repository", () => {
     }
   });
 
-  test("check:skills-security is a script, and the check chain does not run it", () => {
+  // Owner decision of 2026-11-20: the gate is a step of the aggregate. This is
+  // a reading of the chain text, not a run of it, so it holds the chain to the
+  // one shape whose text says what runs: `bun run <script>` steps joined by
+  // `&&`. In that shape every step runs unless an earlier one fails, and a
+  // failure fails the aggregate. Any other step (`exit 0`, `echo …`, `… || true`,
+  // a `;`) can end the chain green before the gate, or swallow its verdict.
+  //
+  // What this test does not see, on purpose (it is not a shell parser):
+  // - spacing around `&&` is ignored;
+  // - an equivalent chain written with grouping, a subshell or another runner
+  //   turns it red: whoever regroups the chain re-reads it and updates this test;
+  // - what the other scripts of the chain do, and whether CI runs `check`.
+  test("check:skills-security is a script, and a step of a check chain that cannot skip it", () => {
     const manifest: { scripts: Record<string, string> } = JSON.parse(
       readFileSync(join(repository, "package.json"), "utf8"),
     );
     expect(manifest.scripts["check:skills-security"]).toBe(
       "bun run check:bun:runtime && bun tools/skills/check-skills-security.ts",
     );
-    expect(manifest.scripts.check).not.toContain("check:skills-security");
+    const steps = (manifest.scripts.check ?? "").trim().split(/\s*&&\s*/);
+    expect(steps).toContain("bun run check:skills-security");
+    expect(steps.filter((step) => !/^bun run [\w:.-]+$/.test(step))).toEqual([]);
   });
 
-  test("the patterns file is declared in the data inventory, and undeclared without its entry", () => {
-    const declared = auditInventory([PATTERNS_PATH]);
-    expect(declared.undeclared).toEqual([]);
-    expect(declared.awaiting).toEqual([PATTERNS_PATH]);
-    const without = NOT_GATED.filter((declaration) => declaration.path !== PATTERNS_PATH);
-    const audit = auditInventory([PATTERNS_PATH], without);
-    expect(audit.undeclared).toEqual([PATTERNS_PATH]);
-    const violations = reportInventory([PATTERNS_PATH], audit, without).violations;
-    expect(violations.some((violation) => violation.includes(PATTERNS_PATH))).toBe(true);
+  // Removing a pattern loosens a gate of the aggregate, so the file is on the
+  // guarded surface: gated by check-review-evidence, and declared nowhere as
+  // not gated (an exact declaration of a gated file contradicts the surface).
+  test("the patterns file is gated, and no declaration says it is not", () => {
+    expect(touchesGatedPaths([PATTERNS_PATH])).toEqual([PATTERNS_PATH]);
+    // No declaration at all: the file is placed by the surface alone.
+    const audit = auditInventory([PATTERNS_PATH], []);
+    expect(audit.gated).toEqual([PATTERNS_PATH]);
+    expect(audit.undeclared).toEqual([]);
+    expect(reportInventory([PATTERNS_PATH], audit, []).violations).toEqual([]);
+    expect(NOT_GATED.filter((declaration) => declaration.path === PATTERNS_PATH)).toEqual([]);
   });
 });

@@ -130,6 +130,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "tools/skills/skills-security-patterns.v1.json",
+      [
+        "tools/skills/skills-security-patterns.v2.json",
+        "tools/skills/skills-security-patterns.v1.json.bak",
+        "skills/tools/skills/skills-security-patterns.v1.json",
+        "tools/skills/check-skills-security.ts",
+      ],
+    ],
+    [
       ".github/composition/ref-monotonicity-exemptions.json",
       [
         ".github/composition/ref-monotonicity-exemptions.json.bak",
