@@ -255,6 +255,28 @@ généralisant cette formule. Trois règles l'accompagnent :
 - **En anglais**, comme le frontmatter (ADR-0025 D6) : la formule nomme un
   outil du harness, pas une phrase du corps.
 
+## Ce que le contenu d'une skill ne porte pas
+
+Une skill est lue comme une consigne : ce qu'elle dit de lancer, l'agent le
+lance. `bun run check:skills-security` (T4,
+`tools/skills/check-skills-security.ts`), maillon de `bun run check`, lit donc
+chaque ligne de chaque fichier de `skills/` (`SKILL.md`, `references/`,
+`eval.json`, `.out-of-scope/`, un script) et refuse celles qui correspondent à
+un motif de `tools/skills/skills-security-patterns.v1.json`. Ce fichier range
+les motifs par catégorie et fait foi : le lire au moment d'écrire, cette
+section ne les recopie pas.
+
+- **Aucune dérogation.** Ni marqueur de ligne ni liste d'exceptions : un faux
+  positif se corrige en reformulant la skill, ou en resserrant le motif dans
+  le fichier de données. Ce fichier est un chemin gardé de
+  `tools/quality/check-review-evidence.ts` : le modifier demande une trace de
+  revue ou d'arbitrage.
+- **Tout fichier compte.** Un lien symbolique, un binaire ou un fichier
+  illisible sous `skills/` est un échec nommé, pas un fichier sauté.
+- **Le gate est grossier par construction.** Il arrête la forme évidente
+  d'une consigne, pas une commande reconstruite par un alias ou un encodage :
+  la revue reste nécessaire.
+
 ## Sources
 
 Les idées de ce document ont été dégagées par l'analyse d'un corpus de
