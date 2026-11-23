@@ -32,6 +32,23 @@ export function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Runs one call on a child's stdin and drops its failure, whether thrown at once or rejected
+ * later. Once the child closed its stdin or exited unread, `write` and `end` fail with EPIPE in
+ * either form (both seen on Linux CI: a later rejection, an `end` that threw). Unhandled, that
+ * failure would end the calling gate with exit 1 whatever the child answered.
+ */
+function dropStdinFailure(call: () => unknown): Promise<void> {
+  try {
+    return Promise.resolve(call()).then(
+      () => undefined,
+      () => undefined,
+    );
+  } catch {
+    return Promise.resolve();
+  }
+}
+
+/**
  * One `gh api graphql` request, query passed on stdin so it is never subject
  * to an argument-length limit. Returns the three raw channels rather than a
  * parsed body: `data` must be read from stdout regardless of exit code — a
@@ -48,11 +65,9 @@ export async function ghGraphQLRaw(
     stdout: "pipe",
     stderr: "pipe",
   });
-  // Neither call is awaited, and both can reject with EPIPE once `gh` closed its stdin or exited
-  // unread (seen on Linux). Unhandled, that rejection would end the calling gate with exit 1
-  // whatever `gh` answered: its exit code and its output decide instead.
-  void Promise.resolve(proc.stdin.write(query)).catch(() => undefined);
-  void Promise.resolve(proc.stdin.end()).catch(() => undefined);
+  // Neither call is awaited: `gh`'s exit code and its output decide, not the fate of the pipe.
+  void dropStdinFailure(() => proc.stdin.write(query));
+  void dropStdinFailure(() => proc.stdin.end());
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
