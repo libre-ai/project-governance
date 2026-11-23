@@ -277,6 +277,40 @@ section ne les recopie pas.
   d'une consigne, pas une commande reconstruite par un alias ou un encodage :
   la revue reste nécessaire.
 
+## Les commandes git d'une skill sont rejouées
+
+Une commande écrite en prose ne se voit pas s'exécuter : un `git diff`
+prescrit lance, dans un vrai dépôt, l'outil de diff externe, le pilote
+`textconv` ou le pager que l'utilisateur a configurés, et `color.ui` colore
+une sortie que l'agent analyse ensuite. `bun run check:skills-commands` (T5,
+`tools/skills/check-skills-commands.ts`), maillon de `bun run check`, extrait
+chaque commande `git …` des fichiers Markdown de `skills/` (blocs clôturés et
+`code` en ligne), la classe, et rejoue les seules commandes en lecture dans un
+dépôt piégé créé dans un répertoire temporaire.
+
+- **Trois classes, qui somment aux commandes extraites**, imprimées par
+  skill : rejouée (sous-commande en lecture, chaque mot littéral) ; écriture
+  (toute autre sous-commande, y compris une inconnue : jamais lancée) ; non
+  exécutable (un gabarit `<servie>`, une expansion du shell, une redirection,
+  une option globale autre que `--no-pager`, `-P` ou `--no-optional-locks`,
+  une option qui nomme un
+  programme ou un fichier hors du dépôt piégé).
+- **Les pièges** : `GIT_EXTERNAL_DIFF`, `GIT_PAGER`, `core.pager`,
+  `diff.<x>.textconv`, `filter.<x>` (nettoyage et extraction), chacun écrit un
+  fichier témoin s'il est lancé ; `color.ui=always`, détecté par une séquence
+  d'échappement dans la sortie. L'état du dépôt (statut, refs, `HEAD`,
+  configuration, worktrees) est comparé avant et après.
+- **Deux canaux.** git ne lance aucun pager hors d'un terminal : chaque
+  commande est rejouée une fois par tube et une fois sous pseudo-terminal. Un
+  pseudo-terminal qu'on ne peut pas ouvrir (bac à sable) est un échec nommé,
+  pas un pager déclaré sûr.
+- **Environnement purgé** : le processus fils ne reçoit que `PATH` ; `HOME` et
+  `TMPDIR` pointent dans le dépôt piégé, la configuration système est ignorée.
+- **Écrire une commande qui passe** : `git --no-pager diff --no-ext-diff
+  --no-textconv --no-color`, `git --no-pager log …`. Une commande que git
+  refuse sur le dépôt piégé (code 128 ou 129) échoue aussi : son rejeu n'a
+  rien prouvé.
+
 ## Sources
 
 Les idées de ce document ont été dégagées par l'analyse d'un corpus de
