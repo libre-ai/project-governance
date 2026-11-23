@@ -145,6 +145,30 @@ describe("juge HTTP — pannes et réponses illisibles", () => {
     }
   });
 
+  test("un corps interrompu lève JugeInjoignable, jamais une réponse lue sur un préfixe", async () => {
+    const f = recupererFactice(() =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(flux) {
+              flux.enqueue(new TextEncoder().encode('{"choices":[{"message":{"content":"{'));
+              flux.error(new Error("connexion coupée"));
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+    const juge = jugeHttp("http://127.0.0.1:9", IDENTITE, f.recuperer, SANS_PROXY);
+    await expect(juge.juger(INVITE)).rejects.toBeInstanceOf(JugeInjoignable);
+  });
+
+  test("un corps complet mais non JSON est rendu comme réponse illisible", async () => {
+    const f = recupererFactice(() => Promise.resolve(new Response("pas du JSON", { status: 200 })));
+    const juge = jugeHttp("http://127.0.0.1:9", IDENTITE, f.recuperer, SANS_PROXY);
+    expect(String(await juge.juger(INVITE))).toStartWith("corps non JSON");
+  });
+
   test("une prose est rendue telle quelle, pour être classée hors schéma", async () => {
     const f = recupererFactice(() => reponseModele("I cannot judge this."));
     const juge = jugeHttp("http://127.0.0.1:9", IDENTITE, f.recuperer, SANS_PROXY);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { REGISTRE } from "./controles";
 import {
   agregerParJuge,
+  auPlus,
   bilan,
   type Cas,
   codeDeSortie,
@@ -25,6 +26,7 @@ import {
   qualifier,
   type Registre,
   type ResultatCas,
+  seuilDecimal,
 } from "./entonnoir";
 import { lireCas, lireEtiquetes, SourceInvalide } from "./sources";
 
@@ -414,6 +416,33 @@ describe("D1 (c) — qualification avant usage", () => {
       echecsNotes: total,
       qualifie: attendu,
     });
+  });
+
+  // Sous 1e-6, `String` écrit le seuil en notation exponentielle : la branche de l'exposant compte.
+  // Les dénominateurs sont trop grands pour passer par des cas étiquetés, d'où l'appel direct.
+  test.each([
+    [1, 10_000_000, 1e-7, true],
+    [1, 9_999_999, 1e-7, false],
+    [2, 13_333_334, 1.5e-7, true],
+    [2, 13_333_333, 1.5e-7, false],
+    [0, 2, 5e-324, true],
+    [1, 2, 5e-324, false],
+  ])("%i/%i au plus %p : %p", (numerateur, denominateur, seuil, attendu) => {
+    expect(auPlus(numerateur, denominateur, seuilDecimal(seuil))).toBe(attendu);
+  });
+
+  test.each([
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    -0.1,
+    1.5,
+  ])("un seuil de %p est refusé avant le premier appel au juge", async (seuil) => {
+    const f = jugeFactice(toutes(true));
+    const etiquetes = [{ id: "echec-0", controles: "carte.v1", sortie: CONFORME, attendu: false }];
+    await expect(qualifier(f.juge, etiquetes, REGISTRE, seuil)).rejects.toBeInstanceOf(
+      EntreeInvalide,
+    );
+    expect(f.appels).toHaveLength(0);
   });
 
   test("un juge qui ne note aucun cas étiqueté en échec n'est pas qualifié : rien n'est mesuré", async () => {

@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 /**
  * The review layer is exercised as the process it is, against a stand-in of
@@ -226,6 +226,28 @@ describe("relecture", () => {
       expect(outcome.stderr).toContain("existe déjà");
       expect(received).toBe(0);
       expect(outcome.results).toBe(earlier);
+    } finally {
+      local.stop(true);
+    }
+  });
+
+  test("a result path whose directory does not exist is refused before any request", async () => {
+    const { diffs, results } = workspace();
+    const missing = join(dirname(results), "absent", "results.jsonl");
+    let received = 0;
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return new Response("");
+      },
+    });
+    try {
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, missing);
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr).toContain("n'existe pas");
+      expect(received).toBe(0);
     } finally {
       local.stop(true);
     }

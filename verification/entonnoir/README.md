@@ -34,7 +34,7 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 | aucun juge configuré | `unavailable` pour chaque cas, jamais réussi | 0 |
 | étage 1 ou 2 en échec | `non_demande`, compté comme saut | 0 |
 | juge en échec, refus, réponse hors schéma | `non_note`, ni 0 ni réussi | 0 |
-| juge demandé mais injoignable, en qualification ou en mesure | `non_note` marqué injoignable | 1 |
+| juge demandé mais injoignable (pas de réponse, erreur HTTP, corps interrompu), en qualification ou en mesure | `non_note` marqué injoignable | 1 |
 | juge de la famille du candidat, ou de son nom (casse et espaces ignorés) | refusé avant tout appel | 2 |
 | variable de proxy renseignée dans l'environnement | refusé avant tout appel | 2 |
 | cas étiqueté rejeté par les étages 1 et 2 | qualification refusée avant tout appel | 2 |

@@ -341,16 +341,33 @@ function controlesDe(registre: Registre, reference: string, cas: string): Contro
  * qui relit le même double : c'est la valeur écrite dans la source dès qu'elle tient en 15 chiffres
  * significatifs.
  */
-function auPlus(numerateur: number, denominateur: number, seuil: number): boolean {
-  const ecriture = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(String(seuil));
-  if (ecriture === null) throw new EntreeInvalide(`seuil non décimal : ${String(seuil)}`);
-  const [, entiers, decimales = "", exposant = "0"] = ecriture;
-  // seuil = chiffres × 10^puissance
-  const chiffres = BigInt(`${entiers}${decimales}`);
-  const puissance = Number(exposant) - decimales.length;
+export function auPlus(numerateur: number, denominateur: number, seuil: SeuilDecimal): boolean {
+  const { chiffres, puissance } = seuil;
   const gauche = BigInt(numerateur) * 10n ** BigInt(Math.max(0, -puissance));
   const droite = chiffres * BigInt(denominateur) * 10n ** BigInt(Math.max(0, puissance));
   return gauche <= droite;
+}
+
+/** Un seuil écrit `chiffres × 10^puissance`, exact. */
+export interface SeuilDecimal {
+  readonly chiffres: bigint;
+  readonly puissance: number;
+}
+
+/**
+ * Lit un taux maximal : un nombre fini de 0 à 1, pris sous sa plus courte écriture décimale.
+ * Tout autre seuil est refusé ici, avant le premier appel au juge, et non après la boucle.
+ */
+export function seuilDecimal(seuil: number): SeuilDecimal {
+  if (!Number.isFinite(seuil) || seuil < 0 || seuil > 1)
+    throw new EntreeInvalide(`seuil hors de [0, 1] : ${String(seuil)}`);
+  const ecriture = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(String(seuil));
+  if (ecriture === null) throw new EntreeInvalide(`seuil non décimal : ${String(seuil)}`);
+  const [, entiers, decimales = "", exposant = "0"] = ecriture;
+  return {
+    chiffres: BigInt(`${entiers}${decimales}`),
+    puissance: Number(exposant) - decimales.length,
+  };
 }
 
 /**
@@ -369,8 +386,9 @@ export async function qualifier(
   let injoignables = 0;
   let fauxSucces = 0;
   let echecsNotes = 0;
-  // Tous les cas sont vérifiés avant le premier appel : un cas invalide découvert en cours de
-  // boucle laisserait des invites déjà envoyées pour une qualification qui n'aboutit pas.
+  // Le seuil et tous les cas sont vérifiés avant le premier appel : une entrée invalide découverte
+  // en cours de boucle laisserait des invites déjà envoyées pour une qualification qui n'aboutit pas.
+  const seuil = seuilDecimal(tauxFauxSuccesMax);
   const prets = etiquetes.map((cas) => {
     const controles = controlesDe(registre, cas.controles, cas.id);
     // Le juge ne voit en mesure que des sorties qui passent les étages 1 et 2 : il se qualifie
@@ -396,7 +414,7 @@ export async function qualifier(
       if (essai.etat === "reussi") fauxSucces += 1;
     }
   }
-  const qualifie = echecsNotes > 0 && auPlus(fauxSucces, echecsNotes, tauxFauxSuccesMax);
+  const qualifie = echecsNotes > 0 && auPlus(fauxSucces, echecsNotes, seuil);
   return {
     juge: juge.identite,
     lances: etiquetes.length,

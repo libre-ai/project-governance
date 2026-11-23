@@ -4,11 +4,12 @@
 // Usage : bun relecture.ts <répertoire de diffs> <url du serveur> <étiquette du modèle> <résultats.jsonl>
 // Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
 // s'interposerait aussi, et une redirection n'est jamais suivie.
-// Codes de sortie : 0 mesure écrite ; 1 réponse illisible ou échec de transport ; 2 argument refusé
-// (dont un fichier de résultats qui existe déjà : il n'est jamais remplacé) ; 3 fichier de résultats
-// apparu pendant le run, mesures imprimées sur la sortie standard.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+// Codes de sortie : 0 mesure écrite ; 1 réponse illisible, échec de transport ou délai dépassé ;
+// 2 argument refusé (dont un fichier de résultats qui existe déjà, jamais remplacé, et un répertoire
+// de destination absent) ; 3 écriture finale impossible alors qu'elle était possible au départ
+// (fichier apparu ou répertoire retiré pendant le run), mesures imprimées sur la sortie standard.
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
 
 const [diffsDir, url, modele, sortie] = process.argv.slice(2);
@@ -38,6 +39,14 @@ if (existsSync(sortie)) {
   console.error(`relecture : ${sortie} existe déjà ; choisir un autre chemin ou le retirer`);
   process.exit(2);
 }
+// Sans répertoire de destination, chaque diff partirait au serveur pour un résultat impossible à
+// écrire : le défaut se voit ici, avant tout appel.
+if (!statSync(dirname(resolve(sortie)), { throwIfNoEntry: false })?.isDirectory()) {
+  console.error(`relecture : le répertoire de ${sortie} n'existe pas`);
+  process.exit(2);
+}
+/** Un serveur qui envoie ses en-têtes puis se tait ne bloque pas la relecture indéfiniment. */
+const DELAI_MS = 600_000;
 
 const CONSIGNE = [
   "You review one code change (a unified diff) before it is merged.",
@@ -162,6 +171,8 @@ function envoyer(diff: string): Promise<Response> {
     // Une redirection suivie enverrait le diff à l'hôte que choisit le serveur, hors de la
     // vérification d'URL locale ci-dessus : elle fait échouer la relecture, jamais suivie.
     redirect: "error",
+    // Couvre aussi la lecture du corps : un délai dépassé y devient une réponse interrompue.
+    signal: AbortSignal.timeout(DELAI_MS),
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       messages: [

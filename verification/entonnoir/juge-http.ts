@@ -5,7 +5,7 @@
 //
 // D1 (e) : la consigne part dans le message système, le contenu jugé seul dans le message
 // utilisateur, en dernier ; aucune instruction ne le suit.
-// Un serveur qui ne répond pas, ou répond une erreur HTTP, lève JugeInjoignable : la commande
+// Un serveur qui ne répond pas, répond une erreur HTTP ou coupe sa réponse lève JugeInjoignable : la commande
 // sort alors en non nul. Une réponse illisible n'est pas une panne du serveur : elle est rendue
 // telle quelle, et l'entonnoir la classe hors schéma, donc non notée.
 import { type IdentiteModele, type Invite, type Juge, JugeInjoignable } from "./entonnoir";
@@ -128,9 +128,18 @@ export function jugeHttp(
         throw new JugeInjoignable(`${url} : ${String(cause)}`);
       }
       if (!reponse.ok) throw new JugeInjoignable(`${url} : HTTP ${reponse.status}`);
+      // Un corps interrompu est une panne du serveur, comme dans relecture.ts : un verdict lu sur un
+      // préfixe ne serait pas la réponse du modèle. Un corps reçu en entier mais non JSON est une
+      // réponse illisible, rendue telle quelle.
+      let brut: string;
+      try {
+        brut = await reponse.text();
+      } catch (cause) {
+        throw new JugeInjoignable(`${url} : réponse interrompue (${String(cause)})`);
+      }
       let corps: unknown;
       try {
-        corps = await reponse.json();
+        corps = JSON.parse(brut);
       } catch (cause) {
         return `corps non JSON : ${String(cause)}`;
       }
