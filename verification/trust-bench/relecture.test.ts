@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { relire } from "./relecture";
 
 /**
  * The review layer is exercised as the process it is, against a stand-in of
@@ -181,6 +182,85 @@ describe("relecture", () => {
       expect(outcome.results).toBe("");
     } finally {
       cut.stop(true);
+    }
+  });
+
+  test("a server that sends its headers then goes silent stops the run at the deadline", async () => {
+    // In process, through the exported function: the production deadline (DELAI_MS) is ten
+    // minutes, and no environment variable may shorten it, so only a direct call can.
+    let recu = "";
+    const silent = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data(socket, morceau) {
+          recu += morceau.toString("latin1");
+          const fin = recu.indexOf("\r\n\r\n");
+          if (fin < 0) return;
+          const longueur = Number(/content-length:\s*(\d+)/i.exec(recu)?.[1] ?? 0);
+          if (recu.length < fin + 4 + longueur) return;
+          socket.write(
+            'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 500\r\n\r\n{"choices":[',
+          );
+        },
+      },
+    });
+    const erreurs = spyOn(console, "error").mockImplementation(() => {});
+    // The test bounds its own wait: without a deadline the call never settles, and racing this
+    // timer fails cleanly instead of leaving the process hanging.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const hung = new Promise<"hung">((resolve) => {
+      timer = setTimeout(() => resolve("hung"), 2_000);
+    });
+    try {
+      const { diffs, results } = workspace();
+      const code = await Promise.race([
+        relire([diffs, `http://127.0.0.1:${silent.port}`, "modele-test", results], {}, 200),
+        hung,
+      ]);
+      expect(code).toBe(1);
+      expect(erreurs.mock.calls.flat().join("\n")).toContain("D01.diff : réponse interrompue");
+      expect(existsSync(results)).toBe(false);
+    } finally {
+      clearTimeout(timer);
+      erreurs.mockRestore();
+      silent.stop(true);
+    }
+  });
+
+  test.each([
+    ["absent", (root: string) => join(root, "absent")],
+    [
+      "without any .diff file",
+      (root: string) => {
+        const empty = join(root, "empty");
+        mkdirSync(empty);
+        writeFileSync(join(empty, "notes.txt"), "not a diff\n");
+        return empty;
+      },
+    ],
+  ])("a diff directory %s is a refused argument: code 2, before any request", async (_name, make) => {
+    const { results } = workspace();
+    const diffs = make(dirname(results));
+    let received = 0;
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return new Response("");
+      },
+    });
+    try {
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results);
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr).toStartWith("relecture : ");
+      // A refused argument, not an uncaught exception: no stack trace.
+      expect(outcome.stderr).not.toContain("    at ");
+      expect(received).toBe(0);
+      expect(outcome.results).toBe("");
+    } finally {
+      local.stop(true);
     }
   });
 

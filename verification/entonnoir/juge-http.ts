@@ -11,7 +11,11 @@
 import { type IdentiteModele, type Invite, type Juge, JugeInjoignable } from "./entonnoir";
 
 const URL_LOCALE = /^http:\/\/(127\.0\.0\.1|localhost):(\d+)$/;
-const DELAI_MS = 120_000;
+/**
+ * Délai d'un appel au juge, lecture du corps comprise. Seul un appel de `jugeHttp` le règle
+ * autrement, jamais l'environnement : la commande passe toujours cette valeur.
+ */
+export const DELAI_MS = 120_000;
 
 export function estUrlLocale(url: string): boolean {
   return URL_LOCALE.test(url);
@@ -93,12 +97,14 @@ type Recuperer = (url: string, init: RequestInit) => Promise<Response>;
  * par défaut celui du processus, que lit aussi `fetch`. Un appelant qui injecte un autre
  * environnement avec le vrai `fetch` ferait examiner à la garde autre chose que la requête :
  * seuls les tests le font, avec un `recuperer` factice ou un environnement sans proxy.
+ * `delaiMs` borne chaque appel, lecture du corps comprise ; seuls les tests le raccourcissent.
  */
 export function jugeHttp(
   url: string,
   identite: IdentiteModele,
   recuperer: Recuperer = fetch,
   env: Environnement = process.env,
+  delaiMs: number = DELAI_MS,
 ): Juge {
   if (hoteLocal(url) === null) {
     throw new Error(`juge HTTP : seule une URL locale est admise, reçu ${url}`);
@@ -122,7 +128,8 @@ export function jugeHttp(
           // Une redirection suivie enverrait l'invite à l'hôte que choisit le serveur, hors de la
           // vérification d'URL locale faite à la construction : elle est une panne, jamais suivie.
           redirect: "error",
-          signal: AbortSignal.timeout(DELAI_MS),
+          // Couvre aussi la lecture du corps : un délai dépassé y devient une réponse interrompue.
+          signal: AbortSignal.timeout(delaiMs),
         });
       } catch (cause) {
         throw new JugeInjoignable(`${url} : ${String(cause)}`);

@@ -163,6 +163,49 @@ describe("juge HTTP — pannes et réponses illisibles", () => {
     await expect(juge.juger(INVITE)).rejects.toBeInstanceOf(JugeInjoignable);
   });
 
+  test("un serveur qui envoie ses en-têtes puis se tait lève JugeInjoignable au délai", async () => {
+    // Socket brute : la requête est lue en entier, puis les en-têtes annoncent 500 octets, 13
+    // arrivent, et plus rien. Sans délai, la lecture du corps attendrait sans fin ; le délai
+    // de production (DELAI_MS) dépasse celui du test, d'où le délai court passé en paramètre.
+    let recu = "";
+    const muet = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      socket: {
+        data(socket, morceau) {
+          recu += morceau.toString("latin1");
+          const fin = recu.indexOf("\r\n\r\n");
+          if (fin < 0) return;
+          const longueur = Number(/content-length:\s*(\d+)/i.exec(recu)?.[1] ?? 0);
+          if (recu.length < fin + 4 + longueur) return;
+          socket.write(
+            'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 500\r\n\r\n{"choices":[',
+          );
+        },
+      },
+    });
+    // Le test borne lui-même son attente : sans délai, l'appel ne se règle jamais, et la course
+    // contre ce minuteur rougit proprement au lieu de laisser le processus pendu.
+    let minuteur: ReturnType<typeof setTimeout> | undefined;
+    const pendu = new Promise<"pendu">((resoudre) => {
+      minuteur = setTimeout(() => resoudre("pendu"), 2_000);
+    });
+    try {
+      const juge = jugeHttp(`http://127.0.0.1:${muet.port}`, IDENTITE, fetch, SANS_PROXY, 200);
+      const issue = await Promise.race([
+        juge.juger(INVITE).then(
+          () => "rendu" as const,
+          (cause: unknown) => cause,
+        ),
+        pendu,
+      ]);
+      expect(issue).toBeInstanceOf(JugeInjoignable);
+    } finally {
+      clearTimeout(minuteur);
+      muet.stop(true);
+    }
+  });
+
   test("un corps complet mais non JSON est rendu comme réponse illisible", async () => {
     const f = recupererFactice(() => Promise.resolve(new Response("pas du JSON", { status: 200 })));
     const juge = jugeHttp("http://127.0.0.1:9", IDENTITE, f.recuperer, SANS_PROXY);
