@@ -56,9 +56,9 @@ jobs:
           CARGO_DENY_VERSION: 0.19.5
           CARGO_DENY_ARCHIVE_URL: https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.5/cargo-deny-0.19.5-x86_64-unknown-linux-musl.tar.gz
           CARGO_DENY_ARCHIVE_SHA256: 5ea64ae09959b5fe1072d898f95caaa89b374678ba6728d5e9ed1366745479b0
-          CARGO_AUDIT_VERSION: 0.22.1
-          CARGO_AUDIT_ARCHIVE_URL: https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.22.1/cargo-audit-x86_64-unknown-linux-musl-v0.22.1.tgz
-          CARGO_AUDIT_ARCHIVE_SHA256: c32506f338bdcdaef5a17fb9f33abb6ecf9561324cfd34237fd335f9283a1eab
+          CARGO_AUDIT_VERSION: 0.23.0
+          CARGO_AUDIT_ARCHIVE_URL: https://github.com/rustsec/rustsec/releases/download/cargo-audit%2Fv0.23.0/cargo-audit-x86_64-unknown-linux-musl-v0.23.0.tgz
+          CARGO_AUDIT_ARCHIVE_SHA256: 4f01c74ed84b2dffd0b1d37012a62cdf2a92c96e25bdf8eec7fcc0d4d3eb7811
         run: |
           set -euo pipefail
           curl --fail --location --retry 3 --output "$RUNNER_TEMP/cargo-deny.tar.gz" "$CARGO_DENY_ARCHIVE_URL"
