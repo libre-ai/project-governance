@@ -1,0 +1,533 @@
+{
+  "corpus": "flotte-observee",
+  "origine": "observed",
+  "note": "Défauts réels de la flotte et témoins propres, relevés dans l'historique public. Chaque cas est un commit de la branche servie de son dépôt, réduit aux fichiers où le défaut vit. Son diff est celui de « base » (le premier parent) à « commit » sur « chemins » ; le corpus ne le porte pas, il le nomme : nombre de lignes modifiées et SHA-256 du texte que verification/trust-bench/corpora.ts reconstruit depuis un clone public, avec des options fixées. Le porter remettrait dans ce dépôt, mot pour mot, les défauts mêmes que ses contrôles refusent. « attendu » vaut true pour un défaut, false pour un témoin. Aucun cas n'est construit : un défaut manquant n'est pas complété par un défaut semé, qui vit dans un autre corpus.",
+  "releve": {
+    "date": "2026-11-23",
+    "perimetre": "les 22 dépôts publics de l'organisation libre-ai, archivés compris, lus sur leur branche servie (clones sans blobs) ; les dépôts privés sont exclus, une preuve doit pouvoir être citée publiquement",
+    "methode": [
+      "gh search commits --owner libre-ai \"Revert\"",
+      "git log --all -i -E --grep='^revert|this reverts commit|reverts #|regression' sur chaque clone",
+      "pour chaque commit de la branche servie dont le sujet commence par « fix », les références qu'il cite (#N, sha) résolues vers un commit de la branche servie atterri avant lui",
+      "un commit fautif non cité est retrouvé par git log --first-parent (-S, -G ou --diff-filter=A) sur le fichier que le correctif corrige ; la commande est écrite dans le cas",
+      "un défaut n'est retenu que si le commit fautif et son correctif ont atterri sur la branche servie à deux moments différents"
+    ],
+    "reverts_trouves": 0,
+    "defauts_retenus": 13,
+    "temoins_retenus": 13
+  },
+  "regles": {
+    "defaut": "Un commit de la branche servie, corrigé plus tard par un correctif explicite atterri séparément ; le défaut est décrit d'après le message du correctif ; la preuve est le correctif épinglé (organisation/dépôt@sha:chemin), sur le fichier qu'il corrige.",
+    "temoin": "Un commit de la branche servie atterri au moins 14 jours avant le relevé, jamais reverté, qu'aucun correctif ne cite, dont aucun fichier de code n'a été modifié par un commit « fix » dans les 14 jours suivants, qui ne touche aucun fichier où un défaut du corpus vit ; même dépôt qu'un défaut, et une taille entre la moitié et le double de la sienne (lignes modifiées, tests, verrous et Markdown exclus).",
+    "diff_minimal": "Pour un défaut, les fichiers du commit que le correctif corrige, tests exclus ; pour un témoin, ses fichiers de code, tests exclus. Le diff n'est pas découpé au bloc, ce qui demanderait de juger quel bloc porte le défaut."
+  },
+  "ecartes": [
+    {
+      "ref": "libre-ai/organization-data-lifecycle@a15e25a4a0c937bcda05711433d304669f86428d",
+      "raison": "le commit corrigé et son correctif ont atterri dans la même fusion : défaut trouvé en revue avant la fusion, jamais sur la branche servie"
+    },
+    {
+      "ref": "libre-ai/libre-ai@60074443b549f72f8498ae47410bd9a6ab7a3395",
+      "raison": "le commit corrigé n'a jamais atterri sur la branche servie (fusion par squash)"
+    },
+    {
+      "ref": "libre-ai/pi-harness-challenger@a0e862378be0b42ec5ebc51619ce53eb7fc63b29",
+      "raison": "le défaut vient du commit racine du dépôt, un import sans diff relisable"
+    },
+    {
+      "ref": "libre-ai/project-governance@a282897fdbb4191029c958316f73221253de3bf5",
+      "raison": "le défaut (liens cassés par un renommage) n'est pas dans le diff du commit fautif : les liens restés en place ne sont pas des lignes modifiées"
+    },
+    {
+      "ref": "libre-ai/libre-ai@4074cf08cb60435ac52ac386383a0d9783af1958",
+      "raison": "aucun commit fautif identifiable depuis le message du correctif ni depuis l'historique des fichiers corrigés"
+    },
+    {
+      "ref": "revues avant fusion",
+      "raison": "les correctifs de tours de revue d'une même pull request (une vingtaine dans project-governance) corrigent un commit qui n'a jamais atterri seul sur la branche servie"
+    }
+  ],
+  "limites": [
+    "13 défauts sur 4 dépôts, dont 10 dans project-governance et 5 dans le même commit de consolidation (e8e3b51), qui importait des contrôles écrits ailleurs : leur défaut est né avant ce dépôt, et un même diff de pull request y est découpé en cinq cas.",
+    "Un défaut est relevé d'après le message de son correctif, sans contre-expertise : sa description relaie le correctif.",
+    "Un témoin est propre au sens des règles, pas prouvé sans défaut : un défaut que personne n'a encore corrigé en ferait une fausse alerte de plus.",
+    "Le diff d'un cas est le commit entier sur ses fichiers : un défaut d'une ligne peut y être noyé dans plusieurs centaines de lignes voulues, comme dans une vraie pull request.",
+    "Dix défauts sur treize vivent dans des contrôles de la flotte elle-même (gates de project-governance, CI) : le corpus mesure d'abord la relecture de ce type de code."
+  ],
+  "cas": [
+    {
+      "id": "R01",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "dépendances héritées par les consommateurs, non résolubles chez eux",
+      "depot": "libre-ai/project-governance",
+      "commit": "e8e3b51638c2be0bb98a394e6b236efe9aa64010",
+      "base": "fd963907c33416e280ee0df391b4c2990862fc78",
+      "chemins": ["package.json"],
+      "lignes_modifiees": 43,
+      "empreinte_diff": "1a0f09033580a3ccb89ff4160210d07e18bb69d93e1305889cabbf4a8a7fdf1b",
+      "defaut": "Selon les correctifs : `@libre-ai/classification` est déclaré en `workspace:*` parmi les dépendances, que les consommateurs installent ; l'installation de signalement échoue sur « failed to resolve » (#7 le déplace en devDependencies, #73 le retire, Bun résolvant aussi les devDependencies d'un dossier `file:`). `@libre-ai/contracts-authority` est épinglé en source git dans le manifeste composé : le lockfile d'application-development-toolkit gagne des sources git et `bun install --frozen-lockfile` ne rend jamais la main chez ai-work-supervision (#77).",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent -S'@libre-ai/classification' -- package.json ; git log --first-parent -S'contracts-authority' -- package.json"
+      },
+      "preuves": [
+        "libre-ai/project-governance@2024a4884b314df99be457618be9c3b48a0287f7:package.json",
+        "libre-ai/project-governance@e80141b8bd18f01e98cc7a3d2c766500b8069fd5:package.json",
+        "libre-ai/project-governance@6f780d589c3844fce389047f330cb4ac2571aa07:package.json"
+      ]
+    },
+    {
+      "id": "R02",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "contrôle qui conclut à l'absence d'écart sur une réponse partielle",
+      "depot": "libre-ai/project-governance",
+      "commit": "291512f1482780b22169a294dbeece891d8cae5a",
+      "base": "1aa999ec6f9025bcc4d4962b2654aab46586f9ff",
+      "chemins": ["ecosystem/check-inventory-drift.ts"],
+      "lignes_modifiees": 111,
+      "empreinte_diff": "c00484e61ca985ea9fcecd8641dd97ab28bbfba327a7930e5372c83a5b9e1400",
+      "defaut": "Selon le correctif (relecture adverse de #48) : check-inventory-drift sort en 0 avec « 0 drift(s) » sur quatre réponses forgées — une page partielle servie avec FORBIDDEN et un code 1, un nœud sans isArchived, une page sans pageInfo, et une vue de jeton de CI qui omet en silence le dépôt privé.",
+      "identification": {
+        "mode": "citee-par-le-correctif",
+        "commande": "git log -1 --format=%B 07adaa77e18db6d83bdc50e419009e34ce0e0d10 (« Adversarial review of #48 »)"
+      },
+      "preuves": [
+        "libre-ai/project-governance@07adaa77e18db6d83bdc50e419009e34ce0e0d10:ecosystem/check-inventory-drift.ts"
+      ]
+    },
+    {
+      "id": "R03",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "contrôle de plancher contournable",
+      "depot": "libre-ai/project-governance",
+      "commit": "f8a98794eaa612b98f77dcc963b0c77b4bcc653d",
+      "base": "effb3b05ec538863d1d3b5618f0728f777d8837f",
+      "chemins": ["tools/quality/bun-script-floor.ts", "tools/quality/check-bun-manifests.ts"],
+      "lignes_modifiees": 64,
+      "empreinte_diff": "33dbc0a8a0a75a477fedf828a84b5bb00283f930f445bc32fe07238146b660b2",
+      "defaut": "Selon le correctif (relecture adverse de #55) : trois façons de lancer une suite sans le plancher Bun, ou avec un plancher en échec, pendant que check-bun-manifests passe — manifestes imbriqués trouvés par trois globs fixes sans entrées à point ni liens et workspaces racine jamais lus ; une suite placée après ||, ;, & ou un saut de ligne non refusée ; tout nom préfixé « pre » traité comme un crochet.",
+      "identification": {
+        "mode": "citee-par-le-correctif",
+        "commande": "git log -1 --format=%B 52c5d2767760a989db6da3bb71f889ebef4fc359 (« confirmed against PR #55 »)"
+      },
+      "preuves": [
+        "libre-ai/project-governance@52c5d2767760a989db6da3bb71f889ebef4fc359:tools/quality/bun-script-floor.ts",
+        "libre-ai/project-governance@52c5d2767760a989db6da3bb71f889ebef4fc359:tools/quality/check-bun-manifests.ts"
+      ]
+    },
+    {
+      "id": "R04",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "contrôle de dérogations contournable",
+      "depot": "libre-ai/project-governance",
+      "commit": "da0c3b6ff7f8814daab2cdf881406d8c4d49ff0f",
+      "base": "f8a98794eaa612b98f77dcc963b0c77b4bcc653d",
+      "chemins": ["tools/quality/advisory-waivers.ts", "tools/quality/check-advisory-waivers.ts"],
+      "lignes_modifiees": 807,
+      "empreinte_diff": "5b66d00055c6dfa1169d0cb5d4f246dd6c5cae88e1806efa4bad8a37095b234c",
+      "defaut": "Selon le correctif (relecture adverse de #56) : le gate des dérogations d'avis de sécurité laisse passer des dérogations — lecteur TOML positionnel non recoupé avec un lecteur de référence, fichiers .deny.toml et .cargo/deny.toml non lus, mécanismes équivalents non traités comme dérogations, références admises sans être des fichiers suivis, justification sans longueur minimale, comptes de volume qui ne somment pas.",
+      "identification": {
+        "mode": "citee-par-le-correctif",
+        "commande": "git log -1 --format=%B 5d2820ff4dba222b51a7eb948e37517c68d72158 (« Adversarial review of #56 »)"
+      },
+      "preuves": [
+        "libre-ai/project-governance@5d2820ff4dba222b51a7eb948e37517c68d72158:tools/quality/advisory-waivers.ts",
+        "libre-ai/project-governance@5d2820ff4dba222b51a7eb948e37517c68d72158:tools/quality/check-advisory-waivers.ts"
+      ]
+    },
+    {
+      "id": "R05",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "vérification qui certifie des sources substituées",
+      "depot": "libre-ai/project-governance",
+      "commit": "c5423307b23488a7fd37127a6e4053cbb8ce98bc",
+      "base": "291512f1482780b22169a294dbeece891d8cae5a",
+      "chemins": [
+        ".github/composition/prepare-composition.py",
+        ".github/composition/run-composition.py",
+        "ecosystem/check-fleet-pins.ts"
+      ],
+      "lignes_modifiees": 478,
+      "empreinte_diff": "50bcfdab69c4f2472331b2d91fe6d5124360aa0293d3089be8f9d48b0a226cc0",
+      "defaut": "Selon le correctif (relecture de #43) : la composition compile des sources imposteurs pendant que l'exécuteur imprime « verified » (chemin de manifeste comparé une fois résolu, un Cargo.toml lié vers le dépôt frère certifie les fichiers voisins), et trois formes de manifeste sont lues vertes à un mauvais rev.",
+      "identification": {
+        "mode": "citee-par-le-correctif",
+        "commande": "git log -1 --format=%B b371c8b396f2d046b3a05012ddd30af2718c3d6e (« found in the review of #43 »)"
+      },
+      "preuves": [
+        "libre-ai/project-governance@b371c8b396f2d046b3a05012ddd30af2718c3d6e:.github/composition/prepare-composition.py",
+        "libre-ai/project-governance@b371c8b396f2d046b3a05012ddd30af2718c3d6e:.github/composition/run-composition.py",
+        "libre-ai/project-governance@b371c8b396f2d046b3a05012ddd30af2718c3d6e:ecosystem/check-fleet-pins.ts"
+      ]
+    },
+    {
+      "id": "R06",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "construction refusée par un contrôle de flotte, branche servie au rouge",
+      "depot": "libre-ai/project-governance",
+      "commit": "0fe0a6371c0139743ab2fcf6af9ceae06b360929",
+      "base": "75d6ea085b18cb15d450d7f0f5b1ba9d69645800",
+      "chemins": ["tools/quality/check-pr-door.ts"],
+      "lignes_modifiees": 712,
+      "empreinte_diff": "6427cf59161825dedd2f25e042183ce64373b49924210e14136c35f8d8ba4a98",
+      "defaut": "Selon le correctif : `opener.exec(line)` ajouté par #141 est lu comme `exec-non-constant` par le contrôle de construction SQL de la flotte, et inventory-drift est rouge sur la branche servie depuis ce commit ; `line.match(opener)` rend la même première correspondance.",
+      "identification": {
+        "mode": "citee-par-le-correctif",
+        "commande": "git log -1 --format=%B b01cff48b7b679f2533cc67105f1d5b4e230313e (« added by #141 », « since 0fe0a63 »)"
+      },
+      "preuves": [
+        "libre-ai/project-governance@b01cff48b7b679f2533cc67105f1d5b4e230313e:tools/quality/check-pr-door.ts"
+      ]
+    },
+    {
+      "id": "R07",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "base de comparaison codée en dur",
+      "depot": "libre-ai/project-governance",
+      "commit": "e8e3b51638c2be0bb98a394e6b236efe9aa64010",
+      "base": "fd963907c33416e280ee0df391b4c2990862fc78",
+      "chemins": ["tools/quality/check-audit-delta.ts"],
+      "lignes_modifiees": 106,
+      "empreinte_diff": "4ff196c00218e6eeea048bb85c0c67016a08fc16947e6010d947de6afb35197c",
+      "defaut": "Selon le correctif : la base du contrôle audit-delta retombe sur `main` écrit en dur dès que GITHUB_BASE_REF est vide, c'est-à-dire à chaque push ; la flotte sert une autre branche, la base auditée est vide, et chaque avis déjà porté par la vraie base paraît introduit par le changement.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent --diff-filter=A -- tools/quality/check-audit-delta.ts"
+      },
+      "preuves": [
+        "libre-ai/project-governance@d21b081ab68b51ca1ca9c87bf47cc65a12b27ec6:tools/quality/check-audit-delta.ts"
+      ]
+    },
+    {
+      "id": "R08",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "branche lue codée en dur, contrôle vert sans rien inspecter",
+      "depot": "libre-ai/project-governance",
+      "commit": "e8e3b51638c2be0bb98a394e6b236efe9aa64010",
+      "base": "fd963907c33416e280ee0df391b4c2990862fc78",
+      "chemins": ["ecosystem/check-fleet-pins.ts"],
+      "lignes_modifiees": 528,
+      "empreinte_diff": "cd7d0c7bb6c5a654b25526c5c5a85648cd1fc9df212deef20011592be9454231",
+      "defaut": "Selon le correctif : le contrôle des épinglages de flotte lit `main` en dur (quatre requêtes REST et trois expressions GraphQL fixent la branche au lieu de la résoudre) ; sur les destinations, `main` ne porte que des commits documentaires, l'arbre lu est vide, aucun épinglage n'est vu et le contrôle passe.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent --diff-filter=A -- ecosystem/check-fleet-pins.ts"
+      },
+      "preuves": [
+        "libre-ai/project-governance@2cbf6e58e0f1e8e080354c302c523eb5206c9049:ecosystem/check-fleet-pins.ts"
+      ]
+    },
+    {
+      "id": "R09",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "preuve lue hors des lignes ajoutées",
+      "depot": "libre-ai/project-governance",
+      "commit": "e8e3b51638c2be0bb98a394e6b236efe9aa64010",
+      "base": "fd963907c33416e280ee0df391b4c2990862fc78",
+      "chemins": ["tools/quality/check-review-evidence.ts"],
+      "lignes_modifiees": 171,
+      "empreinte_diff": "848ec99333e4f964a47a3ae2da27b9bef985d32779743438f1d52bee912dca80",
+      "defaut": "Selon le correctif : le contrôle de preuve de revue lit tout le texte du diff, si bien qu'une marque d'arbitrage ou une citation de dossier de revue sur une ligne de contexte, une ligne retirée ou un en-tête de bloc compte comme preuve ; deux pull requests ont tiré leur vert de marques de décisions voisines montrées en contexte.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent --diff-filter=A -- tools/quality/check-review-evidence.ts"
+      },
+      "preuves": [
+        "libre-ai/project-governance@3f56c5778d67dd860349b7ec42510d85855fc2e7:tools/quality/check-review-evidence.ts"
+      ]
+    },
+    {
+      "id": "R10",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "lecture en échec comptée comme une absence",
+      "depot": "libre-ai/project-governance",
+      "commit": "e8e3b51638c2be0bb98a394e6b236efe9aa64010",
+      "base": "fd963907c33416e280ee0df391b4c2990862fc78",
+      "chemins": ["tools/security/check-fleet-advisories.ts"],
+      "lignes_modifiees": 94,
+      "empreinte_diff": "90720adebda999fbc79228d2339b9c219ec32ea5f17b9d6b7cc627ed8893f0a6",
+      "defaut": "Selon le correctif : la moitié Bun du contrôle d'avis de flotte lit tout code non nul de `gh api` sur package.json comme « pas de package.json, rien à auditer » et passe ; un 403, un quota, une 5xx, une panne réseau ou un corps malformé comptent comme un dépôt inspecté.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent --diff-filter=A -- tools/security/check-fleet-advisories.ts"
+      },
+      "preuves": [
+        "libre-ai/project-governance@4e2b8ee4eda2fae4836388d50d4308f15bc7d738:tools/security/check-fleet-advisories.ts"
+      ]
+    },
+    {
+      "id": "R11",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "ordre des étapes d'une commande de contrôle",
+      "depot": "libre-ai/personal-knowledge-workspace",
+      "commit": "e788541a7a23fe14b5810aea8682936e00fac0f2",
+      "base": "d137e0070d1bf4e9b895c4640c1e1746e247d903",
+      "chemins": ["package.json"],
+      "lignes_modifiees": 6,
+      "empreinte_diff": "b2aa6e7949c81e33b355cbcb141f3b26b80f25a32510fac39a995e41597c8336",
+      "defaut": "Selon le correctif : check:p04-editor lance les étapes cargo avant de construire le front ; le build script du crate de bureau exige apps/desktop/dist/index.html, que seule l'étape check:p04-shell construit plus tard ; la commande sort en 101 sur toute composition fraîche et ne passe que là où un lancement antérieur a laissé dist/.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent -S'check:p04-editor' -- package.json"
+      },
+      "preuves": [
+        "libre-ai/personal-knowledge-workspace@855fee670706b59046c765ae811310efefd56fb4:package.json"
+      ]
+    },
+    {
+      "id": "R12",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "discriminant trop étroit dans un contrôle de CI",
+      "depot": "libre-ai/libre-ai",
+      "commit": "35cd7a843e6324a7e5d9625fa0afd0adeef2565a",
+      "base": "2e4e857a19ec6b1785122eed6ac7073ccb934e4f",
+      "chemins": [".github/workflows/ci.yml"],
+      "lignes_modifiees": 37,
+      "empreinte_diff": "a3685ef3cae09c509d4d9175e5b789fa0af763ad376ccab581331a4d47ede6ab",
+      "defaut": "Selon le correctif : la vérification DCO au push ne prend la branche indulgente que pour un commit à plus de deux mots de parents (un commit de fusion) ; la garde de fusion impose le squash, chaque squash est un commit à un parent rédigé par la forge, tombe dans la branche stricte et échoue ; deux pull requests ont mis la branche au rouge.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent -G'parent' -- .github/workflows/ci.yml"
+      },
+      "preuves": [
+        "libre-ai/libre-ai@0bb279f21fe44ab3ed3e6307b1ded7fc190b1c63:.github/workflows/ci.yml"
+      ]
+    },
+    {
+      "id": "R13",
+      "attendu": true,
+      "origine": "observed",
+      "nature": "délai global qui fait échouer un contrôle navigateur sans défaut",
+      "depot": "libre-ai/signalement",
+      "commit": "3424058eba68bc5e4d9f0f40081819958caed057",
+      "base": "528029c1012c497514a225e61998362ea82e8fd6",
+      "chemins": ["apps/extension-shared/video.browser-check.ts"],
+      "lignes_modifiees": 65,
+      "empreinte_diff": "09649e4fca943a63fa631320b021c7a576dfab9e1b8cb0f8ba7973095d823c91",
+      "defaut": "Selon le correctif : le contrôle navigateur vidéo tourne sous une seule horloge de 20 s depuis le lancement de Chrome, alors que la fixture demande de 13,3 à 15,8 s de média réel et que le premier lancement de Chrome sur un runner neuf a pris de 0,7 à 35,7 s.",
+      "identification": {
+        "mode": "retrouvee-par-l-historique",
+        "commande": "git log --first-parent --diff-filter=A -- apps/extension-shared/video.browser-check.ts"
+      },
+      "preuves": [
+        "libre-ai/signalement@d7b54301dab5946cd547e21b111d4a48875243b7:apps/extension-shared/video.browser-check.ts"
+      ]
+    },
+    {
+      "id": "S01",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : fix(supply-chain): align the base deny.toml on Y44-Y46 (#63)",
+      "depot": "libre-ai/project-governance",
+      "commit": "af415e6a0ae6e66a545e493c226187380faecf25",
+      "base": "327a946271edb0436844dbcc176772901fe0273d",
+      "chemins": ["crates/ecosystem-engine/deny.toml", "deny.toml"],
+      "lignes_modifiees": 42,
+      "empreinte_diff": "83fc1cf91c2bd16c506521bea151436676f7684d6200b7ef986464698beb5fdc",
+      "apparie_a": "R01",
+      "fusionne_le": "2026-10-09"
+    },
+    {
+      "id": "S02",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : Exclude Dependabot update runs from the branch-protection gate (#121)",
+      "depot": "libre-ai/project-governance",
+      "commit": "c759ed3a711dcbd33591571978a32cdb04de7f57",
+      "base": "c600e5ddea2a53d0475b79708b9ecfc54e5651ce",
+      "chemins": ["tools/security/check-branch-protection.ts"],
+      "lignes_modifiees": 141,
+      "empreinte_diff": "98da9dcc550662776449dd0602eaf6eba0cd1eff797b80ed46bf977a7c3daf83",
+      "apparie_a": "R02",
+      "fusionne_le": "2026-10-14"
+    },
+    {
+      "id": "S03",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(fleet): declare the fleet-bump exemption in the bump commit message (#126)",
+      "depot": "libre-ai/project-governance",
+      "commit": "cb1baa1cf258fdcbfb856bdff66fa1be02ee7427",
+      "base": "6b8cd8eef4e983008fd25a5947b897eb8002c755",
+      "chemins": ["tools/fleet/bump-generation.ts"],
+      "lignes_modifiees": 75,
+      "empreinte_diff": "aabeb4c1471d82db11c4fe539f36286b0d2744efc9764b36d86376e65b9e2325",
+      "apparie_a": "R03",
+      "fusionne_le": "2026-10-21"
+    },
+    {
+      "id": "S04",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(fleet): plan the generation bump of every consumer (dry run) (#68)",
+      "depot": "libre-ai/project-governance",
+      "commit": "07464a271df933a3a41f0a224951d37c6115d956",
+      "base": "07adaa77e18db6d83bdc50e419009e34ce0e0d10",
+      "chemins": [
+        ".github/workflows/fleet-bump.yml",
+        "tools/fleet/bump-generation.ts",
+        "tools/fleet/bump-generation.v1.yaml",
+        "tools/fleet/bump-plan.ts"
+      ],
+      "lignes_modifiees": 1472,
+      "empreinte_diff": "ff08c07550cff18f82f0c4e9366df7ac459d521402841b120461d5b1ad6600d2",
+      "apparie_a": "R04",
+      "fusionne_le": "2026-10-09"
+    },
+    {
+      "id": "S05",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(distribution): LangGraph entry-gate templates and egress red-vector note (ADR-0058 section 3) (#145)",
+      "depot": "libre-ai/project-governance",
+      "commit": "b720a2c1733fac428263f98d904d4bc1fa794ca1",
+      "base": "449eda094327ed3ecdc5f99f679c7ec78ee7b86e",
+      "chemins": [
+        "distribution/templates/langgraph-gates/check-langgraph-advisory-floor.ts",
+        "distribution/templates/langgraph-gates/check-langgraph-persistence.ts",
+        "distribution/templates/langgraph-gates/check-langsmith-env.ts"
+      ],
+      "lignes_modifiees": 685,
+      "empreinte_diff": "6696a0ab309636d5d74668f3274ac4637d0364e6fa7db29c96c46bdf06140b16",
+      "apparie_a": "R05",
+      "fusionne_le": "2026-10-23"
+    },
+    {
+      "id": "S06",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(composition): replay the Bun manifest gate of the composed governance on every composed target (#97)",
+      "depot": "libre-ai/project-governance",
+      "commit": "3064107bdbb989414c2b1bb9d21b21830de1a0d8",
+      "base": "ff1037a78463bfa1d170dc75956353f028f14cbe",
+      "chemins": [
+        ".github/composition/check-generation-coherence.py",
+        ".github/workflows/fleet-bump.yml",
+        ".github/workflows/generation-coherence.yml",
+        "tools/fleet/added-generations.ts",
+        "tools/fleet/bump-generation.ts"
+      ],
+      "lignes_modifiees": 746,
+      "empreinte_diff": "2953ffaecf807ba67c32f03ef08dac84124cee84c13fa787a0ce32390ab4f768",
+      "apparie_a": "R06",
+      "fusionne_le": "2026-10-13"
+    },
+    {
+      "id": "S07",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(skills): status under metadata, Agent Skills fields only (ADR-0053) (#110)",
+      "depot": "libre-ai/project-governance",
+      "commit": "ff6a10f1cd326ebcf34dc8bcf6f5b5c0a6a66fb6",
+      "base": "43ed26e5dc79d4531296fafb4601e176c7c68863",
+      "chemins": ["tools/skills/check-skills.ts", "tools/skills/lint-skill.ts"],
+      "lignes_modifiees": 91,
+      "empreinte_diff": "c705b728ff233366e31544f251075dc82de3d8448f665cbfe6b91d3c828120ff",
+      "apparie_a": "R07",
+      "fusionne_le": "2026-10-14"
+    },
+    {
+      "id": "S08",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : fix(quality): negatives follow-up - the block declares, the rest is prose (#161)",
+      "depot": "libre-ai/project-governance",
+      "commit": "8ecfd1b2c2e7b626885926040b7abf66295637c2",
+      "base": "4bb07948c7c62402b37401fe316e9df1ca4135cd",
+      "chemins": ["tools/quality/check-pr-negatives.ts"],
+      "lignes_modifiees": 364,
+      "empreinte_diff": "0397800e02873a3e70494f0060a4eb7ab96ac8298b60cafa0a162420a45868e9",
+      "apparie_a": "R08",
+      "fusionne_le": "2026-10-26"
+    },
+    {
+      "id": "S09",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(composition): refuse a composed path absent from its composed ref (#92)",
+      "depot": "libre-ai/project-governance",
+      "commit": "93ca8e4ceed65d3ebca261758ab9144855860a53",
+      "base": "e1cb92ca4c0f1c0404af11136e7780f16510970c",
+      "chemins": [".github/composition/check-composed-paths.py", ".github/workflows/ci.yml"],
+      "lignes_modifiees": 183,
+      "empreinte_diff": "56bf8b88c7273d3aa2d637a533808ff53a965a6b84720a510d5b79824f631527",
+      "apparie_a": "R09",
+      "fusionne_le": "2026-10-10"
+    },
+    {
+      "id": "S10",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(ecosystem): desktop_shell memory-ceiling field and Tauri 2 shell reference template (#140)",
+      "depot": "libre-ai/project-governance",
+      "commit": "449eda094327ed3ecdc5f99f679c7ec78ee7b86e",
+      "base": "cd39dfd2861f183fe1472631f809b390bb3c8a4e",
+      "chemins": ["ecosystem/project-cards.ts", "ecosystem/validate-cards.ts"],
+      "lignes_modifiees": 98,
+      "empreinte_diff": "0dc215bc956d6ff06a17911a4e586d3d575a6f73d4f830f7ebd94a92811cae87",
+      "apparie_a": "R10",
+      "fusionne_le": "2026-10-23"
+    },
+    {
+      "id": "S11",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : Validate consumers against corrected authentication sources",
+      "depot": "libre-ai/personal-knowledge-workspace",
+      "commit": "c81ad3426f4118fa7c5e4ffe3f16374e54ff3491",
+      "base": "e377346ee9420cae63e4989ac28c9892899d5bb1",
+      "chemins": [
+        ".github/workflows/code-validation.yml",
+        ".github/workflows/notebook-webkit-macos.yml"
+      ],
+      "lignes_modifiees": 6,
+      "empreinte_diff": "3412a7ab90a16a074e6fd3beadc4573d93c910f262789a5280dcdb561b98ec93",
+      "apparie_a": "R11",
+      "fusionne_le": "2026-09-17"
+    },
+    {
+      "id": "S12",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : feat(release): enforce exact per-package license + broaden test-leak guard in publish-preflight (#243)",
+      "depot": "libre-ai/libre-ai",
+      "commit": "79d026d97ffd02dddc654dcf370710f8df953736",
+      "base": "f2bed4d571cced36b030f59c2fe64c90c9e15681",
+      "chemins": ["tools/release/bump-version.ts", "tools/release/publish-preflight.ts"],
+      "lignes_modifiees": 49,
+      "empreinte_diff": "0c899dbc9bfa24201e831f527fc67d64e669a62f03d7850d3c77cc4374841e2c",
+      "apparie_a": "R12",
+      "fusionne_le": "2026-07-24"
+    },
+    {
+      "id": "S13",
+      "attendu": false,
+      "origine": "observed",
+      "nature": "témoin propre : fix: recognize the explicit forge-rendered author alias (#2)",
+      "depot": "libre-ai/signalement",
+      "commit": "0d3d3044b67297cef00be15e8fb4b751dd1df5bb",
+      "base": "ffa75aa7cfc4aa57032fc417db4459c4f6d27f97",
+      "chemins": [
+        "tools/ci/development-history.ts",
+        "tools/ci/public-history.ts",
+        "tools/ci/public-policy.ts"
+      ],
+      "lignes_modifiees": 42,
+      "empreinte_diff": "e70a1333075bff8fbee9ad80f7524c9d5c61950a711d335089f170eab64b1310",
+      "apparie_a": "R13",
+      "fusionne_le": "2026-10-06"
+    }
+  ]
+}
