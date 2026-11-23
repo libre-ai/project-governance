@@ -127,7 +127,9 @@ function git(dir: string, args: readonly string[], input?: Uint8Array): Buffer {
     env: gitEnvironment,
     stdin: input ?? "ignore",
     stdout: "pipe",
-    stderr: "pipe",
+    // Never read (it may quote object content), and a piped stderr counts against maxBuffer: a
+    // git error longer than the limit would then read as an output overrun, not a git failure.
+    stderr: "ignore",
     maxBuffer: gitOutputLimit,
   });
   // The output limit is judged BEFORE the exit code. When the output exceeds maxBuffer, Bun 1.4.0
@@ -139,7 +141,7 @@ function git(dir: string, args: readonly string[], input?: Uint8Array): Buffer {
   // neutralise:git-output-limit
   if (result.exitedDueToMaxBuffer)
     throw new GitFailure("git output exceeds the read limit", "git-output-limit");
-  // The exit code is the verdict; stderr may quote object content, so it is dropped. A git killed
+  // The exit code is the verdict; stderr is not even collected (see above). A git killed
   // by a signal has a null exit code (bun-types declares `number`), which this refuses too.
   // neutralise:git-exit
   if (result.exitCode !== 0)
