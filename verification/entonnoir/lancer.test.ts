@@ -169,6 +169,57 @@ describe("critère 6 et usage — refus avant tout appel", () => {
     }
   });
 
+  test("un proxy d'environnement est refusé : ni le proxy ni le juge ne reçoivent rien", async () => {
+    // Le `fetch` de Bun enverrait l'invite au proxy même vers 127.0.0.1 ; le proxy est ici un
+    // serveur local qui compte ce qu'il reçoit.
+    let recusProxy = 0;
+    let recusJuge = 0;
+    const proxy = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        recusProxy += 1;
+        return new Response("proxy", { status: 502 });
+      },
+    });
+    const serveurJuge = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        recusJuge += 1;
+        return new Response("panne", { status: 503 });
+      },
+    });
+    try {
+      const resultats = join(dossier(), "r.jsonl");
+      const run = Bun.spawn(
+        [
+          "bun",
+          LANCER,
+          join(CORPUS, "cas.json"),
+          resultats,
+          "--juge-url",
+          `http://127.0.0.1:${serveurJuge.port}`,
+          ...juge,
+        ],
+        {
+          stdout: "pipe",
+          stderr: "pipe",
+          env: { PATH: process.env.PATH ?? "", http_proxy: `http://127.0.0.1:${proxy.port}` },
+        },
+      );
+      const code = await run.exited;
+      expect(code).toBe(2);
+      expect(await new Response(run.stderr).text()).toContain("un proxy est défini (http_proxy)");
+      expect(recusProxy).toBe(0);
+      expect(recusJuge).toBe(0);
+      expect(existsSync(resultats)).toBe(false);
+    } finally {
+      proxy.stop(true);
+      serveurJuge.stop(true);
+    }
+  });
+
   test("une qualification sans juge sort en 2", () => {
     const issue = lancer(
       join(CORPUS, "cas.json"),

@@ -38,11 +38,18 @@ function workspace(): { diffs: string; results: string } {
   return { diffs, results: join(root, "results.jsonl") };
 }
 
-async function review(url: string, diffs: string, results: string): Promise<Outcome> {
+async function review(
+  url: string,
+  diffs: string,
+  results: string,
+  extraEnv: Record<string, string> = {},
+): Promise<Outcome> {
   // Asynchronous: the stand-in server lives in this process and must answer while the review runs.
+  // A clean environment: a proxy set on the machine running the tests must not decide them.
   const run = Bun.spawn([process.execPath, REVIEW, diffs, url, "modele-test", results], {
     stdout: "pipe",
     stderr: "pipe",
+    env: { PATH: process.env.PATH ?? "", ...extraEnv },
   });
   const code = await run.exited;
   return {
@@ -131,6 +138,57 @@ describe("relecture", () => {
     } finally {
       redirecting.stop(true);
       target.stop(true);
+    }
+  });
+
+  test("a proxy set in the environment is refused: neither the proxy nor the server receive the diff", async () => {
+    // Bun's fetch would send the diff to the proxy even for 127.0.0.1; the proxy here is a local
+    // server that counts what it receives.
+    let proxied = 0;
+    const proxy = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        proxied += 1;
+        return new Response("proxy", { status: 502 });
+      },
+    });
+    let received = 0;
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return new Response("down", { status: 503 });
+      },
+    });
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results, {
+        http_proxy: `http://127.0.0.1:${proxy.port}`,
+      });
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr).toContain("un proxy est défini (http_proxy)");
+      expect(proxied).toBe(0);
+      expect(received).toBe(0);
+      expect(outcome.results).toBe("");
+    } finally {
+      proxy.stop(true);
+      local.stop(true);
+    }
+  });
+
+  test("control: a proxy is accepted when NO_PROXY names the host", async () => {
+    const local = server(JSON.stringify({ reasoning: "changes a constant", defect: true }));
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results, {
+        http_proxy: "http://127.0.0.1:9",
+        NO_PROXY: "127.0.0.1",
+      });
+      expect(outcome.code, outcome.stderr).toBe(0);
+    } finally {
+      local.stop(true);
     }
   });
 

@@ -348,7 +348,9 @@ export async function qualifier(
   let injoignables = 0;
   let fauxSucces = 0;
   let echecsNotes = 0;
-  for (const cas of etiquetes) {
+  // Tous les cas sont vérifiés avant le premier appel : un cas invalide découvert en cours de
+  // boucle laisserait des invites déjà envoyées pour une qualification qui n'aboutit pas.
+  const prets = etiquetes.map((cas) => {
     const controles = controlesDe(registre, cas.controles, cas.id);
     // Le juge ne voit en mesure que des sorties qui passent les étages 1 et 2 : il se qualifie
     // sur la même population, sinon son taux ne dit rien de son usage.
@@ -358,6 +360,9 @@ export async function qualifier(
         `cas étiqueté ${cas.id} : rejeté par les étages 1 et 2, il ne qualifie rien`,
       );
     }
+    return { cas, controles };
+  });
+  for (const { cas, controles } of prets) {
     const essai = await essayer(juge, controles.questions, cas.sortie);
     if (essai.etat === "non_note") {
       nonNotes += 1;

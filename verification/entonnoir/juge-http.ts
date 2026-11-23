@@ -1,7 +1,7 @@
 // Juge HTTP de l'entonnoir : un serveur compatible OpenAI exécuté sur la machine.
 // Comme verification/trust-bench/relecture.ts, seule une URL locale est admise (127.0.0.1 ou
 // localhost, port explicite) : une URL non locale est refusée à la construction, avant tout appel,
-// et une redirection n'est jamais suivie.
+// tout comme un proxy d'environnement qui s'interposerait, et une redirection n'est jamais suivie.
 //
 // D1 (e) : la consigne part dans le message système, le contenu jugé seul dans le message
 // utilisateur, en dernier ; aucune instruction ne le suit.
@@ -10,11 +10,45 @@
 // telle quelle, et l'entonnoir la classe hors schéma, donc non notée.
 import { type IdentiteModele, type Invite, type Juge, JugeInjoignable } from "./entonnoir";
 
-const URL_LOCALE = /^http:\/\/(127\.0\.0\.1|localhost):\d+$/;
+const URL_LOCALE = /^http:\/\/(127\.0\.0\.1|localhost):(\d+)$/;
 const DELAI_MS = 120_000;
 
 export function estUrlLocale(url: string): boolean {
   return URL_LOCALE.test(url);
+}
+
+export type Environnement = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Le `fetch` de Bun envoie au proxy que nomme l'environnement (`http_proxy`, `HTTP_PROXY`) une
+ * requête même destinée à 127.0.0.1 : l'URL locale ne garantit rien tant qu'un proxy peut
+ * s'interposer. Rend les noms des variables qui en définissent un, ou null quand aucune ne le
+ * fait ou qu'une variable `no_proxy` (toute casse) nomme exactement l'hôte.
+ *
+ * Volontairement plus large que ce que Bun lit (mesuré avec Bun 1.4.4 : `ALL_PROXY` est ignoré,
+ * `no_proxy=localhost` n'exempte pas 127.0.0.1) : toute variable dont le nom contient « proxy »
+ * compte, pour qu'un nom qu'on n'aurait pas énuméré ne passe pas. Seuls les noms sont rendus,
+ * jamais les valeurs, qui peuvent porter un identifiant.
+ */
+export function proxyInterpose(hote: string, env: Environnement): string | null {
+  const exemptions = Object.entries(env)
+    .filter(([nom]) => nom.toLowerCase() === "no_proxy")
+    .flatMap(([, valeur]) => (valeur ?? "").split(","))
+    .map((entree) => entree.trim().toLowerCase());
+  if (exemptions.includes(hote)) return null;
+  const proxys = Object.entries(env)
+    .filter(
+      ([nom, valeur]) =>
+        /proxy/i.test(nom) && nom.toLowerCase() !== "no_proxy" && (valeur ?? "") !== "",
+    )
+    .map(([nom]) => nom)
+    .sort();
+  return proxys.length > 0 ? proxys.join(", ") : null;
+}
+
+/** Hôte d'une URL locale, ou null quand l'URL n'est pas locale. */
+export function hoteLocal(url: string): string | null {
+  return URL_LOCALE.exec(url)?.[1] ?? null;
 }
 
 export function corpsRequete(invite: Invite, modele: string): Record<string, unknown> {
@@ -58,15 +92,24 @@ type Recuperer = (url: string, init: RequestInit) => Promise<Response>;
 
 /**
  * Construit un juge HTTP local. `recuperer` est injectable pour que les tests n'appellent
- * aucun réseau ; par défaut, c'est `fetch`.
+ * aucun réseau ; par défaut, c'est `fetch`. `env` est l'environnement lu pour le proxy.
  */
 export function jugeHttp(
   url: string,
   identite: IdentiteModele,
   recuperer: Recuperer = fetch,
+  env: Environnement = process.env,
 ): Juge {
-  if (!estUrlLocale(url)) {
+  const hote = hoteLocal(url);
+  if (hote === null) {
     throw new Error(`juge HTTP : seule une URL locale est admise, reçu ${url}`);
+  }
+  const proxys = proxyInterpose(hote, env);
+  if (proxys !== null) {
+    throw new Error(
+      `juge HTTP : un proxy est défini (${proxys}) et aucune variable no_proxy ne nomme ${hote} : ` +
+        `l'invite partirait au proxy ; ajouter ${hote} à NO_PROXY, ou retirer le proxy`,
+    );
   }
   return {
     identite,

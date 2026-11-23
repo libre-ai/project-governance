@@ -18,7 +18,10 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 ```
 
 Avec un juge local (serveur compatible OpenAI, URL `127.0.0.1` ou `localhost` uniquement ; une
-redirection n'est jamais suivie, le juge est alors injoignable) :
+redirection n'est jamais suivie, le juge est alors injoignable). Le `fetch` de Bun passe par le
+proxy de l'environnement même vers `127.0.0.1` : si une variable dont le nom contient « proxy »
+porte une valeur, le juge est refusé, sauf si `NO_PROXY` (ou `no_proxy`) nomme exactement l'hôte
+de l'URL, par exemple `NO_PROXY=127.0.0.1`.
 
 ```sh
 bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TMPDIR/resultats.jsonl" \
@@ -33,6 +36,8 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 | juge en échec, refus, réponse hors schéma | `non_note`, ni 0 ni réussi | 0 |
 | juge demandé mais injoignable, en qualification ou en mesure | `non_note` marqué injoignable | 1 |
 | juge de la famille du candidat, ou de son nom (casse et espaces ignorés) | refusé avant tout appel | 2 |
+| proxy d'environnement non exempté pour l'hôte du juge | refusé avant tout appel | 2 |
+| cas étiqueté rejeté par les étages 1 et 2 | qualification refusée avant tout appel | 2 |
 | source illisible, vide ou invalide | aucune mesure | 2 |
 | fichier de résultats impossible à écrire | aucun bilan imprimé | 2 |
 

@@ -307,6 +307,20 @@ async function qualificationCorpus(juge: Juge): Promise<Qualification> {
 }
 
 describe("D1 (c) — qualification avant usage", () => {
+  test("un cas étiqueté rejeté par les étages 1 et 2 arrête la qualification avant tout appel", async () => {
+    const etiquetes = etiquetesCorpus();
+    const f = jugeFactice(toutes(true));
+    // Placé en dernier : une vérification faite au fil de la boucle aurait déjà appelé le juge.
+    const avecInvalide = [
+      ...etiquetes.cas,
+      { id: "invalide", controles: "carte.v1", sortie: HORS_CONTRAT, attendu: false },
+    ];
+    await expect(
+      qualifier(f.juge, avecInvalide, REGISTRE, etiquetes.tauxFauxSuccesMax),
+    ).rejects.toBeInstanceOf(EntreeInvalide);
+    expect(f.appels).toHaveLength(0);
+  });
+
   test("sans qualification, le signal est affiché non qualifié", async () => {
     const f = jugeFactice(toutes(true));
     const execution = await executer([cas("x", CONFORME)], {

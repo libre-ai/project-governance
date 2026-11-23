@@ -2,17 +2,30 @@
 // Soumet chaque diff, à l'aveugle (ni identifiant de cas, ni attendu), à un serveur compatible
 // OpenAI exécuté sur la machine, et consigne le verdict structuré, les tokens et la durée.
 // Usage : bun relecture.ts <répertoire de diffs> <url du serveur> <étiquette du modèle> <résultats.jsonl>
-// Aucun appel hors de 127.0.0.1 : une URL non locale est refusée.
+// Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
+// s'interposerait aussi, et une redirection n'est jamais suivie.
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
 
 const [diffsDir, url, modele, sortie] = process.argv.slice(2);
 if (!diffsDir || !url || !modele || !sortie) {
   console.error("usage: bun relecture.ts <diffs> <url> <modèle> <résultats.jsonl>");
   process.exit(2);
 }
-if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(url)) {
+const hote = hoteLocal(url);
+if (hote === null) {
   console.error(`relecture : seule une URL locale est admise, reçu ${url}`);
+  process.exit(2);
+}
+// Le `fetch` de Bun passe par le proxy de l'environnement même vers 127.0.0.1 : le diff le
+// quitterait. Même règle que le juge de l'entonnoir, même fonction.
+const proxys = proxyInterpose(hote, process.env);
+if (proxys !== null) {
+  console.error(
+    `relecture : un proxy est défini (${proxys}) et aucune variable no_proxy ne nomme ${hote} : ` +
+      `le diff partirait au proxy ; ajouter ${hote} à NO_PROXY, ou retirer le proxy`,
+  );
   process.exit(2);
 }
 
