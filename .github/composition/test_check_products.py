@@ -154,15 +154,29 @@ class WorkflowMatchesRunner(unittest.TestCase):
         spec.loader.exec_module(cls.module)
         cls.lines = WORKFLOW.read_text().splitlines()
 
+    # The only two condition shapes a gate step may use. The whole condition
+    # must match one of them: a target is read only from a shape whose
+    # meaning is "this target is selected", so a conjunction (`&& false`), a
+    # negation or any other expression fails instead of being read as a list.
+    TARGET = r'[a-z][a-z0-9-]*'
+    EQUALITIES = re.compile(rf"inputs\.target == '{TARGET}'(?: \|\| inputs\.target == '{TARGET}')*")
+    MEMBERSHIP = re.compile(rf"""contains\(fromJSON\('\["{TARGET}"(?:,"{TARGET}")*\]'\), inputs\.target\)""")
+
     def step_targets(self, name):
         # The workflow is read as text: the standard library has no YAML
         # parser, and these steps keep `if:` on the line after `- name:`.
         starts = [i for i, line in enumerate(self.lines) if line.strip() == f'- name: {name}']
         self.assertEqual(len(starts), 1, f'step "{name}" must appear exactly once')
-        condition = self.lines[starts[0] + 1].strip()
-        self.assertTrue(condition.startswith('if: '), f'step "{name}" has no if: on its next line')
-        targets = set(re.findall(r'["\']([a-z][a-z0-9-]*)["\']', condition))
-        self.assertTrue(targets, f'no target read in {condition!r}')
+        line = self.lines[starts[0] + 1].strip()
+        self.assertTrue(line.startswith('if: '), f'step "{name}" has no if: on its next line')
+        # In a YAML plain scalar, ` #` starts a comment wherever it stands,
+        # quotes included: what follows it is not part of the condition.
+        condition = line[len('if: '):].split(' #', 1)[0].strip()
+        self.assertTrue(
+            self.EQUALITIES.fullmatch(condition) or self.MEMBERSHIP.fullmatch(condition),
+            f'step "{name}": condition {condition!r} has neither admitted shape',
+        )
+        targets = set(re.findall(rf'["\']({self.TARGET})["\']', condition))
         unknown = targets - set(self.module.TARGETS)
         self.assertFalse(unknown, f'step "{name}" names unknown targets {sorted(unknown)}')
         return targets

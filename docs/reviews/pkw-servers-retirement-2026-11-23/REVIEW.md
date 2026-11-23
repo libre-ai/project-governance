@@ -6,8 +6,8 @@ Verdict: approve-with-minor-reservations
 
 **Date :** 2026-11-23
 **Objet :** les entrées retirées de `ecosystem/sql-construction-allowlist.v1.yaml` et de `ecosystem/web-headers-allowlist.v1.yaml` par la pull request #293, avec le reste de son diff (gate de composition, exemption de context hygiene, notes datées).
-**Nature :** dossier de revue d'une pull request écrite par un agent, après les décisions du propriétaire du 2026-11-23 en chat (« Retirer les deux », « Retirer l'app notebook entière »). Ces décisions retirent les serveurs ; elles ne tranchent pas les entrées une à une. Ce dossier rend compte des relectures qui les ont examinées et ne vaut pas arbitrage du propriétaire. Aucune des deux passes n'est une approbation de promotion par rôle : **not a role-specific promotion approval**.
-**Fusion :** `git diff --name-only 70fb8fa...1cae9d1 | bun tools/skills/bounded-merge-scope.ts` sort en code 1 (`examined=10 admitted=1 refused=9`) : la fusion revient au propriétaire (ADR-0068), pas à un agent.
+**Nature :** dossier de revue d'une pull request écrite par un agent, après les décisions du propriétaire du 2026-11-23 en chat (« Retirer les deux », « Retirer l'app notebook entière »). Ces décisions retirent les serveurs ; elles ne tranchent pas les entrées une à une. Ce dossier rend compte des relectures qui les ont examinées et ne vaut pas arbitrage du propriétaire. Aucune des passes n'est une approbation de promotion par rôle : **not a role-specific promotion approval**.
+**Fusion :** `git diff --name-only 70fb8fa...b153139 | bun tools/skills/bounded-merge-scope.ts` sort en code 1 (`examined=10 admitted=1 refused=9`) : la fusion revient au propriétaire (ADR-0068), pas à un agent.
 
 ## Les passes
 
@@ -15,6 +15,7 @@ Verdict: approve-with-minor-reservations
 | --- | --- | --- |
 | `pkw-servers-g-1` | `5cd63fb81e9fc65ca484c7cf4e8504217b52983b` | `approve-with-minor-reservations` |
 | `pkw-servers-r-1` | `1cae9d19666fa9a8e8d34be32c12b723bbcf7fde` | `approve-with-minor-reservations` |
+| `pkw-servers-r-2` | `b15313962342a64d44f2c4aabfed33b11f65d417` | `approve-with-minor-reservations` |
 
 Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 
@@ -55,7 +56,7 @@ Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 
 | Constat | Gravité | Disposition |
 | --- | --- | --- |
-| **M1**, antérieur à la PR : aucun test ne lie les conditions `if:` du workflow aux tables de `check-products.py`. Mesuré : PKW retiré de la condition de l'étape WASM, les 164 tests Python et `bun test tools/quality/check-workflows.test.ts` (143 tests, 0 échec) restent verts. | minor | suggestion ; **corrigé** après la passe (voir plus bas) |
+| **M1**, antérieur à la PR : aucun test ne lie les conditions `if:` du workflow (`.github/workflows/validate-composition.yml:161`, étape WASM ; `:173` et `:194`, étapes navigateur) aux tables `E2E` et `wasm` de `.github/composition/check-products.py`. Mesuré : PKW retiré de la condition de l'étape WASM, les 164 tests Python et `bun test tools/quality/check-workflows.test.ts` (143 tests, 0 échec) restent verts. | minor | suggestion ; **corrigé** après la passe (voir plus bas) |
 | **M2** : ce dossier ne suivait pas tout le protocole (commandes absentes, phrase « not a role-specific promotion approval » absente, axes non dits, identifiant de session absent, passe sur `5cd63fb` et non sur le commit final). | minor | suggestion ; complété dans ce dossier |
 | **M3** (inféré) : si l'épingle de PKW monte par `bump-generation` avant la fusion de #55, la composition Linux de PKW ne lance plus l'e2e alors que `apps/notebook` est encore servi. | minor | suggestion ; la description de la PR ne prévoit plus que la montée dans #55 |
 | **M4**, antérieur à la PR : `docs/security/notebook-core-v2-review/INDEPENDENT-REVIEW.md:55-58` cite, avec leurs empreintes, les rapports `docs/reviews/notebook-core-v2/gate-a/a28e116/*.md`, absents des branches servies des 27 dépôts de l'organisation. Restaurer ces rapports scellés exigerait de rétablir l'exemption. | minor | suggestion |
@@ -68,15 +69,47 @@ Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 - Arbre des branches servies (`git/trees/<servie>?recursive=1`) des 27 dépôts de `libre-ai` (24 non archivés, dont 4 privés, et 3 archivés) : aucun ne contient `gate-a/a28e116`, aucun arbre tronqué, aucun illisible.
 - Appelants de la flotte : épingles par SHA complet (`a00daec8` ×23, `75d6ea08` ×5, `1cebcb49` ×2), aucune par branche. `manifest.json` : aucune cible ne dépend de PKW.
 - `git diff --name-only 70fb8fa...1cae9d1 | bun tools/skills/bounded-merge-scope.ts` : `examined=10 admitted=1 refused=9 gated-patterns=32 excluded-patterns=18`, exit 1.
+- Ordre de fusion. Sur la base, le run `schedule` 45260673290 échoue avec exactement les deux lignes `stale` de `apps/p02-api` (SQL et web headers) et `1 of 40 assertion(s)` ; le passage de 40 à 39 assertions à la tête correspond à la déclaration retirée. Sur PKW #55 (tête `05f59a7`), le job de composition passe les étapes native et WASM et n'échoue qu'à l'installation des navigateurs (étape 16), faute d'`apps/notebook`. Le `notebook-webkit-macos.yml` de #55 n'appelle que les portes `native` et `wasm`.
 
-## Changements faits après les passes
+**Limites de la passe :** `bun test` non lancé en entier (la CI « Bun quality » était verte) ; #294 non relue.
 
-Un commit, postérieur à `1cae9d1`, relu par aucune passe :
+## Changement fait après `pkw-servers-r-1` : `b153139`
+
+Relu par la passe `pkw-servers-r-2` ci-dessous.
 
 - **M1 corrigé.** `.github/composition/test_check_products.py`, classe `WorkflowMatchesRunner` : la condition `if:` des étapes native, WASM et suite navigateur de `validate-composition.yml` doit sélectionner exactement les cibles pour lesquelles `check-products.py` planifie la porte ; l'étape d'installation des navigateurs doit sélectionner les mêmes cibles que la suite, et son dictionnaire `children` doit être égal à la table `E2E`. Commande : `python3 -B -m unittest discover -s .github/composition -p 'test_*.py'`, 166 tests OK. Mutations, chacune rejouée puis restaurée : PKW retiré de la condition de l'étape WASM, 1 échec ; PKW remis dans la condition de la suite navigateur, 2 échecs ; `'personal-knowledge-workspace': 'apps/notebook'` remis dans `children`, 1 échec.
 - **Suggestion de la passe `pkw-servers-g-1` appliquée.** Le commentaire de `tools/quality/check-context-hygiene.sh` donne désormais pour raison que le chemin n'existe plus nulle part, et ne cite plus le retrait du Notebook.
 
-**Effet sur les verdicts.** Ce commit ajoute un test et change un commentaire : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`. En revanche, aucune des deux passes ne couvre le commit final, qu'exige la condition de fusion `candidate-integration` (`:45`). Une passe sur le nouveau commit remplit cette condition.
+**Effet sur les verdicts.** Ce commit ajoute un test et change un commentaire : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`.
+
+## Passe `pkw-servers-r-2` (indépendante, commit final)
+
+**Rôle :** passe `candidate-integration` en revue seule, à rôle séparé, sur le commit final. Sous-agent sans délégation, en lecture seule, dans un nouveau clone jetable effacé en fin de passe. Il n'a pas écrit ce qu'il relit ; il a reçu le résumé du delta dans son mandat et a lu ce dossier. Modèle `claude-opus-5-5` ; session du harnais `c79598a7-9e1e-42cf-bfbc-e29615fbe251` (la même que celle de la passe auteur, ce qui ne l'invalide pas : `docs/reviews/AGENT-REVIEW-PROTOCOL.md:16`, `:32`) ; identifiant de sous-agent non exposé. **Not a role-specific promotion approval.** Aucun constat bloquant ni majeur, aucune preuve requise ouverte.
+
+**Axes couverts :** sécurité (retraits qui resserrent, aucun élargissement) ; correction (diff `70fb8fa...b153139` lu en entier, delta `b153139` relu ligne à ligne) ; valeur des tests (six mutations tuées, deux survivantes : N1) ; chaîne d'approvisionnement (aucune dépendance ni action ajoutée, appelants épinglés par SHA complet).
+
+| Constat | Gravité | Disposition |
+| --- | --- | --- |
+| **N1** : `WorkflowMatchesRunner.step_targets` lit toute cible entre guillemets sur la ligne `if:`, commentaire YAML compris. Mesuré : `if: inputs.target == 'ai-model-policy' # 'personal-knowledge-workspace'` sur l'étape WASM, le YAML chargé donne `inputs.target == 'ai-model-policy'` (PKW exclu), et `Ran 166 tests … OK`, `308 pass, 0 fail` sur `check-workflows.test.ts` et `check-workflow-supply-chain.test.ts`. Même vert pour `… \|\| inputs.target == 'personal-knowledge-workspace' && false`. Contredit « never silently » (description de la PR, message de `b153139`). Correctif : retirer le commentaire, exiger l'une des deux formes de condition en entier, échouer sinon. | minor | suggestion ; **corrigé** après la passe (voir plus bas) |
+| M1 : corrigé par `WorkflowMatchesRunner`, sous la réserve N1. | minor | prêt |
+| M3 : la description de la PR ne prévoit plus que la montée d'épingle dans PKW #55. | minor | prêt |
+| M4 : inchangé, risque résiduel. | minor | suggestion |
+
+**Commandes et sorties de la passe :**
+
+- `python3 -B -m unittest discover -s .github/composition -p 'test_check_products.py'` à la tête : 166 tests, OK.
+- Mutations du workflow, chacune rejouée puis restaurée : PKW retiré de la condition WASM, 1 échec ; PKW remis dans la condition de la suite navigateur, 2 échecs ; `apps/notebook` remis dans `children`, 1 échec ; `if: >-` sur plusieurs lignes, 1 échec (`no target read`) ; `if:` placé sous `shell:`, 1 échec (`has no if: on its next line`) ; commentaire `# 'personal-knowledge-workspace'`, 0 échec (N1) ; conjonction `&& false`, 0 échec (N1).
+- `git diff --name-only 70fb8fa...b153139 | bun tools/skills/bounded-merge-scope.ts`, depuis `70fb8fa` : `examined=10 admitted=1 refused=9 gated-patterns=32 excluded-patterns=18`, exit 1.
+- `bash tools/quality/check-context-hygiene.sh` à la tête : `Context hygiene verified: 1209 tracked file(s) scanned`.
+- CI de la tête, job 138008037101 : `SQL construction verified: 32 assertion(s) hold … 24 … found, 24 covered`, `Web headers verified: 39 assertion(s) hold`. Les 17 check-runs de `b153139` sont `success`.
+
+## Changement fait après `pkw-servers-r-2`
+
+Un commit, postérieur à `b153139`, relu par aucune passe :
+
+- **N1 corrigé.** `WorkflowMatchesRunner.step_targets` retire d'abord le commentaire YAML (tout ce qui suit ` #` : dans un scalaire YAML non quoté, ` #` ouvre un commentaire même entre guillemets), puis exige que la condition entière ait l'une des deux formes admises, `inputs.target == '<t>'( || inputs.target == '<t>')*` ou `contains(fromJSON('["<t>"(,"<t>")*]'), inputs.target)`, et échoue sur toute autre forme. Commande : `python3 -B -m unittest discover -s .github/composition -p 'test_*.py'`, 166 tests OK. Mutations, chacune rejouée puis restaurée : B1, commentaire `# 'personal-knowledge-workspace'` sur l'étape WASM, 1 échec (cibles lues `ai-model-policy` seule, différentes du plan) ; B2, `… || inputs.target == 'personal-knowledge-workspace' && false`, 1 échec (`has neither admitted shape`) ; PKW retiré de la condition WASM, 1 échec ; PKW remis dans la condition de la suite navigateur, 2 échecs ; `apps/notebook` remis dans `children`, 1 échec.
+
+**Effet sur les verdicts.** Ce commit resserre un test : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`. Aucune passe ne couvre ce commit, qui devient le commit final.
 
 ## Risques résiduels
 
@@ -88,4 +121,4 @@ Un commit, postérieur à `1cae9d1`, relu par aucune passe :
 
 ## Non relu
 
-Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. Ce dossier, et le commit fait après les passes, n'ont été relus par aucune passe.
+Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. `b153139` est relu par la passe `pkw-servers-r-2`. Le commit qui corrige N1, et ce dossier dans son état final, n'ont été relus par aucune passe.
