@@ -222,10 +222,20 @@ export interface Verdict {
 }
 
 /**
- * Bun's notice that it ended a test on its time budget. It is printed on the line right after
- * the `(fail)` line of that test.
+ * Bun's notices that it ended a test on a time budget, its own or that of a `beforeEach` or
+ * `afterEach` hook. Each is printed on the line right after the `(fail)` line of that test
+ * (measured with 1.4.0-canary.1: `  ^ this test timed out after 500ms.` and
+ * `  ^ a beforeEach/afterEach hook timed out for this test.`).
  */
-const timeoutNotice = "this test timed out after";
+const timeoutNotice = /this test timed out after|hook timed out for this test/;
+
+/**
+ * Bun's frame around an error thrown while no test runs (a late timer of an async test): the
+ * header, then the error between two rules of dashes. It is printed before the `(fail)` line of
+ * whatever test fails next, and belongs to none.
+ */
+const unhandledHeader = "# Unhandled error between tests";
+const rule = /^-+$/;
 
 /**
  * Classify the failures of a `bun test` run for one id. Pure: takes the raw output.
@@ -235,19 +245,30 @@ const timeoutNotice = "this test timed out after";
  * flight, its exit code reads `null` and the assertion on it fails, so that assertion says
  * nothing about the mutant (issue #299). Only an assertion failure proves the mutant; a run
  * whose only failures are timeouts is BLOCKED (no verdict), one whose only failures are
- * crashes is "crash only".
+ * crashes is "crash only". An unhandled error between tests is dropped: an assertion it
+ * carries belongs to no test, and counting it would credit the next failing test with it.
  */
 export function judge(output: string, id: string, exitCode: number): Verdict {
   let assertions = 0;
   let crashes = 0;
   let timeouts = 0;
   let chunk: string[] = [];
+  // Rules still to cross inside an unhandled-error frame; its lines join no test's chunk.
+  let rulesLeft = 0;
   const lines = output.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] as string;
+    if (rulesLeft > 0) {
+      if (rule.test(line)) rulesLeft -= 1;
+      continue;
+    }
+    if (line === unhandledHeader) {
+      rulesLeft = 2;
+      continue;
+    }
     if (line.startsWith("(fail) ")) {
       if (line.includes(`red:${id} `)) {
-        if ((lines[index + 1] ?? "").includes(timeoutNotice)) timeouts += 1;
+        if (timeoutNotice.test(lines[index + 1] ?? "")) timeouts += 1;
         else if (chunk.some((text) => /error: expect\(/.test(text))) assertions += 1;
         else crashes += 1;
       }
@@ -486,6 +507,49 @@ function mutantOf(instrument: Instrument, source: string, id: string): string | 
   return null;
 }
 
+export interface MutantOutcome {
+  readonly file: string;
+  readonly label: Verdict["label"];
+}
+
+export interface Summary {
+  /** One line per file: mutated = red + crash only + timed out + still green. */
+  readonly lines: readonly string[];
+  readonly mutated: number;
+  /** The structural problems plus every mutant whose label is not RED. */
+  readonly problems: number;
+  readonly exitCode: 0 | 1;
+}
+
+const labelOrder: readonly Verdict["label"][] = [
+  "RED",
+  "RED (crash only)",
+  "BLOCKED (timed out)",
+  "STILL GREEN",
+];
+
+/**
+ * The verdict of a run. Pure: takes the label of every mutant and the count of structural
+ * problems (uncovered sites, duplicate ids, missing substitutions, unmatched mutations). Only
+ * RED proves a mutant; every other label is a problem, and one problem fails the run.
+ */
+export function summarise(outcomes: readonly MutantOutcome[], structuralProblems: number): Summary {
+  const perFile = new Map<string, Map<Verdict["label"], number>>();
+  for (const { file, label } of outcomes) {
+    const labels = perFile.get(file) ?? new Map<Verdict["label"], number>();
+    labels.set(label, (labels.get(label) ?? 0) + 1);
+    perFile.set(file, labels);
+  }
+  const lines = [...perFile].map(([file, labels]) => {
+    const counts = labelOrder.map((label) => labels.get(label) ?? 0);
+    const mutated = counts.reduce((sum, count) => sum + count, 0);
+    return `  ${file}: ${mutated} = ${counts.join(" + ")}`;
+  });
+  const unproved = outcomes.filter((outcome) => outcome.label !== "RED").length;
+  const problems = structuralProblems + unproved;
+  return { lines, mutated: outcomes.length, problems, exitCode: problems === 0 ? 0 : 1 };
+}
+
 function main(requested: readonly string[]): number {
   let problems = 0;
   const targets: Array<{
@@ -525,14 +589,7 @@ function main(requested: readonly string[]): number {
   const work = mkdtempSync(join(tmpdir(), "neutralise-"));
   let markerRuns = 0;
   let substitutionRuns = 0;
-  // Every mutant lands in exactly one label, so the labels of a file sum to its mutants.
-  const tally = new Map<string, { mutated: number; labels: Map<Verdict["label"], number> }>();
-  const count = (file: string, label: Verdict["label"]): void => {
-    const entry = tally.get(file) ?? { mutated: 0, labels: new Map() };
-    entry.mutated += 1;
-    entry.labels.set(label, (entry.labels.get(label) ?? 0) + 1);
-    tally.set(file, entry);
-  };
+  const outcomes: MutantOutcome[] = [];
   try {
     const target = join(work, "tools", "attestation");
     cpSync(here, target, {
@@ -555,8 +612,7 @@ function main(requested: readonly string[]): number {
       const result = runTests(work, `red:${id} `);
       writeFileSync(join(target, file), original);
       const verdict = judge(result.output, id, result.code);
-      count(file, verdict.label);
-      if (verdict.label !== "RED") problems += 1;
+      outcomes.push({ file, label: verdict.label });
       console.log(
         `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es), ${verdict.timeouts} timeout(s): ${verdict.label}`,
       );
@@ -598,18 +654,12 @@ function main(requested: readonly string[]): number {
   console.log(
     "Neutralised per file (mutated = red by assertion + crash only + timed out + still green):",
   );
-  let total = 0;
-  for (const [file, entry] of tally) {
-    total += entry.mutated;
-    const of = (label: Verdict["label"]): number => entry.labels.get(label) ?? 0;
-    console.log(
-      `  ${file}: ${entry.mutated} = ${of("RED")} + ${of("RED (crash only)")} + ${of("BLOCKED (timed out)")} + ${of("STILL GREEN")}`,
-    );
-  }
+  const summary = summarise(outcomes, problems);
+  for (const line of summary.lines) console.log(line);
   console.log(
-    `${total} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${problems} problem(s)`,
+    `${summary.mutated} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${summary.problems} problem(s)`,
   );
-  return problems === 0 ? 0 : 1;
+  return summary.exitCode;
 }
 
 if (import.meta.main) process.exitCode = main(process.argv.slice(2));
