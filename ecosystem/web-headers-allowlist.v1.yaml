@@ -70,11 +70,6 @@ servers_outside_surfaces:
       ciphertext-only WebSocket relay forwarding sealed CRDT frames; it serves
       no HTML document.
   - repository: libre-ai/personal-knowledge-workspace
-    path: apps/p02-api/src/main.ts
-    because: >-
-      P02 JSON API bound to 127.0.0.1 by default; its sources carry no
-      text/html response.
-  - repository: libre-ai/personal-knowledge-workspace
     path: tools/qualification/notebook-core-v2/serve.ts
     because: >-
       qualification harness started by the notebook-core-v2 Playwright
