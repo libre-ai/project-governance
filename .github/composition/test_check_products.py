@@ -2,7 +2,6 @@ import importlib.util
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
@@ -126,85 +125,5 @@ class ProductChecks(unittest.TestCase):
         self.env['TEST_SLEEP']='1'
         with self.assertRaises(module.CheckFailure):
             module.run_step({'argv':[str(self.tool)],'cwd':'.','target':'synthetic','gate':'root'}, self.root,self.env, timeout=0.05)
-
-
-WORKFLOW = Path(__file__).parents[1] / 'workflows' / 'validate-composition.yml'
-
-
-class WorkflowMatchesRunner(unittest.TestCase):
-    """The `if:` of each gate step of validate-composition.yml selects exactly
-    the targets for which check-products.py plans that gate.
-
-    A target missing from a step's condition is skipped, and a skipped step
-    leaves the job green: without this test, dropping
-    personal-knowledge-workspace from the WASM step passed every test.
-    A target listed for a gate the runner refuses turns its composition red.
-    """
-
-    STEPS = {
-        'native': 'Run native product tests',
-        'wasm': 'Build and verify current product WASM',
-        'e2e': 'Run selected browser suite sequentially',
-    }
-
-    @classmethod
-    def setUpClass(cls):
-        spec = importlib.util.spec_from_file_location('checks_for_workflow', SCRIPT)
-        cls.module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(cls.module)
-        cls.lines = WORKFLOW.read_text().splitlines()
-
-    # The only two condition shapes a gate step may use. The whole condition
-    # must match one of them: a target is read only from a shape whose
-    # meaning is "this target is selected", so a conjunction (`&& false`), a
-    # negation or any other expression fails instead of being read as a list.
-    TARGET = r'[a-z][a-z0-9-]*'
-    EQUALITIES = re.compile(rf"inputs\.target == '{TARGET}'(?: \|\| inputs\.target == '{TARGET}')*")
-    MEMBERSHIP = re.compile(rf"""contains\(fromJSON\('\["{TARGET}"(?:,"{TARGET}")*\]'\), inputs\.target\)""")
-
-    def step_targets(self, name):
-        # The workflow is read as text: the standard library has no YAML
-        # parser, and these steps keep `if:` on the line after `- name:`.
-        starts = [i for i, line in enumerate(self.lines) if line.strip() == f'- name: {name}']
-        self.assertEqual(len(starts), 1, f'step "{name}" must appear exactly once')
-        line = self.lines[starts[0] + 1].strip()
-        self.assertTrue(line.startswith('if: '), f'step "{name}" has no if: on its next line')
-        # In a YAML plain scalar, ` #` starts a comment wherever it stands,
-        # quotes included: what follows it is not part of the condition.
-        condition = line[len('if: '):].split(' #', 1)[0].strip()
-        self.assertTrue(
-            self.EQUALITIES.fullmatch(condition) or self.MEMBERSHIP.fullmatch(condition),
-            f'step "{name}": condition {condition!r} has neither admitted shape',
-        )
-        targets = set(re.findall(rf'["\']({self.TARGET})["\']', condition))
-        unknown = targets - set(self.module.TARGETS)
-        self.assertFalse(unknown, f'step "{name}" names unknown targets {sorted(unknown)}')
-        return targets
-
-    def planned(self, gate):
-        tools = {'bun': 'bun', 'node': 'node', 'cargo': 'cargo'}
-        found = set()
-        for target in self.module.TARGETS:
-            try:
-                self.module.make_plan(target, gate, tools)
-            except self.module.CheckFailure:
-                continue
-            found.add(target)
-        return found
-
-    def test_each_gate_step_selects_exactly_the_planned_targets(self):
-        for gate, name in self.STEPS.items():
-            with self.subTest(gate=gate):
-                self.assertEqual(self.step_targets(name), self.planned(gate))
-
-    def test_browser_install_matches_the_suite_and_its_child_directories(self):
-        self.assertEqual(
-            self.step_targets('Install browsers for the selected product'),
-            self.step_targets(self.STEPS['e2e']),
-        )
-        text = '\n'.join(self.lines)
-        children = dict(re.findall(r"^\s+'([a-z][a-z0-9-]*)': '([^']*)',$", text, re.MULTILINE))
-        self.assertEqual(children, {target: child for target, (child, _) in self.module.E2E.items()})
-
 
 if __name__=='__main__': unittest.main()

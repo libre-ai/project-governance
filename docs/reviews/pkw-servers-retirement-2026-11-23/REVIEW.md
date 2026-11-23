@@ -7,7 +7,7 @@ Verdict: approve-with-minor-reservations
 **Date :** 2026-11-23
 **Objet :** les entrées retirées de `ecosystem/sql-construction-allowlist.v1.yaml` et de `ecosystem/web-headers-allowlist.v1.yaml` par la pull request #293, avec le reste de son diff (gate de composition, exemption de context hygiene, notes datées).
 **Nature :** dossier de revue d'une pull request écrite par un agent, après les décisions du propriétaire du 2026-11-23 en chat (« Retirer les deux », « Retirer l'app notebook entière »). Ces décisions retirent les serveurs ; elles ne tranchent pas les entrées une à une. Ce dossier rend compte des relectures qui les ont examinées et ne vaut pas arbitrage du propriétaire. Aucune des passes n'est une approbation de promotion par rôle : **not a role-specific promotion approval**.
-**Fusion :** `git diff --name-only 70fb8fa...b153139 | bun tools/skills/bounded-merge-scope.ts` sort en code 1 (`examined=10 admitted=1 refused=9`) : la fusion revient au propriétaire (ADR-0068), pas à un agent.
+**Fusion :** `git diff --name-only 70fb8fa...20092f7 | bun tools/skills/bounded-merge-scope.ts` sort en code 1 (`examined=10 admitted=1 refused=9`) : la fusion revient au propriétaire (ADR-0068), pas à un agent.
 
 ## Les passes
 
@@ -16,6 +16,7 @@ Verdict: approve-with-minor-reservations
 | `pkw-servers-g-1` | `5cd63fb81e9fc65ca484c7cf4e8504217b52983b` | `approve-with-minor-reservations` |
 | `pkw-servers-r-1` | `1cae9d19666fa9a8e8d34be32c12b723bbcf7fde` | `approve-with-minor-reservations` |
 | `pkw-servers-r-2` | `b15313962342a64d44f2c4aabfed33b11f65d417` | `approve-with-minor-reservations` |
+| `pkw-servers-r-3` | `20092f7cfc897881c17799f5ceabd52c34f5c53b` | `approve-with-minor-reservations` |
 
 Aucun contrat ni vecteur n'est touché : pas d'empreinte à relever.
 
@@ -103,13 +104,41 @@ Relu par la passe `pkw-servers-r-2` ci-dessous.
 - `bash tools/quality/check-context-hygiene.sh` à la tête : `Context hygiene verified: 1209 tracked file(s) scanned`.
 - CI de la tête, job 138008037101 : `SQL construction verified: 32 assertion(s) hold … 24 … found, 24 covered`, `Web headers verified: 39 assertion(s) hold`. Les 17 check-runs de `b153139` sont `success`.
 
-## Changement fait après `pkw-servers-r-2`
+## Changement fait après `pkw-servers-r-2` : `20092f7`
 
-Un commit, postérieur à `b153139`, relu par aucune passe :
+Relu par la passe `pkw-servers-r-3` ci-dessous.
 
 - **N1 corrigé.** `WorkflowMatchesRunner.step_targets` retire d'abord le commentaire YAML (tout ce qui suit ` #` : dans un scalaire YAML non quoté, ` #` ouvre un commentaire même entre guillemets), puis exige que la condition entière ait l'une des deux formes admises, `inputs.target == '<t>'( || inputs.target == '<t>')*` ou `contains(fromJSON('["<t>"(,"<t>")*]'), inputs.target)`, et échoue sur toute autre forme. Commande : `python3 -B -m unittest discover -s .github/composition -p 'test_*.py'`, 166 tests OK. Mutations, chacune rejouée puis restaurée : B1, commentaire `# 'personal-knowledge-workspace'` sur l'étape WASM, 1 échec (cibles lues `ai-model-policy` seule, différentes du plan) ; B2, `… || inputs.target == 'personal-knowledge-workspace' && false`, 1 échec (`has neither admitted shape`) ; PKW retiré de la condition WASM, 1 échec ; PKW remis dans la condition de la suite navigateur, 2 échecs ; `apps/notebook` remis dans `children`, 1 échec.
 
-**Effet sur les verdicts.** Ce commit resserre un test : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`. Aucune passe ne couvre ce commit, qui devient le commit final.
+**Effet sur les verdicts.** Ce commit resserre un test : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`.
+
+## Passe `pkw-servers-r-3` (indépendante, commit final)
+
+Section rédigée par l'auteur à partir du résumé que le coordinateur a fait du rapport du relecteur ; le texte exact est dans le transcript du relecteur, non reproduit ici.
+
+**Rôle :** passe `candidate-integration` en revue seule, à rôle séparé, sur le commit final. Sous-agent sans délégation, en lecture seule, dans un clone jetable. Modèle `claude-opus-5-5` ; session du harnais `c79598a7-9e1e-42cf-bfbc-e29615fbe251`. **Not a role-specific promotion approval.** Aucun constat bloquant ni majeur, aucune preuve requise ouverte.
+
+**Axes couverts :** sécurité (les retraits resserrent) ; correction (delta `20092f7` lu en entier) ; valeur des tests (neuf mutations tuées, deux survivantes : N2 et D) ; chaîne d'approvisionnement (rien d'ajouté).
+
+| Constat | Gravité | Disposition |
+| --- | --- | --- |
+| N1 : corrigé par `20092f7`. | minor | prêt |
+| **N2** : la ligne `if:` gardée intacte, suivie d'une ligne plus indentée `&& false` : le YAML prolonge le scalaire, PKW n'est plus jamais sélectionné. Mesuré : 166 tests OK. | minor | suggestion ; **corrigé** après la passe (voir plus bas) |
+| **D** : un second `if:` dans la même étape, sans PKW ; le YAML chargé garde le dernier. Mesuré : 166 tests OK, et 328 tests Bun passés. Le comportement de GitHub sur une clé en double n'est pas mesuré. | minor | suggestion ; **corrigé** après la passe (voir plus bas) |
+| M4 : inchangé, risque résiduel. | minor | suggestion |
+
+**Commandes et sorties de la passe :** 166 tests OK à la tête ; onze mutations du workflow, neuf tuées et deux survivantes (N2, D) ; lecture du YAML par Ruby, qui garde le dernier `if:` en double ; `git diff --name-only 70fb8fa...20092f7 | bun tools/skills/bounded-merge-scope.ts`, exit 1 ; `bash tools/quality/check-context-hygiene.sh`, 1209 fichiers suivis examinés ; 17 check-runs de `20092f7` au vert.
+
+**Limites de la passe :** `bun test` non lancé en entier ; #294 non relue ; comportement de GitHub sur une clé en double non mesuré.
+
+## Changement fait après `pkw-servers-r-3`
+
+Un commit, postérieur à `20092f7`, relu par aucune passe :
+
+- **N2 et D corrigés.** Le contrôle lit désormais le workflow avec un vrai parseur YAML, sans dépendance ajoutée : `tools/quality/validate-composition-gates.test.ts`, test Bun qui charge le fichier avec `Bun.YAML` (le parseur du runtime). Il compare la valeur `if:` chargée de chaque étape de porte (native, WASM, suite navigateur) aux cibles pour lesquelles `.github/composition/check-products.py` planifie la porte, obtenues en appelant le script avec `--plan`, et garde l'exigence des deux formes admises sur la valeur chargée. L'étape d'installation des navigateurs doit sélectionner les cibles de la suite, et son dictionnaire `children` doit correspondre aux répertoires du plan e2e. `Bun.YAML` garde sans rien dire la dernière de deux clés égales (mesuré sur Bun 1.4.0 : `if: x == 1` puis `if: y == 2` donne `y == 2`) : les clés en double sont donc trouvées par un contrôle dédié, `duplicateKeys`, qui parcourt les mappings en style bloc du même texte et saute le corps des scalaires de bloc. `WorkflowMatchesRunner`, la version texte en Python, est retirée : le nouveau test couvre tout ce qu'elle couvrait.
+- Commande : `bun --no-env-file test tools/quality/validate-composition-gates.test.ts`, 17 tests, 0 échec. Mutations, chacune rejouée puis restaurée : B1, commentaire `# 'personal-knowledge-workspace'`, 1 échec ; B2, `&& false` sur la ligne, 1 échec (`has neither admitted shape`) ; tabulation dans la condition, 1 échec ; guillemets doubles autour de PKW, 1 échec ; `contains(…, inputs.target` sans parenthèse fermante, 2 échecs ; PKW retiré de la condition WASM, 1 échec ; PKW remis dans la suite navigateur, 2 échecs ; `apps/notebook` remis dans `children`, 1 échec ; N2, ligne de continuation `&& false`, 1 échec (`has neither admitted shape`) ; D, second `if:` sans PKW, 2 échecs (`line 163: if`) ; D bis, second `if:` identique au premier, 1 échec, du seul contrôle de clés en double.
+
+**Effet sur les verdicts.** Ce commit remplace un test par un test plus strict : aucun changement de règle, donc les verdicts ne deviennent pas périmés au sens de `docs/reviews/AGENT-REVIEW-PROTOCOL.md:32`. Aucune passe ne couvre ce commit, qui devient le commit final.
 
 ## Risques résiduels
 
@@ -121,4 +150,4 @@ Un commit, postérieur à `b153139`, relu par aucune passe :
 
 ## Non relu
 
-Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. `b153139` est relu par la passe `pkw-servers-r-2`. Le commit qui corrige N1, et ce dossier dans son état final, n'ont été relus par aucune passe.
+Les 58 échecs de `bun test`, attribués à l'environnement sans autre analyse. `b153139` est relu par la passe `pkw-servers-r-2`, et `20092f7` par la passe `pkw-servers-r-3`. Le commit qui corrige N2 et D, et ce dossier dans son état final, n'ont été relus par aucune passe.
