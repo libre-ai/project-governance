@@ -100,7 +100,9 @@ describe("relecture", () => {
 
   test.each([
     "http://u:jeton@example.invalid:8080",
-    "http://u:jeton@127.0.0.1:8080",
+    // Reserved hosts only: the repository's secret scan refuses credentials in the URL of any
+    // other host, 127.0.0.1 included.
+    "http://u:jeton@localhost:8080",
   ])("the refusal of %s copies neither the user nor the password", async (url) => {
     const { diffs, results } = workspace();
     const outcome = await review(url, diffs, results);

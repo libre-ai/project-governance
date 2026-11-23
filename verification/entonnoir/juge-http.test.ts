@@ -49,10 +49,12 @@ describe("critère 6 — seule une URL locale est admise", () => {
   });
 
   // Le secret ne doit apparaître dans aucun message : la sortie d'erreur finit dans des journaux.
+  // Hôtes réservés (RFC 2606) seulement : le contrôle de secrets du dépôt refuse un identifiant
+  // dans l'URL de tout autre hôte, 127.0.0.1 compris.
   test.each([
-    "http://u:jeton@hôte",
+    "http://u:jeton@hote.invalid/",
     "http://u:jeton@exemple.invalid:8080",
-    "http://u:jeton@127.0.0.1:8080",
+    "http://u:jeton@localhost:8080",
     "http://:jeton@localhost:8080",
     "https://exemple.invalid/v1?cle=jeton#jeton",
     "u:jeton@exemple.invalid",

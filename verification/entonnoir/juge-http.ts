@@ -54,7 +54,7 @@ export function proxyInterpose(env: Environnement): string | null {
 
 /**
  * Forme d'une URL refusée qu'un message peut citer : schéma, hôte, port et chemin. L'utilisateur
- * et le mot de passe (`http://u:jeton@hôte`), la requête et le fragment peuvent porter un
+ * et le mot de passe (`http://u:jeton@hote.invalid/`), la requête et le fragment peuvent porter un
  * identifiant : ils ne sont jamais recopiés. Une URL illisible, ou d'un schéma autre que http(s),
  * dont le chemin opaque pourrait porter le secret (`u:jeton@hôte` se lit schéma `u:`), n'est pas
  * citée du tout.
