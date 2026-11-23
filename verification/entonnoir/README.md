@@ -42,9 +42,22 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 | fichier de résultats impossible à écrire | aucun bilan imprimé | 2 |
 
 Sans qualification, ou si le juge qui mesure n'est pas exactement celui qui s'est qualifié
-(modèle, version et famille), le signal est affiché « non qualifié ». Un juge qui ne note aucun
-cas étiqueté en échec n'est pas qualifié : son taux de faux succès n'a pas de dénominateur.
-Le juge est qualifié quand ce taux est au plus `tauxFauxSuccesMax`, borne incluse. La comparaison
+(modèle, version et famille), le signal est affiché « non qualifié ».
+
+Le juge est qualifié quand les trois conditions tiennent ensemble :
+
+1. aucun cas étiqueté n'est resté non noté (refus, réponse hors schéma, juge injoignable) ;
+2. son taux de **faux succès** (cas étiquetés en échec qu'il déclare réussis, sur les cas étiquetés
+   en échec) est au plus `tauxFauxSuccesMax` ;
+3. son taux de **faux échecs** (cas étiquetés réussis qu'il déclare en échec, sur les cas étiquetés
+   réussis) est au plus le même seuil.
+
+Le faux succès seul ne suffit pas : un juge qui répond « échec » à tout n'en commet aucun, et un
+juge qui ne note qu'un cas sur cinq pas davantage. Un taux sans dénominateur ne mesure rien : sans
+cas étiqueté en échec, ou sans cas étiqueté réussi, le juge n'est pas qualifié. Le bilan imprime les
+deux taux en numérateur et dénominateur, et le compte des non notés.
+
+Les deux taux se comparent au seuil, borne incluse. La comparaison
 se fait en entiers, sur l'écriture décimale du seuil, et jamais en flottant : un flottant refuserait
 57/100 au seuil 0.57 et admettrait 12/19 au seuil 0.631578947368421. Le seuil doit s'écrire avec
 au plus 15 chiffres significatifs : au-delà, la lecture JSON le ramène à un double dont l'écriture
@@ -56,7 +69,8 @@ la plus courte peut être plus haute (`0.49999999999999999` se lit `0.5` et qual
 les sorties, le modèle candidat (`candidat-fictif`) et le jeu de contrôles `carte.v1` illustrent la
 forme du module, ils ne mesurent rien de réel. Les étiquettes `attendu` de `qualification.json`
 sont écrites par l'auteur du module, jamais par un modèle. Le seuil `tauxFauxSuccesMax` y vaut 0 :
-un seul faux succès disqualifie le juge sur ce corpus.
+un seul faux succès, un seul faux échec ou un seul cas non noté disqualifie le juge sur ce corpus.
+Le nom du champ est resté `tauxFauxSuccesMax` ; il borne les deux taux.
 
 ## Ce que le module ne reproduit pas
 

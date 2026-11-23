@@ -316,6 +316,11 @@ export interface Qualification {
   readonly fauxSucces: number;
   /** Dénominateur : cas étiquetés en échec que le juge a notés. */
   readonly echecsNotes: number;
+  /** Numérateur : cas étiquetés réussis que le juge déclare en échec. */
+  readonly fauxEchecs: number;
+  /** Dénominateur : cas étiquetés réussis que le juge a notés. */
+  readonly succesNotes: number;
+  /** Seuil commun aux deux taux, faux succès et faux échecs. */
   readonly tauxFauxSuccesMax: number;
   readonly qualifie: boolean;
 }
@@ -372,8 +377,14 @@ export function seuilDecimal(seuil: number): SeuilDecimal {
 
 /**
  * D1 (c) : le juge est qualifié contre des cas étiquetés avant d'entrer dans la mesure.
- * Son taux de faux succès se publie en numérateur et dénominateur ; sans cas étiqueté en échec
- * noté, rien n'est mesuré et le juge n'est pas qualifié.
+ *
+ * Il est qualifié quand les trois conditions tiennent ensemble :
+ *   (a) aucun cas étiqueté n'est resté non noté ;
+ *   (b) son taux de faux succès est au plus le seuil ;
+ *   (c) son taux de faux échecs est au plus le même seuil.
+ * Le faux succès seul ne suffit pas : un juge qui répond « échec » à tout n'a aucun faux succès, et
+ * un juge qui ne note qu'un cas n'en a pas davantage. Chaque taux se publie en numérateur et
+ * dénominateur ; un taux sans dénominateur ne mesure rien, et le juge n'est alors pas qualifié.
  */
 export async function qualifier(
   juge: Juge,
@@ -386,6 +397,8 @@ export async function qualifier(
   let injoignables = 0;
   let fauxSucces = 0;
   let echecsNotes = 0;
+  let fauxEchecs = 0;
+  let succesNotes = 0;
   // Le seuil et tous les cas sont vérifiés avant le premier appel : une entrée invalide découverte
   // en cours de boucle laisserait des invites déjà envoyées pour une qualification qui n'aboutit pas.
   const seuil = seuilDecimal(tauxFauxSuccesMax);
@@ -409,12 +422,20 @@ export async function qualifier(
       continue;
     }
     notes += 1;
-    if (!cas.attendu) {
+    if (cas.attendu) {
+      succesNotes += 1;
+      if (essai.etat === "echoue") fauxEchecs += 1;
+    } else {
       echecsNotes += 1;
       if (essai.etat === "reussi") fauxSucces += 1;
     }
   }
-  const qualifie = echecsNotes > 0 && auPlus(fauxSucces, echecsNotes, seuil);
+  const qualifie =
+    nonNotes === 0 &&
+    echecsNotes > 0 &&
+    auPlus(fauxSucces, echecsNotes, seuil) &&
+    succesNotes > 0 &&
+    auPlus(fauxEchecs, succesNotes, seuil);
   return {
     juge: juge.identite,
     lances: etiquetes.length,
@@ -423,6 +444,8 @@ export async function qualifier(
     injoignables,
     fauxSucces,
     echecsNotes,
+    fauxEchecs,
+    succesNotes,
     tauxFauxSuccesMax,
     qualifie,
   };
@@ -630,9 +653,10 @@ export function formaterBilan(execution: Execution): readonly string[] {
   const q = execution.qualification;
   if (q !== null) {
     lignes.push(
-      `qualification de ${cleJuge(q.juge)} : faux succès ${q.fauxSucces}/${q.echecsNotes} ` +
-        `(seuil ${q.tauxFauxSuccesMax}) ; lancés ${q.lances} = notés ${q.notes} + non notés ${q.nonNotes} ` +
-        `(dont injoignables ${q.injoignables}) ; ` +
+      `qualification de ${cleJuge(q.juge)} : faux succès ${q.fauxSucces}/${q.echecsNotes}, ` +
+        `faux échecs ${q.fauxEchecs}/${q.succesNotes} (seuil ${q.tauxFauxSuccesMax} pour chacun) ; ` +
+        `lancés ${q.lances} = notés ${q.notes} + non notés ${q.nonNotes} ` +
+        `(dont injoignables ${q.injoignables}), aucun non noté admis ; ` +
         (q.qualifie ? "qualifié" : "non qualifié"),
     );
   }

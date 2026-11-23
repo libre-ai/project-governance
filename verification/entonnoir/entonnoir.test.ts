@@ -341,6 +341,8 @@ describe("D1 (c) — qualification avant usage", () => {
     expect(qualification).toMatchObject({
       fauxSucces: 0,
       echecsNotes: 3,
+      fauxEchecs: 0,
+      succesNotes: 2,
       lances: 5,
       notes: 5,
       nonNotes: 0,
@@ -399,22 +401,136 @@ describe("D1 (c) — qualification avant usage", () => {
     [1, 3, 0.3333333333333333, false],
   ])("à %i faux succès sur %i et un seuil de %d, le juge est qualifié : %p", async (faux, total, seuil, attendu) => {
     let rang = 0;
-    // Chaque cas est étiqueté en échec ; le juge en déclare réussis exactement `faux`.
+    // Les `total` cas en échec viennent d'abord ; le juge en déclare réussis exactement `faux`.
+    // Le dernier cas, étiqueté réussi, est jugé réussi : le taux de faux échecs vaut 0/1 et seul
+    // le taux de faux succès décide.
     const f = jugeFactice((invite) => {
       rang += 1;
-      return toutes(rang <= faux)(invite);
+      return toutes(rang <= faux || rang > total)(invite);
     });
-    const etiquetes = Array.from({ length: total }, (_, i) => ({
-      id: `echec-${i}`,
-      controles: "carte.v1",
-      sortie: CONFORME,
-      attendu: false,
-    }));
+    const etiquetes = [
+      ...Array.from({ length: total }, (_, i) => ({
+        id: `echec-${i}`,
+        controles: "carte.v1",
+        sortie: CONFORME,
+        attendu: false,
+      })),
+      { id: "succes-0", controles: "carte.v1", sortie: CONFORME, attendu: true },
+    ];
     const qualification = await qualifier(f.juge, etiquetes, REGISTRE, seuil);
     expect(qualification).toMatchObject({
       fauxSucces: faux,
       echecsNotes: total,
+      fauxEchecs: 0,
+      succesNotes: 1,
       qualifie: attendu,
+    });
+  });
+
+  // Les mêmes seuils pour le taux de faux échecs : même comparaison exacte, même borne inclusive.
+  test.each([
+    [57, 100, 0.57, true],
+    [58, 100, 0.57, false],
+    [12, 19, 0.631578947368421, false],
+  ])("à %i faux échecs sur %i et un seuil de %d, le juge est qualifié : %p", async (faux, total, seuil, attendu) => {
+    let rang = 0;
+    // Les `total` cas réussis viennent d'abord ; le juge en déclare en échec exactement `faux`.
+    // Le dernier cas, étiqueté en échec, est jugé en échec : le taux de faux succès vaut 0/1.
+    const f = jugeFactice((invite) => {
+      rang += 1;
+      return toutes(rang > faux && rang <= total)(invite);
+    });
+    const etiquetes = [
+      ...Array.from({ length: total }, (_, i) => ({
+        id: `succes-${i}`,
+        controles: "carte.v1",
+        sortie: CONFORME,
+        attendu: true,
+      })),
+      { id: "echec-0", controles: "carte.v1", sortie: CONFORME, attendu: false },
+    ];
+    const qualification = await qualifier(f.juge, etiquetes, REGISTRE, seuil);
+    expect(qualification).toMatchObject({
+      fauxSucces: 0,
+      echecsNotes: 1,
+      fauxEchecs: faux,
+      succesNotes: total,
+      qualifie: attendu,
+    });
+  });
+
+  test("un juge qui répond « échec » à tout n'a aucun faux succès et n'est pas qualifié", async () => {
+    const f = jugeFactice(toutes(false));
+    const qualification = await qualificationCorpus(f.juge);
+    // La mesure de la revue : sur le seul faux succès, ce juge était qualifié.
+    expect(qualification).toMatchObject({
+      notes: 5,
+      nonNotes: 0,
+      fauxSucces: 0,
+      echecsNotes: 3,
+      fauxEchecs: 2,
+      succesNotes: 2,
+      qualifie: false,
+    });
+    const execution = await executer([cas("x", CONFORME)], {
+      registre: REGISTRE,
+      juge: f.juge,
+      qualification,
+    });
+    const texte = formaterBilan(execution).join("\n");
+    expect(texte).toContain("faux succès 0/3, faux échecs 2/2");
+    expect(texte).toContain("non notés 0");
+    expect(texte).toContain("non qualifié");
+  });
+
+  test("un juge qui ne note qu'un cas sur cinq n'est pas qualifié", async () => {
+    const honnete = jugeHonnete();
+    let rang = 0;
+    const f = jugeFactice((invite) => {
+      rang += 1;
+      return rang === 3 ? honnete.juge.juger(invite) : "refus";
+    });
+    const qualification = await qualificationCorpus(f.juge);
+    expect(qualification).toMatchObject({
+      notes: 1,
+      nonNotes: 4,
+      fauxSucces: 0,
+      echecsNotes: 1,
+      qualifie: false,
+    });
+  });
+
+  test("un seul cas non noté suffit à refuser la qualification, même sans aucune erreur", async () => {
+    // Juge honnête partout, sauf un refus sur « fidele-2 » : les deux taux valent 0, sur des
+    // dénominateurs non nuls ; seule la condition « aucun non noté » le refuse.
+    const honnete = jugeHonnete();
+    let rang = 0;
+    const f = jugeFactice((invite) => {
+      rang += 1;
+      return rang === 2 ? "refus" : honnete.juge.juger(invite);
+    });
+    const qualification = await qualificationCorpus(f.juge);
+    expect(qualification).toMatchObject({
+      notes: 4,
+      nonNotes: 1,
+      fauxSucces: 0,
+      echecsNotes: 3,
+      fauxEchecs: 0,
+      succesNotes: 1,
+      qualifie: false,
+    });
+  });
+
+  test("sans cas étiqueté réussi, le taux de faux échecs n'a pas de dénominateur : non qualifié", async () => {
+    const f = jugeFactice(toutes(false));
+    const etiquetes = [{ id: "echec-0", controles: "carte.v1", sortie: CONFORME, attendu: false }];
+    const qualification = await qualifier(f.juge, etiquetes, REGISTRE, 0);
+    expect(qualification).toMatchObject({
+      fauxSucces: 0,
+      echecsNotes: 1,
+      fauxEchecs: 0,
+      succesNotes: 0,
+      qualifie: false,
     });
   });
 
