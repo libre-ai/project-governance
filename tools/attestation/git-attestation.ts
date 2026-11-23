@@ -130,15 +130,22 @@ function git(dir: string, args: readonly string[], input?: Uint8Array): Buffer {
     stderr: "pipe",
     maxBuffer: gitOutputLimit,
   });
-  // The exit code is the verdict; stderr may quote object content, so it is dropped.
-  // neutralise:git-exit
-  if (result.exitCode !== 0) throw new GitFailure(`git ${args[0] ?? ""} exited ${result.exitCode}`);
-  // Bun 1.4.0 returns exit code 0 with a TRUNCATED stdout when the output exceeds maxBuffer
-  // (measured: 200000 bytes asked, 66536 returned, exitedDueToMaxBuffer true). A partial listing
-  // would read as a complete one.
+  // The output limit is judged BEFORE the exit code. When the output exceeds maxBuffer, Bun 1.4.0
+  // truncates stdout and kills git, and the exit code depends on a race: 0 when git had already
+  // exited (measured: 200000 bytes asked, 66536 returned), null with signal SIGTERM when the kill
+  // landed first (measured 2026-11-23: 7 of 300 runs at a 64-byte cap, issue #298). Judged after
+  // the exit code, the null case was reported as a generic git failure. A partial listing must
+  // never read as a complete one, whatever the exit code.
   // neutralise:git-output-limit
   if (result.exitedDueToMaxBuffer)
     throw new GitFailure("git output exceeds the read limit", "git-output-limit");
+  // The exit code is the verdict; stderr may quote object content, so it is dropped. A git killed
+  // by a signal has a null exit code (bun-types declares `number`), which this refuses too.
+  // neutralise:git-exit
+  if (result.exitCode !== 0)
+    throw new GitFailure(
+      `git ${args[0] ?? ""} exited ${result.exitCode} (signal ${result.signalCode ?? "none"})`,
+    );
   return Buffer.from(result.stdout);
 }
 
@@ -203,8 +210,8 @@ interface RawObject {
  * Accepted limit (not a fix): every handled object is read into one buffer, bounded by the git
  * output limit (1 GiB). `maximumBlobBytes` is applied after that read, so it bounds the scan of a
  * blob, not the memory used to fetch it. A repository whose objects exceed the limit fails closed
- * (`git-output-limit` becomes a `git-failure` finding) instead of being read partly. The
- * candidate holds 366,295 blob bytes in 205 objects.
+ * (the scan reports a `git-output-limit` finding, the manifest throws) instead of being read
+ * partly. The candidate holds 366,295 blob bytes in 205 objects.
  */
 function readObjects(dir: string, oids: readonly string[]): Map<string, RawObject | null> {
   const out = git(dir, ["cat-file", "--batch"], Buffer.from(`${oids.join("\n")}\n`));
