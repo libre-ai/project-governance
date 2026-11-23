@@ -11,7 +11,7 @@ than 7 days as soon as a package of the LangGraph family is declared.
 
 | Item | Where it comes from | What the consumer sees |
 | --- | --- | --- |
-| `osv-scanner` 2.7.0, linux-x64 | `toolchains/osv-scanner.json`, installed by `.github/composition/install-toolchains.sh` after a sha256 check and a version check | on `PATH`, and its path in `LIBRE_AI_OSV_SCANNER` |
+| `osv-scanner` 2.7.1, linux-x64 | `toolchains/osv-scanner.json`, installed by `.github/composition/install-toolchains.sh` after a sha256 check and a version check | on `PATH`, and its path in `LIBRE_AI_OSV_SCANNER` |
 | the npm advisory database | `.github/composition/download-advisory-database.py`, run between the toolchain installation and the checks of `validate-composition.yml` | `<cacheDirectory>/osv-scalibr/npm/all.zip` in the target checkout, whose modification time is the download time of that job |
 
 The database is provided only to the targets listed in
