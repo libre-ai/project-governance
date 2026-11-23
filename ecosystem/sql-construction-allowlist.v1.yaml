@@ -70,15 +70,6 @@ allowances:
       #[test] fixtures that assemble schema text for the inspector to parse
       statically; the inspector opens no database connection, so the text is
       analysed, never executed.
-  - repository: libre-ai/personal-knowledge-workspace
-    path: apps/p02-api/test/pg.ts
-    rule: unsafe-call
-    count: 5
-    because: >-
-      test bootstrap of a throwaway Postgres: CREATE ROLE / CREATE DATABASE /
-      GRANT cannot take bind parameters, and the identifiers are the module
-      constants MIGRATOR, DATABASE and API_LOGIN; the remaining call applies the
-      repository's committed migration files.
   - repository: libre-ai/ai-work-supervision
     path: crates/work-supervision-store/postgres-check/postgres-migrations.test.ts
     rule: exec-non-constant
