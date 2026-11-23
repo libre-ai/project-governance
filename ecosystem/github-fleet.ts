@@ -48,8 +48,11 @@ export async function ghGraphQLRaw(
     stdout: "pipe",
     stderr: "pipe",
   });
-  proc.stdin.write(query);
-  proc.stdin.end();
+  // Neither call is awaited, and both can reject with EPIPE once `gh` closed its stdin or exited
+  // unread (seen on Linux). Unhandled, that rejection would end the calling gate with exit 1
+  // whatever `gh` answered: its exit code and its output decide instead.
+  void Promise.resolve(proc.stdin.write(query)).catch(() => undefined);
+  void Promise.resolve(proc.stdin.end()).catch(() => undefined);
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),

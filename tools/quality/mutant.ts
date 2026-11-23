@@ -611,16 +611,26 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
 }
 
-/** Kill the running oracle, remove the copy, exit 128 + signal number. */
+/**
+ * Kill the running oracle, remove the copy, exit 128 + signal number. Never rejects: it runs from
+ * a signal handler, where a rejection would be unhandled and end the launcher with exit 1. A
+ * failed cleanup is reported on stderr, and the signal still decides the exit code.
+ */
 async function interrupt(signal: "SIGINT" | "SIGTERM", code: number): Promise<void> {
-  const child = active.child;
-  if (child !== null) {
-    child.kill("SIGKILL");
-    await child.exited;
+  try {
+    const child = active.child;
+    if (child !== null) {
+      child.kill("SIGKILL");
+      await child.exited;
+    }
+    if (active.work !== null) rmSync(active.work, { recursive: true, force: true });
+    console.error(`interrupted by ${signal}: oracle killed, copy removed`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.error(`interrupted by ${signal}: cleanup failed (${reason})`);
+  } finally {
+    process.exit(code);
   }
-  if (active.work !== null) rmSync(active.work, { recursive: true, force: true });
-  console.error(`interrupted by ${signal}: oracle killed, copy removed`);
-  process.exit(code);
 }
 
 if (import.meta.main) {
