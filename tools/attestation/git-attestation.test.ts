@@ -10,6 +10,7 @@ import {
   assertHandledTypes,
   buildManifest,
   canonicalJson,
+  classesOfText,
   contentClasses,
   decodeDenyLiteral,
   type Finding,
@@ -1509,6 +1510,14 @@ describe("operator input, second round", () => {
   });
 
   test("red:text-limit a text file above the size limit is refused, not partly read", () => {
+    // A few bytes and a small limit: the neutralised refusal scans 11 bytes and fails on the
+    // assertion at once, where a 64 MiB file ran past the test's time budget (issue #299).
+    const limited: ScanOptions = { identities, maximumBlobBytes: 10 };
+    expect(classesOfText(Buffer.alloc(11, 0x78), limited)).toEqual(["resource-limit"]);
+    expect(classesOfText(Buffer.alloc(10, 0x78), limited)).toEqual([]);
+  });
+
+  test("the text command applies the 64 MiB default limit", () => {
     const file = join(freshDir("text3"), "big.log");
     writeFileSync(file, Buffer.alloc(64 * 1024 * 1024 + 1, 0x78));
     const result = cli("text", file, "--identities", idsPath);
