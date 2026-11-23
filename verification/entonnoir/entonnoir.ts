@@ -333,6 +333,27 @@ function controlesDe(registre: Registre, reference: string, cas: string): Contro
 }
 
 /**
+ * Vrai quand `numerateur / denominateur <= seuil`, comparé exactement en entiers.
+ *
+ * En flottant, les deux formes se trompent : 0.57 × 100 vaut 56,999… (un taux égal au seuil serait
+ * refusé), et 12/19 tombe sur le même double que 0.631578947368421 (un taux au-dessus du seuil
+ * serait admis). Le seuil est pris sous sa plus courte écriture décimale, celle que `String` rend et
+ * qui relit le même double : c'est la valeur écrite dans la source dès qu'elle tient en 15 chiffres
+ * significatifs.
+ */
+function auPlus(numerateur: number, denominateur: number, seuil: number): boolean {
+  const ecriture = /^(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(String(seuil));
+  if (ecriture === null) throw new EntreeInvalide(`seuil non décimal : ${String(seuil)}`);
+  const [, entiers, decimales = "", exposant = "0"] = ecriture;
+  // seuil = chiffres × 10^puissance
+  const chiffres = BigInt(`${entiers}${decimales}`);
+  const puissance = Number(exposant) - decimales.length;
+  const gauche = BigInt(numerateur) * 10n ** BigInt(Math.max(0, -puissance));
+  const droite = chiffres * BigInt(denominateur) * 10n ** BigInt(Math.max(0, puissance));
+  return gauche <= droite;
+}
+
+/**
  * D1 (c) : le juge est qualifié contre des cas étiquetés avant d'entrer dans la mesure.
  * Son taux de faux succès se publie en numérateur et dénominateur ; sans cas étiqueté en échec
  * noté, rien n'est mesuré et le juge n'est pas qualifié.
@@ -375,11 +396,7 @@ export async function qualifier(
       if (essai.etat === "reussi") fauxSucces += 1;
     }
   }
-  // Le quotient, pas le produit : la division IEEE est arrondie au plus proche, donc 57/100 tombe
-  // sur le même flottant que le seuil écrit 0.57, alors que 0.57 × 100 vaut 56,999… et refuserait
-  // un taux égal au seuil. La borne est exacte pour un seuil écrit avec au plus 15 chiffres
-  // significatifs ; au-delà, le seuil écrit n'est plus le flottant lu (0.3333333333333333 qualifie 1/3).
-  const qualifie = echecsNotes > 0 && fauxSucces / echecsNotes <= tauxFauxSuccesMax;
+  const qualifie = echecsNotes > 0 && auPlus(fauxSucces, echecsNotes, tauxFauxSuccesMax);
   return {
     juge: juge.identite,
     lances: etiquetes.length,

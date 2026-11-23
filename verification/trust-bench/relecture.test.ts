@@ -144,12 +144,20 @@ describe("relecture", () => {
   });
 
   test("a connection cut while the body is read stops the run and writes nothing", async () => {
-    // A raw socket: the headers announce 500 bytes, 13 arrive, then the connection closes.
+    // A raw socket: the headers announce 500 bytes, 13 arrive, then the connection closes. The
+    // whole request is read first: closing with request bytes unread could send a reset instead,
+    // and the failure would then come before the body.
+    let recu = "";
     const cut = Bun.listen({
       hostname: "127.0.0.1",
       port: 0,
       socket: {
-        data(socket) {
+        data(socket, morceau) {
+          recu += morceau.toString("latin1");
+          const fin = recu.indexOf("\r\n\r\n");
+          if (fin < 0) return;
+          const longueur = Number(/content-length:\s*(\d+)/i.exec(recu)?.[1] ?? 0);
+          if (recu.length < fin + 4 + longueur) return;
           socket.write(
             'HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 500\r\n\r\n{"choices":[',
           );
@@ -168,16 +176,48 @@ describe("relecture", () => {
     }
   });
 
-  test("a result file left by an earlier run is removed, so a stopped run leaves none", async () => {
+  test("an existing result file is refused before any request, and left intact", async () => {
     const { diffs, results } = workspace();
-    writeFileSync(results, '{"cas":"D01","defaut":true}\n');
-    // Nothing listens on this port once the server is stopped: the request fails.
-    const closed = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
-    const port = closed.port;
-    closed.stop(true);
-    const outcome = await review(`http://127.0.0.1:${port}`, diffs, results);
-    expect(outcome.code).toBe(1);
-    expect(outcome.results).toBe("");
+    const earlier = '{"cas":"D01","defaut":true}\n';
+    writeFileSync(results, earlier);
+    let received = 0;
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return new Response("");
+      },
+    });
+    try {
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results);
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr).toContain("existe déjà");
+      expect(received).toBe(0);
+      expect(outcome.results).toBe(earlier);
+    } finally {
+      local.stop(true);
+    }
+  });
+
+  test("a JSON body that is not an object (null) is unreadable, not a crash", async () => {
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response("null", { status: 200 }),
+    });
+    try {
+      const { diffs, results } = workspace();
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results);
+      expect(outcome.code).toBe(1);
+      expect(JSON.parse(outcome.results)).toMatchObject({
+        cas: "D01",
+        defaut: null,
+        illisible: true,
+      });
+    } finally {
+      local.stop(true);
+    }
   });
 
   test("a successful status whose body is not JSON is unreadable, written as such", async () => {

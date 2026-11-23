@@ -391,6 +391,10 @@ describe("D1 (c) — qualification avant usage", () => {
     [29, 100, 0.29, true],
     [58, 100, 0.57, false],
     [30, 100, 0.29, false],
+    // 12/19 dépasse 0,631578947368421 (15 chiffres) mais tombe sur le même flottant : un quotient
+    // en double le qualifierait.
+    [12, 19, 0.631578947368421, false],
+    [1, 3, 0.3333333333333333, false],
   ])("à %i faux succès sur %i et un seuil de %d, le juge est qualifié : %p", async (faux, total, seuil, attendu) => {
     let rang = 0;
     // Chaque cas est étiqueté en échec ; le juge en déclare réussis exactement `faux`.

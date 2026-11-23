@@ -4,7 +4,7 @@
 // Usage : bun relecture.ts <répertoire de diffs> <url du serveur> <étiquette du modèle> <résultats.jsonl>
 // Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
 // s'interposerait aussi, et une redirection n'est jamais suivie.
-import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
 
@@ -29,8 +29,12 @@ if (proxys !== null) {
 }
 
 // Un fichier laissé par un run précédent se lirait comme la mesure de celui-ci s'il s'arrêtait
-// sans écrire : il est retiré avant le premier appel.
-rmSync(sortie, { force: true });
+// sans écrire ; l'effacer détruirait une mesure ou une entrée sur un run qui échoue. Il est donc
+// refusé avant tout appel, et l'écriture finale ne remplace jamais un fichier apparu entre-temps.
+if (existsSync(sortie)) {
+  console.error(`relecture : ${sortie} existe déjà ; choisir un autre chemin ou le retirer`);
+  process.exit(2);
+}
 
 const CONSIGNE = [
   "You review one code change (a unified diff) before it is merged.",
@@ -89,7 +93,7 @@ for (const f of fichiers) {
   );
   console.log(`${f}\t${modele}\tdéfaut=${String(defaut)}\t${ms} ms`);
 }
-writeFileSync(sortie, `${lignes.join("\n")}\n`);
+writeFileSync(sortie, `${lignes.join("\n")}\n`, { flag: "wx" });
 console.log(
   `diffs lus : ${fichiers.length}, verdicts écrits : ${lignes.length}, réponses illisibles : ${illisibles}`,
 );
@@ -129,9 +133,11 @@ async function demander(fichier: string, diff: string): Promise<string> {
 }
 
 /** Un corps reçu en entier mais qui n'est pas du JSON est une réponse illisible, pas un échec de transport. */
-function analyser(brut: string): unknown {
+function analyser(brut: string): object {
   try {
-    return JSON.parse(brut);
+    const valeur: unknown = JSON.parse(brut);
+    // `null`, un nombre ou une chaîne sont du JSON valide mais pas une réponse : illisibles aussi.
+    return typeof valeur === "object" && valeur !== null ? valeur : {};
   } catch {
     return {};
   }

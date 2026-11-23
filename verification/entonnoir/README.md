@@ -44,6 +44,9 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 Sans qualification, ou si le juge qui mesure n'est pas exactement celui qui s'est qualifié
 (modèle, version et famille), le signal est affiché « non qualifié ». Un juge qui ne note aucun
 cas étiqueté en échec n'est pas qualifié : son taux de faux succès n'a pas de dénominateur.
+Le juge est qualifié quand ce taux est au plus `tauxFauxSuccesMax`, borne incluse. La comparaison
+se fait en entiers, sur l'écriture décimale du seuil, et jamais en flottant : un flottant refuserait
+57/100 au seuil 0.57 et admettrait 12/19 au seuil 0.631578947368421.
 
 ## Corpus de démonstration
 
