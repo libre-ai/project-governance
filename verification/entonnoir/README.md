@@ -39,7 +39,8 @@ bun verification/entonnoir/lancer.ts verification/entonnoir/corpus/cas.json "$TM
 | variable de proxy renseignée dans l'environnement | refusé avant tout appel | 2 |
 | cas étiqueté rejeté par les étages 1 et 2 | qualification refusée avant tout appel | 2 |
 | source illisible, vide ou invalide | aucune mesure | 2 |
-| fichier de résultats impossible à écrire | aucun bilan imprimé | 2 |
+| fichier de résultats qui existe déjà (lien pendant compris), ou répertoire absent | refusé avant tout appel, le fichier n'est jamais remplacé | 2 |
+| fichier de résultats apparu, ou répertoire retiré, pendant le run | fichier intact ; lignes de résultats sur la sortie standard, bilan sur la sortie d'erreur | 3 |
 
 Sans qualification, ou si le juge qui mesure n'est pas exactement celui qui s'est qualifié
 (modèle, version et famille), le signal est affiché « non qualifié ».

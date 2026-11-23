@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -87,14 +87,127 @@ describe("critère 7 — une source illisible est un échec, jamais zéro", () =
   });
 });
 
-describe("sortie impossible à écrire", () => {
-  test("une sortie dans un répertoire absent sort en 2, sans bilan ni trace de pile", () => {
-    const resultats = join(dossier(), "absent", "resultats.jsonl");
-    const issue = lancer(join(CORPUS, "cas.json"), resultats);
-    expect(issue.code).toBe(2);
-    expect(issue.erreur).toContain("écriture impossible");
-    expect(issue.sortie).toBe("");
-    expect(existsSync(resultats)).toBe(false);
+/** Juge local qui compte ses appels ; `avant` s'exécute à chaque requête, avant la réponse. */
+function jugeLocal(avant: () => void = () => {}) {
+  const compte = { recus: 0 };
+  const serveur = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: () => {
+      compte.recus += 1;
+      avant();
+      return Response.json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                verdicts: { "titre-fidele": true, "actions-explicites": true },
+                justification: "trace",
+              }),
+            },
+          },
+        ],
+      });
+    },
+  });
+  return { serveur, compte };
+}
+
+/** La commande avec un juge local, en asynchrone : le serveur vit dans ce processus. */
+async function lancerAvecJuge(port: number | undefined, resultats: string): Promise<Issue> {
+  const run = Bun.spawn(
+    [
+      "bun",
+      LANCER,
+      join(CORPUS, "cas.json"),
+      resultats,
+      "--juge-url",
+      `http://127.0.0.1:${port}`,
+      "--juge-modele",
+      "m",
+      "--juge-version",
+      "1",
+      "--juge-famille",
+      "fam-b",
+    ],
+    { stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH ?? "" } },
+  );
+  const code = await run.exited;
+  return {
+    code,
+    sortie: await new Response(run.stdout).text(),
+    erreur: await new Response(run.stderr).text(),
+  };
+}
+
+describe("fichier de résultats — même contrat que relecture.ts", () => {
+  test("une sortie dans un répertoire absent est refusée en 2 avant tout appel", async () => {
+    const { serveur, compte } = jugeLocal();
+    try {
+      const resultats = join(dossier(), "absent", "resultats.jsonl");
+      const issue = await lancerAvecJuge(serveur.port, resultats);
+      expect(issue.code).toBe(2);
+      expect(issue.erreur).toContain("n'existe pas");
+      expect(issue.sortie).toBe("");
+      expect(compte.recus).toBe(0);
+      expect(existsSync(resultats)).toBe(false);
+    } finally {
+      serveur.stop(true);
+    }
+  });
+
+  test("un fichier de résultats existant est refusé en 2 avant tout appel, et laissé intact", async () => {
+    const { serveur, compte } = jugeLocal();
+    try {
+      const resultats = join(dossier(), "resultats.jsonl");
+      const ancien = '{"id":"ancien"}\n';
+      writeFileSync(resultats, ancien);
+      const issue = await lancerAvecJuge(serveur.port, resultats);
+      expect(issue.code).toBe(2);
+      expect(issue.erreur).toContain("existe déjà");
+      expect(issue.sortie).toBe("");
+      expect(compte.recus).toBe(0);
+      expect(readFileSync(resultats, "utf8")).toBe(ancien);
+    } finally {
+      serveur.stop(true);
+    }
+  });
+
+  test("un lien pendant à la place du fichier de résultats est refusé en 2 avant tout appel", async () => {
+    const { serveur, compte } = jugeLocal();
+    try {
+      const racine = dossier();
+      const resultats = join(racine, "resultats.jsonl");
+      symlinkSync(join(racine, "cible-absente"), resultats);
+      const issue = await lancerAvecJuge(serveur.port, resultats);
+      expect(issue.code).toBe(2);
+      expect(issue.erreur).toContain("existe déjà");
+      expect(compte.recus).toBe(0);
+      expect(existsSync(join(racine, "cible-absente"))).toBe(false);
+    } finally {
+      serveur.stop(true);
+    }
+  });
+
+  test("un fichier apparu pendant le run est gardé : sortie 3, mesures sur la sortie standard", async () => {
+    const racine = dossier();
+    const resultats = join(racine, "resultats.jsonl");
+    const autre = "écrit par quelqu'un d'autre\n";
+    // Le fichier apparaît après le contrôle de départ, avant l'écriture finale.
+    const { serveur, compte } = jugeLocal(() => writeFileSync(resultats, autre));
+    try {
+      const issue = await lancerAvecJuge(serveur.port, resultats);
+      expect(issue.code).toBe(3);
+      expect(compte.recus).toBeGreaterThan(0);
+      expect(issue.erreur).toContain("mesures ci-dessous");
+      expect(issue.erreur).toContain("cas lus : 6");
+      const lignes = issue.sortie.trim().split("\n");
+      expect(lignes).toHaveLength(6);
+      for (const ligne of lignes) expect(() => JSON.parse(ligne)).not.toThrow();
+      expect(readFileSync(resultats, "utf8")).toBe(autre);
+    } finally {
+      serveur.stop(true);
+    }
   });
 });
 

@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -226,6 +234,32 @@ describe("relecture", () => {
       expect(outcome.stderr).toContain("existe déjà");
       expect(received).toBe(0);
       expect(outcome.results).toBe(earlier);
+    } finally {
+      local.stop(true);
+    }
+  });
+
+  test("a dangling link in place of the result file is refused before any request", async () => {
+    // `existsSync` follows the link and would let it through; the exclusive write would then fail
+    // at the end of the run, after the diff had been sent.
+    const { diffs, results } = workspace();
+    const target = join(dirname(results), "absent-target");
+    symlinkSync(target, results);
+    let received = 0;
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        received += 1;
+        return new Response("");
+      },
+    });
+    try {
+      const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results);
+      expect(outcome.code).toBe(2);
+      expect(outcome.stderr).toContain("existe déjà");
+      expect(received).toBe(0);
+      expect(existsSync(target)).toBe(false);
     } finally {
       local.stop(true);
     }

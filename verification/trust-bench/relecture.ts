@@ -5,12 +5,14 @@
 // Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
 // s'interposerait aussi, et une redirection n'est jamais suivie.
 // Codes de sortie : 0 mesure écrite ; 1 réponse illisible, échec de transport ou délai dépassé ;
-// 2 argument refusé (dont un fichier de résultats qui existe déjà, jamais remplacé, et un répertoire
-// de destination absent) ; 3 écriture finale impossible alors qu'elle était possible au départ
-// (fichier apparu ou répertoire retiré pendant le run), mesures imprimées sur la sortie standard.
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+// 2 argument refusé (dont un fichier de résultats qui existe déjà, lien pendant compris, jamais
+// remplacé, et un répertoire de destination absent) ; 3 écriture finale impossible alors qu'elle
+// était possible au départ (fichier apparu ou répertoire retiré pendant le run), mesures imprimées
+// sur la sortie standard.
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
+import { ecrireExclusif, refusSortie } from "../entonnoir/sortie";
 
 const [diffsDir, url, modele, sortie] = process.argv.slice(2);
 if (!diffsDir || !url || !modele || !sortie) {
@@ -32,17 +34,11 @@ if (proxys !== null) {
   process.exit(2);
 }
 
-// Un fichier laissé par un run précédent se lirait comme la mesure de celui-ci s'il s'arrêtait
-// sans écrire ; l'effacer détruirait une mesure ou une entrée sur un run qui échoue. Il est donc
-// refusé avant tout appel, et l'écriture finale ne remplace jamais un fichier apparu entre-temps.
-if (existsSync(sortie)) {
-  console.error(`relecture : ${sortie} existe déjà ; choisir un autre chemin ou le retirer`);
-  process.exit(2);
-}
-// Sans répertoire de destination, chaque diff partirait au serveur pour un résultat impossible à
-// écrire : le défaut se voit ici, avant tout appel.
-if (!statSync(dirname(resolve(sortie)), { throwIfNoEntry: false })?.isDirectory()) {
-  console.error(`relecture : le répertoire de ${sortie} n'existe pas`);
+// Même contrat de sortie que l'entonnoir (../entonnoir/sortie.ts) : un chemin occupé, lien pendant
+// compris, ou sans répertoire est refusé avant tout appel, et l'écriture finale est exclusive.
+const refus = refusSortie(sortie);
+if (refus !== null) {
+  console.error(`relecture : ${refus}`);
   process.exit(2);
 }
 /** Un serveur qui envoie ses en-têtes puis se tait ne bloque pas la relecture indéfiniment. */
@@ -106,10 +102,10 @@ for (const f of fichiers) {
   console.log(`${f}\t${modele}\tdéfaut=${String(defaut)}\t${ms} ms`);
 }
 try {
-  writeFileSync(sortie, `${lignes.join("\n")}\n`, { flag: "wx" });
+  ecrireExclusif(sortie, `${lignes.join("\n")}\n`);
 } catch (cause) {
-  // Le fichier est apparu pendant le run (ou la sortie est un lien pendant) : il n'est jamais
-  // écrasé, et les mesures partent sur la sortie standard plutôt que d'être perdues.
+  // Le fichier est apparu pendant le run, ou le répertoire a disparu : il n'est jamais écrasé, et
+  // les mesures partent sur la sortie standard plutôt que d'être perdues.
   console.error(
     `relecture : écriture de ${sortie} impossible (${String(cause)}) ; mesures ci-dessous`,
   );

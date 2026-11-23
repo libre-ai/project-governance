@@ -5,9 +5,15 @@
 //
 // Sans juge, chaque signal vaut « unavailable », jamais réussi. Avec un juge, les quatre
 // options d'identité sont requises ; --qualification exige un juge.
-// Codes de sortie : 0 mesure faite ; 1 juge demandé mais injoignable (résultats écrits) ;
-// 2 usage, source illisible ou invalide, juge refusé (rien n'est écrit), sortie impossible à écrire.
-import { writeFileSync } from "node:fs";
+// Codes de sortie :
+//   0 mesure écrite ;
+//   1 juge demandé mais injoignable (résultats écrits) ;
+//   2 refusé avant tout appel, rien n'est écrit : usage, source illisible ou invalide, juge refusé,
+//     fichier de résultats qui existe déjà (lien pendant compris, jamais remplacé), répertoire de
+//     destination absent ;
+//   3 écriture finale impossible alors qu'elle était possible au départ (fichier apparu ou
+//     répertoire retiré pendant le run) : le fichier n'est pas touché, les lignes de résultats
+//     partent sur la sortie standard et le bilan sur la sortie d'erreur.
 import { REGISTRE } from "./controles";
 import {
   codeDeSortie,
@@ -21,6 +27,7 @@ import {
   verifierIndependance,
 } from "./entonnoir";
 import { jugeHttp } from "./juge-http";
+import { ecrireExclusif, refusSortie } from "./sortie";
 import { type Etiquetes, lireCas, lireEtiquetes } from "./sources";
 
 const USAGE =
@@ -93,6 +100,8 @@ async function principal(argv: readonly string[]): Promise<number> {
   let etiquetes: Etiquetes | null = null;
   try {
     args = lireArguments(argv);
+    const refus = refusSortie(args.sortie);
+    if (refus !== null) throw new Usage(refus);
     juge = construireJuge(args.options);
     const qualification = args.options.get("--qualification");
     if (qualification !== undefined) {
@@ -128,13 +137,19 @@ async function principal(argv: readonly string[]): Promise<number> {
     }
     throw cause;
   }
+  const lignes = lignesResultats(execution);
   try {
-    writeFileSync(args.sortie, `${lignesResultats(execution).join("\n")}\n`);
+    ecrireExclusif(args.sortie, `${lignes.join("\n")}\n`);
   } catch (cause) {
-    // Une sortie impossible à écrire est une erreur d'usage, pas une trace de pile : code 2,
-    // et le bilan n'est pas imprimé, pour qu'aucun résumé ne décrive des résultats absents.
-    console.error(`entonnoir : écriture impossible de ${args.sortie} : ${String(cause)}`);
-    return 2;
+    // Le chemin était libre au départ : le fichier est apparu, ou le répertoire a disparu, pendant
+    // le run. Il n'est jamais remplacé ; les mesures partent sur la sortie standard plutôt que
+    // d'être perdues, et le bilan sur la sortie d'erreur pour que la sortie standard reste du JSONL.
+    console.error(
+      `entonnoir : écriture de ${args.sortie} impossible (${String(cause)}) ; mesures ci-dessous`,
+    );
+    console.log(lignes.join("\n"));
+    for (const ligne of formaterBilan(execution)) console.error(ligne);
+    return 3;
   }
   for (const ligne of formaterBilan(execution)) console.log(ligne);
   const code = codeDeSortie(execution);
