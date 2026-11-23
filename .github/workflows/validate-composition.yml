@@ -115,7 +115,7 @@ jobs:
       - name: Install artifact coverage tool
         if: inputs.target == 'artifact-verification'
         shell: bash
-        run: cargo install cargo-llvm-cov --version 0.8.7 --locked
+        run: cargo install cargo-llvm-cov --version 0.9.2 --locked
 
       - name: Install licensing checker
         shell: bash

@@ -158,7 +158,7 @@ Le contrôle principal d’`artifact-verification` exige son outil de couverture
 
 ```sh
 if [ "$TARGET" = artifact-verification ]; then
-  cargo install cargo-llvm-cov --version 0.8.7 --locked
+  cargo install cargo-llvm-cov --version 0.9.2 --locked
   export PATH="$PATH:$HOME/.cargo/bin"
 fi
 ```
