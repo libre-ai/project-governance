@@ -220,3 +220,15 @@ briques:
       - date: "2026-11-11"
         cible: ecosystem/briques.ts
     preuve_produite: "Le verdict du gate avec ses compteurs : briques lues par couche, statuts dérivés, preuves tenues et violations nommées."
+  - id: FAB-14
+    nom: Revue de code
+    role: "Fait relire chaque changement par des relecteurs qui ne détiennent aucun outil à effet, donne un statut de revue à chaque fichier modifié, et ne publie, par du code, que les constats ancrés à une ligne du diff ; les constats écartés restent tracés avec leur motif."
+    depend_de: [GOV-01, HAR-02]
+    invariants: [I-17, I-32]
+    decisions: [ADR-0045, ADR-0064, ADR-0068]
+    depots: [libre-ai/project-governance, libre-ai/execution-continuity-evaluator]
+    origine:
+      type: propre
+    autonomie: discover
+    preuve: []
+    preuve_produite: "Le manifeste scellé d'une revue : base et tête relues, fichiers sélectionnés et statut de chacun, règles appliquées avec leur empreinte, constats publiés avec leur ancrage, constats écartés avec leur motif."
