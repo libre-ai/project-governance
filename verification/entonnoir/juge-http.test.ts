@@ -63,7 +63,10 @@ describe("critère 6 — un proxy d'environnement qui s'interposerait est refus�
     ["http_proxy", { http_proxy: PROXY }],
     ["HTTP_PROXY", { HTTP_PROXY: PROXY }],
     ["un nom en casse mêlée", { Http_Proxy: PROXY }],
-    ["ALL_PROXY, que Bun 1.4.4 suit", { ALL_PROXY: PROXY }],
+    // Mesures du 2026-11-23, vers une URL http : suivi par Bun 1.4.4 (revue), ignoré par
+    // Bun 1.4.0-canary.1, le Bun épinglé. Refusé dans les deux cas.
+    ["ALL_PROXY, suivi par Bun 1.4.4, ignoré par Bun 1.4.0-canary.1", { ALL_PROXY: PROXY }],
+    ["HTTPS_PROXY, ignoré vers http par Bun 1.4.0-canary.1", { HTTPS_PROXY: PROXY }],
     ["un nom qu'aucune liste n'énumère", { FTP_PROXY: PROXY }],
     // Aucune exemption : deux formes que Bun ne lit pas comme la garde le ferait (mesuré).
     [

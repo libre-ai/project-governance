@@ -25,16 +25,21 @@ export type Environnement = Readonly<Record<string, string | undefined>>;
 
 /**
  * Le `fetch` de Bun envoie au proxy que nomme l'environnement une requête même destinée à
- * 127.0.0.1 : l'URL locale ne garantit rien tant qu'un proxy peut s'interposer. Rend les noms
- * des variables qui définissent un proxy, ou null quand aucune ne le fait.
+ * 127.0.0.1 (mesuré sous Bun 1.4.0-canary.1 avec `http_proxy`) : l'URL locale ne garantit rien
+ * tant qu'un proxy peut s'interposer. Rend les noms des variables qui définissent un proxy, ou
+ * null quand aucune ne le fait.
  *
- * Aucune exemption par `no_proxy` : les règles de lecture de Bun 1.4.4, mesurées, ne se
+ * Les variables que Bun suit changent d'une version à l'autre. Mesures, vers une URL http :
+ *   - Bun 1.4.0-canary.1 (le Bun épinglé), 2026-11-23 : `http_proxy` et `HTTP_PROXY` sont
+ *     suivis ; `ALL_PROXY`, `all_proxy`, `HTTPS_PROXY` et `https_proxy` ne le sont pas ;
+ *   - Bun 1.4.4, mesure de la revue du même jour : `ALL_PROXY` est suivi.
+ * Aucune exemption par `no_proxy` : les règles de lecture mesurées sous Bun 1.4.4 ne se
  * reproduisent pas sûrement (`no_proxy` en minuscules masque `NO_PROXY` s'il n'est pas vide,
- * `No_Proxy` en casse mêlée est ignoré, `ALL_PROXY` et `all_proxy` sont suivis), et une garde
- * qui accepterait une exemption que Bun ne lit pas laisserait partir l'invite. Toute variable
- * dont le nom contient « proxy », sauf `no_proxy` à la casse près, compte dès qu'elle porte une
- * valeur, pour qu'un nom qu'on n'aurait pas énuméré ne passe pas. Seuls les noms sont rendus,
- * jamais les valeurs, qui peuvent porter un identifiant.
+ * `No_Proxy` en casse mêlée est ignoré), et une garde qui accepterait une exemption que Bun ne
+ * lit pas laisserait partir l'invite. Toute variable dont le nom contient « proxy », sauf
+ * `no_proxy` à la casse près, compte dès qu'elle porte une valeur, quelle que soit la version :
+ * un nom qu'on n'aurait pas énuméré, ou qu'une version suivante se mettrait à suivre, ne passe
+ * pas. Seuls les noms sont rendus, jamais les valeurs, qui peuvent porter un identifiant.
  */
 export function proxyInterpose(env: Environnement): string | null {
   const proxys = Object.entries(env)
