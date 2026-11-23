@@ -377,7 +377,8 @@ export async function qualifier(
   }
   // Le quotient, pas le produit : la division IEEE est arrondie au plus proche, donc 57/100 tombe
   // sur le même flottant que le seuil écrit 0.57, alors que 0.57 × 100 vaut 56,999… et refuserait
-  // un taux égal au seuil.
+  // un taux égal au seuil. La borne est exacte pour un seuil écrit avec au plus 15 chiffres
+  // significatifs ; au-delà, le seuil écrit n'est plus le flottant lu (0.3333333333333333 qualifie 1/3).
   const qualifie = echecsNotes > 0 && fauxSucces / echecsNotes <= tauxFauxSuccesMax;
   return {
     juge: juge.identite,

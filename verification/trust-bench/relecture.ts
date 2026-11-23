@@ -4,7 +4,7 @@
 // Usage : bun relecture.ts <répertoire de diffs> <url du serveur> <étiquette du modèle> <résultats.jsonl>
 // Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
 // s'interposerait aussi, et une redirection n'est jamais suivie.
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
 
@@ -27,6 +27,10 @@ if (proxys !== null) {
   );
   process.exit(2);
 }
+
+// Un fichier laissé par un run précédent se lirait comme la mesure de celui-ci s'il s'arrêtait
+// sans écrire : il est retiré avant le premier appel.
+rmSync(sortie, { force: true });
 
 const CONSIGNE = [
   "You review one code change (a unified diff) before it is merged.",
@@ -54,9 +58,9 @@ let illisibles = 0;
 for (const f of fichiers) {
   const diff = readFileSync(join(diffsDir, f), "utf8");
   const debut = performance.now();
-  const reponse = await demander(f, diff);
+  const brut = await demander(f, diff);
   const ms = Math.round(performance.now() - debut);
-  const corps = (await reponse.json().catch(() => ({}))) as {
+  const corps = analyser(brut) as {
     choices?: { message?: { content?: string } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
@@ -93,11 +97,12 @@ console.log(
 if (illisibles > 0) process.exit(1);
 
 /**
- * Une requête qui n'aboutit pas (serveur absent, redirection refusée) ou un statut d'erreur n'est
- * pas une réponse du modèle : la relecture s'arrête sans rien écrire, car un fichier partiel se lirait
- * comme une mesure complète. Un corps d'erreur au format d'un verdict ne compte jamais comme verdict.
+ * Une requête qui n'aboutit pas (serveur absent, redirection refusée, connexion coupée pendant le
+ * corps) ou un statut d'erreur n'est pas une réponse du modèle : la relecture s'arrête sans rien
+ * écrire, car un fichier partiel se lirait comme une mesure complète. Un corps d'erreur au format
+ * d'un verdict ne compte jamais comme verdict. Rend le corps reçu en entier, en texte.
  */
-async function demander(fichier: string, diff: string): Promise<Response> {
+async function demander(fichier: string, diff: string): Promise<string> {
   let reponse: Response;
   try {
     reponse = await envoyer(diff);
@@ -113,7 +118,23 @@ async function demander(fichier: string, diff: string): Promise<Response> {
     );
     process.exit(1);
   }
-  return reponse;
+  try {
+    return await reponse.text();
+  } catch (cause) {
+    console.error(
+      `relecture : ${fichier} : réponse interrompue (${String(cause)}) ; aucun résultat écrit`,
+    );
+    process.exit(1);
+  }
+}
+
+/** Un corps reçu en entier mais qui n'est pas du JSON est une réponse illisible, pas un échec de transport. */
+function analyser(brut: string): unknown {
+  try {
+    return JSON.parse(brut);
+  } catch {
+    return {};
+  }
 }
 
 function envoyer(diff: string): Promise<Response> {
