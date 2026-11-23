@@ -178,16 +178,36 @@ describe("relecture", () => {
     }
   });
 
-  test("control: a proxy is accepted when NO_PROXY names the host", async () => {
+  // No exemption: under Bun 1.4.4 these two forms let the request reach the proxy although a
+  // no_proxy variable names the host (measured by review rev-285-5d4a314).
+  test.each([
+    [
+      "NO_PROXY naming the host, masked by a lower-case no_proxy",
+      { NO_PROXY: "127.0.0.1", no_proxy: "example.com" },
+    ],
+    ["a mixed-case No_Proxy naming the host", { No_Proxy: "127.0.0.1" }],
+  ])("a proxy is refused even with %s", async (_name, exemption) => {
+    let proxied = 0;
+    const proxy = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        proxied += 1;
+        return new Response("proxy", { status: 502 });
+      },
+    });
     const local = server(JSON.stringify({ reasoning: "changes a constant", defect: true }));
     try {
       const { diffs, results } = workspace();
       const outcome = await review(`http://127.0.0.1:${local.port}`, diffs, results, {
-        http_proxy: "http://127.0.0.1:9",
-        NO_PROXY: "127.0.0.1",
+        http_proxy: `http://127.0.0.1:${proxy.port}`,
+        ...exemption,
       });
-      expect(outcome.code, outcome.stderr).toBe(0);
+      expect(outcome.code).toBe(2);
+      expect(proxied).toBe(0);
+      expect(outcome.results).toBe("");
     } finally {
+      proxy.stop(true);
       local.stop(true);
     }
   });

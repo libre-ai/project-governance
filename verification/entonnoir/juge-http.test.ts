@@ -63,12 +63,22 @@ describe("critère 6 — un proxy d'environnement qui s'interposerait est refus�
     ["http_proxy", { http_proxy: PROXY }],
     ["HTTP_PROXY", { HTTP_PROXY: PROXY }],
     ["un nom en casse mêlée", { Http_Proxy: PROXY }],
-    ["un nom que Bun ignore aujourd'hui", { ALL_PROXY: PROXY }],
-    ["no_proxy qui nomme un autre hôte", { http_proxy: PROXY, no_proxy: "localhost" }],
-    ["no_proxy vide", { http_proxy: PROXY, NO_PROXY: "" }],
+    ["ALL_PROXY, que Bun 1.4.4 suit", { ALL_PROXY: PROXY }],
+    ["un nom qu'aucune liste n'énumère", { FTP_PROXY: PROXY }],
+    // Aucune exemption : deux formes que Bun ne lit pas comme la garde le ferait (mesuré).
+    [
+      "NO_PROXY nommant l'hôte, masqué par no_proxy",
+      {
+        http_proxy: PROXY,
+        NO_PROXY: "127.0.0.1",
+        no_proxy: "example.com",
+      },
+    ],
+    ["No_Proxy en casse mêlée nommant l'hôte", { http_proxy: PROXY, No_Proxy: "127.0.0.1" }],
+    ["NO_PROXY nommant l'hôte", { http_proxy: PROXY, NO_PROXY: "127.0.0.1" }],
   ])("%s : refusé à la construction, sans appel", (_nom, env) => {
     const f = recupererFactice(() => reponseModele("{}"));
-    expect(proxyInterpose("127.0.0.1", env)).not.toBeNull();
+    expect(proxyInterpose(env)).not.toBeNull();
     expect(() => jugeHttp("http://127.0.0.1:8080", IDENTITE, f.recuperer, env)).toThrow(
       "un proxy est défini",
     );
@@ -82,16 +92,11 @@ describe("critère 6 — un proxy d'environnement qui s'interposerait est refus�
   });
 
   test.each([
-    ["aucun proxy", "127.0.0.1", {}],
-    ["un proxy vide", "127.0.0.1", { http_proxy: "" }],
-    [
-      "NO_PROXY qui nomme l'hôte",
-      "127.0.0.1",
-      { http_proxy: PROXY, NO_PROXY: "10.0.0.1, 127.0.0.1" },
-    ],
-    ["no_proxy qui nomme l'hôte", "localhost", { HTTP_PROXY: PROXY, no_proxy: "LOCALHOST" }],
-  ])("%s : admis", (_nom, hote, env) => {
-    expect(proxyInterpose(hote, env)).toBeNull();
+    ["aucun proxy", {}],
+    ["un proxy vide", { http_proxy: "" }],
+    ["NO_PROXY seul, qui ne définit aucun proxy", { NO_PROXY: "127.0.0.1", no_proxy: "x" }],
+  ])("%s : admis", (_nom, env) => {
+    expect(proxyInterpose(env)).toBeNull();
   });
 });
 

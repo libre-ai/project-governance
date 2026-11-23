@@ -20,22 +20,19 @@ export function estUrlLocale(url: string): boolean {
 export type Environnement = Readonly<Record<string, string | undefined>>;
 
 /**
- * Le `fetch` de Bun envoie au proxy que nomme l'environnement (`http_proxy`, `HTTP_PROXY`) une
- * requête même destinée à 127.0.0.1 : l'URL locale ne garantit rien tant qu'un proxy peut
- * s'interposer. Rend les noms des variables qui en définissent un, ou null quand aucune ne le
- * fait ou qu'une variable `no_proxy` (toute casse) nomme exactement l'hôte.
+ * Le `fetch` de Bun envoie au proxy que nomme l'environnement une requête même destinée à
+ * 127.0.0.1 : l'URL locale ne garantit rien tant qu'un proxy peut s'interposer. Rend les noms
+ * des variables qui définissent un proxy, ou null quand aucune ne le fait.
  *
- * Volontairement plus large que ce que Bun lit (mesuré avec Bun 1.4.4 : `ALL_PROXY` est ignoré,
- * `no_proxy=localhost` n'exempte pas 127.0.0.1) : toute variable dont le nom contient « proxy »
- * compte, pour qu'un nom qu'on n'aurait pas énuméré ne passe pas. Seuls les noms sont rendus,
+ * Aucune exemption par `no_proxy` : les règles de lecture de Bun 1.4.4, mesurées, ne se
+ * reproduisent pas sûrement (`no_proxy` en minuscules masque `NO_PROXY` s'il n'est pas vide,
+ * `No_Proxy` en casse mêlée est ignoré, `ALL_PROXY` et `all_proxy` sont suivis), et une garde
+ * qui accepterait une exemption que Bun ne lit pas laisserait partir l'invite. Toute variable
+ * dont le nom contient « proxy », sauf `no_proxy` à la casse près, compte dès qu'elle porte une
+ * valeur, pour qu'un nom qu'on n'aurait pas énuméré ne passe pas. Seuls les noms sont rendus,
  * jamais les valeurs, qui peuvent porter un identifiant.
  */
-export function proxyInterpose(hote: string, env: Environnement): string | null {
-  const exemptions = Object.entries(env)
-    .filter(([nom]) => nom.toLowerCase() === "no_proxy")
-    .flatMap(([, valeur]) => (valeur ?? "").split(","))
-    .map((entree) => entree.trim().toLowerCase());
-  if (exemptions.includes(hote)) return null;
+export function proxyInterpose(env: Environnement): string | null {
   const proxys = Object.entries(env)
     .filter(
       ([nom, valeur]) =>
@@ -92,7 +89,10 @@ type Recuperer = (url: string, init: RequestInit) => Promise<Response>;
 
 /**
  * Construit un juge HTTP local. `recuperer` est injectable pour que les tests n'appellent
- * aucun réseau ; par défaut, c'est `fetch`. `env` est l'environnement lu pour le proxy.
+ * aucun réseau ; par défaut, c'est `fetch`. `env` est l'environnement examiné pour le proxy :
+ * par défaut celui du processus, que lit aussi `fetch`. Un appelant qui injecte un autre
+ * environnement avec le vrai `fetch` ferait examiner à la garde autre chose que la requête :
+ * seuls les tests le font, avec un `recuperer` factice ou un environnement sans proxy.
  */
 export function jugeHttp(
   url: string,
@@ -100,15 +100,14 @@ export function jugeHttp(
   recuperer: Recuperer = fetch,
   env: Environnement = process.env,
 ): Juge {
-  const hote = hoteLocal(url);
-  if (hote === null) {
+  if (hoteLocal(url) === null) {
     throw new Error(`juge HTTP : seule une URL locale est admise, reçu ${url}`);
   }
-  const proxys = proxyInterpose(hote, env);
+  const proxys = proxyInterpose(env);
   if (proxys !== null) {
     throw new Error(
-      `juge HTTP : un proxy est défini (${proxys}) et aucune variable no_proxy ne nomme ${hote} : ` +
-        `l'invite partirait au proxy ; ajouter ${hote} à NO_PROXY, ou retirer le proxy`,
+      `juge HTTP : un proxy est défini (${proxys}) ; le fetch de Bun y enverrait l'invite même ` +
+        `vers 127.0.0.1 : lancer la commande sans ces variables`,
     );
   }
   return {

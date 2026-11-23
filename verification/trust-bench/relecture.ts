@@ -13,18 +13,17 @@ if (!diffsDir || !url || !modele || !sortie) {
   console.error("usage: bun relecture.ts <diffs> <url> <modèle> <résultats.jsonl>");
   process.exit(2);
 }
-const hote = hoteLocal(url);
-if (hote === null) {
+if (hoteLocal(url) === null) {
   console.error(`relecture : seule une URL locale est admise, reçu ${url}`);
   process.exit(2);
 }
 // Le `fetch` de Bun passe par le proxy de l'environnement même vers 127.0.0.1 : le diff le
-// quitterait. Même règle que le juge de l'entonnoir, même fonction.
-const proxys = proxyInterpose(hote, process.env);
+// quitterait. Même règle que le juge de l'entonnoir, même fonction, sans exemption.
+const proxys = proxyInterpose(process.env);
 if (proxys !== null) {
   console.error(
-    `relecture : un proxy est défini (${proxys}) et aucune variable no_proxy ne nomme ${hote} : ` +
-      `le diff partirait au proxy ; ajouter ${hote} à NO_PROXY, ou retirer le proxy`,
+    `relecture : un proxy est défini (${proxys}) ; le fetch de Bun y enverrait le diff même ` +
+      `vers 127.0.0.1 : lancer la commande sans ces variables`,
   );
   process.exit(2);
 }

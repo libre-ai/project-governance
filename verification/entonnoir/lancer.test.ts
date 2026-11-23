@@ -169,7 +169,16 @@ describe("critère 6 et usage — refus avant tout appel", () => {
     }
   });
 
-  test("un proxy d'environnement est refusé : ni le proxy ni le juge ne reçoivent rien", async () => {
+  // Sans exemption : les deux dernières formes laissaient partir l'invite sous Bun 1.4.4 avec
+  // une garde qui acceptait no_proxy (mesuré par la revue rev-285-5d4a314).
+  test.each([
+    ["sans exemption", {}],
+    [
+      "avec NO_PROXY nommant l'hôte, masqué par no_proxy",
+      { NO_PROXY: "127.0.0.1", no_proxy: "example.com" },
+    ],
+    ["avec No_Proxy en casse mêlée nommant l'hôte", { No_Proxy: "127.0.0.1" }],
+  ])("un proxy d'environnement %s est refusé : ni le proxy ni le juge ne reçoivent rien", async (_nom, exemption) => {
     // Le `fetch` de Bun enverrait l'invite au proxy même vers 127.0.0.1 ; le proxy est ici un
     // serveur local qui compte ce qu'il reçoit.
     let recusProxy = 0;
@@ -205,7 +214,11 @@ describe("critère 6 et usage — refus avant tout appel", () => {
         {
           stdout: "pipe",
           stderr: "pipe",
-          env: { PATH: process.env.PATH ?? "", http_proxy: `http://127.0.0.1:${proxy.port}` },
+          env: {
+            PATH: process.env.PATH ?? "",
+            http_proxy: `http://127.0.0.1:${proxy.port}`,
+            ...exemption,
+          },
         },
       );
       const code = await run.exited;
