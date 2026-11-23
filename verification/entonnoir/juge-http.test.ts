@@ -48,6 +48,34 @@ describe("critère 6 — seule une URL locale est admise", () => {
     expect(f.urls).toHaveLength(0);
   });
 
+  // Le secret ne doit apparaître dans aucun message : la sortie d'erreur finit dans des journaux.
+  test.each([
+    "http://u:jeton@hôte",
+    "http://u:jeton@exemple.invalid:8080",
+    "http://u:jeton@127.0.0.1:8080",
+    "http://:jeton@localhost:8080",
+    "https://exemple.invalid/v1?cle=jeton#jeton",
+    "u:jeton@exemple.invalid",
+    "pas une url u:jeton",
+  ])("le refus de %s ne recopie ni utilisateur, ni mot de passe, ni requête", (url) => {
+    const f = recupererFactice(() => reponseModele("{}"));
+    let message = "";
+    try {
+      jugeHttp(url, IDENTITE, f.recuperer, SANS_PROXY);
+    } catch (cause) {
+      message = String(cause);
+    }
+    expect(message).toContain("seule une URL locale");
+    expect(message).not.toContain("jeton");
+    expect(f.urls).toHaveLength(0);
+  });
+
+  test("le refus cite l'hôte, le port et le chemin, qui disent pourquoi l'URL est refusée", () => {
+    expect(() => jugeHttp("http://u:jeton@localhost:8080/v1", IDENTITE, fetch, SANS_PROXY)).toThrow(
+      "reçu http://localhost:8080/v1",
+    );
+  });
+
   test.each(["http://127.0.0.1:8080", "http://localhost:1234"])("%s est admise", async (url) => {
     const f = recupererFactice(() => reponseModele('{"verdicts":{"q1":true},"justification":""}'));
     const juge = jugeHttp(url, IDENTITE, f.recuperer, SANS_PROXY);

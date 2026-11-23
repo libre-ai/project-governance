@@ -15,7 +15,7 @@
 //     répertoire retiré pendant le run), mesures imprimées sur la sortie standard.
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Environnement, hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
+import { type Environnement, hoteLocal, proxyInterpose, urlCitable } from "../entonnoir/juge-http";
 import { ecrireExclusif, refusSortie } from "../entonnoir/sortie";
 
 /**
@@ -86,7 +86,7 @@ async function executer(
     throw new Arret(2, "usage: bun relecture.ts <diffs> <url> <modèle> <résultats.jsonl>");
   }
   if (hoteLocal(url) === null) {
-    throw new Arret(2, `seule une URL locale est admise, reçu ${url}`);
+    throw new Arret(2, `seule une URL locale est admise, reçu ${urlCitable(url)}`);
   }
   // Le `fetch` de Bun passe par le proxy de l'environnement même vers 127.0.0.1 : le diff le
   // quitterait. Même règle que le juge de l'entonnoir, même fonction, sans exemption.

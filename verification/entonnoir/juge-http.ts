@@ -52,6 +52,26 @@ export function proxyInterpose(env: Environnement): string | null {
   return proxys.length > 0 ? proxys.join(", ") : null;
 }
 
+/**
+ * Forme d'une URL refusée qu'un message peut citer : schéma, hôte, port et chemin. L'utilisateur
+ * et le mot de passe (`http://u:jeton@hôte`), la requête et le fragment peuvent porter un
+ * identifiant : ils ne sont jamais recopiés. Une URL illisible, ou d'un schéma autre que http(s),
+ * dont le chemin opaque pourrait porter le secret (`u:jeton@hôte` se lit schéma `u:`), n'est pas
+ * citée du tout.
+ */
+export function urlCitable(url: string): string {
+  let lue: URL;
+  try {
+    lue = new URL(url);
+  } catch {
+    return "(URL illisible, non citée)";
+  }
+  if (lue.protocol !== "http:" && lue.protocol !== "https:") {
+    return "(URL d'un autre schéma que http ou https, non citée)";
+  }
+  return `${lue.protocol}//${lue.host}${lue.pathname}`;
+}
+
 /** Hôte d'une URL locale, ou null quand l'URL n'est pas locale. */
 export function hoteLocal(url: string): string | null {
   return URL_LOCALE.exec(url)?.[1] ?? null;
@@ -112,7 +132,7 @@ export function jugeHttp(
   delaiMs: number = DELAI_MS,
 ): Juge {
   if (hoteLocal(url) === null) {
-    throw new Error(`juge HTTP : seule une URL locale est admise, reçu ${url}`);
+    throw new Error(`juge HTTP : seule une URL locale est admise, reçu ${urlCitable(url)}`);
   }
   const proxys = proxyInterpose(env);
   if (proxys !== null) {

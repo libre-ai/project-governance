@@ -98,6 +98,18 @@ describe("relecture", () => {
     expect(outcome.results).toBe("");
   });
 
+  test.each([
+    "http://u:jeton@example.invalid:8080",
+    "http://u:jeton@127.0.0.1:8080",
+  ])("the refusal of %s copies neither the user nor the password", async (url) => {
+    const { diffs, results } = workspace();
+    const outcome = await review(url, diffs, results);
+    expect(outcome.code).toBe(2);
+    expect(outcome.stderr).toContain("seule une URL locale est admise");
+    expect(outcome.stderr).not.toContain("jeton");
+    expect(outcome.results).toBe("");
+  });
+
   test("control: a boolean verdict from a local server is written as a verdict", async () => {
     const local = server(JSON.stringify({ reasoning: "changes a constant", defect: true }));
     try {

@@ -228,6 +228,21 @@ describe("critère 6 et usage — refus avant tout appel", () => {
     expect(existsSync(resultats)).toBe(false);
   });
 
+  test("le refus d'une URL portant un mot de passe ne le recopie pas sur la sortie d'erreur", () => {
+    const resultats = join(dossier(), "resultats.jsonl");
+    const issue = lancer(
+      join(CORPUS, "cas.json"),
+      resultats,
+      "--juge-url",
+      "http://u:jeton@exemple.invalid:8080",
+      ...juge,
+    );
+    expect(issue.code).toBe(2);
+    expect(issue.erreur).toContain("seule une URL locale");
+    expect(issue.erreur).not.toContain("jeton");
+    expect(existsSync(resultats)).toBe(false);
+  });
+
   test("une identité de juge incomplète sort en 2", () => {
     const issue = lancer(
       join(CORPUS, "cas.json"),
