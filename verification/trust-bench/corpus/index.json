@@ -1,0 +1,13 @@
+{
+  "note": "Chaque corpus du banc, et d'où viennent ses cas. « synthetic » : défauts semés et témoins écrits pour le banc. « observed » : défauts réels relevés dans l'historique de la flotte, et témoins propres. Les sorties du banc ne somment jamais deux corpus. Un fichier de ce répertoire absent de cette liste est une erreur.",
+  "corpus": [
+    {
+      "fichier": "verification/trust-bench/corpus/pi-evidence.json",
+      "origine": "synthetic"
+    },
+    {
+      "fichier": "verification/trust-bench/corpus/flotte-observee.json",
+      "origine": "observed"
+    }
+  ]
+}
