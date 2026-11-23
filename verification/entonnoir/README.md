@@ -46,7 +46,9 @@ Sans qualification, ou si le juge qui mesure n'est pas exactement celui qui s'es
 cas étiqueté en échec n'est pas qualifié : son taux de faux succès n'a pas de dénominateur.
 Le juge est qualifié quand ce taux est au plus `tauxFauxSuccesMax`, borne incluse. La comparaison
 se fait en entiers, sur l'écriture décimale du seuil, et jamais en flottant : un flottant refuserait
-57/100 au seuil 0.57 et admettrait 12/19 au seuil 0.631578947368421.
+57/100 au seuil 0.57 et admettrait 12/19 au seuil 0.631578947368421. Le seuil doit s'écrire avec
+au plus 15 chiffres significatifs : au-delà, la lecture JSON le ramène à un double dont l'écriture
+la plus courte peut être plus haute (`0.49999999999999999` se lit `0.5` et qualifie 1/2).
 
 ## Corpus de démonstration
 

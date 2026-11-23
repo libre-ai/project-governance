@@ -176,6 +176,37 @@ describe("relecture", () => {
     }
   });
 
+  test("a result file that appears during the run is kept, and the measures go to stdout", async () => {
+    const { diffs, results } = workspace();
+    const other = "written by someone else\n";
+    const local = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => {
+        // The file appears after the start-up check, before the final write.
+        writeFileSync(results, other);
+        return Response.json({
+          choices: [{ message: { content: JSON.stringify({ reasoning: "r", defect: true }) } }],
+        });
+      },
+    });
+    try {
+      const run = Bun.spawn(
+        [process.execPath, REVIEW, diffs, `http://127.0.0.1:${local.port}`, "modele-test", results],
+        { stdout: "pipe", stderr: "pipe", env: { PATH: process.env.PATH ?? "" } },
+      );
+      const code = await run.exited;
+      const stdout = await new Response(run.stdout).text();
+      const stderr = await new Response(run.stderr).text();
+      expect(code).toBe(3);
+      expect(stderr).toContain("mesures ci-dessous");
+      expect(stdout).toContain('"cas":"D01"');
+      expect(readFileSync(results, "utf8")).toBe(other);
+    } finally {
+      local.stop(true);
+    }
+  });
+
   test("an existing result file is refused before any request, and left intact", async () => {
     const { diffs, results } = workspace();
     const earlier = '{"cas":"D01","defaut":true}\n';

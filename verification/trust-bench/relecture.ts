@@ -4,6 +4,9 @@
 // Usage : bun relecture.ts <répertoire de diffs> <url du serveur> <étiquette du modèle> <résultats.jsonl>
 // Aucun appel hors de 127.0.0.1 : une URL non locale est refusée, un proxy d'environnement qui
 // s'interposerait aussi, et une redirection n'est jamais suivie.
+// Codes de sortie : 0 mesure écrite ; 1 réponse illisible ou échec de transport ; 2 argument refusé
+// (dont un fichier de résultats qui existe déjà : il n'est jamais remplacé) ; 3 fichier de résultats
+// apparu pendant le run, mesures imprimées sur la sortie standard.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { hoteLocal, proxyInterpose } from "../entonnoir/juge-http";
@@ -93,7 +96,17 @@ for (const f of fichiers) {
   );
   console.log(`${f}\t${modele}\tdéfaut=${String(defaut)}\t${ms} ms`);
 }
-writeFileSync(sortie, `${lignes.join("\n")}\n`, { flag: "wx" });
+try {
+  writeFileSync(sortie, `${lignes.join("\n")}\n`, { flag: "wx" });
+} catch (cause) {
+  // Le fichier est apparu pendant le run (ou la sortie est un lien pendant) : il n'est jamais
+  // écrasé, et les mesures partent sur la sortie standard plutôt que d'être perdues.
+  console.error(
+    `relecture : écriture de ${sortie} impossible (${String(cause)}) ; mesures ci-dessous`,
+  );
+  console.log(lignes.join("\n"));
+  process.exit(3);
+}
 console.log(
   `diffs lus : ${fichiers.length}, verdicts écrits : ${lignes.length}, réponses illisibles : ${illisibles}`,
 );
