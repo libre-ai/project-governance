@@ -144,7 +144,9 @@ function proxyVariables(environment: TagReleaseInput["environment"]): string[] {
  * `ALL_PROXY`, `all_proxy`; measured with Bun 1.4.4), so the token would reach
  * it in cleartext. `NO_PROXY` grants no exemption: Bun does not read every
  * form of it (`no_proxy` before `NO_PROXY`, `No_Proxy` ignored). Over https:
- * the proxy only sees a tunnel, so that case is left alone.
+ * the proxy only sees a tunnel as long as the certificate is verified, so that
+ * case is left alone; disabling verification (`NODE_TLS_REJECT_UNAUTHORIZED=0`)
+ * exposes the token on any https: URL, loopback or not.
  */
 export function apiUrl(environment: TagReleaseInput["environment"]): string {
   const url = parsedUrl(environment, "GITHUB_API_URL");

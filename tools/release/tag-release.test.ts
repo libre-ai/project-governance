@@ -454,10 +454,13 @@ const PROXY_SECRET = "proxy-credential-7d3a41";
 const MEASURED_PROXY_NAMES = ["http_proxy", "HTTP_PROXY", "ALL_PROXY", "all_proxy"];
 
 /**
- * A proxy URL whose userinfo carries the fixture credential above, so a test
- * can show the value is never printed. Built through the URL API: a userinfo
- * literal on a source line is what `check:secret-scan` refuses, and this
- * fixture is not a credential.
+ * A proxy URL on 127.0.0.1 whose userinfo carries the fixture credential
+ * above, so a child-process test can show the value is never printed while
+ * the stand-in proxy is really reachable. `check:secret-scan` exempts a
+ * userinfo on `localhost` or a reserved documentation host, but not on
+ * 127.0.0.1, and `localhost` may resolve to `::1` first on a runner, where
+ * the stand-in proxy does not listen. The URL is therefore built here; tests
+ * that need no network write a `proxy.invalid` literal instead.
  */
 function credentialedProxyUrl(authority: string): string {
   const url = new URL(`http://${authority}`);
@@ -552,7 +555,7 @@ describe("tag-release under a proxy variable (issue #287)", () => {
 });
 
 describe("apiUrl and proxy variables, without network", () => {
-  const proxyValue = credentialedProxyUrl("proxy.example:3128");
+  const proxyValue = `http://fixture-user:${PROXY_SECRET}@proxy.invalid:3128/`;
 
   test("an https: API URL is not refused by the proxy guard", () => {
     const environment = {
@@ -581,7 +584,7 @@ describe("apiUrl and proxy variables, without network", () => {
       }
       expect(message).toContain("(Some_Proxy_Setting, all_proxy)");
       expect(message).not.toContain(PROXY_SECRET);
-      expect(message).not.toContain("proxy.example");
+      expect(message).not.toContain("proxy.invalid");
     }
   });
 
