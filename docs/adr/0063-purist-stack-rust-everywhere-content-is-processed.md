@@ -2,8 +2,8 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # ADR-0063 — Pile puriste : Rust partout où du contenu est traité, TypeScript à la lisière de l'interface, LangGraph oracle de recherche seulement
 
-- **Statut :** proposé — l'acceptation est un acte du propriétaire : il ajoute la ligne d'arbitrage datée et fait passer ce statut de proposé à en vigueur dans la pull request qu'il fusionne. Tant que ces deux lignes n'ont pas changé, l'ADR n'est pas en vigueur, fusionné ou non.
-- **Arbitrage :** aucun à ce jour. L'écriture de cet ADR a été décidée par le propriétaire le 2026-11-09 par question structurée en chat (« 0066 + 0063 d'abord », sur les cinq ADR candidats de la vision complète) ; son contenu reste une proposition de l'agent.
+- **Statut :** accepted — décision du propriétaire du 2026-11-23, prise en chat par question structurée (ADR-0022/I-24) : « Accepter après #25 (Recommandé) ». La condition est remplie : `libre-ai/project-website` #25, la liste d'attente du site portée en Rust (axum, sqlx) et tenue au serveur Bun par un test de parité de D5, a été fusionnée le 2026-11-24 (`gh pr view 25 --repo libre-ai/project-website --json mergeCommit,mergedAt`). La fusion de cette pull request vaut signature (ADR-0043).
+- **Arbitrage :** décision du propriétaire du 2026-11-23, prise en chat par question structurée (ADR-0022/I-24) ; option retenue, mot pour mot : « Accepter après #25 (Recommandé) ». Lecture de la section « Retour arrière » retenue par le propriétaire, mot pour mot : « porte à sens unique dès qu'un serveur sert des utilisateurs » ; lecture écartée : « dès que du code serveur Bun existe ». L'écriture de cet ADR avait été décidée par le propriétaire le 2026-11-09 par question structurée en chat (« 0066 + 0063 d'abord », sur les cinq ADR candidats de la vision complète) ; son contenu était une proposition de l'agent.
 - **Date de rédaction :** 2026-11-09
 - **Portée :** la pile d'exécution de tout dépôt de l'organisation qui traite du contenu : produits du catalogue (ADR-0042 §1), fabrique, harness, gates de flotte lorsqu'ils lisent du contenu, hôtes de native messaging, CLI et TUI. Ne modifie ni les contrats canoniques, ni les licences, ni l'ordre d'ADR-0042 §3.
 - **Amende :**
@@ -117,3 +117,5 @@ Le test de parité de D5 compare un composant TypeScript existant (l'original) a
 ## Retour arrière
 
 Porte à deux sens tant que la mesure ci-dessus tient (aucun worker LangGraph de produit, aucun serveur Bun de produit). Annuler la fusion rend l'état antérieur ; si un composant a été écrit sous D1 entre-temps, il reste valide sous ADR-0054 (Rust admis par ADR de produit). Le jour où un worker LangGraph ou un serveur Bun de produit existe, cette porte devient à sens unique et la mesure est à refaire avant tout renversement.
+
+**Lecture retenue** (décision du propriétaire du 2026-11-23, voir « Arbitrage ») : « existe » se lit au sens de la lecture 2 posée dans la « Mesure du 2026-11-23 » : « porte à sens unique dès qu'un serveur sert des utilisateurs ». La lecture 1, « dès que du code serveur Bun existe », est écartée.
