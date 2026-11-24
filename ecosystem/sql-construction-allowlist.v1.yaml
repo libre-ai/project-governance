@@ -138,15 +138,3 @@ allowances:
       (create table and its checks); no value of a request or of the
       environment reaches the text. Every query of the store is a tagged
       template with bound parameters.
-  - repository: libre-ai/project-website
-    path: server/parity/normalize.ts
-    rule: exec-non-constant
-    count: 2
-    because: >-
-      not SQL: LINK("confirmer").exec(raw) and LINK("desinscrire").exec(raw)
-      run a regex, LINK being the module constant
-      (path) => new RegExp(…) with the two literal paths above; raw is the
-      text of a captured e-mail of the parity test. The file imports no
-      database. The scanner does not read the call of a regex factory as a
-      regex: teaching it that opened escapes in four review passes
-      (docs/reviews/sql-regex-factory-2026-11-24/REVIEW.md).
