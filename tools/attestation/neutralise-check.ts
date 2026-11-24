@@ -401,6 +401,17 @@ const fileMutations: readonly FileMutation[] = [
     edits: [{ find: 'GIT_NO_REPLACE_OBJECTS: "1",', replace: "" }],
   },
   {
+    // A piped stderr counts against maxBuffer: a long git error reads as an output overrun.
+    id: "git-stderr-ignored",
+    file: scanner,
+    edits: [
+      {
+        find: 'stderr: "ignore",\n    maxBuffer: gitOutputLimit,',
+        replace: 'stderr: "pipe",\n    maxBuffer: gitOutputLimit,',
+      },
+    ],
+  },
+  {
     id: "headers-orphan",
     file: scanner,
     edits: [
