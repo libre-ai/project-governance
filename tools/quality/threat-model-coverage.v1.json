@@ -85,7 +85,7 @@
     {
       "path": "tools/quality/check-doc-commands.ts",
       "covers": [],
-      "because": "no threat row: a `bun run` command written in a declared document names a script package.json defines, or carries a named exemption."
+      "because": "no threat row: a `bun run` command written in a declared document names a script package.json defines, a `cargo` command that names a package or a binary names one the Cargo manifests declare, or the command carries a named exemption."
     },
     {
       "path": "tools/quality/check-doctrine-governance.sh",
