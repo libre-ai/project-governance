@@ -4,7 +4,8 @@ Cette grille sert le test de parité d'ADR-0063 D5
 (`docs/adr/0063-purist-stack-rust-everywhere-content-is-processed.md`, section « Test de parité
 de D5 ») : avant qu'un composant TypeScript qui traite du contenu soit remplacé par un composant
 Rust, son corpus de parité doit contenir les pièges des constructions qu'il emploie. Elle ne
-décide rien : ADR-0063 est au statut proposé, et cette grille n'oblige qu'à travers lui.
+décide rien : ADR-0063 est accepté (décision du propriétaire du 2026-11-23), et cette grille
+n'oblige qu'à travers lui.
 
 Chaque risque donne trois choses :
 
