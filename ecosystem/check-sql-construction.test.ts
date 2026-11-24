@@ -109,6 +109,65 @@ describe("scanTypeScript", () => {
     expect(scanTypeScript(source)).toEqual([]);
   });
 
+  // The form met in libre-ai/project-website server/parity/normalize.ts
+  // (2026-11-24): a module function that builds a regex, called and matched in
+  // one expression.
+  test("the result of a function that returns a regex is a regex", () => {
+    const source = [
+      "const TOKEN = /[A-Za-z0-9_-]{43}/;",
+      "const LINK = (path: string) => new RegExp(`/#{path}\\\\?jeton=(#{TOKEN.source})(?![A-Za-z0-9_-])`);",
+      "export function messageTokens(messages) {",
+      "  return messages.map(({ raw }) => ({",
+      '    confirm: LINK("confirmer").exec(raw)?.[1] ?? null,',
+      '    unsubscribe: LINK("desinscrire").exec(raw)?.[1] ?? null,',
+      "  }));",
+      "}",
+    ].join("\n");
+    expect(ts(source)).toEqual([]);
+  });
+
+  test("a regex factory is read from its body or from its declared return type", () => {
+    const source = [
+      "const literal = (flag) => /^a/;",
+      "const bare = name => new RegExp(name);",
+      "const typed = (name: string): RegExp => { return build(name); };",
+      "function declared(name: string): RegExp { return build(name); }",
+      "literal(a).exec(v); bare(b).exec(w); typed(c).exec(x); declared(d).exec(y);",
+    ].join("\n");
+    expect(scanTypeScript(source)).toEqual([]);
+  });
+
+  test("a call that is not a regex factory still has its .exec reported", () => {
+    const reported = (lines: readonly string[]) => rules(scanTypeScript(lines.join("\n")));
+    // A function that returns something else, built with `new` or not.
+    expect(
+      reported(["const open = (url: string) => new Database(url);", "open(u).exec(sql);"]),
+    ).toEqual(["exec-non-constant@2"]);
+    expect(
+      reported(["const pick = (name: string) => pool.get(name);", "pick(n).exec(sql);"]),
+    ).toEqual(["exec-non-constant@2"]);
+    expect(
+      reported([
+        "function connect(url: string): Database { return o(url); }",
+        "connect(u).exec(sql);",
+      ]),
+    ).toEqual(["exec-non-constant@2"]);
+    // A block body with no declared type is not classified, so it is reported.
+    expect(
+      reported(["const make = (p) => { return new RegExp(p); };", "make(p).exec(sql);"]),
+    ).toEqual(["exec-non-constant@2"]);
+    // A method that merely shares the name of a factory of the file.
+    expect(
+      reported(["const LINK = (p: string) => new RegExp(p);", "db.LINK(p).exec(sql);"]),
+    ).toEqual(["exec-non-constant@2"]);
+    // The factory itself is a function, not a regex.
+    expect(reported(["const LINK = (p: string) => new RegExp(p);", "LINK.exec(sql);"])).toEqual([
+      "exec-non-constant@2",
+    ]);
+    // A function never declared in the file.
+    expect(reported(["imported(p).exec(sql);"])).toEqual(["exec-non-constant@1"]);
+  });
+
   test("comments and plain strings are not code", () => {
     const source = [
       "// await db.unsafe(`SELECT #{x}`)",

@@ -320,19 +320,87 @@ function regexBindings(tokens: readonly TsToken[]): Set<string> {
   return names;
 }
 
-/** Is the receiver of the `.` at `dot` a regex (literal, binding, or `new RegExp(…)`)? */
-function receiverIsRegex(tokens: readonly TsToken[], dot: number, bindings: Set<string>): boolean {
+/** Index of the `)` closing the `(` at `open`, or -1. */
+function closingParenthesis(tokens: readonly TsToken[], open: number): number {
+  let depth = 0;
+  for (let k = open; k < tokens.length; k++) {
+    if (isPunct(tokens[k], "(")) depth++;
+    if (isPunct(tokens[k], ")") && --depth === 0) return k;
+  }
+  return -1;
+}
+
+function isRegExpType(tokens: readonly TsToken[], colon: number): boolean {
+  return isPunct(tokens[colon], ":") && tokens[colon + 1]?.text === "RegExp";
+}
+
+/**
+ * Functions of this file whose call yields a regex: an arrow function whose
+ * expression body is a regex literal or `new RegExp(…)`
+ * (`LINK = (path) => new RegExp(…)`), and an arrow or a declared function whose
+ * return type is `RegExp`. Anything else — a block body with no declared type,
+ * a function that returns another object — is left unclassified, so the
+ * `.exec` of its result is still reported.
+ */
+function regexFactories(tokens: readonly TsToken[]): Set<string> {
+  const names = new Set<string>();
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token?.kind !== "ident") continue;
+    const previous = tokens[i - 1];
+    if (previous?.kind === "ident" && previous.text === "function") {
+      const close = isPunct(tokens[i + 1], "(") ? closingParenthesis(tokens, i + 1) : -1;
+      if (close >= 0 && isRegExpType(tokens, close + 1)) names.add(token.text);
+      continue;
+    }
+    if (!isPunct(tokens[i + 1], "=")) continue;
+    // The parameters: `(…)`, or one bare identifier.
+    let arrow = i + 3;
+    let typed = false;
+    if (isPunct(tokens[i + 2], "(")) {
+      const close = closingParenthesis(tokens, i + 2);
+      if (close < 0) continue;
+      typed = isRegExpType(tokens, close + 1);
+      arrow = typed ? close + 3 : close + 1;
+    } else if (tokens[i + 2]?.kind !== "ident") continue;
+    if (!isPunct(tokens[arrow], "=>")) continue;
+    const body = tokens[arrow + 1];
+    const builds =
+      body?.kind === "regex" ||
+      (body?.kind === "ident" && body.text === "new" && tokens[arrow + 2]?.text === "RegExp");
+    if (typed || builds) names.add(token.text);
+  }
+  return names;
+}
+
+/** What this file binds to a regex, and what it declares as returning one. */
+interface RegexNames {
+  readonly bindings: ReadonlySet<string>;
+  readonly factories: ReadonlySet<string>;
+}
+
+/**
+ * Is the receiver of the `.` at `dot` a regex: a literal, a binding,
+ * `new RegExp(…)`, or the call of a regex factory of this file? The factory is
+ * called by its bare name: `db.LINK(x)` is a method of something else.
+ */
+function receiverIsRegex(tokens: readonly TsToken[], dot: number, names: RegexNames): boolean {
   const receiver = tokens[dot - 1];
   if (receiver === undefined) return false;
   if (receiver.kind === "regex") return true;
-  if (receiver.kind === "ident") return bindings.has(receiver.text);
+  if (receiver.kind === "ident") return names.bindings.has(receiver.text);
   if (isPunct(receiver, ")")) {
     let depth = 0;
     for (let k = dot - 1; k >= 0; k--) {
       if (isPunct(tokens[k], ")")) depth++;
       if (isPunct(tokens[k], "(")) depth--;
       if (depth === 0) {
-        return tokens[k - 1]?.text === "RegExp" && tokens[k - 2]?.text === "new";
+        const callee = tokens[k - 1];
+        const before = tokens[k - 2];
+        if (callee?.kind !== "ident") return false;
+        if (callee.text === "RegExp") return before?.text === "new";
+        const member = isPunct(before, ".") || isPunct(before, "?.");
+        return !member && names.factories.has(callee.text);
       }
     }
   }
@@ -352,21 +420,18 @@ function flatten(tokens: readonly TsToken[]): TsToken[] {
 
 export function scanTypeScript(source: string): SqlFinding[] {
   const tokens = tokenizeTypeScript(source);
-  const bindings = regexBindings(flatten(tokens));
+  const all = flatten(tokens);
+  const names: RegexNames = { bindings: regexBindings(all), factories: regexFactories(all) };
   const findings: SqlFinding[] = [];
-  scanTokens(tokens, bindings, findings);
+  scanTokens(tokens, names, findings);
   return findings.sort((a, b) => a.line - b.line);
 }
 
-function scanTokens(
-  tokens: readonly TsToken[],
-  bindings: Set<string>,
-  findings: SqlFinding[],
-): void {
+function scanTokens(tokens: readonly TsToken[], names: RegexNames, findings: SqlFinding[]): void {
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i] as TsToken;
     if (token.kind === "template") {
-      for (const expression of token.expressions) scanTokens(expression, bindings, findings);
+      for (const expression of token.expressions) scanTokens(expression, names, findings);
     }
     const previous = tokens[i - 1];
     const following = tokens[i + 1];
@@ -377,7 +442,7 @@ function scanTokens(
     if (memberCall && token.text === "unsafe") {
       findings.push({ rule: "unsafe-call", line: token.line });
     }
-    if (memberCall && token.text === "exec" && !receiverIsRegex(tokens, i - 1, bindings)) {
+    if (memberCall && token.text === "exec" && !receiverIsRegex(tokens, i - 1, names)) {
       const argument = tokens[i + 2];
       const after = tokens[i + 3];
       const constant = isConstantLiteral(argument) && (isPunct(after, ")") || isPunct(after, ","));
