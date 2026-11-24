@@ -64,6 +64,7 @@
  */
 
 import { GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { isActionDefinition } from "./check-action-pins";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
@@ -134,7 +135,7 @@ function examples(value: unknown, where: string): readonly string[] {
 export function parseRemoteExecutionForms(yamlText: string): readonly RemoteExecutionForm[] {
   let document: unknown;
   try {
-    document = Bun.YAML.parse(yamlText);
+    document = parseYaml(yamlText);
   } catch (error) {
     return refuseTable(`YAML parse failed: ${(error as Error).message}`);
   }

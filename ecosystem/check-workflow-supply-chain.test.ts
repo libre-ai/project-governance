@@ -266,7 +266,7 @@ describe("tool-unversioned", () => {
     ["cargo install --path crates/tool --locked", {}],
     [
       'cargo install cargo-deny --version "$CARGO_DENY_VERSION" --locked',
-      { CARGO_DENY_VERSION: "0.19.5" },
+      { CARGO_DENY_VERSION: "0.22.0" },
     ],
     ["echo 'the notes mention cargo install without running it'", {}],
   ])("green: %s", (script, env) => {

@@ -248,3 +248,11 @@ jobs:
       # ref manifest.json composes for <repo> (`git ls-tree`, no API quota).
       - name: Every composed path exists in its composed ref
         run: python3 -B .github/composition/check-composed-paths.py
+      # The same blind spot one step further: the path exists, but the composed
+      # toolchains/cargo-deny.json may declare a version install-toolchains.sh
+      # refuses, which fails every consumer at the install step. The installer
+      # also installs the previous version across a bump; that tolerance must
+      # end when the composed ref declares the current one. Both are read here,
+      # where manifest.json is read (`git show` of the composed commit).
+      - name: The composed cargo-deny declaration is one the installer installs, and no stale one
+        run: python3 -B .github/composition/check-composed-toolchain.py

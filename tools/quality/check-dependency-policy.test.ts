@@ -38,13 +38,13 @@ describe("toolchains/cargo-deny.json", () => {
     const entry = platformFor(loadPolicy(), "linux", "x64");
     expect(entry.triple).toBe("x86_64-unknown-linux-musl");
     expect(entry.archiveSha256).toBe(
-      "5ea64ae09959b5fe1072d898f95caaa89b374678ba6728d5e9ed1366745479b0",
+      "98c56e6a408bfa5c3c60744b6015aaa6aa08f743fdeb88386d06fca035bb1786",
     );
     expect(entry.archiveUrl).toBe(
-      "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.19.5/cargo-deny-0.19.5-x86_64-unknown-linux-musl.tar.gz",
+      "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.22.0/cargo-deny-0.22.0-x86_64-unknown-linux-musl.tar.gz",
     );
     expect(entry.executableRelativePath).toBe(
-      "cargo-deny-0.19.5-x86_64-unknown-linux-musl/cargo-deny",
+      "cargo-deny-0.22.0-x86_64-unknown-linux-musl/cargo-deny",
     );
   });
 
@@ -60,6 +60,21 @@ describe("toolchains/cargo-deny.json", () => {
 
   test("refuses a platform without a pinned digest", () => {
     expect(() => platformFor(loadPolicy(), "win32", "x64")).toThrow("No pinned cargo-deny");
+  });
+
+  test("refuses macOS Intel, for which upstream publishes no archive, even when a stale entry is declared", () => {
+    expect(() => platformFor(loadPolicy(), "darwin", "x64")).toThrow(
+      /^No pinned cargo-deny \S+ archive for darwin-x64$/,
+    );
+    // An entry left in the file is not enough: the parser does not carry it.
+    const raw = JSON.parse(POLICY_TEXT);
+    raw.platforms["darwin-x64"] = {
+      ...raw.platforms["darwin-arm64"],
+      triple: "x86_64-apple-darwin",
+    };
+    expect(() => platformFor(parsePolicy(JSON.stringify(raw)), "darwin", "x64")).toThrow(
+      "No pinned cargo-deny",
+    );
   });
 
   test("refuses a URL that does not follow from version and triple", () => {
@@ -106,6 +121,16 @@ describe("denyArguments", () => {
     expect(args).not.toContain("advisories");
     expect([...REQUIRED_CHECKS]).toEqual(["bans", "licenses", "sources"]);
     expect(args.slice(0, 2)).toEqual(["--locked", "--color"]);
+  });
+
+  test("names the config explicitly, as a root option placed before the subcommand", () => {
+    // cargo-deny 0.22.0 exits 2 on `check --config <path>` (measured).
+    const args = denyArguments("/repo/Cargo.toml", "/repo/deny.toml");
+    const flag = args.indexOf("--config");
+    expect(flag).toBeGreaterThanOrEqual(0);
+    expect(args[flag + 1]).toBe("/repo/deny.toml");
+    expect(flag).toBeLessThan(args.indexOf("check"));
+    expect(args.lastIndexOf("--config")).toBe(flag);
   });
 });
 

@@ -132,13 +132,27 @@ export interface SourceReading {
   readonly error: string | null;
   /** Lines carrying a waiver-shaped flag that no reader attributed to an entry. */
   readonly unattributed: readonly number[];
+  /**
+   * Advisory scopes a cargo-deny file leaves to the tool's default, where that
+   * default reports less than the whole graph. Not an entry: there is no line
+   * to carry waiver metadata, the key has to be written.
+   */
+  readonly implicitScopes: readonly ImplicitScope[];
   /** Non-null when the file was classified but had nothing to inspect, and why. */
   readonly skipped: SkipReason | null;
+}
+
+export interface ImplicitScope {
+  /** The advisories key that is not written. */
+  readonly key: string;
+  /** The `[advisories]` header line, or 1 when the file has no such table. */
+  readonly line: number;
 }
 
 export type DefectCode =
   | "UNREADABLE"
   | "UNPARSEABLE"
+  | "IMPLICIT-SCOPE"
   | "NO-ID"
   | "MALFORMED-ID"
   | "UNDATED"
@@ -271,8 +285,10 @@ function tomlAnchor(document: TomlDocument): string | null {
  * Which waiver mechanism a tracked path is, by its name, or null.
  *
  * cargo-deny reads `deny.toml`, `.deny.toml` and `.cargo/deny.toml` (measured
- * on 0.19.5). Audit commands are read where a command line lives: workflows,
- * composite actions, package manifests, shell scripts, Makefiles, justfiles.
+ * on 0.19.5), and `.config/deny.toml` as well (measured on 0.22.0); the last
+ * path component names all four. Audit commands are read where a command line
+ * lives: workflows, composite actions, package manifests, shell scripts,
+ * Makefiles, justfiles.
  * Every other tracked text file is classified `other-text` by its CONTENT, in
  * `readWaiverFile`, when it carries a waiver-shaped flag near an audit command.
  */
@@ -292,7 +308,16 @@ export function classifySource(path: string): Exclude<WaiverSourceKind, "other-t
 }
 
 function emptyReading(file: string, kind: WaiverSourceKind): SourceReading {
-  return { file, kind, entries: [], anchor: null, error: null, unattributed: [], skipped: null };
+  return {
+    file,
+    kind,
+    entries: [],
+    anchor: null,
+    error: null,
+    unattributed: [],
+    implicitScopes: [],
+    skipped: null,
+  };
 }
 
 function failedReading(file: string, kind: WaiverSourceKind, error: string): SourceReading {
@@ -448,7 +473,22 @@ export function readCargoSource(
     }
   }
 
-  return { ...emptyReading(file, kind), entries, anchor: tomlAnchor(document) };
+  // cargo-deny 0.22.0 reads an absent `advisories.unmaintained` as
+  // `"workspace"` (0.19.5 read `"all"`): a file that does not write the key
+  // reports unmaintained crates for direct dependencies only, exactly as one
+  // that writes the narrower scope, and the rule above never saw it. Measured
+  // on the fleet on 2026-11-24: five graphs out of sixteen lost an advisory
+  // that way. `unsound` is not listed: its default is `"workspace"` under both
+  // versions, so its absence is not something the bump changes.
+  const implicitScopes: ImplicitScope[] = [];
+  if (kind === "cargo-deny" && (advisories === null || !advisories.entries.has("unmaintained"))) {
+    implicitScopes.push({
+      key: "unmaintained",
+      line: document.root.keyLines.get("advisories") ?? 1,
+    });
+  }
+
+  return { ...emptyReading(file, kind), entries, anchor: tomlAnchor(document), implicitScopes };
 }
 
 function toLabel(node: TomlNode): string {
@@ -823,6 +863,7 @@ export function readAuditCommandSource(file: string, text: string): SourceReadin
     anchor: readAnchor(text),
     error: null,
     unattributed,
+    implicitScopes: [],
     skipped,
   };
 }
@@ -941,6 +982,16 @@ export function evaluateWaivers(
           "carries a waiver-shaped flag (--ignore, --audit-level, -A/-W) near an audit command that no " +
           "reader attributes to an entry; write it on one line of a workflow, action, manifest or " +
           `script, or mark a fixture file with \`${FIXTURE_MARKER}\``,
+      });
+    }
+    for (const scope of reading.implicitScopes) {
+      defects.push({
+        code: "IMPLICIT-SCOPE",
+        where: `${reading.file}:${scope.line}`,
+        message:
+          `does not write \`advisories.${scope.key}\`; cargo-deny 0.22.0 then applies "workspace" and reports ` +
+          `${scope.key} crates among direct dependencies only — write \`${scope.key} = "all"\`, or the ` +
+          "narrower scope with its waiver metadata on that line",
       });
     }
     if (reading.entries.length === 0) continue;

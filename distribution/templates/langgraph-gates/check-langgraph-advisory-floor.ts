@@ -159,6 +159,14 @@ export function readLockfile(path: string, text: string): LockReading {
   return { error: `format '${name}' is not read by this gate` };
 }
 
+// semver.org: build metadata does not take part in precedence. Handed `1.1.8+a-b` and `1.1.8`, the
+// pinned canary answers "below" (it reads the hyphen of the build as a pre-release) and Bun 1.4.5
+// answers "equal"; cut before `Bun.semver.order`, the two runtimes agree (measured on 480249 pairs).
+function withoutBuild(version: string): string {
+  const plus = version.indexOf("+");
+  return plus === -1 ? version : version.slice(0, plus);
+}
+
 export interface Evaluation {
   readonly defects: readonly string[];
   readonly resolvedRows: number;
@@ -185,7 +193,14 @@ export function evaluate(
           defects.push(
             `${lock.file}: ${entry.name}@${entry.version} (${entry.where}) is not a version this gate can compare to ${row.minimum} (${row.advisory})`,
           );
-        } else if (Bun.semver.order(entry.version, row.minimum) < 0) {
+        } else if (!MINIMUM_VERSION.test(row.minimum)) {
+          // `evaluate` is exported: a row that did not come from `parseFloor` may carry a range
+          // (`^1.1.8`). The pinned canary orders a range against a version, Bun 1.4.5 throws on
+          // it; `order` is only called on two versions, so neither runtime decides the verdict.
+          defects.push(
+            `${lock.file}: ${entry.name}@${entry.version} (${entry.where}) cannot be compared: the minimum '${row.minimum}' of ${row.advisory} is not an x.y.z version`,
+          );
+        } else if (Bun.semver.order(withoutBuild(entry.version), row.minimum) < 0) {
           defects.push(
             `${lock.file}: ${entry.name}@${entry.version} (${entry.where}) is below ${row.minimum} (${row.advisory})`,
           );

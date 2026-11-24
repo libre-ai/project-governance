@@ -4,6 +4,7 @@ import addFormats from "ajv-formats";
 import { exemptionKey, scanText, validateCitedPath } from "../tools/quality/check-pinned-citations";
 import { GateReport } from "../tools/quality/gate-report";
 import { parseInvariantsRegister } from "../tools/quality/invariants-register";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 
 /**
  * The brick map (ADR-0064): eleven layers, one schema, a derived status.
@@ -912,7 +913,7 @@ export function evaluateBriques(input: BriquesInput): BriquesOutcome {
     }
     let value: unknown;
     try {
-      value = Bun.YAML.parse(text);
+      value = parseYaml(text);
     } catch (error) {
       report.check(item, false, `invalid YAML (${(error as Error).message})`);
       continue;

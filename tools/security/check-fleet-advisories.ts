@@ -18,6 +18,7 @@ import {
   cargoLockPaths,
   denyAdvisoryArguments,
   examineCheckout,
+  implicitScopeFailures,
   readCheckoutWaivers,
   rustVolumeLine,
 } from "./rust-advisories";
@@ -149,6 +150,7 @@ const rust = {
   failed: 0,
   packages: 0,
   advisories: 0,
+  implicitScopes: 0,
 };
 
 for (const repository of repositories) {
@@ -235,7 +237,7 @@ for (const repository of repositories) {
       failAll(`waivers unreadable — ${(error as Error).message}`);
       continue;
     }
-    const { tracked, coverage } = waivers;
+    const { tracked, coverage, implicitScopes } = waivers;
     const binary = cargoDeny.binary;
     const examinations = examineCheckout(
       checkout,
@@ -271,11 +273,21 @@ for (const repository of repositories) {
     rust.failed += failedCount;
     rust.packages += packages;
     rust.advisories += found.length;
+    // A deny.toml that leaves an advisory scope to cargo-deny's default was
+    // examined on a narrower graph than this control claims: one failure per
+    // file, named, beside the lockfiles it governs (see implicitScopeFailures).
+    const implicit = implicitScopeFailures(examinations, implicitScopes);
+    for (const failure of implicit) {
+      report.check(`${repository}:${failure.config}`, false, failure.note);
+    }
+    rust.implicitScopes += implicit.length;
     console.log(
       `Rust advisories ${repository}: ${declared.length} Cargo.lock declared — ${examined} examined, ` +
         `${shadowed} shadowed by an enclosing workspace, ${failedCount} FAILED; ` +
         `${packages} package(s) examined, ${found.length} uncovered advisory(ies)` +
-        (found.length > 0 ? ` [${found.join("; ")}]` : ""),
+        (found.length > 0 ? ` [${found.join("; ")}]` : "") +
+        `, ${implicit.length} governing deny.toml with an implicit advisory scope` +
+        (implicit.length > 0 ? ` [${implicit.map((failure) => failure.config).join(", ")}]` : ""),
     );
   } finally {
     rmSync(checkout, { recursive: true, force: true });

@@ -45,6 +45,8 @@
 //   bun coverage-metrics.ts <owner/repo> [max]    one repository (active or
 //                                                 archived), via the GitHub API
 
+import { parseYaml } from "../../tools/quality/yaml-text-guard";
+
 export interface CommitRecord {
   readonly parentCount: number;
   readonly message: string;
@@ -154,8 +156,7 @@ function gh(args: string[]): { ok: boolean; stdout: string; stderr: string } {
 
 async function activeRepositories(): Promise<string[]> {
   const inventoryUrl = new URL("../../ecosystem/repositories.v1.yaml", import.meta.url);
-  const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
-  const document = yamlApi.parse(await Bun.file(inventoryUrl).text()) as {
+  const document = parseYaml(await Bun.file(inventoryUrl).text()) as {
     repositories: { repository: string; lifecycle: string }[];
   };
   return document.repositories
