@@ -388,9 +388,19 @@ generations:
       (reusable-context-hygiene.yml and tools/quality/check-context-hygiene.sh)
       loses the file exemption of the notebook-core-v2 Gate A reports, a
       path no served branch of the organisation holds. The composition
-      tools drop inherited GIT_* variables from their git children, and
+      tools drop inherited GIT_* variables from the children they spawn, and
       run-composition.py gains a read-only `verify` phase the workflow does
-      not call. The other six reusable templates and bun.lock are
+      not call. tools/quality/check-review-evidence.ts, imported by
+      check-work-package-link.ts, which reusable-work-package-link.yml runs
+      from the pinned checkout, lists three more guarded paths
+      (tools/skills/skills-security-patterns.v1.json,
+      ecosystem/toolchain-freshness-exceptions.v1.yaml,
+      ecosystem/third-parties.v1.yaml): a pull request of a caller that
+      touches one needs a work package and the owner's explicit ready. On
+      2026-11-24 the trees of the served branches of the 20 public
+      non-archived repositories hold those three files in this repository
+      only, and in none of the 19 others. The other six reusable templates
+      and bun.lock are
       unchanged; package.json gains scripts and no dependency. The
       toolchain-freshness check (#301) runs from this repository's own
       workflows, not from a consumer pin. Generation coherence is replayed
