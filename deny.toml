@@ -24,8 +24,10 @@ yanked = "deny"
 # Stated, not inherited: cargo-deny 0.22.0 narrowed its default scope for
 # unmaintained-crate advisories from `all` to `workspace` (direct dependencies
 # of workspace crates only). `all` is what 0.19.5, the version this file was
-# written for, applied when the key was absent; writing it keeps the advisory
-# report on the whole graph whichever version reads this file.
+# written for, applied when the key was absent; writing it keeps unmaintained
+# advisories reported on the whole graph whichever version reads this file.
+# It covers `unmaintained` only: `unsound` is not written here and stays at
+# its default, `workspace` under both versions.
 unmaintained = "all"
 
 [licenses]

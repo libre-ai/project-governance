@@ -1,12 +1,37 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-Verdict: not-reviewed
+Verdict: approve-with-reservations
 
 # `unmaintained = "all"` écrit dans la politique de base : dossier de mesure
 
 **Date :** 2026-11-24
 **Objet :** la pull request qui ajoute `unmaintained = "all"` à la section `[advisories]` de `deny.toml` et de `crates/ecosystem-engine/deny.toml`, sans changer la version de cargo-deny.
-**Nature :** dossier écrit par l'agent auteur de la pull request. Il rend compte de ce que l'auteur a mesuré. **Aucune passe de revue indépendante n'a encore eu lieu** : ce dossier n'en tient pas lieu, et il n'est pas un arbitrage du propriétaire.
+**Nature :** dossier de revue d'une pull request écrite par un agent. Il rend compte de ce que l'auteur a mesuré et de la passe qui a examiné la pull request ; il n'est pas un arbitrage du propriétaire, et aucun agent n'en écrit.
+**Rôle :** une passe de revue, faite en lecture seule par un sous-agent à contexte neuf, distinct de l'auteur. Ce dossier est tenu par l'auteur, qui y reporte le verdict et les constats que la passe lui a rendus.
+
+## La passe
+
+| Passe | Commit relu | Base (`git merge-base`) | Verdict |
+| --- | --- | --- | --- |
+| 1 | `8ddbcb307537507ed261677b440a5e33fb8ed2c5` | `18e0a468527310590db2f49da15ba697250472a7` | approuvé avec réserves : un constat mineur |
+
+Le commit qui traite ce constat et met ce dossier à jour, ainsi que la fusion de la branche servie qui le précède, sont postérieurs à la passe. **Aucune passe ne les a relus.**
+
+## Constat de la passe, et sa suite
+
+| Gravité | Constat | Suite |
+| --- | --- | --- |
+| minor | Le commentaire ajouté dans les deux `deny.toml` disait que la ligne garde le rapport d'avis « on the whole graph ». Ce n'est vrai que pour `unmaintained` : `unsound` vaut `workspace` par défaut sous les deux versions, et la politique ne l'écrit pas. | Corrigé : le commentaire se borne à `unmaintained` et dit que `unsound` reste à son défaut. Vérifié par l'auteur dans `src/advisories/cfg.rs` aux tags 0.19.5 (lignes 107-108 et 283-284) et 0.22.0 (lignes 288-289 et 447-448). Non relu. |
+
+Aucun constat `blocking` ni `major`.
+
+## Ce que la passe a rejoué
+
+- L'empreinte de l'archive 0.19.5 `aarch64-apple-darwin`, égale à celle de l'API des releases.
+- Sur ce dépôt, sous 0.19.5 : sorties identiques à l'octet avec et sans la ligne.
+- Sur `artifact-verification` : 0.19.5 sort au code 1 avec et sans la clé ; 0.22.0 sort au code 0 sans la clé et au code 1 avec.
+
+La passe n'a pas rejoué : les 14 autres graphes du tableau ci-dessous, les 56 exécutions du second relevé, le binaire Linux, les dépôts privés.
 
 ## Pourquoi cette ligne
 
@@ -51,10 +76,17 @@ Second relevé, avec le fichier `deny.toml` de cette pull request passé tel que
 
 - Elle ne modifie aucun `deny.toml` hors de ce dépôt. Le contrôle périodique lit le fichier de chaque dépôt : tant qu'un dépôt n'a pas repris la ligne, son rapport d'avis rétrécit le jour où la version change. Douze fichiers sont concernés : la copie de base de dix dépôts, `crates/sdk-rs/deny.toml` de `schemas-and-contracts`, et le `deny.toml` de `square-control`, qui n'a pas de section `[advisories]`.
 - Elle ne change pas la version de cargo-deny.
+- Elle n'écrit pas `unsound = "all"`. `unsound` vaut `workspace` par défaut sous 0.19.5 comme sous 0.22.0 (lu dans la source, non mesuré) : la portée des avis `unsound` ne change donc pas avec la version. L'écrire à `all` pourrait changer des verdicts, ce qui n'a pas été mesuré.
+
+## Réserves
+
+- **`unsound` reste à `workspace`.** La politique de base ne couvre le graphe entier que pour `unmaintained`. Étendre `unsound` est une décision à mesurer à part.
+- **Un intitulé de test dit le contraire.** `tools/quality/advisory-waivers.test.ts`, test « cargo-deny scope and level keys at their defaults are not waivers », range `unsound = "all"` parmi les valeurs par défaut ; `all` n'est le défaut de `unsound` sous aucune des deux versions. Non modifié ici.
 
 ## Non relu, non prouvé
 
-- Aucune passe de revue indépendante sur ce diff ni sur ce dossier.
+- Le commit de correction et cette mise à jour du dossier n'ont été relus par aucune passe.
+- Les 14 graphes autres que ce dépôt et `artifact-verification`, et les 56 exécutions du second relevé, n'ont été mesurés que par l'auteur.
 - Les mesures viennent des binaires macOS arm64 ; la CI exécute le binaire Linux x64 de la même release. L'égalité de comportement entre les deux est supposée, pas mesurée.
 - Les dépôts privés de l'organisation n'ont pas été lus.
 - Le relevé vaut pour la base RustSec et les têtes de branche du jour.
