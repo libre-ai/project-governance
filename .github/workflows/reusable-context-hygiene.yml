@@ -30,8 +30,7 @@ jobs:
           generic='/Users/[A-Za-z0-9._-]+' # allow-local-path (pattern definition)
           user_pat="$(printf '%s' 'W2ldZmk2NTY3' | base64 -d)"
           hits="$(git grep -I -n -E -e "$generic" -e "$user_pat" -- . \
-            | grep -v 'allow-local-path' \
-            | grep -vE '^docs/reviews/notebook-core-v2/gate-a/a28e116/(ARCHITECTURE|SECURITY|CRYPTOGRAPHY)\.md:' || true)"
+            | grep -v 'allow-local-path' || true)"
           if [ -n "$hits" ]; then
             printf '%s\n' "$hits"
             echo "::error::Machine-local identifier or path found in tracked files."

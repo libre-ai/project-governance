@@ -152,6 +152,11 @@ jobs:
   bun-quality:
     name: Bun quality
     runs-on: ubuntu-latest
+    # Without it the job falls back to the 360-minute default, below the worst case of every
+    # attestation child hanging until its test budget ends (issue #299): the run is then
+    # cancelled instead of failing. Measured 2026-11-23 on the 10 latest completed runs of this
+    # workflow: the job took 223 s to 295 s. The bound is 20 minutes (1200 s).
+    timeout-minutes: 20
     steps:
       # Full history: `check:forgotten` proves each evicted tree is still recoverable
       # at the commit its register entry records. Unverifiable in a shallow clone.
@@ -191,6 +196,9 @@ jobs:
       # apps/notebook/src, inside its aggregated check. The two product
       # repositories this comment used to name no longer resolve. ADR-0016 and
       # ADR-0017 carry dated corrections for the claims that rested on them.
+      # On 2026-11-23 the owner decided to retire apps/notebook; the pull
+      # request that removes it (personal-knowledge-workspace#55) moves the
+      # same check:no-transmission to apps/desktop/src.
       #
       # What this repository DOES owe, as the publisher of that executable: a
       # run of it. tools/quality/check-no-transmission.test.ts exercises the

@@ -254,7 +254,7 @@ describe("the table of forms", () => {
 describe("tool-unversioned", () => {
   test("the cargo install of validate-composition.yml carries its version", async () => {
     const text = await read("../.github/workflows/validate-composition.yml");
-    const line = "cargo install cargo-llvm-cov --version 0.8.7 --locked";
+    const line = "cargo install cargo-llvm-cov --version 0.9.2 --locked";
     expect(text).toContain(`run: ${line}\n`);
     expect(reviewDefinition(text, forms).violations).toEqual([]);
     expect(codesOf(line)).toEqual([]);

@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, test } from "bun:test";
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -651,5 +652,58 @@ describe("mutant run (end to end)", () => {
     expect(readFileSync(join(root, "guard.ts"), "utf8")).toBe(GUARD);
     // Working tree against the index: nothing the tool did shows up in the repository.
     expect(Bun.spawnSync(["git", "-C", root, "diff", "--name-only"]).stdout.toString()).toBe("");
+  }, 60_000);
+
+  test("interrupt with a copy that cannot be removed: exit 130, the failure reported", async () => {
+    // The oracle runs with its TMPDIR inside the work copy; it locks a directory there, so
+    // removing the copy fails (EACCES). The signal still decides the exit code (not an
+    // unhandled rejection's 1), and the failed cleanup is said on stderr, never swallowed.
+    // The super-user removes a locked directory anyway, so the case cannot be built as root:
+    // it fails there instead of passing unmeasured.
+    expect(process.getuid?.()).not.toBe(0);
+    const pidFile = join(scratch, `locked-${fixtures + 1}.pid`);
+    const lockedFile = join(scratch, `locked-${fixtures + 1}.path`);
+    const hang = [
+      'import { test } from "bun:test";',
+      'import { chmodSync, mkdirSync, writeFileSync } from "node:fs";',
+      'import { join } from "node:path";',
+      'import "./guard";',
+      'test("locks the copy and hangs", async () => {',
+      '  const locked = join(process.env.TMPDIR ?? "", "locked");',
+      "  mkdirSync(locked);",
+      '  writeFileSync(join(locked, "pinned"), "");',
+      "  chmodSync(locked, 0o500);",
+      `  writeFileSync(${JSON.stringify(lockedFile)}, locked);`,
+      `  writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));`,
+      "  await new Promise(() => {});",
+      "}, 600_000);",
+      "",
+    ].join("\n");
+    const root = fixture(
+      [entry("guard-open", "return true;", { oracle: { tests: ["hang.test.ts"] } })],
+      { "hang.test.ts": hang },
+    );
+    const { child } = launch(root, []);
+    try {
+      const deadline = Date.now() + 30_000;
+      while (!existsSync(pidFile) && Date.now() < deadline) await Bun.sleep(25);
+      expect(existsSync(pidFile)).toBe(true);
+      const pid = Number(readFileSync(pidFile, "utf8"));
+      child.kill("SIGINT");
+      const [stderr, code] = await Promise.all([new Response(child.stderr).text(), child.exited]);
+      expect(code).toBe(130);
+      expect(stderr).toContain("interrupted by SIGINT: cleanup failed");
+      expect(stderr).not.toContain("copy removed");
+      let probe: unknown = null;
+      try {
+        process.kill(pid, 0);
+      } catch (error) {
+        probe = error;
+      }
+      expect((probe as NodeJS.ErrnoException | null)?.code).toBe("ESRCH");
+    } finally {
+      // Unlocked, so that the scratch directory can be removed after the run.
+      if (existsSync(lockedFile)) chmodSync(readFileSync(lockedFile, "utf8"), 0o700);
+    }
   }, 60_000);
 });

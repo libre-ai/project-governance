@@ -281,3 +281,128 @@ refusals:
     evidence:
       - https://www.humanlayer.com/ (consultée le 2026-10-23)
     reexamine_when: null
+
+  - id: refusal.open-code-review-install
+    subject: >-
+      Open Code Review (`ocr`), CLI de revue de code par agent, ses skills et
+      ses commandes de plugin pour harnais d'agent, installés sur un poste ou
+      dans un harnais.
+    source: https://github.com/alibaba/open-code-review
+    revision: alibaba/open-code-review@e74f2c6bd4422bd1e12d257d1725bcce1d6b9ddd
+    action: install
+    origin: inspection
+    decided_on: 2026-11-23
+    reason: >-
+      Le lanceur npm réinstalle le paquet globalement à la dernière version
+      publiée, en arrière-plan, sauf si une variable d'environnement le
+      coupe : l'auto-mise à jour est active par défaut. Le sous-processus
+      d'un serveur MCP hérite de tout l'environnement du processus. L'invite
+      de revue est construite par remplacements successifs, le diff revu
+      étant substitué avant deux champs remplacés ensuite : un diff qui
+      contient le marqueur d'un champ suivant reçoit son contenu ;
+      l'exploitabilité est inférée de la lecture, rien n'a été exécuté. Les
+      commandes de plugin demandent à l'agent de corriger automatiquement le
+      code après la revue, et le skill de délégation lui demande d'écarter
+      en silence les faux positifs probables. Le drill relevait aussi que
+      les outils de lecture de l'agent n'appellent pas le filtre de chemins
+      de secrets ; cette absence n'est pas établie par les citations
+      ci-dessous.
+    evidence:
+      - alibaba/open-code-review@e74f2c6:bin/ocr.js:89
+      - alibaba/open-code-review@e74f2c6:scripts/update.js:154
+      - alibaba/open-code-review@e74f2c6:internal/mcp/client.go:45
+      - alibaba/open-code-review@e74f2c6:internal/agent/agent.go:1352-1364
+      - alibaba/open-code-review@e74f2c6:plugins/open-code-review/claude-code/commands/review.md:36
+      - alibaba/open-code-review@e74f2c6:plugins/open-code-review/claude-code/commands/delegate-review.md:69
+      - alibaba/open-code-review@e74f2c6:skills/open-code-review-delegate/SKILL.md:143
+    reexamine_when: >-
+      Une version où l'auto-mise à jour est absente ou coupée par défaut,
+      l'invite construite en une seule passe et les commandes de correction
+      automatique retirées, puis une décision du propriétaire.
+
+  - id: refusal.open-code-review-action
+    subject: >-
+      L'action GitHub d'Open Code Review, utilisée comme étape de revue dans
+      la CI de la flotte.
+    source: https://github.com/alibaba/open-code-review
+    revision: alibaba/open-code-review@e74f2c6bd4422bd1e12d257d1725bcce1d6b9ddd
+    action: depend
+    origin: inspection
+    decided_on: 2026-11-23
+    reason: >-
+      La version du paquet installé par l'action vaut `latest` par défaut :
+      sans épinglage explicite, chaque exécution de la CI installe ce que le
+      registre sert ce jour-là. Elle hérite en outre de la construction de
+      l'invite relevée dans le refus d'installation.
+    evidence:
+      - alibaba/open-code-review@e74f2c6:action.yml:84-87
+      - alibaba/open-code-review@e74f2c6:internal/agent/agent.go:1352-1364
+    reexamine_when: >-
+      Les conditions de réexamen du refus d'installation, et une version de
+      l'action dont la valeur par défaut est épinglée.
+
+  - id: refusal.open-code-review-english-only-gate
+    subject: >-
+      Le gate « source en anglais seulement » d'Open Code Review, repris dans
+      l'outillage de flotte.
+    source: https://github.com/alibaba/open-code-review
+    revision: alibaba/open-code-review@e74f2c6bd4422bd1e12d257d1725bcce1d6b9ddd
+    action: reuse-code
+    origin: inspection
+    decided_on: 2026-11-23
+    reason: >-
+      Le gate refuse toute ligne non anglaise, ce qui contredit le français
+      d'abord de la flotte. Son exemption par ligne vaut sur la seule
+      présence du marqueur : la raison qui suit le marqueur n'est pas
+      vérifiée, une exemption vide passe.
+    evidence:
+      - alibaba/open-code-review@e74f2c6:scripts/verify-english-only.go:82-85
+      - alibaba/open-code-review@e74f2c6:scripts/verify-english-only.go:185
+    reexamine_when: null
+
+  - id: refusal.safeagents-install
+    subject: >-
+      safeagents, proxy de garde des appels d'outil d'un agent, installé sur
+      un poste ou dans un harnais.
+    source: https://github.com/huggingface/safeagents
+    revision: huggingface/safeagents@dcf38e0a911d6e6a53966d46ecf1d9d6b86e3c01
+    action: install
+    origin: inspection
+    decided_on: 2026-11-23
+    reason: >-
+      Pour décider si un hôte réseau est « sourcé », la politique ne retire
+      de la requête que les tours du modèle : un hôte cité dans un résultat
+      d'outil, donc dans un contenu non fiable, compte comme sourcé ; une
+      légitimation en deux tours est inférée de la lecture, rien n'a été
+      exécuté. Une exception du scanner rend une liste vide de signaux : la
+      panne laisse passer. La protection contre la réécriture de
+      configuration ne couvre que les réglages de deux harnais.
+    evidence:
+      - huggingface/safeagents@dcf38e0:src/safeagents/policy.py:89-98
+      - huggingface/safeagents@dcf38e0:src/safeagents/scan.py:220-230
+      - huggingface/safeagents@dcf38e0:src/safeagents/selfprotect.py:58
+    reexamine_when: >-
+      Une version dont la provenance exclut tout contenu non fiable, résultats
+      d'outil compris, et qui refuse fermé sur panne du scanner.
+
+  - id: refusal.dsh-superagent-prototype-code
+    subject: >-
+      Le prototype de super-agent publié par DeepSeek, repris ou déployé dans
+      la flotte.
+    source: https://github.com/deepseek-ai/dsh-superagent-prototype
+    revision: deepseek-ai/dsh-superagent-prototype@8c32a9dc5d72c033816c6a8110b37f40cf94fba4
+    action: reuse-code
+    origin: inspection
+    decided_on: 2026-11-23
+    reason: >-
+      Les sessions des agents reçoivent le préréglage de permissions
+      `danger-full-access`. Pour une demande explicite, le périmètre accepté
+      vaut le titre de la demande, un texte libre. Le plafond de tours de
+      revue n'est tenu que par une consigne en prose. Le code est sous
+      licence MIT, que la doctrine de licences de la flotte n'emploie pas.
+    evidence:
+      - deepseek-ai/dsh-superagent-prototype@8c32a9d:src/app/sessions.ts:152
+      - deepseek-ai/dsh-superagent-prototype@8c32a9d:src/app/tools/main.ts:97
+      - deepseek-ai/dsh-superagent-prototype@8c32a9d:prompts/team/communication.md:92
+      - deepseek-ai/dsh-superagent-prototype@8c32a9d:LICENSE:1
+    reexamine_when: null
