@@ -1,6 +1,6 @@
 schema_version: libre-ai.produit.v1
 id: P03
-nom_public: "Références"
+nom_public: "Biblio"
 nom_provisoire: null
 intitule: "entretien du corpus bibliographique"
 fonction: "Assistant de bibliothèque Zotero"
