@@ -127,18 +127,27 @@ function git(dir: string, args: readonly string[], input?: Uint8Array): Buffer {
     env: gitEnvironment,
     stdin: input ?? "ignore",
     stdout: "pipe",
-    stderr: "pipe",
+    // Never read (it may quote object content), and a piped stderr counts against maxBuffer: a
+    // git error longer than the limit would then read as an output overrun, not a git failure.
+    stderr: "ignore",
     maxBuffer: gitOutputLimit,
   });
-  // The exit code is the verdict; stderr may quote object content, so it is dropped.
-  // neutralise:git-exit
-  if (result.exitCode !== 0) throw new GitFailure(`git ${args[0] ?? ""} exited ${result.exitCode}`);
-  // Bun 1.4.0 returns exit code 0 with a TRUNCATED stdout when the output exceeds maxBuffer
-  // (measured: 200000 bytes asked, 66536 returned, exitedDueToMaxBuffer true). A partial listing
-  // would read as a complete one.
+  // The output limit is judged BEFORE the exit code. When the output exceeds maxBuffer, Bun 1.4.0
+  // truncates stdout and kills git, and the exit code depends on a race: 0 when git had already
+  // exited (measured: 200000 bytes asked, 66536 returned), null with signal SIGTERM when the kill
+  // landed first (measured 2026-11-23: 7 of 300 runs at a 64-byte cap, issue #298). Judged after
+  // the exit code, the null case was reported as a generic git failure. A partial listing must
+  // never read as a complete one, whatever the exit code.
   // neutralise:git-output-limit
   if (result.exitedDueToMaxBuffer)
     throw new GitFailure("git output exceeds the read limit", "git-output-limit");
+  // The exit code is the verdict; stderr is not even collected (see above). A git killed
+  // by a signal has a null exit code (bun-types declares `number`), which this refuses too.
+  // neutralise:git-exit
+  if (result.exitCode !== 0)
+    throw new GitFailure(
+      `git ${args[0] ?? ""} exited ${result.exitCode} (signal ${result.signalCode ?? "none"})`,
+    );
   return Buffer.from(result.stdout);
 }
 
@@ -203,8 +212,8 @@ interface RawObject {
  * Accepted limit (not a fix): every handled object is read into one buffer, bounded by the git
  * output limit (1 GiB). `maximumBlobBytes` is applied after that read, so it bounds the scan of a
  * blob, not the memory used to fetch it. A repository whose objects exceed the limit fails closed
- * (`git-output-limit` becomes a `git-failure` finding) instead of being read partly. The
- * candidate holds 366,295 blob bytes in 205 objects.
+ * (the scan reports a `git-output-limit` finding, the manifest throws) instead of being read
+ * partly. The candidate holds 366,295 blob bytes in 205 objects.
  */
 function readObjects(dir: string, oids: readonly string[]): Map<string, RawObject | null> {
   const out = git(dir, ["cat-file", "--batch"], Buffer.from(`${oids.join("\n")}\n`));
@@ -713,6 +722,20 @@ function scanBlob(
   if (classes.length > 0) add("blob", classes.join("+"), entry.oid);
 }
 
+/**
+ * Classes of one file read by the `text` command. Above the size limit (`maximumBlobBytes`, the
+ * same bound as a blob, default 64 MiB) the file is refused whole rather than partly scanned.
+ * The limit is an option so that a test can prove the refusal on a few bytes: proved on a 64 MiB
+ * file, a neutralised refusal let the scan run past the test's time budget, and the mutant was
+ * "caught" by the clock, not by an assertion (issue #299).
+ */
+export function classesOfText(bytes: Buffer, options: ScanOptions): string[] {
+  // neutralise:text-limit
+  if (bytes.length > (options.maximumBlobBytes ?? defaultMaximumBlobBytes))
+    return ["resource-limit"];
+  return classesOfBytes(bytes, options);
+}
+
 /** Content classes of raw bytes: latin1, UTF-16LE when a NUL byte is present, and strict UTF-8. */
 export function classesOfBytes(body: Buffer, options: ScanOptions): string[] {
   const classes = new Set(contentClasses(body.toString("latin1"), options));
@@ -1074,10 +1097,7 @@ function run(args: readonly string[]): number {
     // output names a file and a class, never the matched bytes.
     const results = positional.slice(1).map((path) => {
       const bytes = readOperatorFile(path, "input file");
-      let classes: string[];
-      // neutralise:text-limit
-      if (bytes.length > defaultMaximumBlobBytes) classes = ["resource-limit"];
-      else classes = classesOfBytes(bytes, options);
+      const classes = classesOfText(bytes, options);
       return { file: path.split("/").at(-1) ?? path, bytes: bytes.length, classes };
     });
     console.log(JSON.stringify({ files: results.length, results }, null, 2));

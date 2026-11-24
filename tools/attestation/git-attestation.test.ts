@@ -1,14 +1,16 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 
+import { runChild } from "./child";
 import {
   assertHandledTypes,
   buildManifest,
   canonicalJson,
+  classesOfText,
   contentClasses,
   decodeDenyLiteral,
   type Finding,
@@ -52,6 +54,15 @@ const bot: Identity = {
 };
 const identities = [owner, bot];
 const options: ScanOptions = { identities, trustedRef: "refs/heads/main" };
+
+// Every test here builds a git repository and runs git, sh and jq dozens of times. The default
+// per-test budget (5 s) is a wall-clock bound, not a property under test: under load it ran out
+// mid-test, Bun killed the child in flight, and the kill surfaced as an exit code of null in
+// whatever assertion read it ("Expected: 0, Received: null" on the shell manifest, issue #289).
+// The budget is raised for this file only (setDefaultTimeout is reset between files); the
+// assertions are unchanged. Measured on 2026-11-23 (PR #297 and its review): that test takes
+// about 0.5 s alone, and up to 7.1 s of wall time with 96 copies of it in parallel on 14 cores.
+setDefaultTimeout(120_000);
 
 const root = mkdtempSync(join(tmpdir(), "attestation-test-"));
 afterAll(() => {
@@ -97,11 +108,9 @@ function git(
   extra: Record<string, string> = {},
   input?: string | Uint8Array,
 ): string {
-  const result = Bun.spawnSync(["git", "-C", dir, ...args], {
+  const result = runChild(["git", "-C", dir, ...args], {
     env: { ...baseEnvironment, ...extra },
     stdin: input === undefined ? "ignore" : typeof input === "string" ? Buffer.from(input) : input,
-    stdout: "pipe",
-    stderr: "pipe",
   });
   if (result.exitCode !== 0)
     throw new Error(`git ${args[0]} exited ${result.exitCode}: ${result.stderr.toString()}`);
@@ -697,16 +706,14 @@ describe("manifest", () => {
   const script = join(import.meta.dir, "manifest.sh");
 
   function shellManifest(dir: string): { code: number; out: Buffer } {
-    const result = Bun.spawnSync(["sh", script, dir], {
+    const result = runChild(["sh", script, dir], {
       env: { ...baseEnvironment, REPO: "fixture/repo" },
-      stdout: "pipe",
-      stderr: "pipe",
     });
     return { code: result.exitCode, out: Buffer.from(result.stdout) };
   }
 
   test("the shell reference needs jq, and a missing jq is a failure, not a skip", () => {
-    const result = Bun.spawnSync(["jq", "--version"], { env: baseEnvironment });
+    const result = runChild(["jq", "--version"], { env: baseEnvironment });
     expect(result.exitCode).toBe(0);
   });
 
@@ -754,14 +761,9 @@ describe("manifest", () => {
   });
 
   function python(...args: string[]): { code: number; out: string } {
-    const result = Bun.spawnSync(
-      ["python3", "-I", join(import.meta.dir, "canonicalize.py"), ...args],
-      {
-        env: baseEnvironment,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
-    );
+    const result = runChild(["python3", "-I", join(import.meta.dir, "canonicalize.py"), ...args], {
+      env: baseEnvironment,
+    });
     return { code: result.exitCode, out: result.stdout.toString() };
   }
 
@@ -837,18 +839,16 @@ function collect(): {
 }
 
 function shellOf(dir: string): { code: number; out: string; err: string } {
-  const result = Bun.spawnSync(["sh", join(import.meta.dir, "manifest.sh"), dir], {
+  const result = runChild(["sh", join(import.meta.dir, "manifest.sh"), dir], {
     env: { ...baseEnvironment, REPO: "fixture/repo" },
-    stdout: "pipe",
-    stderr: "pipe",
   });
   return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
 }
 
 function pythonOf(flags: string[], ...args: string[]): { code: number; out: string } {
-  const result = Bun.spawnSync(
+  const result = runChild(
     ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-    { env: baseEnvironment, stdout: "pipe", stderr: "pipe" },
+    { env: baseEnvironment },
   );
   return { code: result.exitCode, out: result.stdout.toString() };
 }
@@ -994,7 +994,7 @@ describe("tag object refusals", () => {
   test("red:tag-header an extra tag header is refused and passes git fsck --strict", () => {
     const dir = cleanRepo();
     const oid = craftedTag(dir, "x-extra payload\n", Buffer.from("message\n"));
-    const fsck = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict"], { env: baseEnvironment });
+    const fsck = runChild(["git", "-C", dir, "fsck", "--strict"], { env: baseEnvironment });
     expect(fsck.exitCode).toBe(0);
     expect(scan(dir).findings).toContainEqual({ surface: "tag", kind: "header-not-handled", oid });
   });
@@ -1030,11 +1030,7 @@ describe("operator input", () => {
   writeFileSync(identitiesPath, JSON.stringify(identities));
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1268,13 +1264,9 @@ function corruptSubtreeRepo(): string {
 }
 
 function pythonWithError(flags: string[], ...args: string[]): { code: number; err: string } {
-  const result = Bun.spawnSync(
+  const result = runChild(
     ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-    {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    },
+    { env: baseEnvironment },
   );
   return { code: result.exitCode, err: result.stderr.toString() };
 }
@@ -1398,10 +1390,10 @@ describe("git reads", () => {
       dir,
       writeObject(dir, "tree", rawTree([{ mode: "0100644", name: "padded", oid: blob }])),
     );
-    const plain = Bun.spawnSync(["git", "-C", dir, "fsck", "--no-dangling"], {
+    const plain = runChild(["git", "-C", dir, "fsck", "--no-dangling"], {
       env: baseEnvironment,
     });
-    const strict = Bun.spawnSync(["git", "-C", dir, "fsck", "--strict", "--no-dangling"], {
+    const strict = runChild(["git", "-C", dir, "fsck", "--strict", "--no-dangling"], {
       env: baseEnvironment,
     });
     expect(plain.exitCode).toBe(0);
@@ -1455,11 +1447,7 @@ describe("operator input, second round", () => {
   writeFileSync(idsPath, JSON.stringify(identities));
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1531,6 +1519,14 @@ describe("operator input, second round", () => {
   });
 
   test("red:text-limit a text file above the size limit is refused, not partly read", () => {
+    // A few bytes and a small limit: the neutralised refusal scans 11 bytes and fails on the
+    // assertion at once, where a 64 MiB file ran past the test's time budget (issue #299).
+    const limited: ScanOptions = { identities, maximumBlobBytes: 10 };
+    expect(classesOfText(Buffer.alloc(11, 0x78), limited)).toEqual(["resource-limit"]);
+    expect(classesOfText(Buffer.alloc(10, 0x78), limited)).toEqual([]);
+  });
+
+  test("the text command applies the 64 MiB default limit", () => {
     const file = join(freshDir("text3"), "big.log");
     writeFileSync(file, Buffer.alloc(64 * 1024 * 1024 + 1, 0x78));
     const result = cli("text", file, "--identities", idsPath);
@@ -1585,11 +1581,7 @@ describe("third review round", () => {
   };
 
   function cli(...args: string[]): { code: number; out: string; err: string } {
-    const result = Bun.spawnSync(["bun", cliPath, ...args], {
-      env: baseEnvironment,
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const result = runChild(["bun", cliPath, ...args], { env: baseEnvironment });
     return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
@@ -1637,13 +1629,9 @@ describe("third review round", () => {
   });
 
   function pythonVerify(flags: string[], ...args: string[]): { code: number; err: string } {
-    const result = Bun.spawnSync(
+    const result = runChild(
       ["python3", ...flags, join(import.meta.dir, "canonicalize.py"), ...args],
-      {
-        env: baseEnvironment,
-        stdout: "pipe",
-        stderr: "pipe",
-      },
+      { env: baseEnvironment },
     );
     return { code: result.exitCode, err: result.stderr.toString() };
   }

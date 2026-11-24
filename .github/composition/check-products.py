@@ -21,9 +21,12 @@ TARGETS = (
     "project-website",
 )
 GATES = ("root", "native", "wasm", "e2e")
+# personal-knowledge-workspace has no browser gate: the owner retired its
+# Notebook app and the app's browser suite on 2026-11-23. Its WASM gate, the
+# notebook-core-v2 core qualification, stays. Asking it for e2e is refused
+# below ("No applicable gate"), never skipped.
 E2E = {
     "ai-work-supervision": ("packages/auth-web", "e2e"),
-    "personal-knowledge-workspace": ("apps/notebook", "test:e2e"),
     "project-website": ("", "test:e2e"),
 }
 
@@ -153,9 +156,7 @@ def main() -> int:
         }
         for step in plan["steps"]:
             child_environment = environment.copy()
-            qualified_build = step["gate"] == "wasm" or (
-                step["target"] == "personal-knowledge-workspace" and step["gate"] == "e2e"
-            )
+            qualified_build = step["gate"] == "wasm"
             # The Rust setup action exports this default. Qualification builds
             # derive controls from repository inputs; all unexpected controls
             # remain visible to their unchanged rejection checks.

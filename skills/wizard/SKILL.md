@@ -50,4 +50,4 @@ Périmètre : GitHub (secrets et variables Actions, via `gh`) et Clever Cloud (v
 
 ## Provenance
 
-Idée adaptée du skill `wizard` de `mattpocock/skills` (MIT), réécrite : aucun texte ni code du gabarit amont. Écarts corrigés par rapport à l'amont : lecture de `.env` par l'agent, mode d'un `.env` existant conservé, absence de `git check-ignore`, de `trap` et de confirmation avant chaque écriture de secret.
+Idée adaptée du skill `wizard` de `mattpocock/skills` (MIT), réécrite : aucun texte ni code du gabarit amont. Écarts corrigés par rapport à l'amont : lecture de `.env` par l'agent, mode d'un `.env` existant conservé, absence de la garde `git check-ignore -q .env`, de `trap` et de confirmation avant chaque écriture de secret.

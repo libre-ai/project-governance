@@ -22,4 +22,4 @@ Preuves citées : le module de politique de `pi-harness-challenger` et son test.
 
 La doctrine ne demande pas de taux de faux positifs pour un tel juge : cette exigence du rôle est une proposition de l'agent, non arbitrée.
 
-Prochaine preuve : les vecteurs rouges d'ADR-0045 passés par un harnais de la flotte, et un taux de faux positifs publié pour tout juge placé en second.
+Prochaine preuve : les vecteurs rouges d'ADR-0045 passés par un harnais de la flotte, et un taux de faux positifs publié pour tout juge placé en second. Ce juge suit les règles 4 et 5 de la section « Reviewer isolation » de `docs/reviews/AGENT-REVIEW-PROTOCOL.md`, décidées par le propriétaire le 2026-11-23 : il ne voit ni le raisonnement de l'agent ni les résultats d'outil, il peut ajouter un refus sans jamais en lever, sa panne ou celle d'un scanner vaut refus, et une destination réseau n'est admise que par la provenance de sa valeur, jamais parce qu'un contenu non fiable la cite. Un vecteur où le juge est en panne et où l'appel doit être refusé en fait partie.
