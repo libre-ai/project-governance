@@ -66,6 +66,7 @@
  * surface". Network: wired in `inventory-drift.yml`, never in `bun run check`.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { type BlobRead, exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
 
@@ -246,7 +247,7 @@ function requireList(document: Record<string, unknown>, key: string): Record<str
 
 /** The allowlist; a malformed entry throws, so the gate never runs on half a register. */
 export function parseAllowlist(text: string): Allowlist {
-  const document = Bun.YAML.parse(text) as Record<string, unknown> | null;
+  const document = parseYaml(text) as Record<string, unknown> | null;
   if (document === null || typeof document !== "object") {
     throw new Error(`${ALLOWLIST_PATH}: not a mapping`);
   }

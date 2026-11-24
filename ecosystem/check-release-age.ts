@@ -29,6 +29,7 @@
  */
 
 import { disagreementWithBun, parseTomlDocument, toPlain } from "../tools/quality/toml-document";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
 
@@ -132,7 +133,7 @@ export interface ReleaseAgeException {
 
 /** The exception register; a malformed entry throws, so the gate never runs on half a register. */
 export function parseExceptions(text: string): ReleaseAgeException[] {
-  const document = Bun.YAML.parse(text) as { readonly exceptions?: unknown } | null;
+  const document = parseYaml(text) as { readonly exceptions?: unknown } | null;
   const entries = document?.exceptions;
   if (!Array.isArray(entries)) {
     throw new Error("release-age-exceptions.v1.yaml: `exceptions` must be a list");

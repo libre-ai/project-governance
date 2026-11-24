@@ -47,6 +47,7 @@ import {
 } from "../quality/check-work-package-link";
 import type { Parsed } from "../quality/prd-model";
 import { loadWorkPackagePolicy, type WorkPackagePolicy } from "../quality/work-package-policy";
+import { parseYaml } from "../quality/yaml-text-guard";
 import {
   AUTHORITY,
   citedPaths,
@@ -87,7 +88,7 @@ function requireString(value: unknown, where: string): string {
 }
 
 export function parseBumpData(text: string): BumpData {
-  const document = Bun.YAML.parse(text) as Record<string, unknown> | null;
+  const document = parseYaml(text) as Record<string, unknown> | null;
   if (document === null || document.schema_version !== "libre-ai.fleet-bump.v1") {
     throw new Error("bump-generation.v1.yaml: schema_version must be libre-ai.fleet-bump.v1");
   }
@@ -866,7 +867,7 @@ async function applyRepository(
 if (import.meta.main) {
   const options = parseOptions(process.argv.slice(2));
   const root = new URL("../../", import.meta.url);
-  const register = Bun.YAML.parse(
+  const register = parseYaml(
     await Bun.file(new URL("ecosystem/fleet-pins.v1.yaml", root)).text(),
   ) as { readonly generations: ReadonlyArray<{ readonly sha: string }> };
   const generations = register.generations.map((generation) => generation.sha);

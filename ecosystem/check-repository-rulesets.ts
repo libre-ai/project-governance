@@ -32,6 +32,7 @@
  */
 
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 
 export const RULESET_DECLARATION_SCHEMA_VERSION = "libre-ai.repository-rulesets.v1";
 export const RULESET_DECLARATION_SOURCE = "ecosystem/repository-rulesets.v1.yaml";
@@ -116,10 +117,6 @@ export interface RulesetReconciliation {
   readonly agreements: readonly RulesetAgreement[];
   readonly counts: RulesetCounts;
 }
-
-// @types/bun for the pinned toolchain does not declare Bun.YAML yet; the same
-// narrowing cast is used by ecosystem/build-index.ts.
-const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
 
 const REPOSITORY_SLUG = /^[^/\s]+\/[^/\s]+$/;
 
@@ -256,7 +253,7 @@ function checkScalar(raw: string, path: string, line: number): void {
   }
   let read: unknown;
   try {
-    read = (yamlApi.parse(`v: ${plain}`) as { v: unknown }).v;
+    read = (parseYaml(`v: ${plain}`) as { v: unknown }).v;
   } catch {
     outsideBlockStyle(line, `value ${JSON.stringify(plain)} does not parse alone`);
   }
@@ -356,7 +353,7 @@ function checkDeclarationLayout(text: string): void {
  */
 export function parseRulesetDeclaration(yamlText: string): DeclaredRepository[] {
   checkDeclarationLayout(yamlText);
-  const document = asRecord(yamlApi.parse(yamlText), "document");
+  const document = asRecord(parseYaml(yamlText), "document");
   requireExactKeys(document, ["schema_version", "repositories"], "");
   if (document.schema_version !== RULESET_DECLARATION_SCHEMA_VERSION) {
     refuse(

@@ -37,6 +37,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption } from "./fleet-tree";
 import {
@@ -57,7 +58,7 @@ export interface SqlAllowance {
 
 /** The allowlist; a malformed entry throws, so the gate never runs on half a register. */
 export function parseAllowlist(text: string): SqlAllowance[] {
-  const document = Bun.YAML.parse(text) as { readonly allowances?: unknown } | null;
+  const document = parseYaml(text) as { readonly allowances?: unknown } | null;
   const entries = document?.allowances;
   if (!Array.isArray(entries)) {
     throw new Error("sql-construction-allowlist.v1.yaml: `allowances` must be a list");

@@ -19,6 +19,7 @@
  */
 import { STATUS_SECTION_BEGIN, STATUS_SECTION_END } from "../../ecosystem/project-cards";
 import type { FleetStatus } from "../../ecosystem/render-fleet-status";
+import { parseYaml } from "../quality/yaml-text-guard";
 
 const LAYER_LABEL: Record<string, string> = {
   "couche-1": "Produits (couche 1)",
@@ -49,9 +50,7 @@ export interface MigrationSummary {
 }
 
 export function summarizeMigration(indexYaml: string): MigrationSummary {
-  const document = (Bun as unknown as { YAML: { parse(t: string): unknown } }).YAML.parse(
-    indexYaml,
-  ) as {
+  const document = parseYaml(indexYaml) as {
     hub_state: string;
     entries: readonly { hub_removal_commit: string }[];
   };

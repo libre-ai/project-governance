@@ -48,6 +48,7 @@
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { parseYaml } from "./yaml-text-guard";
 
 /** Roots that carry gates, tooling and workflows — the surfaces that make requests. */
 export const SCANNED_ROOTS = [
@@ -297,7 +298,7 @@ interface PushFilter {
 function pushFilter(workflow: { readonly path: string; readonly text: string }): PushFilter | null {
   let document: unknown;
   try {
-    document = Bun.YAML.parse(workflow.text);
+    document = parseYaml(workflow.text);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     // A workflow nobody can parse is not one with no filter: say so.

@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { join } from "node:path";
 
-import { findUnreadableCharacter } from "./yaml-text-guard";
+import { findUnreadableCharacter, parseYaml } from "./yaml-text-guard";
 
 // Characters are built from code points: a literal NUL, BOM or line separator in this source
 // would be as invisible to a reviewer as it is to the parser the guard protects.
@@ -96,5 +97,86 @@ describe("findUnreadableCharacter: accepted text", () => {
     for (const edge of edges) {
       expect(findUnreadableCharacter(`a${char(edge)}b`)).toBeNull();
     }
+  });
+});
+
+describe("parseYaml: a NUL is refused before the parser, whatever the runtime does with it", () => {
+  afterEach(() => {
+    mock.restore();
+  });
+
+  test("a NUL ending a value line is refused with its line, and the parser is not called", () => {
+    const parse = spyOn(Bun.YAML, "parse");
+    expect(() => parseYaml(`a: 1\nb: 2${char(0)}\nc: 3\n`)).toThrow(
+      "YAML text holds an unreadable character U+0000 on line 2",
+    );
+    expect(parse).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["inside a comment", `# a${char(0)}b\nk: v\n`, 1],
+    ["inside a quoted scalar", `k: "a${char(0)}b"\n`, 1],
+    ["on the last line without a newline", `k: v\nz: w${char(0)}`, 2],
+    ["after a CRLF", `k: v\r\nz: w${char(0)}\r\n`, 2],
+  ])("a NUL %s is refused", (_name, text, line) => {
+    expect(() => parseYaml(text)).toThrow(`U+0000 on line ${line}`);
+  });
+
+  test("the first NUL decides the line", () => {
+    expect(() => parseYaml(`a: 1${char(0)}\nb: 2${char(0)}\n`)).toThrow("on line 1");
+  });
+
+  test("text without a NUL is what the parser returns, including a tab the whole guard refuses", () => {
+    const text = "a: 1\nb:\n  - x\n  - y\nrun: |\n  echo\thi\n";
+    expect(findUnreadableCharacter(text)).not.toBeNull();
+    expect(parseYaml("a: 1\nb:\n  - x\n  - y\n")).toEqual({ a: 1, b: ["x", "y"] });
+    expect(parseYaml(text)).toEqual({ a: 1, b: ["x", "y"], run: "echo\thi\n" });
+  });
+
+  test("a parse error that is not a NUL still comes from the parser", () => {
+    expect(() => parseYaml("a: [1, 2\n")).toThrow();
+  });
+});
+
+// The class, closed: a YAML read added without the refusal is a read that depends on the runtime.
+describe("every YAML read of a production file refuses a NUL before the parser", () => {
+  const ROOT = join(import.meta.dir, "..", "..");
+  const SKIPPED_DIRECTORIES = new Set(["node_modules", ".tools", ".git", "target", "vendored"]);
+  // A call of the parser, whatever the spelling: `Bun.YAML.parse(`, a cast `(Bun as …).YAML.parse(`,
+  // an alias `yamlApi.parse(`.
+  const PARSER_CALL = /\bYAML\.parse\(|\byamlApi\.parse\(/;
+  // What refuses a NUL ahead of a raw call: the whole guard, or a direct test of the character. A
+  // `parseYaml(` call is not one: it covers its own site, not the raw call beside it.
+  const REFUSAL =
+    /\bfindUnreadableCharacter\(|\.includes\("\\0"\)|\.includes\(NUL\)|\.indexOf\("\\u0000"\)/;
+  const isCode = (line: string): boolean => !/^\s*(?:\/\/|\*|\/\*)/.test(line);
+
+  function productionFiles(): string[] {
+    return [...new Bun.Glob("**/*.ts").scanSync({ cwd: ROOT })].filter(
+      (path) =>
+        !path.endsWith(".test.ts") &&
+        !path.split("/").some((segment) => SKIPPED_DIRECTORIES.has(segment)),
+    );
+  }
+
+  const count = (lines: readonly string[], pattern: RegExp): number =>
+    lines.filter((line) => isCode(line) && pattern.test(line)).length;
+
+  test("each raw call of the parser has a refusal in its file, and the walk is not empty", async () => {
+    const files = productionFiles();
+    const unguarded: string[] = [];
+    let rawCalls = 0;
+    for (const path of files) {
+      if (path === "tools/quality/yaml-text-guard.ts") continue; // the helper itself
+      const lines = (await Bun.file(join(ROOT, path)).text()).split("\n");
+      const raw = count(lines, PARSER_CALL);
+      const refusals = count(lines, REFUSAL);
+      rawCalls += raw;
+      if (raw > refusals) unguarded.push(`${path}: ${raw} raw call(s), ${refusals} refusal(s)`);
+    }
+    expect(unguarded).toEqual([]);
+    // Not vacuous: the files that keep a raw call because they refuse first exist, so the walk read them.
+    expect(files.length).toBeGreaterThan(0);
+    expect(rawCalls).toBeGreaterThan(0);
   });
 });

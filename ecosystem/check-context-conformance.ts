@@ -43,6 +43,7 @@
  *      that specific case is blocking.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { buildIndex, PRIVATE_CROSS_REPOSITORY_NOTE, type Visibility } from "./build-index";
 import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 
@@ -215,7 +216,7 @@ export function parseRegistry(yamlText: string): RegistryEntry[] {
 }
 
 export function parseHistoricalRegistry(yamlText: string): RegistryEntry[] {
-  const document = Bun.YAML.parse(yamlText) as {
+  const document = parseYaml(yamlText) as {
     readonly repositories?: readonly Record<string, unknown>[];
   };
   if (!Array.isArray(document.repositories)) return [];

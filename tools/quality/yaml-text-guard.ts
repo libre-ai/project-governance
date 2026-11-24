@@ -25,6 +25,30 @@ export interface UnreadableCharacter {
 const UNREADABLE =
   /[^\n\x20-\x7E\u{A1}-\u{2027}\u{202A}-\u{D7FF}\u{E000}-\u{FEFE}\u{FF00}-\u{FFFD}\u{10000}-\u{10FFFF}]/u;
 
+/**
+ * `Bun.YAML.parse` behind the refusal of a NUL, for a caller that does not run the
+ * whole guard above.
+ *
+ * Why a refusal and not the parser's own answer: at a NUL that ends a value line the
+ * canary pinned in `toolchains/bun.json` returns the text read so far and reports
+ * success, and Bun 1.4.5 throws. A caller that keeps the first behaviour reads half a
+ * register; a caller that relies on the second breaks when the pin moves. The text is
+ * refused here, before the parser is reached, so the verdict does not depend on the
+ * runtime that reads it.
+ *
+ * Only U+0000, not the allow-class: the whole guard also refuses a tab, which a
+ * legitimate `run:` block of a workflow may carry (see `countSchedules` of
+ * `ecosystem/forge-snapshot.ts`).
+ */
+export function parseYaml(text: string): unknown {
+  const nul = text.indexOf("\u0000");
+  if (nul !== -1) {
+    const line = text.slice(0, nul).split("\n").length;
+    throw new Error(`YAML text holds an unreadable character U+0000 on line ${line}`);
+  }
+  return Bun.YAML.parse(text);
+}
+
 /** The first character outside the allow-class, with its 1-based line, or `null`. */
 export function findUnreadableCharacter(text: string): UnreadableCharacter | null {
   const normalized = text.replaceAll("\r\n", "\n");

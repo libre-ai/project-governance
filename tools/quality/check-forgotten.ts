@@ -14,6 +14,7 @@
 // still lives before the register is allowed to claim it forgotten.
 
 import { concludeGate, GateReport } from "./gate-report";
+import { parseYaml } from "./yaml-text-guard";
 
 export interface ForgottenEntry {
   id: string;
@@ -261,7 +262,7 @@ export function buildReport(register: ForgottenRegister, findings: readonly Find
 }
 
 export function parseRegister(source: string): ForgottenRegister {
-  const parsed = Bun.YAML.parse(source) as Partial<ForgottenRegister>;
+  const parsed = parseYaml(source) as Partial<ForgottenRegister>;
   if (!Array.isArray(parsed?.entries)) throw new Error("FORGOTTEN.yaml: missing `entries`");
   return {
     entries: parsed.entries,
