@@ -248,6 +248,28 @@ right one remains a review matter (realigned 2026-10-09).
 
 ---
 
+## Threats to resolve
+
+Gaps the document states and no enforced control closes. Each row is derived from the text named in its Source column; none is added here. `no register invariant` means the document names no invariant for that gap.
+
+| ID  | Gap | Source in this document | Invariant |
+| --- | --- | --- | --- |
+| U1  | prompt-construction code can bypass the envelope (string concatenation outside `renderGuarded()`); callers must not bypass, lint rule pending | §1. LLM prompt-injection surface | I-18 |
+| U2  | automation cannot distinguish injection from valid evidence; the human reviewer makes the final call | §1. LLM prompt-injection surface | I-17 |
+| U3  | planner/refusal design specified by ADR-0045, enforcement pending: no runtime holds the three properties yet | §1. LLM prompt-injection surface | I-32 |
+| U4  | delay between compromise detection and revocation propagation (bounded by Biscuit TTL, max 1h); orchestrator refresh not yet specified | §2. Malicious / compromised agent | I-18 |
+| U5  | capability_scope authorizer rules specified, not enforced: integration into authority-v1.datalog pending | §2. Malicious / compromised agent | I-18 |
+| U6  | approver ignores the `operational` tag, or conflates operational with authoritative | §2. Malicious / compromised agent | I-18 |
+| U7  | per-mission isolation is an assumption: orchestrator enforcement pending (design pending) | §2. Malicious / compromised agent | no register invariant |
+| U8  | two-agent collusion: the clean-context second reviewer per mission is to be proven per mission, not by invariant | §2. Malicious / compromised agent | no register invariant |
+| U9  | zero-day source compromise (GitHub Actions, dev account) bypasses the human-driven code review | §3. Supply-chain (published bricks & dependencies) | no register invariant |
+| U10 | zero-day outside the CVE database, typosquatting, compromised dev account | §3. Supply-chain (published bricks & dependencies) | no register invariant |
+| U11 | JavaScript deserialization gadgets remain possible if the attacker controls input parsing | §3. Supply-chain (published bricks & dependencies) | no register invariant |
+| U12 | GitHub Actions compromise: limited action permissions pending E10/E11 improvements | §3. Supply-chain (published bricks & dependencies) | no register invariant |
+| U13 | K1 agent facts (fleet, mission, capability_scope) specified, authority-v1.datalog integration pending | Controls status (specified vs. enforced) | I-18 |
+
+---
+
 ## Residual-risk register
 
 | ID  | Risk                                             | Probability | Impact   | Mitigation                                         | Owner              | Invariant  |

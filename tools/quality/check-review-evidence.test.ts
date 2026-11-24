@@ -130,6 +130,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "tools/quality/threat-model-coverage.v1.json",
+      [
+        "tools/quality/threat-model-coverage.v2.json",
+        "tools/quality/threat-model-coverage.v1.json.bak",
+        "docs/tools/quality/threat-model-coverage.v1.json",
+        "tools/quality/check-threat-model-coverage.ts",
+      ],
+    ],
+    [
       "tools/skills/skills-security-patterns.v1.json",
       [
         "tools/skills/skills-security-patterns.v2.json",
