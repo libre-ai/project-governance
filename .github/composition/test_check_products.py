@@ -71,27 +71,41 @@ class ProductChecks(unittest.TestCase):
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(len(self.log.read_text().splitlines()),1)
 
-    def test_e2e_plan_preserves_sequential_worker_and_notebook_cwd(self):
+    def test_e2e_plan_preserves_sequential_workers_and_child_cwd(self):
         plan=json.loads(self.call('--target','all','--gate','e2e','--plan').stdout)
-        self.assertEqual(len(plan['steps']),3)
+        self.assertEqual(
+            [(x['target'],x['cwd']) for x in plan['steps']],
+            [('ai-work-supervision','ai-work-supervision/packages/auth-web'),('project-website','project-website')],
+        )
         self.assertTrue(all(x['argv'][-1]=='--workers=1' for x in plan['steps']))
-        notebook=next(x for x in plan['steps'] if x['target']=='personal-knowledge-workspace')
-        self.assertEqual(notebook['cwd'],'personal-knowledge-workspace/apps/notebook')
         self.assertFalse(plan['linuxQualificationClaimed'])
+
+    def test_retired_notebook_browser_gate_is_refused_not_skipped(self):
+        # The owner retired the Notebook app and its browser suite on
+        # 2026-11-23; the notebook-core-v2 core qualification stays. Asking
+        # personal-knowledge-workspace for e2e is a refusal, never an empty
+        # success, and its full plan keeps root, native and the core build.
+        result=self.call('--target','personal-knowledge-workspace','--gate','e2e','--plan')
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('No applicable gate',result.stderr)
+        plan=json.loads(self.call('--target','personal-knowledge-workspace','--gate','all','--plan').stdout)
+        self.assertEqual([x['gate'] for x in plan['steps']],['root','native','wasm'])
+        self.assertEqual(plan['steps'][2]['argv'][1:],['tools/qualification/notebook-core-v2/build.ts'])
+        self.assertFalse(any('apps/notebook' in x['cwd'] for x in plan['steps']))
 
     def test_unsupported_gate_refuses_empty_success(self):
         self.assertNotEqual(self.call('--target','travel-itinerary-planner','--gate','native','--plan').returncode,0)
 
     def test_action_incremental_default_is_removed_only_for_qualified_builds(self):
         self.directories("ai-model-policy")
-        self.directories("personal-knowledge-workspace","apps/notebook")
+        self.directories("personal-knowledge-workspace")
         self.tool.write_text("#!"+sys.executable+"\nimport json,os\nfrom pathlib import Path\nwith Path(os.environ[\"TEST_LOG\"]).open(\"a\") as f: f.write(json.dumps({k:os.environ[k] for k in [\"CARGO_INCREMENTAL\",\"RUSTFLAGS\"] if k in os.environ})+\"\\n\")\n")
         self.env["CARGO_INCREMENTAL"]="0"
-        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-workspace","wasm"),("personal-knowledge-workspace","e2e")]:
+        for target,gate in [("ai-model-policy","wasm"),("personal-knowledge-workspace","wasm")]:
             result=self.call("--target",target,"--gate",gate)
             self.assertEqual(result.returncode,0,result.stderr)
         values=[json.loads(line) for line in self.log.read_text().splitlines()]
-        self.assertEqual(values,[{}, {}, {}, {}])
+        self.assertEqual(values,[{}, {}, {}])
         self.assertEqual(self.env["CARGO_INCREMENTAL"],"0")
 
     def test_unexpected_controls_and_nonbuild_steps_remain_visible(self):
