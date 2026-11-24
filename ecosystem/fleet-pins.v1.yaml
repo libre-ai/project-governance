@@ -362,12 +362,12 @@ generations:
       limit: no pin turns red, and every consumer still on 75d6ea08 must
       move before another generation is declared. No generation is retired
       here.
-  - sha: 18e0a468527310590db2f49da15ba697250472a7
+  - sha: fb4a20fa7b0cd0eef76b59c55e22d6e73817bcd7
     added_on: 2026-11-24
     note: >-
-      Three toolchain pins move and one composition target loses its browser
+      Six toolchain pins move and one composition target loses its browser
       gate; the composition manifest is unchanged from a00daec8 (`git diff
-      a00daec8 18e0a468 -- .github/composition/manifest.json` is empty), so
+      a00daec8 fb4a20fa -- .github/composition/manifest.json` is empty), so
       every composed ref is the one a00daec8 declared. osv-scanner 2.7.1
       replaces 2.7.0 (#303: toolchains/osv-scanner.json and the version
       install-toolchains.sh expects, read by validate-composition.yml for
@@ -399,22 +399,40 @@ generations:
       touches one needs a work package and the owner's explicit ready. On
       2026-11-24 the trees of the served branches of the 20 public
       non-archived repositories hold those three files in this repository
-      only, and in none of the 19 others. The other six reusable templates
-      and bun.lock are
-      unchanged; package.json gains scripts and no dependency. The
+      only, and in none of the 19 others. Rust 1.100.0 replaces 1.97.0
+      (#323: rust-toolchain.toml and the toolchain validate-composition.yml
+      installs); the composed targets still carry 1.97.0 in their own
+      rust-toolchain.toml until their own pull requests merge. reuse 6.3.0
+      replaces 6.2.0 (#309: validate-composition.yml and
+      tools/licensing/requirements.txt, which reusable-licensing.yml
+      installs from the pinned checkout). cargo-deny 0.22.0 replaces 0.19.5
+      (#313: toolchains/cargo-deny.json, install-toolchains.sh and
+      reusable-dependency-policy.yml). 0.22.0 takes `--config` before
+      `check` and defaults `advisories.unmaintained` to `workspace`; the
+      waiver gate now refuses a cargo-deny file that does not write the
+      key, and on 2026-11-24 the 15 deny.toml of the served branches of
+      the organisation all write `unmaintained = "all"`. The installer
+      accepts 0.22.0 and 0.19.5 because the composed governance d94081cc
+      still declares 0.19.5; check-composed-toolchain.py ends that
+      tolerance when the manifest composes a later governance. A consumer
+      that keeps a local copy of check-dependency-policy.ts passes
+      `--config` after `check` and fails under 0.22.0: on 2026-11-24 the
+      eight copies found in the fleet were replaced by a call to this
+      package. YAML reading and version ordering give the same result under
+      the pinned Bun canary and Bun 1.4.5 (#324), which changes no verdict
+      under the pinned runtime. The other six reusable templates and
+      bun.lock are unchanged since a00daec8; package.json gains scripts and
+      no dependency. The
       toolchain-freshness check (#301) runs from this repository's own
       workflows, not from a consumer pin. Generation coherence is replayed
       by generation-coherence.yml on the pull request that adds this entry;
-      the local replay could not reach the forge (the tool keeps an
-      allow-listed environment, which drops the proxy of the sandbox it ran
-      in), and the five gate files it compares are identical between this
+      it was not replayed locally, and the five gate files it compares are identical between this
       commit and the composed governance d94081cc (`git diff --stat` is
       empty). Grace window, measured by `bun tools/fleet/bump-generation.ts
-      --to 18e0a468 --public-only` before this declaration: 16 consumers on
-      a00daec8 plan a bump, all inside the fleet-bump class; signalement is
-      refused for surfaces that disagree (a00daec8 on its pins, 75d6ea08 in
-      three prose links); 2 repositories without a pin surface, 0
-      unreadable, product-research excluded as private. With this
+      --to fb4a20fa` before this declaration: 17 consumers plan a bump,
+      all inside the fleet-bump class; signalement is refused for surfaces
+      that disagree (a00daec8 on its pins, 75d6ea08 in three prose links);
+      2 repositories without a pin surface, 0 unreadable, 0 excluded. With this
       declaration a00daec8 is one generation behind and 5f7742d two, the
       grace limit, with no consumer on it: no pin turns red. No generation
       is retired here.
