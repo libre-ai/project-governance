@@ -1,7 +1,7 @@
 schema_version: libre-ai.produit.v1
 id: P15
 nom_public: null
-nom_provisoire: "Signalement"
+nom_provisoire: "Remontées"
 intitule: "capture et relais de signalements"
 fonction: "Capture et relais de signalements"
 categorie: collaboration
@@ -31,6 +31,5 @@ a_relire:
   - promesse
   - capacites
   - etiquettes
-  - nom_provisoire
   - pour_qui
   - accroche

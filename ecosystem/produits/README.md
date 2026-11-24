@@ -57,6 +57,13 @@ Cette correspondance est écrite une fois, dans `ecosystem/produits.ts`. Un test
 
 Le glossaire `docs/decisions/LEXICON.md` ne porte pas encore ces noms. Les y inscrire reste un acte du propriétaire : une fiche ne remplace pas cette entrée.
 
+Le 2026-11-24, pendant la refonte du site, le propriétaire a tranché deux noms. Il a choisi chacun parmi plusieurs propositions, avec une recommandation et sa raison :
+
+- P03 devient « Biblio » (`nom_public`) et remplace « Références ». Le site portait « Corpus ». Les noms écartés sont Corpus, Références, Citations et Bibliothèque ; ce dernier se confond avec Médiathèque (P31).
+- P15 devient « Remontées » (`nom_provisoire`) et remplace « Signalement ». Les noms écartés sont Signalement, Tickets (P41), Incidents, Terrain, Alerte, Constats, Pépins, Vigie, Relais et Retours.
+
+Les deux noms restent soumis à la revue de similarité des noms avant toute publication.
+
 ## `accroche`
 
 `accroche` est la ligne que la carte du site affiche sous le nom du produit : ce que le produit fait, adressé au lecteur. La `promesse` porte la phrase complète ; l'accroche tient sur une carte. Le propriétaire a décidé le champ le 2026-11-15 (« Un champ "accroche" court dans la fiche ») ; la borne de 90 caractères est un choix de l'agent, au-dessus de la plus longue ligne que le site portait (75 caractères).
