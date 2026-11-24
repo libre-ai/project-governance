@@ -25,7 +25,9 @@
  * GITHUB_API_URL, GITHUB_SHA, GITHUB_REF (the full ref: tag mode needs
  * `refs/heads/<served branch>`, so a pushed tag of the same short name is not
  * the branch) and GITHUB_TOKEN (GITHUB_API_URL and GITHUB_TOKEN read only when
- * a tag must be created). Each git or forge call is bounded to 30 s; ls-remote
+ * a tag must be created). An http: loopback GITHUB_API_URL is a usage error
+ * while any proxy variable is set: Bun's `fetch` would hand the token to the
+ * proxy (see `apiUrl`). Each git or forge call is bounded to 30 s; ls-remote
  * refs that only end like the ones asked about are counted and set aside. Of a
  * forge answer only the HTTP status is printed, plus, on a refusal, its
  * `message` with the token removed, control characters neutralised and the
@@ -112,12 +114,55 @@ function serverUrl(environment: TagReleaseInput["environment"]): string {
   return url.href.replace(/\/+$/, "");
 }
 
-/** The token travels to this URL: cleartext is accepted on loopback only. */
-function apiUrl(environment: TagReleaseInput["environment"]): string {
+/**
+ * Names of the set variables that may route a request through a proxy: every
+ * name holding « proxy » in any case, but `no_proxy` (any case), with a value.
+ * Broader than the list Bun's `fetch` is known to follow, so a name nobody
+ * enumerated does not slip through. Names only, never values: a proxy URL can
+ * carry credentials. A character outside `[A-Za-z0-9_.-]` is printed as `?`,
+ * so a crafted name cannot start a log line of its own.
+ *
+ * TODO(dedupe): libre-ai/project-governance#285 adds the same guard,
+ * `proxyInterpose` in `verification/entonnoir/juge-http.ts`. Once both are
+ * merged, this is the third site: extract one shared helper outside
+ * `verification/` and have the three sites call it.
+ */
+function proxyVariables(environment: TagReleaseInput["environment"]): string[] {
+  return Object.entries(environment)
+    .filter(
+      ([name, value]) =>
+        /proxy/i.test(name) && name.toLowerCase() !== "no_proxy" && (value ?? "") !== "",
+    )
+    .map(([name]) => name.replace(/[^A-Za-z0-9_.-]/g, "?"))
+    .sort();
+}
+
+/**
+ * The token travels to this URL: cleartext is accepted on loopback only, and
+ * only when no proxy variable is set. Bun's `fetch` sends even a `127.0.0.1`
+ * request to the proxy the environment names (`http_proxy`, `HTTP_PROXY`,
+ * `ALL_PROXY`, `all_proxy`; measured with Bun 1.4.4), so the token would reach
+ * it in cleartext. `NO_PROXY` grants no exemption: Bun does not read every
+ * form of it (`no_proxy` before `NO_PROXY`, `No_Proxy` ignored). Over https:
+ * the proxy only sees a tunnel as long as the certificate is verified, so that
+ * case is left alone; disabling verification (`NODE_TLS_REJECT_UNAUTHORIZED=0`)
+ * exposes the token on any https: URL, loopback or not.
+ */
+export function apiUrl(environment: TagReleaseInput["environment"]): string {
   const url = parsedUrl(environment, "GITHUB_API_URL");
   const loopback = url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname);
   if (url.protocol !== "https:" && !loopback) {
     throw new UsageError("GITHUB_API_URL must be https: (http: on loopback only)");
+  }
+  if (loopback) {
+    const proxies = proxyVariables(environment);
+    if (proxies.length > 0) {
+      throw new UsageError(
+        `GITHUB_API_URL is http: on loopback while a proxy variable is set ` +
+          `(${proxies.join(", ")}): the token would reach the proxy in cleartext; ` +
+          "unset these variables or use https:",
+      );
+    }
   }
   return url.href.replace(/\/+$/, "");
 }

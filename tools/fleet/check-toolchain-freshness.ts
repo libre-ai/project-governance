@@ -57,6 +57,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { MINIMUM_RELEASE_AGE_SECONDS } from "../../ecosystem/check-release-age";
 import { isIsoDate } from "../quality/check-refusals";
+import { parseYaml } from "../quality/yaml-text-guard";
 import {
   compareVersions,
   isExactVersion,
@@ -664,7 +665,7 @@ export function parseFreshnessExceptions(yamlText: string): FreshnessException[]
   for (const [index, keys] of written.entries.entries()) {
     refuseKeys(`${EXCEPTIONS_PATH}: exceptions[${index}]`, keys, ENTRY_KEYS);
   }
-  const document: unknown = Bun.YAML.parse(yamlText);
+  const document: unknown = parseYaml(yamlText);
   if (!isRecord(document) || document.schema_version !== EXCEPTIONS_SCHEMA_VERSION) {
     throw new Error(`${EXCEPTIONS_PATH}: schema_version must be ${EXCEPTIONS_SCHEMA_VERSION}`);
   }

@@ -9,6 +9,7 @@
  * fails the gate.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { delay, ghGraphQLRaw, RETRY_DELAYS_MS } from "./github-fleet";
 
 export const ARCHIVE_RESIDUALS: ReadonlySet<string> = new Set([
@@ -286,12 +287,11 @@ if (import.meta.main) {
   }
   const indexText = indexResult.text;
   const forgottenText = forgottenResult.text;
-  const yamlApi = (Bun as unknown as { YAML: { parse(t: string): unknown } }).YAML;
-  const index = yamlApi.parse(indexText) as {
+  const index = parseYaml(indexText) as {
     entries: readonly { hub_path: string }[];
     replacements: readonly { hub_paths: readonly string[] }[];
   };
-  const forgotten = yamlApi.parse(forgottenText) as {
+  const forgotten = parseYaml(forgottenText) as {
     entries?: readonly { evicted_paths?: readonly string[] }[];
   };
   const report = findOrphans(

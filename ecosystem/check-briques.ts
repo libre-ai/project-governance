@@ -8,6 +8,7 @@ import {
   validateConfig,
 } from "../tools/quality/check-pinned-citations";
 import { concludeGate } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import {
   BRIQUES_ROOT,
   type BriquesInput,
@@ -244,7 +245,7 @@ export function readBriquesInput(root: string): BriquesInput {
 
   let repositories: unknown = null;
   try {
-    repositories = Bun.YAML.parse(readOrNull(join(root, REPOSITORIES)) ?? "");
+    repositories = parseYaml(readOrNull(join(root, REPOSITORIES)) ?? "");
   } catch {
     repositories = null;
   }

@@ -74,7 +74,7 @@ def make_plan(target: str, gate: str, tools: dict[str, str]) -> dict:
         "prerequisites": [
             "Sibling repository composition installed with frozen lockfiles",
             "UI dist built; data/contracts/web-platform packages installed",
-            "Bun canary 57f349f63, Rust 1.97.0 and wasm32-unknown-unknown target",
+            "Bun canary 57f349f63, Rust 1.100.0 and wasm32-unknown-unknown target",
             "Cargo dependencies preloaded for offline native tests",
             "Node 26.5.0 matching the Notebook platform executable pin",
             "Browsers of each product's locked Playwright version installed before E2E",

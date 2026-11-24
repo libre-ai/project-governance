@@ -7,6 +7,8 @@
 // unit-testable without fixtures on disk, matching this repository's
 // lib-pure-plus-.test.ts convention (see tools/quality/check-retired-names.ts).
 
+import { parseYaml } from "../quality/yaml-text-guard";
+
 export interface ParsedSkillFile {
   /** Top-level scalar fields; `metadata` is not among them. */
   readonly frontmatter: Readonly<Record<string, string>>;
@@ -109,7 +111,7 @@ export function parseFrontmatter(source: string): ParsedSkillFile | FrontmatterE
 
   let parsedYaml: unknown;
   try {
-    parsedYaml = Bun.YAML.parse(blockLines.join("\n"));
+    parsedYaml = parseYaml(blockLines.join("\n"));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {

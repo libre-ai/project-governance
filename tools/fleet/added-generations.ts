@@ -17,6 +17,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { parseYaml } from "../quality/yaml-text-guard";
 
 const REGISTER = "ecosystem/fleet-pins.v1.yaml";
 const FULL_SHA = /^[0-9a-f]{40}$/;
@@ -24,7 +25,7 @@ const SHA_LINE = /^\s*-\s+sha:\s*\S+\s*$/gm;
 
 /** The shas of `generations`, parsed, and checked against the textual count. */
 export function generationShas(text: string): string[] {
-  const document = Bun.YAML.parse(text) as {
+  const document = parseYaml(text) as {
     generations?: ReadonlyArray<{ sha?: unknown }>;
   } | null;
   const generations = document?.generations;

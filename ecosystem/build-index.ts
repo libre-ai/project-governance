@@ -17,6 +17,8 @@
  * Writes: distribution/index/repositories.v1.json
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
+
 export const INDEX_SCHEMA_VERSION = "libre-ai.repository-index.v2";
 export const INVENTORY_SOURCE = "ecosystem/repositories.v1.yaml";
 export const PRIVATE_CROSS_REPOSITORY_NOTE =
@@ -70,10 +72,6 @@ export interface RepositoryIndex {
   source_updated_on: string;
   repositories: InventoryEntry[];
 }
-
-// @types/bun for the pinned toolchain does not declare Bun.YAML yet; the same
-// narrowing cast is already used by tools/quality/check-contracts.ts.
-const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
 
 function fail(path: string, expected: string, actual: unknown): never {
   throw new Error(`${INVENTORY_SOURCE}: ${path}: expected ${expected}, got ${typeof actual}`);
@@ -190,7 +188,7 @@ function toEntry(value: unknown, index: number): InventoryEntry {
 }
 
 export function buildIndex(yamlText: string): RepositoryIndex {
-  const document = asRecord(yamlApi.parse(yamlText), "document");
+  const document = asRecord(parseYaml(yamlText), "document");
   const rawEntries = document.repositories;
   if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
     fail("repositories", "a non-empty sequence", rawEntries);
