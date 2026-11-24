@@ -83,6 +83,11 @@
       "because": "no threat row: the repository's deny.toml is executed by cargo-deny against its committed Cargo graph, for bans, licenses and sources."
     },
     {
+      "path": "tools/quality/check-doc-commands.ts",
+      "covers": [],
+      "because": "no threat row: a `bun run` command written in a declared document names a script package.json defines, or carries a named exemption."
+    },
+    {
       "path": "tools/quality/check-doctrine-governance.sh",
       "covers": [],
       "because": "no threat row: doctrine exists only in the invariants register, every accepted ADR carries its owner-arbitration trace, and retired doctrine cannot resurface."

@@ -1,0 +1,40 @@
+{
+  "manifest": "package.json",
+  "documents": [
+    {
+      "path": "AGENTS.md",
+      "because": "Agent contract of this repository: the canonical scope and the commands an agent runs before a push."
+    },
+    {
+      "path": "README.md",
+      "because": "Repository entry point: the aggregate check command a contributor runs first."
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "because": "Contribution guide: the gate suite a change must pass, and the full check with its extra gates."
+    },
+    {
+      "path": "docs/method/CONTEXT-TEMPLATE.md",
+      "because": "Method template for a project's context document; its quality-gate section names the aggregate command."
+    },
+    {
+      "path": "docs/method/HARNESS-ADAPTERS.md",
+      "because": "Method note on harness adapters; it cites the skills-manifest gate that replays the marketplace manifest."
+    },
+    {
+      "path": "docs/method/SKILLS-ANATOMY.md",
+      "because": "Method note on skill anatomy; it cites the skills gates that enforce its rules and the aggregate check."
+    },
+    {
+      "path": "docs/method/TAURI-SHELL.md",
+      "because": "Method note on the Tauri shell; it quotes commands and their counters from a product's gates."
+    }
+  ],
+  "exemptions": [
+    {
+      "path": "docs/method/TAURI-SHELL.md",
+      "command": "bun run check:p04-shell",
+      "because": "the note quotes a command of another repository: the script is declared in package.json of libre-ai/personal-knowledge-workspace, the product whose shell job the note reports, and not in this manifest"
+    }
+  ]
+}
