@@ -89,17 +89,17 @@ Les deux dernières commandes affichent le plan sans installer ni modifier les d
 python3 "$WORKSPACE/tooling/.github/composition/run-composition.py" \
   --target "$TARGET" --revision "$TARGET_REVISION" \
   --root "$COMPOSITION" --phase prepare
-rustup toolchain install 1.97.0 --profile minimal \
+rustup toolchain install 1.100.0 --profile minimal \
   --component rustfmt --component clippy --component llvm-tools-preview \
   --target wasm32-unknown-unknown
-RUST_BIN="$(dirname "$(rustup which --toolchain 1.97.0 cargo)")"
+RUST_BIN="$(dirname "$(rustup which --toolchain 1.100.0 cargo)")"
 export PATH="$RUST_BIN:$PATH"
 python3 -m venv "$WORKSPACE/licensing"
 "$WORKSPACE/licensing/bin/python" -m pip install reuse==6.3.0
 export PATH="$WORKSPACE/licensing/bin:$PATH"
 ```
 
-Le répertoire choisi par `rustup which` place Cargo et rustc 1.97 en tête du `PATH` de cette session ; aucun défaut Rustup global ni variable `RUSTUP_TOOLCHAIN` n’est modifié.
+Le répertoire choisi par `rustup which` place Cargo et rustc 1.100 en tête du `PATH` de cette session ; aucun défaut Rustup global ni variable `RUSTUP_TOOLCHAIN` n’est modifié.
 
 ### 2.2 Bun, Node et outils vérifiés
 
