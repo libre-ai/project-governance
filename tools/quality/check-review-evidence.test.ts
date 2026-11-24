@@ -166,6 +166,15 @@ describe("touchesGatedPaths", () => {
       ],
     ],
     [
+      "ecosystem/toolchain-freshness-exceptions.v1.yaml",
+      [
+        "ecosystem/toolchain-freshness-exceptions.v2.yaml",
+        "ecosystem/toolchain-freshness-exceptions.v1.yaml.bak",
+        "docs/ecosystem/toolchain-freshness-exceptions.v1.yaml",
+        "tools/fleet/check-toolchain-freshness.ts",
+      ],
+    ],
+    [
       "ecosystem/sql-construction-allowlist.v1.yaml",
       [
         "ecosystem/sql-construction-allowlist.v2.yaml",

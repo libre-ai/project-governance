@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -54,6 +54,15 @@ const bot: Identity = {
 };
 const identities = [owner, bot];
 const options: ScanOptions = { identities, trustedRef: "refs/heads/main" };
+
+// Every test here builds a git repository and runs git, sh and jq dozens of times. The default
+// per-test budget (5 s) is a wall-clock bound, not a property under test: under load it ran out
+// mid-test, Bun killed the child in flight, and the kill surfaced as an exit code of null in
+// whatever assertion read it ("Expected: 0, Received: null" on the shell manifest, issue #289).
+// The budget is raised for this file only (setDefaultTimeout is reset between files); the
+// assertions are unchanged. Measured on 2026-11-23 (PR #297 and its review): that test takes
+// about 0.5 s alone, and up to 7.1 s of wall time with 96 copies of it in parallel on 14 cores.
+setDefaultTimeout(120_000);
 
 const root = mkdtempSync(join(tmpdir(), "attestation-test-"));
 afterAll(() => {

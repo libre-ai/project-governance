@@ -125,7 +125,7 @@ bash "$WORKSPACE/tooling/.github/composition/install-toolchains.sh" \
   "$WORKSPACE/tooling/toolchains/osv-scanner.json"
 ```
 
-Cet installateur fournit aussi osv-scanner `2.7.0` (binaire vérifié contre `toolchains/osv-scanner.json`, chemin dans `LIBRE_AI_OSV_SCANNER`) ; la base d’avis hors ligne qu’il lit se télécharge à part, voir `docs/toolchain/OSV-ADVISORY-DATABASE.md`. Il fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
+Cet installateur fournit aussi osv-scanner `2.7.1` (binaire vérifié contre `toolchains/osv-scanner.json`, chemin dans `LIBRE_AI_OSV_SCANNER`) ; la base d’avis hors ligne qu’il lit se télécharge à part, voir `docs/toolchain/OSV-ADVISORY-DATABASE.md`. Il fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
 
 Sur **macOS ARM64**, réutilisez l’installateur Notebook au commit qualifié, sans ajouter ses paquets à la composition. Son empreinte est vérifiée avant exécution :
 
@@ -158,7 +158,7 @@ Le contrôle principal d’`artifact-verification` exige son outil de couverture
 
 ```sh
 if [ "$TARGET" = artifact-verification ]; then
-  cargo install cargo-llvm-cov --version 0.8.7 --locked
+  cargo install cargo-llvm-cov --version 0.9.2 --locked
   export PATH="$PATH:$HOME/.cargo/bin"
 fi
 ```
@@ -174,6 +174,8 @@ Cette phase exécute les installations gelées `--frozen-lockfile --ignore-scrip
 `--phase check` ne représente pas toutes les suites supplémentaires de chaque workflow : tests natifs, WASM, navigateurs et couverture peuvent être des étapes distinctes.
 
 ## 4. Compléments Notebook et Model Policy
+
+Le 2026-11-23, le propriétaire a décidé de retirer de `personal-knowledge-workspace` l'app Notebook et sa suite de navigateurs ; la qualification du cœur `notebook-core-v2` reste. À partir de l'outillage qui porte ce retrait, `check-products.py` refuse la porte `e2e` de `personal-knowledge-workspace` ; sa porte `wasm` et `NOTEBOOK_QUALIFICATION_NODE` sont inchangées. L'exemple de cette page reste épinglé à un commit du Notebook et à l'outillage `ed87f3fa`, où cette porte `e2e` existe : il reste rejouable tel quel, mais le paragraphe des navigateurs, en fin de section, ne décrit plus la composition courante de ce dépôt pour `personal-knowledge-workspace`.
 
 Préchargez les dépendances avant une commande Cargo hors ligne :
 
