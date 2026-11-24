@@ -50,8 +50,9 @@ than as a script each repository copies.
 <!-- allow-audit-flag-fixture: this policy names `--ignore` flags of audit commands; it waives nothing. -->
 
 - **What it reads.** Every tracked waiver mechanism:
-  - `[advisories] ignore` in `.cargo/audit.toml` and in cargo-deny's three
-    file names, `deny.toml`, `.deny.toml` and `.cargo/deny.toml` (strings,
+  - `[advisories] ignore` in `.cargo/audit.toml` and in cargo-deny's four
+    locations, `deny.toml`, `.deny.toml`, `.cargo/deny.toml` and, since
+    cargo-deny 0.21.0, `.config/deny.toml` (strings,
     `{ id, reason }` or `{ crate, reason }` tables);
   - in `osv-scanner.toml`, every `IgnoredVulns` entry (any spelling the
     scanner's decoder accepts: `[[IgnoredVulns]]`, quoted, lower-case, or an
@@ -69,6 +70,14 @@ than as a script each repository copies.
     `severity_threshold` in `.cargo/audit.toml`; `cargo deny ... -A` / `-W`
     (`--allow` / `--warn`) on an advisory code (`vulnerability`,
     `unmaintained`, `unsound`, `notice`, `yanked`); `bun audit --audit-level`.
+  - **A scope left to the default.** A cargo-deny file that does not write
+    `[advisories] unmaintained` is refused (`IMPLICIT-SCOPE`), whether or not
+    it has an `[advisories]` table: since cargo-deny 0.22.0 the absent key
+    means `"workspace"`, the same narrowing as writing it, with no line to
+    carry a date or a reason. Write `unmaintained = "all"`, or the narrower
+    scope as a waiver. An absent `unsound` is not refused: its default,
+    `"workspace"`, is the same before and after 0.22.0, and extending it to
+    `"all"` is a separate decision.
 - **What an entry carries,** on the same line as its id (for a table, in its
   `reason`):
 
@@ -118,7 +127,11 @@ than as a script each repository copies.
   an argument array in a script — fails as unparseable. A test fixture or a
   document that only describes such flags says so with the marker
   `allow-audit-flag-fixture` and is listed by name on every run; the marker
-  is not read in a workflow, action, manifest, script, Makefile or justfile.
+  is not read in a workflow, action, manifest, script, Makefile or justfile,
+  nor in a file named as a cargo-deny, cargo-audit or osv-scanner
+  configuration: a `deny.toml` under a fixtures directory is judged like any
+  other, `IMPLICIT-SCOPE` included, and a fixture that must not be judged
+  carries another name (`deny.toml.fixture`).
   Each run prints its volume — `N waiver(s) read across I inspected of C
   classified file(s) (S skipped: reasons), K expiring within 30 days` —
   where inspected plus skipped equals classified, and a repository with no
