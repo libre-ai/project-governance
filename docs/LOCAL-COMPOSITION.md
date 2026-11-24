@@ -95,7 +95,7 @@ rustup toolchain install 1.100.0 --profile minimal \
 RUST_BIN="$(dirname "$(rustup which --toolchain 1.100.0 cargo)")"
 export PATH="$RUST_BIN:$PATH"
 python3 -m venv "$WORKSPACE/licensing"
-"$WORKSPACE/licensing/bin/python" -m pip install reuse==6.2.0
+"$WORKSPACE/licensing/bin/python" -m pip install reuse==6.3.0
 export PATH="$WORKSPACE/licensing/bin:$PATH"
 ```
 

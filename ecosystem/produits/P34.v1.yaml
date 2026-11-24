@@ -16,6 +16,7 @@ capacites:
   - "Sessions récupérables ; les travaux longs ont un état et une annulation explicites."
   - "Séparer réponse informative, proposition de modification et action externe."
   - "La mémoire est inspectable, modifiable, exportable et supprimable."
+  - "Quand une réponse demande plus que du texte, afficher une interface décrite par l'assistant, dont la structure est validée contre le catalogue fermé et les gabarits du produit et dont les valeurs restent des données non fiables ; elle est marquée comme produite par un modèle, et ses actions à effet passent par la politique d'argument puis par l'approbation."
 ne_fait_pas:
   - "Les approbations portent sur des objets et une portée déterminés ; elles ne deviennent pas une autorisation permanente implicite."
   - "Ne complète pas par invention : reconnaît l'insuffisance d'une source."
