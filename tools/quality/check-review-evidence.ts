@@ -150,7 +150,7 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   // check-threat-model-citations.ts: the scope, the files whose citations are checked,
   // and the mentions of a retired invariant it admits.
   /^tools\/quality\/threat-model-citations\.v1\.json$/,
-  // check-doc-commands.ts: the documents whose `bun run` commands are read, and the commands it admits.
+  // check-doc-commands.ts: the documents whose `bun run` and `cargo` commands are read, and the commands it admits.
   /^tools\/quality\/doc-commands\.v1\.json$/,
   // check-threat-model-coverage.ts: which threat rows each gate claims to cover; an
   // entry with an empty `covers` lets a gate stand without a threat behind it.
