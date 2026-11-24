@@ -158,6 +158,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^ecosystem\/release-age-exceptions\.v1\.yaml$/,
   // check-fleet-staleness.ts: dormant repositories and old pull requests excepted from the monthly report.
   /^ecosystem\/staleness-exceptions\.v1\.yaml$/,
+  // check-toolchain-freshness.ts: toolchain pins held behind their latest release, each until a date.
+  /^ecosystem\/toolchain-freshness-exceptions\.v1\.yaml$/,
   // check-sql-construction.ts: raw-SQL construction sites admitted as safe.
   /^ecosystem\/sql-construction-allowlist\.v1\.yaml$/,
   // check-web-headers.ts: header relaxations, raw HTML sinks, servers outside surfaces.
@@ -214,6 +216,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
   "ecosystem/staleness-exceptions.v1.yaml",
+  "ecosystem/toolchain-freshness-exceptions.v1.yaml",
   "ecosystem/sql-construction-allowlist.v1.yaml",
   "ecosystem/web-headers-allowlist.v1.yaml",
   "ecosystem/decision-series-exemptions.v1.json",

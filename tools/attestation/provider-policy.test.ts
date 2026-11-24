@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, setDefaultTimeout, test } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,14 @@ const readback = JSON.parse(
   readFileSync(join(here, "fixtures", "frozen-readback.json"), "utf8"),
 ) as Mutable;
 const owner = "constantin-jais";
+
+// Each test runs the shell readback and jq as child processes, some of them several times. The
+// default per-test budget (5 s) is a wall-clock bound, not a property under test: under load it
+// ran out and Bun killed the child in flight (same mechanism as git-attestation.test.ts, issue
+// #289). The budget is raised for this file only; the assertions are unchanged. Measured on
+// 2026-11-23: the slowest test here takes about 1.3 s alone and 22 s with 96 runs of this file
+// in parallel on 14 cores.
+setDefaultTimeout(120_000);
 
 const root = mkdtempSync(join(tmpdir(), "provider-policy-test-"));
 afterAll(() => {
