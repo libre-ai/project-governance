@@ -46,9 +46,11 @@ export function denyAdvisoryArguments(manifestPath: string, configPath: string):
     "--manifest-path",
     manifestPath,
     "--workspace",
-    "check",
+    // Root option since the CLI refactor of cargo-deny 0.20.0: 0.22.0 refuses
+    // it after `check` (exit 2, measured), where 0.19.5 required it.
     "--config",
     configPath,
+    "check",
     "--show-stats",
     "advisories",
   ];

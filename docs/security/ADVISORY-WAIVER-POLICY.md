@@ -50,8 +50,9 @@ than as a script each repository copies.
 <!-- allow-audit-flag-fixture: this policy names `--ignore` flags of audit commands; it waives nothing. -->
 
 - **What it reads.** Every tracked waiver mechanism:
-  - `[advisories] ignore` in `.cargo/audit.toml` and in cargo-deny's three
-    file names, `deny.toml`, `.deny.toml` and `.cargo/deny.toml` (strings,
+  - `[advisories] ignore` in `.cargo/audit.toml` and in cargo-deny's four
+    locations, `deny.toml`, `.deny.toml`, `.cargo/deny.toml` and, since
+    cargo-deny 0.21.0, `.config/deny.toml` (strings,
     `{ id, reason }` or `{ crate, reason }` tables);
   - in `osv-scanner.toml`, every `IgnoredVulns` entry (any spelling the
     scanner's decoder accepts: `[[IgnoredVulns]]`, quoted, lower-case, or an

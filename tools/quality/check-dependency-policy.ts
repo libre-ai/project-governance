@@ -63,7 +63,9 @@ export const POLICY_PATH = resolve(import.meta.dir, "..", "..", "toolchains", "c
 const ARCHIVE_BYTE_LIMIT = 64 * 1024 * 1024;
 const SHA256 = /^[0-9a-f]{64}$/;
 const VERSION = /^\d+\.\d+\.\d+$/;
-const PLATFORM_KEYS = ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64"] as const;
+// No `darwin-x64`: upstream publishes no macOS Intel archive since 0.21.0, so
+// there is no digest to pin; `platformFor` refuses that platform.
+const PLATFORM_KEYS = ["darwin-arm64", "linux-arm64", "linux-x64"] as const;
 
 export interface CargoDenyPlatform {
   readonly triple: string;
@@ -260,9 +262,14 @@ export function denyArguments(manifestPath: string, config: string): string[] {
     "--manifest-path",
     manifestPath,
     "--workspace",
-    "check",
+    // `--config` belongs to the root command since the CLI refactor of
+    // cargo-deny 0.20.0: 0.22.0 refuses it after `check` (exit 2, measured),
+    // where 0.19.5 required it. It stays explicit: without it cargo-deny reads
+    // the deny.toml nearest to the manifest, which for a nested manifest is
+    // not the repository's.
     "--config",
     config,
+    "check",
     "--show-stats",
     ...REQUIRED_CHECKS,
   ];

@@ -135,10 +135,11 @@ const TRACKED = Object.keys(FIXTURE);
 describe("denyAdvisoryArguments", () => {
   test("runs the advisories check only, as JSON, keeping ignored advisories as notes", () => {
     const args = denyAdvisoryArguments("/r/Cargo.toml", "/r/deny.toml");
-    expect(args.slice(args.indexOf("check"))).toEqual([
-      "check",
+    // `--config` is a root option: cargo-deny 0.22.0 exits 2 when it follows `check`.
+    expect(args.slice(args.indexOf("--config"))).toEqual([
       "--config",
       "/r/deny.toml",
+      "check",
       "--show-stats",
       "advisories",
     ]);

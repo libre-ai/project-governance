@@ -55,7 +55,17 @@ def validate_policies(bun, notebook):
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete toolchain policy') from error
 
-CARGO_DENY_VERSION = '0.19.5'
+CARGO_DENY_VERSION = '0.22.0'
+# validate-composition.yml hands this installer the declaration of the COMPOSED
+# project-governance (manifest.json), whose ref trails this tooling. The gate
+# that calls the binary (tools/quality/check-dependency-policy.ts) is read from
+# that same composed ref and passes the arguments of the version declared
+# beside it. A generation whose composed ref still declares the previous
+# version must therefore install that one: refusing it fails every consumer at
+# this step, installing the current one fails the composed gate on its digest.
+# Remove once manifest.json composes a project-governance that declares
+# CARGO_DENY_VERSION.
+CARGO_DENY_PREVIOUS_VERSION = '0.19.5'
 CARGO_DENY_TRIPLE = 'x86_64-unknown-linux-musl'
 
 def validate_cargo_deny(policy):
@@ -63,20 +73,21 @@ def validate_cargo_deny(policy):
     # refuses to download when the composition declares this binary, so the
     # composition must install exactly what toolchains/cargo-deny.json pins.
     try:
-        if policy['tool'] != 'cargo-deny' or policy['version'] != CARGO_DENY_VERSION:
+        version = policy['version']
+        if policy['tool'] != 'cargo-deny' or version not in (CARGO_DENY_VERSION, CARGO_DENY_PREVIOUS_VERSION):
             raise ValueError('Unexpected cargo-deny version')
         d = policy['platforms']['linux-x64']
-        stem = 'cargo-deny-' + CARGO_DENY_VERSION + '-' + CARGO_DENY_TRIPLE
+        stem = 'cargo-deny-' + version + '-' + CARGO_DENY_TRIPLE
         if d['triple'] != CARGO_DENY_TRIPLE:
             raise ValueError('Unexpected cargo-deny target triple')
-        if d['archiveUrl'] != 'https://github.com/EmbarkStudios/cargo-deny/releases/download/' + CARGO_DENY_VERSION + '/' + stem + '.tar.gz':
+        if d['archiveUrl'] != 'https://github.com/EmbarkStudios/cargo-deny/releases/download/' + version + '/' + stem + '.tar.gz':
             raise ValueError('Unexpected cargo-deny archive URL')
         if d['executableRelativePath'] != stem + '/cargo-deny':
             raise ValueError('Unexpected cargo-deny executable path')
         for digest in [d['archiveSha256'], d['executableSha256']]:
             if not isinstance(digest, str) or not re.fullmatch(r'[a-f0-9]{64}', digest):
                 raise ValueError('Invalid policy digest')
-        return d
+        return {**d, 'version': version}
     except (KeyError, TypeError) as error:
         raise ValueError('Incomplete cargo-deny policy') from error
 
@@ -172,7 +183,7 @@ def main():
     (root / 'osv-scanner').chmod(0o755)
     verify_digest(root / 'node', node['executableSha256'])
     verify_digest(root / 'cargo-deny', deny['executableSha256'])
-    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0'), ('cargo-deny', '--version', 'cargo-deny ' + CARGO_DENY_VERSION), ('osv-scanner', '--version', 'osv-scanner version: ' + OSV_SCANNER_VERSION)]:
+    for binary, flag, expected in [('bun', '--revision', '1.4.0-canary.1+57f349f63'), ('node', '--version', 'v26.5.0'), ('cargo-deny', '--version', 'cargo-deny ' + deny['version']), ('osv-scanner', '--version', 'osv-scanner version: ' + OSV_SCANNER_VERSION)]:
         # osv-scanner prints three lines (scanner, library, commit): the first names the release.
         version = subprocess.check_output([str(root / binary), flag], timeout=10, env={'PATH': '/usr/bin:/bin'}).decode().strip().split('\n')[0]
         if version != expected:
@@ -185,7 +196,7 @@ def main():
         stream.write('NOTEBOOK_QUALIFICATION_NODE=' + str(root / 'node') + '\n')
         stream.write('LIBRE_AI_CARGO_DENY=' + str(root / 'cargo-deny') + '\n')
         stream.write('LIBRE_AI_OSV_SCANNER=' + str(root / 'osv-scanner') + '\n')
-    print('Bun, Node, cargo-deny ' + CARGO_DENY_VERSION + ' and osv-scanner ' + OSV_SCANNER_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')
+    print('Bun, Node, cargo-deny ' + deny['version'] + ' and osv-scanner ' + OSV_SCANNER_VERSION + ' verified for Linux x64; subsequent steps receive the exact paths.')
 
 if __name__ == '__main__':
     main()

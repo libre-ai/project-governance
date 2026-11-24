@@ -271,8 +271,10 @@ function tomlAnchor(document: TomlDocument): string | null {
  * Which waiver mechanism a tracked path is, by its name, or null.
  *
  * cargo-deny reads `deny.toml`, `.deny.toml` and `.cargo/deny.toml` (measured
- * on 0.19.5). Audit commands are read where a command line lives: workflows,
- * composite actions, package manifests, shell scripts, Makefiles, justfiles.
+ * on 0.19.5), and `.config/deny.toml` as well (measured on 0.22.0); the last
+ * path component names all four. Audit commands are read where a command line
+ * lives: workflows, composite actions, package manifests, shell scripts,
+ * Makefiles, justfiles.
  * Every other tracked text file is classified `other-text` by its CONTENT, in
  * `readWaiverFile`, when it carries a waiver-shaped flag near an audit command.
  */

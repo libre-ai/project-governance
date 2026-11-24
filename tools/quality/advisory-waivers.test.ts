@@ -105,6 +105,9 @@ describe("classifySource", () => {
     // cargo-deny 0.19.5 reads these two as well (c02, c03).
     expect(classifySource(".deny.toml")).toBe("cargo-deny");
     expect(classifySource(".cargo/deny.toml")).toBe("cargo-deny");
+    // cargo-deny 0.22.0 also reads this one, which 0.19.5 ignored.
+    expect(classifySource(".config/deny.toml")).toBe("cargo-deny");
+    expect(classifySource("crates/sdk/.config/deny.toml")).toBe("cargo-deny");
     expect(classifySource(".github/actions/sec/action.yml")).toBe("audit-command");
     expect(classifySource("Makefile")).toBe("audit-command");
     expect(classifySource("justfile")).toBe("audit-command");

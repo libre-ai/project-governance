@@ -35,12 +35,28 @@ class InstallerTests(unittest.TestCase):
  def test_cargo_deny_policy_is_the_pinned_release(self):
   root=SCRIPT.parents[2]
   deny=json.loads((root/'toolchains/cargo-deny.json').read_text())
-  self.assertEqual(self.ns['validate_cargo_deny'](deny)['archiveSha256'],'5ea64ae09959b5fe1072d898f95caaa89b374678ba6728d5e9ed1366745479b0')
+  self.assertEqual(deny['version'],self.ns['CARGO_DENY_VERSION'])
+  self.assertEqual(self.ns['validate_cargo_deny'](deny)['archiveSha256'],'98c56e6a408bfa5c3c60744b6015aaa6aa08f743fdeb88386d06fca035bb1786')
   for field,bad in [('archiveUrl',deny['platforms']['linux-x64']['archiveUrl'].replace('EmbarkStudios','attacker')),('executableRelativePath','../cargo-deny'),('executableSha256','0')]:
    altered=json.loads(json.dumps(deny));altered['platforms']['linux-x64'][field]=bad
    with self.assertRaises(ValueError):self.ns['validate_cargo_deny'](altered)
   altered=json.loads(json.dumps(deny));altered['version']='0.19.4'
   with self.assertRaises(ValueError):self.ns['validate_cargo_deny'](altered)
+ def test_cargo_deny_installs_the_current_or_the_previous_version_and_no_other(self):
+  def declaration(version):
+   stem='cargo-deny-'+version+'-x86_64-unknown-linux-musl'
+   return {'tool':'cargo-deny','version':version,'platforms':{'linux-x64':{'triple':'x86_64-unknown-linux-musl','archiveUrl':'https://github.com/EmbarkStudios/cargo-deny/releases/download/'+version+'/'+stem+'.tar.gz','archiveSha256':'a'*64,'executableRelativePath':stem+'/cargo-deny','executableSha256':'b'*64}}}
+  # manifest.json composes a project-governance that trails this tooling and still declares 0.19.5.
+  for version in ['0.19.5',self.ns['CARGO_DENY_VERSION']]:
+   accepted=self.ns['validate_cargo_deny'](declaration(version))
+   self.assertEqual(accepted['version'],version)
+   self.assertEqual(accepted['executableRelativePath'],'cargo-deny-'+version+'-x86_64-unknown-linux-musl/cargo-deny')
+  # Each of these is self-consistent (URL and member follow from its version): only the version refuses it.
+  for other in ['0.19.4','0.20.2','0.21.0','9.9.9']:
+   with self.assertRaisesRegex(ValueError,'^Unexpected cargo-deny version$'):self.ns['validate_cargo_deny'](declaration(other))
+  # A declaration of one version carrying the archive of the other is refused.
+  mixed=declaration('0.19.5');mixed['platforms']['linux-x64']['archiveUrl']=declaration(self.ns['CARGO_DENY_VERSION'])['platforms']['linux-x64']['archiveUrl']
+  with self.assertRaisesRegex(ValueError,'^Unexpected cargo-deny archive URL$'):self.ns['validate_cargo_deny'](mixed)
  def test_osv_scanner_policy_is_the_pinned_release(self):
   root=SCRIPT.parents[2]
   osv=json.loads((root/'toolchains/osv-scanner.json').read_text())
@@ -106,7 +122,13 @@ class InstallerTests(unittest.TestCase):
     outputs['osv-scanner']=b'osv-scanner version: 2.7.0\nosv-scalibr version: 0.5.3\n'
     with self.assertRaises(ValueError):self.ns['main']()
     self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
-    outputs['osv-scanner']=b'osv-scanner version: 2.7.1\nosv-scalibr version: 0.5.3\ncommit: fixture\n';self.ns['main']()
+    outputs['osv-scanner']=b'osv-scanner version: 2.7.1\nosv-scalibr version: 0.5.3\ncommit: fixture\n'
+    # The fixture declares the previous cargo-deny version, as a composed ref that trails the tooling does:
+    # the binary must report the DECLARED version, not the one this installer names as current.
+    outputs['cargo-deny']=('cargo-deny '+self.ns['CARGO_DENY_VERSION']).encode()
+    with self.assertRaises(ValueError):self.ns['main']()
+    self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
+    outputs['cargo-deny']=b'cargo-deny 0.19.5';self.ns['main']()
    self.assertIn('libre-ai-toolchains-',gp.read_text());self.assertIn('NOTEBOOK_QUALIFICATION_NODE=',ge.read_text())
    self.assertIn('LIBRE_AI_CARGO_DENY='+str(pathlib.Path(gp.read_text().strip())/'cargo-deny')+'\n',ge.read_text())
    self.assertIn('LIBRE_AI_OSV_SCANNER='+str(pathlib.Path(gp.read_text().strip())/'osv-scanner')+'\n',ge.read_text())
