@@ -45,10 +45,11 @@ describe("runChild", () => {
  * with spaces or line breaks anywhere, so an alias `const s = Bun.spawnSync` too), the same
  * names destructured from `Bun` or imported from "bun", and any `child_process` module name in
  * quotes or backticks (import, require, dynamic import). Lines that are only a comment are
- * not read.
+ * not read, and neither is a type query (`typeof Bun.spawnSync`): it names a type and starts
+ * nothing, as in a test that replaces spawnSync and types the results it returns.
  */
 const directForms: readonly RegExp[] = [
-  /\bBun\s*(?:\??\.\s*|\[\s*["'`]\s*)(?:spawnSync|spawn|\$)(?![\w$])/,
+  /(?<!\btypeof\s+)\bBun\s*(?:\??\.\s*|\[\s*["'`]\s*)(?:spawnSync|spawn|\$)(?![\w$])/,
   /\{[^{}]*(?<![\w$])(?:spawnSync|spawn|\$)(?![\w$])[^{}]*\}\s*=\s*Bun\b/,
   /\bimport\s*\{[^{}]*(?<![\w$])(?:spawnSync|spawn|\$)(?![\w$])[^{}]*\}\s*from\s*["']bun["']/,
   /["'`](?:node:)?child_process["'`]/,
@@ -80,6 +81,7 @@ describe("the attestation tests", () => {
       'import { spawnSync } from "node:child_process";',
       'const cp = require("child_process");',
       "const cp = await import(`node:child_process`);",
+      'if (typeof cwd === "string") Bun.spawnSync(["git"]);',
     ];
     const missed = direct.filter((source) => !startsChildrenDirectly(source));
     expect(missed).toEqual([]);
@@ -90,6 +92,8 @@ describe("the attestation tests", () => {
       "Bun.sleepSync(10);",
       "const spawned = Bun.file(path);",
       'import { expect, test } from "bun:test";',
+      "type SyncResult = ReturnType<typeof Bun.spawnSync>;",
+      "let shape: ReturnType<typeof\n  Bun.spawn>;",
     ];
     expect(clean.filter(startsChildrenDirectly)).toEqual([]);
   });
