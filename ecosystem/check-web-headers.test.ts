@@ -433,14 +433,17 @@ describe("reviewRepository", () => {
 });
 
 describe("the allowlist", () => {
-  test("the committed register parses and names the Notebook relaxation with its reason", async () => {
+  test("the committed register parses and gives every entry its reason", async () => {
     const list = parseAllowlist(
       await Bun.file(new URL(`../${ALLOWLIST_PATH}`, import.meta.url)).text(),
     );
-    const wasm = list.allowances.find((a) => a.token === "'wasm-unsafe-eval'");
-    expect(wasm?.repository).toBe("libre-ai/personal-knowledge-workspace");
-    expect(wasm?.path).toBe("apps/notebook/src/server/handler.ts");
-    expect(wasm?.because.length).toBeGreaterThan(40);
+    expect(list.allowances.length).toBeGreaterThan(0);
+    for (const entry of [...list.allowances, ...list.servers]) {
+      expect(entry.because.length).toBeGreaterThan(40);
+    }
+    // The owner retired the Notebook app, and with it the only
+    // 'wasm-unsafe-eval' relaxation, on 2026-11-23.
+    expect(list.allowances.some((a) => a.token === "'wasm-unsafe-eval'")).toBe(false);
     expect(list.policySource.path).toBe("packages/web-platform/src/response.ts");
   });
 

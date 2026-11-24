@@ -21,27 +21,6 @@ policy_source:
   repository: libre-ai/application-development-toolkit
   path: packages/web-platform/src/response.ts
 allowances:
-  - repository: libre-ai/personal-knowledge-workspace
-    path: apps/notebook/src/server/handler.ts
-    rule: csp-relaxation
-    token: "'wasm-unsafe-eval'"
-    count: 1
-    because: >-
-      the Notebook compiles its sealed-backup core (notebook-core.core.wasm)
-      in the browser, which CSP refuses without 'wasm-unsafe-eval'. The token
-      is added to script-src only, only when NOTEBOOK_BACKUP_FEATURE_ENABLED
-      is set, by replacing the exact "script-src 'self'" of the web-platform
-      policy; it permits WebAssembly compilation, not eval or inline script.
-  - repository: libre-ai/personal-knowledge-workspace
-    path: apps/notebook/src/server/handler.ts
-    rule: csp-header-literal
-    token: Content-Security-Policy
-    count: 2
-    because: >-
-      the read and the write of the one relaxation above (allowWasmCompilation):
-      the handler reads the web-platform policy and throws
-      notebook.csp_boundary_invalid when "script-src 'self'" is absent, so the
-      application fails closed if the expected base is missing.
   - repository: libre-ai/project-website
     path: tools/clever/personal.ts
     rule: csp-header-literal
