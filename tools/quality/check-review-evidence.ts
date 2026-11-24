@@ -150,6 +150,8 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   // check-threat-model-citations.ts: the scope, the files whose citations are checked,
   // and the mentions of a retired invariant it admits.
   /^tools\/quality\/threat-model-citations\.v1\.json$/,
+  // check-doc-commands.ts: the documents whose `bun run` commands are read, and the commands it admits.
+  /^tools\/quality\/doc-commands\.v1\.json$/,
   // check-skills-security.ts: the patterns a skill line is refused on.
   /^tools\/skills\/skills-security-patterns\.v1\.json$/,
   // check-ref-monotonicity.py: a composed ref allowed to move backwards or sideways.
@@ -212,6 +214,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "tools/quality/pinned-citations.v1.json",
   "tools/quality/pr-negatives.v1.json",
   "tools/quality/threat-model-citations.v1.json",
+  "tools/quality/doc-commands.v1.json",
   "tools/skills/skills-security-patterns.v1.json",
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
