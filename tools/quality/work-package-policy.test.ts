@@ -493,9 +493,29 @@ describe("unreadable characters are ok:false (shared guard, run first)", () => {
     expect(reason(text)).toBe("policy contains an unreadable character U+0000 on line 6");
   });
 
-  test("premise: Bun.YAML.parse silently truncates at a NUL ending a value line", () => {
-    // The divergence the guard exists for: the parser sees `{a: 1}`, a line scan sees both keys.
-    expect(Bun.YAML.parse(`a: 1${char(0)}\nb: 2\n`)).toEqual({ a: 1 });
+  test("premise: Bun.YAML.parse never returns both keys of a text with a NUL ending a value line", () => {
+    // The divergence the guard exists for. The pinned canary returns `{a: 1}` where a line scan
+    // sees both keys; Bun 1.4.5 throws. The premise is what both share: the whole document is
+    // never returned, so a scan that approved it would have approved text the parser did not read.
+    let read: unknown = "threw";
+    try {
+      read = Bun.YAML.parse(`a: 1${char(0)}\nb: 2\n`);
+    } catch {
+      // the parser refused the text: nothing was read
+    }
+    expect(read).not.toEqual({ a: 1, b: 2 });
+  });
+
+  test("a NUL is refused before the parser is reached, whichever way the runtime reads it", () => {
+    const parse = spyOn(Bun.YAML, "parse");
+    try {
+      expect(reason(`${HEAD}exempt: {}\nowners: [a]${char(0)}\n`)).toBe(
+        "policy contains an unreadable character U+0000 on line 3",
+      );
+      expect(parse).not.toHaveBeenCalled();
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   test("a NUL at the end of a value line", () => {

@@ -9,6 +9,7 @@
  *
  * Usage: bun ecosystem/render-fleet-status.ts   (writes the projection)
  */
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { aggregateProgress } from "./project-cards";
 
 export interface FleetStatusRow {
@@ -105,7 +106,6 @@ function fetchFromGitHub(repository: string, path: string): string | null {
 if (import.meta.main) {
   const { parseFleet } = await import("./check-fleet-presentation");
   const fleet = parseFleet(await Bun.file("ecosystem/repositories.v1.yaml").text());
-  const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
   const cards: unknown[] = [];
   for (const entry of fleet) {
     if (entry.card === undefined) continue;
@@ -114,7 +114,7 @@ if (import.meta.main) {
       console.error(`::error::${entry.repository}: declared card ${entry.card} is unreadable`);
       process.exit(1);
     }
-    cards.push(yamlApi.parse(text));
+    cards.push(parseYaml(text));
   }
   const projection = buildFleetStatus(cards);
   await Bun.write(

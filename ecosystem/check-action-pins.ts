@@ -24,6 +24,7 @@
  * a flow mapping or behind an anchor would otherwise escape one of them.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
 
@@ -97,7 +98,7 @@ export function reviewDefinition(text: string): FileReview {
   const references = scanUsesLines(text);
   let parsed: unknown;
   try {
-    parsed = Bun.YAML.parse(text);
+    parsed = parseYaml(text);
   } catch (error) {
     return {
       references,

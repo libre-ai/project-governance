@@ -1,4 +1,5 @@
 import { GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import type { TreeListing } from "./fleet-tree";
 import { validateCard } from "./project-cards";
 
@@ -150,7 +151,7 @@ function parse(source: CardSource): Parsed {
   if (source.text === null) return { ok: false, reason: "card absent at the served branch" };
   let value: unknown;
   try {
-    value = Bun.YAML.parse(source.text);
+    value = parseYaml(source.text);
   } catch (error) {
     return {
       ok: false,
@@ -232,7 +233,7 @@ export function catalogueFromFiches(fiches: readonly FicheSource[]): Catalogue {
     }
     let value: unknown;
     try {
-      value = Bun.YAML.parse(fiche.text);
+      value = parseYaml(fiche.text);
     } catch (error) {
       return {
         ok: false,

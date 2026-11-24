@@ -262,7 +262,28 @@ function treeCarriesCrate(
   return field(parseManifest(show.stdout), ["package", "name"]) === crate;
 }
 
-/** The version the extracted baseline declares for the crate, inherited from the workspace if so written. */
+/**
+ * A version as semver.org writes it. `Bun.semver.order` is called on nothing else: handed a range
+ * (`^1.1.8`, `1.x`), the canary pinned in `toolchains/bun.json` returns an order and Bun 1.4.5
+ * throws, so the verdict of this gate would depend on the runtime that reads the manifest.
+ */
+const SEMVER =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
+
+/**
+ * Precedence of two versions of `SEMVER`. Build metadata is cut first (semver.org item 10: it does
+ * not take part in precedence): handed `1.0.0+a-b` and `1.0.0`, the pinned canary answers "below"
+ * (it reads the hyphen of the build as a pre-release) and Bun 1.4.5 answers "equal".
+ */
+function orderVersions(left: string, right: string): number {
+  const core = (version: string): string => version.replace(/\+.*$/, "");
+  return Bun.semver.order(core(left), core(right));
+}
+
+/**
+ * The version the extracted baseline declares for the crate, inherited from the workspace if so
+ * written. `null` when it declares none, or one that is not a version.
+ */
 function baselineVersion(extracted: string, cratePath: string): string | null {
   const read = (path: string): unknown => {
     try {
@@ -272,10 +293,10 @@ function baselineVersion(extracted: string, cratePath: string): string | null {
     }
   };
   const version = field(read(join(extracted, manifestInTree(cratePath))), ["package", "version"]);
-  if (typeof version === "string") return version;
+  if (typeof version === "string") return SEMVER.test(version) ? version : null;
   if (field(version, ["workspace"]) !== true) return null;
   const inherited = field(read(join(extracted, "Cargo.toml")), ["workspace", "package", "version"]);
-  return typeof inherited === "string" ? inherited : null;
+  return typeof inherited === "string" && SEMVER.test(inherited) ? inherited : null;
 }
 
 interface TagCandidate {
@@ -294,7 +315,7 @@ function admittedPrefixes(crate: string): string[] {
 
 /** Highest version first; at equal versions, the longest prefix first. */
 function highestFirst(left: TagCandidate, right: TagCandidate): number {
-  return Bun.semver.order(right.version, left.version) || right.prefix.length - left.prefix.length;
+  return orderVersions(right.version, left.version) || right.prefix.length - left.prefix.length;
 }
 
 type Baseline =
@@ -330,7 +351,7 @@ function isMajorRelease(previous: string, current: string): boolean {
   const before = compatibilityClass(previous);
   const after = compatibilityClass(current);
   return (
-    before !== null && after !== null && before !== after && Bun.semver.order(current, previous) > 0
+    before !== null && after !== null && before !== after && orderVersions(current, previous) > 0
   );
 }
 
@@ -556,6 +577,12 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
       `unknown crate: ${args.crate} is not one of the ${packages.length} package(s) of the workspace`,
     );
   }
+  if (!SEMVER.test(crate.version)) {
+    return conclude(
+      EXIT.unreadableRepository,
+      `unreadable repository: ${args.crate} declares version '${crate.version}', which is not a version`,
+    );
+  }
   const relativePath = relative(repository, real(dirname(crate.manifestPath)));
   if (relativePath.startsWith("..") || isAbsolute(relativePath)) {
     return conclude(EXIT.unknownCrate, `unknown crate: ${args.crate} lives outside the repository`);
@@ -673,7 +700,7 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
       // cargo-semver-checks infers the release type from the two versions:
       // across compatibility classes (a major release, or a version that went
       // down) it skips every check and exits 0, a removed item included.
-      if (Bun.semver.order(crate.version, previous) < 0) {
+      if (orderVersions(crate.version, previous) < 0) {
         return conclude(
           EXIT.versionNotIncremented,
           `version not incremented: ${crate.version} is below the baseline at ${previous}, and the tool skips every check across it`,
@@ -688,7 +715,7 @@ export async function main(argv: readonly string[], deps: ApiCompatDeps = {}): P
       return conclude(EXIT.noCheckRun, "no check was run");
     }
     if (verdict.breaks > 0) {
-      return Bun.semver.order(crate.version, previous) <= 0
+      return orderVersions(crate.version, previous) <= 0
         ? conclude(
             EXIT.versionNotIncremented,
             `version not incremented: ${verdict.breaks} API break(s) at ${crate.version}, baseline at ${previous}`,

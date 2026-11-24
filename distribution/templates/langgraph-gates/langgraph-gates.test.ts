@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { parseFloor } from "./check-langgraph-advisory-floor";
+import { evaluate, parseFloor } from "./check-langgraph-advisory-floor";
 
 const HERE = import.meta.dir;
 const ENV_GATE = join(HERE, "check-langsmith-env.ts");
@@ -570,28 +570,31 @@ describe("check-langgraph-advisory-floor: compares the lockfile to the floor", (
         "2 row(s) resolved, 0 absent from the lockfile(s), 0 below the floor",
       ),
       mutation: [
-        "Bun.semver.order(entry.version, row.minimum) < 0",
-        "Bun.semver.order(entry.version, row.minimum) <= 0",
+        "Bun.semver.order(withoutBuild(entry.version), row.minimum) < 0",
+        "Bun.semver.order(withoutBuild(entry.version), row.minimum) <= 0",
       ],
     },
     {
       name: "a version below its minimum",
       files: { [FLOOR_PATH]: TEST_FLOOR, "bun.lock": lock("1.4.20") },
       holds: refuses(`bun.lock: ${GRAPH}@1.4.20 (${GRAPH}) is below 1.4.21 (GHSA-wp87-994x-j95x)`),
-      mutation: ["Bun.semver.order(entry.version, row.minimum) < 0", "false"],
+      mutation: ["Bun.semver.order(withoutBuild(entry.version), row.minimum) < 0", "false"],
     },
     {
       name: "versions compare as semver, not as strings",
       files: { [FLOOR_PATH]: TEST_FLOOR, "bun.lock": lock("1.4.9") },
       holds: refuses(`${GRAPH}@1.4.9 `),
-      mutation: ["Bun.semver.order(entry.version, row.minimum) < 0", "entry.version < row.minimum"],
+      mutation: [
+        "Bun.semver.order(withoutBuild(entry.version), row.minimum) < 0",
+        "entry.version < row.minimum",
+      ],
     },
     {
       name: "a pre-release of the minimum is below it",
       files: { [FLOOR_PATH]: TEST_FLOOR, "bun.lock": lock("1.4.21-alpha.1") },
       holds: refuses(`${GRAPH}@1.4.21-alpha.1 `),
       mutation: [
-        "Bun.semver.order(entry.version, row.minimum) < 0",
+        "Bun.semver.order(withoutBuild(entry.version), row.minimum) < 0",
         'Bun.semver.order(entry.version.split("-")[0] as string, row.minimum) < 0',
       ],
     },
@@ -865,6 +868,58 @@ describe("check-langgraph-advisory-floor: the floor is a tracked, parsed data fi
       mutation: ['else if (argument.startsWith("--floor="))', "else if (false)"],
     },
   ]);
+});
+
+// `evaluate` is exported, so a row can reach it without the shape check of `parseFloor`. The pinned
+// canary orders a range against a version (`^1.1.8` above 1.0.0) and Bun 1.4.5 throws on it: the
+// verdict must not depend on which of the two reads the lockfile.
+describe("check-langgraph-advisory-floor: evaluate calls order on versions only", () => {
+  const ADVISORY = "GHSA-r399-636x-v7f6";
+  const locks = (version: string) => [
+    { file: "bun.lock", entries: [{ name: CORE, version, where: CORE }] },
+  ];
+  const rowOf = (minimum: string) => ({ line: 1, package: CORE, minimum, advisory: ADVISORY });
+
+  test.each([
+    "^1.1.8",
+    "~1.1.8",
+    ">=1.1.8",
+    "1.x",
+    "*",
+    "latest",
+    "",
+  ])("the minimum %p is a defect naming it, never an ordering", (minimum) => {
+    const evaluation = evaluate([rowOf(minimum)], locks("1.3.0"));
+    expect(evaluation.defects).toEqual([
+      `bun.lock: ${CORE}@1.3.0 (${CORE}) cannot be compared: the minimum '${minimum}' of ${ADVISORY} is not an x.y.z version`,
+    ]);
+    expect(evaluation.entriesCompared).toBe(1);
+    expect(evaluation.resolvedRows).toBe(1);
+  });
+
+  // semver.org item 10: build metadata is ignored in precedence. The pinned canary reads the hyphen
+  // of `+a-b` as a pre-release and answers "below"; Bun 1.4.5 answers "equal".
+  test.each([
+    "1.1.8+a-b",
+    "1.1.8+build-1",
+    "1.1.8+sha-abc.def-0",
+    "1.1.8+001",
+  ])("the resolved version %p equals its minimum: no defect", (version) => {
+    expect(evaluate([rowOf("1.1.8")], locks(version)).defects).toEqual([]);
+  });
+
+  test("a pre-release with build metadata is still below its release", () => {
+    expect(evaluate([rowOf("1.1.8")], locks("1.1.8-rc.1+a-b")).defects).toEqual([
+      `bun.lock: ${CORE}@1.1.8-rc.1+a-b (${CORE}) is below 1.1.8 (${ADVISORY})`,
+    ]);
+  });
+
+  test("a minimum that is a version is still ordered against the resolved one", () => {
+    expect(evaluate([rowOf("1.1.8")], locks("1.1.8")).defects).toEqual([]);
+    expect(evaluate([rowOf("1.1.8")], locks("1.1.7")).defects).toEqual([
+      `bun.lock: ${CORE}@1.1.7 (${CORE}) is below 1.1.8 (${ADVISORY})`,
+    ]);
+  });
 });
 
 describe("the committed floor", () => {

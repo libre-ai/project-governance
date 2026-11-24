@@ -14,6 +14,7 @@
  * the repository empties. Entries without a `card` field (the org profile)
  * are reported and skipped, never silently ignored.
  */
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { buildIndex, type Visibility } from "./build-index";
 import { delay, ghGraphQLRaw, hasUsableGraphQLData, RETRY_DELAYS_MS } from "./github-fleet";
 import { checkStatusSection, validateCard } from "./project-cards";
@@ -71,7 +72,7 @@ export function reviewRepository(
   const cardText = cardFetch.text;
   let card: unknown;
   try {
-    card = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML.parse(cardText);
+    card = parseYaml(cardText);
   } catch (error) {
     return {
       failures: [`${entry.repository}: ${entry.card} is not parseable YAML — ${String(error)}`],

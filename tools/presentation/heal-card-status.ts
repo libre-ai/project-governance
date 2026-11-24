@@ -35,6 +35,7 @@ import {
   STATUS_SECTION_BEGIN,
   STATUS_SECTION_END,
 } from "../../ecosystem/project-cards";
+import { parseYaml } from "../quality/yaml-text-guard";
 import { spliceStatusSection } from "./heal-org-readme";
 
 export const CARD_PATH = "project.v1.yaml";
@@ -153,7 +154,7 @@ if (import.meta.main) {
     process.exit(1);
   }
 
-  const card = Bun.YAML.parse(await cardFile.text());
+  const card = parseYaml(await cardFile.text());
   const readme = await readmeFile.text();
   const outcome = healCardStatus(readme, card, under);
 

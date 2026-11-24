@@ -2,6 +2,7 @@ import {
   buildPublicBrandProjection,
   renderPublicBrandProjection,
 } from "../../brand/build-public-projection";
+import { parseYaml } from "./yaml-text-guard";
 
 export interface BrandDocuments {
   readonly french: string;
@@ -82,9 +83,9 @@ export function validateBrandPlatform(documents: BrandDocuments): readonly strin
   }
 
   try {
-    const index = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML.parse(
-      documents.repositoryIndex,
-    ) as { readonly repositories?: readonly Record<string, unknown>[] };
+    const index = parseYaml(documents.repositoryIndex) as {
+      readonly repositories?: readonly Record<string, unknown>[];
+    };
     if (!Array.isArray(index.repositories)) throw new Error("repositories_missing");
     for (const entry of index.repositories) {
       if (typeof entry.product !== "string") continue;

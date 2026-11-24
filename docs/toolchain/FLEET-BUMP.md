@@ -134,6 +134,47 @@ Where it runs:
   above, since the process that holds the token is the wrong place to run another
   repository's install.
 
+## Precondition of a declaration that the guard does not replay
+
+The guard above replays the gates of the **composed** governance on the targets at
+their **composed refs**. A consumer's composition also runs one gate from the
+**declared generation** on the consumer's **own head**: the step "Advisory waiver
+discipline" of `validate-composition.yml`
+(`tools/quality/check-advisory-waivers.ts`). Neither that gate file nor that
+revision is in the manifest, so a declaration can merge green and turn
+`composition / validate` red in every consumer the gate refuses.
+
+Since the cargo-deny 0.22.0 bump that gate refuses a cargo-deny file that does
+not write `[advisories] unmaintained` (`IMPLICIT-SCOPE`,
+`docs/security/ADVISORY-WAIVER-POLICY.md`). Measured on 2026-11-24 on the served
+heads: 11 public repositories in defect, 12 files, 10 of them composition targets.
+Replay it before relying on it.
+
+**Before a generation is declared**, from a checkout of the commit to be
+declared, run the gate on the served head of every composed repository, and
+declare only when it prints no `IN DEFECT` and no `UNREADABLE` line:
+
+```sh
+scratch="$(mktemp -d)"
+jq -r '.repositories[].repository' .github/composition/manifest.json | while read -r repository; do
+  git clone --quiet --depth 1 "https://github.com/$repository.git" "$scratch/${repository#*/}" || { echo "UNREADABLE $repository"; continue; }
+  bun tools/quality/check-advisory-waivers.ts --root="$scratch/${repository#*/}" > "$scratch/out" 2>&1 || { echo "IN DEFECT $repository"; grep -E '^Advisory waivers: [A-Z-]+ ' "$scratch/out"; }
+done
+```
+
+The gate reads the tracked files of the target as text and spawns nothing but
+`git ls-files`; it is run from this checkout with `--root`, never with the target
+as working directory, because Bun reads the `bunfig.toml` of its working
+directory. It took 1.4 s over 18 clones, clones excluded.
+
+Why this is a written precondition and not a step of the guard: the guard would
+have to fetch the served head of every target and run the gate files of the
+declared commit, where today it fetches manifest refs and runs the composed
+governance's files, and its verdict would then depend on the state of other
+repositories on the day. That is its own change: issue #320. A repository that is
+not composed (`square-control`) is reached by neither; the periodic control
+`tools/security/check-fleet-advisories.ts` is what names it.
+
 ## Apply stays local: no fleet write token in CI
 
 Owner decision 2026-10-14: the `FLEET_BUMP_TOKEN` secret is not created. A token

@@ -38,6 +38,7 @@
  */
 
 import { parseSymrefHead } from "../crates/ecosystem-engine/scripts/check-patch-rev";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import type { ItemCheck } from "./check-action-pins";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
@@ -455,7 +456,7 @@ function findLayoutProblem(text: string): LayoutProblem {
 export function reviewTriggers(text: string, servedBranch: string): TriggerReview {
   let document: unknown;
   try {
-    document = Bun.YAML.parse(text);
+    document = parseYaml(text);
   } catch (error) {
     return unreadableReview(`YAML parse failed: ${(error as Error).message}`);
   }

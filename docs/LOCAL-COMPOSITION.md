@@ -89,17 +89,17 @@ Les deux dernières commandes affichent le plan sans installer ni modifier les d
 python3 "$WORKSPACE/tooling/.github/composition/run-composition.py" \
   --target "$TARGET" --revision "$TARGET_REVISION" \
   --root "$COMPOSITION" --phase prepare
-rustup toolchain install 1.97.0 --profile minimal \
+rustup toolchain install 1.100.0 --profile minimal \
   --component rustfmt --component clippy --component llvm-tools-preview \
   --target wasm32-unknown-unknown
-RUST_BIN="$(dirname "$(rustup which --toolchain 1.97.0 cargo)")"
+RUST_BIN="$(dirname "$(rustup which --toolchain 1.100.0 cargo)")"
 export PATH="$RUST_BIN:$PATH"
 python3 -m venv "$WORKSPACE/licensing"
-"$WORKSPACE/licensing/bin/python" -m pip install reuse==6.2.0
+"$WORKSPACE/licensing/bin/python" -m pip install reuse==6.3.0
 export PATH="$WORKSPACE/licensing/bin:$PATH"
 ```
 
-Le répertoire choisi par `rustup which` place Cargo et rustc 1.97 en tête du `PATH` de cette session ; aucun défaut Rustup global ni variable `RUSTUP_TOOLCHAIN` n’est modifié.
+Le répertoire choisi par `rustup which` place Cargo et rustc 1.100 en tête du `PATH` de cette session ; aucun défaut Rustup global ni variable `RUSTUP_TOOLCHAIN` n’est modifié.
 
 ### 2.2 Bun, Node et outils vérifiés
 
@@ -125,7 +125,7 @@ bash "$WORKSPACE/tooling/.github/composition/install-toolchains.sh" \
   "$WORKSPACE/tooling/toolchains/osv-scanner.json"
 ```
 
-Cet installateur fournit aussi osv-scanner `2.7.1` (binaire vérifié contre `toolchains/osv-scanner.json`, chemin dans `LIBRE_AI_OSV_SCANNER`) ; la base d’avis hors ligne qu’il lit se télécharge à part, voir `docs/toolchain/OSV-ADVISORY-DATABASE.md`. Il fournit aussi cargo-deny `0.19.5` (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes.
+Cet installateur fournit aussi osv-scanner `2.7.1` (binaire vérifié contre `toolchains/osv-scanner.json`, chemin dans `LIBRE_AI_OSV_SCANNER`) ; la base d’avis hors ligne qu’il lit se télécharge à part, voir `docs/toolchain/OSV-ADVISORY-DATABASE.md`. Il fournit aussi cargo-deny `0.22.0`, ou la version précédente tant que la fiche de la gouvernance composée la déclare encore (archive et exécutable vérifiés contre `toolchains/cargo-deny.json`) et écrit son chemin dans `LIBRE_AI_CARGO_DENY` ; exportez cette variable comme `NOTEBOOK_QUALIFICATION_NODE` ci-dessous. Quand elle est définie, `tools/quality/check-dependency-policy.ts` utilise ce binaire et échoue s’il manque ou diffère, sans en télécharger un autre. Sur macOS, laissez-la vide : le script télécharge alors l’archive épinglée et en vérifie les empreintes. Seul macOS sur Apple Silicon est épinglé : l’amont ne publie plus d’archive macOS Intel depuis la version 0.21.0, et le script échoue sur cette plateforme.
 
 Sur **macOS ARM64**, réutilisez l’installateur Notebook au commit qualifié, sans ajouter ses paquets à la composition. Son empreinte est vérifiée avant exécution :
 

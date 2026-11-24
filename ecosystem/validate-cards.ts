@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import {
   aggregateProgress,
   collectPathReferences,
@@ -32,7 +33,7 @@ const parsed: unknown[] = [];
 for (const path of paths.sort()) {
   let value: unknown;
   try {
-    value = Bun.YAML.parse(await Bun.file(path).text());
+    value = parseYaml(await Bun.file(path).text());
   } catch (error) {
     report.check(path, false, `invalid YAML (${(error as Error).message})`);
     continue;

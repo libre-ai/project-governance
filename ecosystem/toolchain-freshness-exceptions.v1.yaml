@@ -9,7 +9,7 @@ schema_version: libre-ai.toolchain-freshness-exceptions.v1
 # bare keys, block style, one line per value.
 #
 #   - tool: cargo-deny
-#     held_at: 0.19.5
+#     held_at: 0.22.0
 #     because: why this pin stays behind
 #     until: 2027-01-31
 #

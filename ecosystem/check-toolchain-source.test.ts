@@ -269,7 +269,7 @@ describe("cargo-deny declarations (Y47)", () => {
     return [
       "      - name: Install pinned dependency-policy toolchain",
       "        env:",
-      "          CARGO_DENY_VERSION: 0.19.5",
+      "          CARGO_DENY_VERSION: 0.22.0",
       `          CARGO_DENY_ARCHIVE_URL: ${url}`,
       ...(sha256 === null ? [] : [`          CARGO_DENY_ARCHIVE_SHA256: ${sha256}`]),
       "          CARGO_AUDIT_VERSION: 0.22.1",
@@ -306,7 +306,10 @@ describe("cargo-deny declarations (Y47)", () => {
     const policy = await readCanonicalCargoDeny();
     const linux = policy.platforms["linux-x64"];
     if (linux === undefined) throw new Error("linux-x64 not pinned");
-    const other = linux.archiveUrl.replaceAll("0.19.5", "0.19.4");
+    // Derived from the pinned version: a literal here stops matching at the
+    // next bump, and `other` silently becomes the pinned URL itself.
+    const other = linux.archiveUrl.replaceAll(policy.version, "0.0.1");
+    expect(other).not.toBe(linux.archiveUrl);
     const sources = [
       ...extractDeclaredSources(
         "libre-ai/a",

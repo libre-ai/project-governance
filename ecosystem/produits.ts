@@ -1,6 +1,7 @@
 import Ajv2020, { type ErrorObject } from "ajv/dist/2020";
 
 import { GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { CONTROL_CHARACTERS, type EntryKind, type LocalTarget } from "./briques";
 
 /**
@@ -439,7 +440,7 @@ function readHostedOffers(source: ReadResult): HostedOffers {
   if (!source.ok) return refused(`unreadable (${source.reason})`);
   let parsed: unknown;
   try {
-    parsed = Bun.YAML.parse(source.text);
+    parsed = parseYaml(source.text);
   } catch (error) {
     return refused(`invalid YAML (${error instanceof Error ? error.message : String(error)})`);
   }
@@ -661,7 +662,7 @@ export function evaluateProduits(input: ProduitsInput): ProduitsOutcome {
       errors.push(`not judged: ${SCHEMA_PATH} is unreadable, and no fiche holds without a schema`);
     } else {
       try {
-        const verdict = compiled.validate(Bun.YAML.parse(file.text));
+        const verdict = compiled.validate(parseYaml(file.text));
         if ("data" in verdict) data = verdict.data;
         else errors.push(...verdict.errors);
       } catch (error) {
