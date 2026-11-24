@@ -150,6 +150,7 @@ export function readRepositoryWaivers(root: string): RepositoryWaivers {
           anchor: null,
           error: `is not valid JSON: ${(error as Error).message}`,
           unattributed: [],
+          implicitScopes: [],
           skipped: null,
         });
         continue;

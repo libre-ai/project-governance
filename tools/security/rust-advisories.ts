@@ -257,7 +257,9 @@ export function readCheckoutWaivers(
     }
     const reasons: string[] = [];
     for (const entry of entries) {
-      const evaluation = evaluateWaivers([{ ...reading, entries: [entry] }], {
+      // One entry is judged here. A scope the file leaves implicit is a defect
+      // of the file, reported by the waiver gate; it does not unmake a waiver.
+      const evaluation = evaluateWaivers([{ ...reading, entries: [entry], implicitScopes: [] }], {
         today,
         isTrackedFile,
       });

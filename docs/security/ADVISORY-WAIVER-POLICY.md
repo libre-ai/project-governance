@@ -70,6 +70,14 @@ than as a script each repository copies.
     `severity_threshold` in `.cargo/audit.toml`; `cargo deny ... -A` / `-W`
     (`--allow` / `--warn`) on an advisory code (`vulnerability`,
     `unmaintained`, `unsound`, `notice`, `yanked`); `bun audit --audit-level`.
+  - **A scope left to the default.** A cargo-deny file that does not write
+    `[advisories] unmaintained` is refused (`IMPLICIT-SCOPE`), whether or not
+    it has an `[advisories]` table: since cargo-deny 0.22.0 the absent key
+    means `"workspace"`, the same narrowing as writing it, with no line to
+    carry a date or a reason. Write `unmaintained = "all"`, or the narrower
+    scope as a waiver. An absent `unsound` is not refused: its default,
+    `"workspace"`, is the same before and after 0.22.0, and extending it to
+    `"all"` is a separate decision.
 - **What an entry carries,** on the same line as its id (for a table, in its
   `reason`):
 

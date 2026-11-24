@@ -268,7 +268,7 @@ describe("tier 1 refusals", () => {
     const deny = readCargoSource(
       "deny.toml",
       "cargo-deny",
-      single(`stripe path; expires=2026-09-29; ref=${REF}`),
+      `${single(`stripe path; expires=2026-09-29; ref=${REF}`)}unmaintained = "all"\n`,
     );
     expect(codes([audit(single(`stripe path; expires=2026-09-30; ref=${REF}`)), deny])).toEqual([
       "INCOHERENT",
@@ -279,7 +279,7 @@ describe("tier 1 refusals", () => {
     const deny = readCargoSource(
       "deny.toml",
       "cargo-deny",
-      single(`stripe path; expires=2026-09-30; ref=${REF}`),
+      `${single(`stripe path; expires=2026-09-30; ref=${REF}`)}unmaintained = "all"\n`,
     );
     expect(codes([audit(single(`stripe path; expires=2026-09-30; ref=${REF}`)), deny])).toEqual([]);
   });
@@ -347,10 +347,84 @@ describe("sources that cannot be read are failures, never zero waivers", () => {
   });
 
   test("a deny.toml without an ignore list is a readable source with no waiver", () => {
-    const reading = readCargoSource("deny.toml", "cargo-deny", `[advisories]\nyanked = "deny"\n`);
+    const reading = readCargoSource(
+      "deny.toml",
+      "cargo-deny",
+      `[advisories]\nyanked = "deny"\nunmaintained = "all"\n`,
+    );
     expect(reading.error).toBeNull();
     expect(reading.entries).toEqual([]);
+    expect(reading.implicitScopes).toEqual([]);
     expect(codes([reading])).toEqual([]);
+  });
+});
+
+describe("a cargo-deny file that leaves `unmaintained` to the default", () => {
+  // cargo-deny 0.22.0 reads the absent key as "workspace": measured on the
+  // fleet, five graphs out of sixteen lost an advisory with nothing written.
+  function defects(text: string, file = "deny.toml") {
+    return evaluateWaivers([readCargoSource(file, "cargo-deny", text)], {
+      today: "2026-08-15",
+      isTrackedFile,
+    }).defects.map((defect) => `${defect.code} ${defect.where}`);
+  }
+
+  test("an [advisories] table without the key is a defect at the table header", () => {
+    expect(defects('[graph]\nall-features = true\n\n[advisories]\nyanked = "deny"\n')).toEqual([
+      "IMPLICIT-SCOPE deny.toml:4",
+    ]);
+  });
+
+  test("a file with no [advisories] table at all is a defect at line 1", () => {
+    expect(defects('[licenses]\nallow = ["MIT"]\n')).toEqual(["IMPLICIT-SCOPE deny.toml:1"]);
+    expect(defects("")).toEqual(["IMPLICIT-SCOPE deny.toml:1"]);
+  });
+
+  test("the key written as all clears it, in every file name cargo-deny reads", () => {
+    for (const file of ["deny.toml", ".deny.toml", ".cargo/deny.toml", ".config/deny.toml"]) {
+      expect(defects('[advisories]\nunmaintained = "all"\n', file)).toEqual([]);
+      expect(defects('[advisories]\nyanked = "deny"\n', file)).toEqual([
+        `IMPLICIT-SCOPE ${file}:1`,
+      ]);
+    }
+  });
+
+  test("a narrower scope that is written is a waiver entry, not an implicit scope", () => {
+    const reading = readCargoSource(
+      "deny.toml",
+      "cargo-deny",
+      '[advisories]\nunmaintained = "workspace"\n',
+    );
+    expect(reading.implicitScopes).toEqual([]);
+    expect(reading.entries.map((entry) => entry.id)).toEqual([
+      'advisories.unmaintained = "workspace"',
+    ]);
+  });
+
+  test("the defect stands beside the waivers of the file and does not replace their own", () => {
+    const text = `# waiver-review-anchor: 2026-07-26\n[advisories]\nignore = [\n  "RUSTSEC-2026-0174",\n]\n`;
+    const codesOf = defects(text).map((line) => line.split(" ")[0]);
+    expect(codesOf).toContain("IMPLICIT-SCOPE");
+    expect(codesOf).toContain("UNDATED");
+  });
+
+  test("the message names the key and what to write", () => {
+    const [defect] = evaluateWaivers(
+      [readCargoSource("deny.toml", "cargo-deny", '[advisories]\nyanked = "deny"\n')],
+      { today: "2026-08-15", isTrackedFile },
+    ).defects;
+    expect(defect?.message).toContain("`advisories.unmaintained`");
+    expect(defect?.message).toContain('`unmaintained = "all"`');
+  });
+
+  test("a cargo-audit file has no such scope and is not concerned", () => {
+    const reading = readCargoSource(".cargo/audit.toml", "cargo-audit", "[advisories]\n");
+    expect(reading.implicitScopes).toEqual([]);
+    expect(codes([reading])).toEqual([]);
+  });
+
+  test("an absent `unsound` is not reported: its default is the same under both versions", () => {
+    expect(defects('[advisories]\nunmaintained = "all"\n')).toEqual([]);
   });
 });
 
@@ -398,6 +472,7 @@ ignore = [
   { id = "RUSTSEC-2024-0384" }, # instant via stripe; expires=2026-09-30; ref=${REF}
   { id = "RUSTSEC-2026-0097", reason = "rand via stripe" },
 ]
+unmaintained = "all"
 `;
     const reading = readCargoSource("deny.toml", "cargo-deny", text);
     expect(reading.error).toBeNull();

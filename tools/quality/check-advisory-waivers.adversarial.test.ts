@@ -60,7 +60,7 @@ function expectGreen(files: Record<string, string>) {
   return output;
 }
 
-const VALID = `${ANCHOR}[advisories]\nignore = [\n  "RUSTSEC-2026-0001", # reason text; expires=2026-12-31; ref=docs/r.md\n]\n`;
+const VALID = `${ANCHOR}[advisories]\nignore = [\n  "RUSTSEC-2026-0001", # reason text; expires=2026-12-31; ref=docs/r.md\n]\nunmaintained = "all"\n`;
 const UNDATED_DENY = '[advisories]\nignore = [\n  "RUSTSEC-2026-0001",\n]\n';
 
 describe("control cases", () => {
@@ -234,7 +234,7 @@ describe("item 6: an id behind a variable", () => {
 
 describe("item 7: a cargo-deny crate spec is an id", () => {
   test("c32: { crate = ..., reason = ... } passes", () => {
-    const text = `${ANCHOR}[advisories]\nignore = [\n  { crate = "openssl@0.10.0", reason = "not reachable; expires=2026-12-31; ref=docs/r.md" },\n]\n`;
+    const text = `${ANCHOR}[advisories]\nignore = [\n  { crate = "openssl@0.10.0", reason = "not reachable; expires=2026-12-31; ref=docs/r.md" },\n]\nunmaintained = "all"\n`;
     expectGreen({ "deny.toml": text });
   });
 });
@@ -328,9 +328,26 @@ describe("item 11: equivalent mechanisms are waivers", () => {
 
   test("the fleet base deny.toml (Y43) carries no waiver", () => {
     const base =
-      '[graph]\nall-features = true\n\n[advisories]\nyanked = "deny"\n\n[licenses]\nconfidence-threshold = 0.9\nprivate = { ignore = true }\nallow = [\n  "MIT",\n  "Apache-2.0 WITH LLVM-exception",\n]\n';
+      '[graph]\nall-features = true\n\n[advisories]\nyanked = "deny"\nunmaintained = "all"\n\n[licenses]\nconfidence-threshold = 0.9\nprivate = { ignore = true }\nallow = [\n  "MIT",\n  "Apache-2.0 WITH LLVM-exception",\n]\n';
     const output = expectGreen({ "deny.toml": base });
     expect(output).toContain("0 waiver(s) read");
+  });
+
+  test("the fleet base as it stood before the key was written is refused, with nothing else in it", () => {
+    // cargo-deny 0.22.0 reads the absent key as "workspace": the scope is
+    // narrowed without a line that says so.
+    const before =
+      '[graph]\nall-features = true\n\n[advisories]\nyanked = "deny"\n\n[licenses]\nconfidence-threshold = 0.9\n';
+    const output = expectRed({ "deny.toml": before }, "IMPLICIT-SCOPE deny.toml:4");
+    expect(output).toContain("0 waiver(s) read");
+  });
+
+  test("a cargo-deny file with no [advisories] table is refused the same way", () => {
+    expectRed(
+      { "deny.toml": '[licenses]\nallow = ["MIT"]\n', "crates/sdk/deny.toml": "[bans]\n" },
+      "IMPLICIT-SCOPE deny.toml:1",
+      "IMPLICIT-SCOPE crates/sdk/deny.toml:1",
+    );
   });
 });
 
