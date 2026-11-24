@@ -1,0 +1,291 @@
+{
+  "threatModel": "docs/security/THREAT-MODEL.md",
+  "gateGlob": "tools/quality/check-*",
+  "gates": [
+    {
+      "path": "tools/quality/check-adr-citations.ts",
+      "covers": [],
+      "because": "no threat row: an ADR citation in an authority document names its series, and a redirection page in docs/adr points at a tracked file."
+    },
+    {
+      "path": "tools/quality/check-adr-supersession.ts",
+      "covers": [],
+      "because": "no threat row: an ADR that is amended, superseded or replaced says so in its own header."
+    },
+    {
+      "path": "tools/quality/check-advisory-waivers.ts",
+      "covers": [],
+      "because": "no threat row: the advisory waivers of docs/security/ADVISORY-WAIVER-POLICY.md follow that policy, with its clock-dependent expiry judged against the date."
+    },
+    {
+      "path": "tools/quality/check-api-compatibility.ts",
+      "covers": [],
+      "because": "no threat row: a crate's public API is compared to a git baseline with cargo-semver-checks, so a removed public item cannot ship without a version increment."
+    },
+    {
+      "path": "tools/quality/check-artifact-lifecycle.ts",
+      "covers": [],
+      "because": "no threat row: every untracked or tracked file carries an ephemerality marker, and every marker has a condition that is not overdue."
+    },
+    {
+      "path": "tools/quality/check-audit-delta.ts",
+      "covers": [],
+      "because": "no threat row: a pull request is judged only on the advisories its own lockfile change introduces, both sides being audited from the lockfile."
+    },
+    {
+      "path": "tools/quality/check-bilingual-parity.ts",
+      "covers": [],
+      "because": "no threat row: the French and English normative specifications keep the same version, headings, code blocks and table row counts."
+    },
+    {
+      "path": "tools/quality/check-brand-platform.ts",
+      "covers": [],
+      "because": "no threat row: the file has no header comment; from its code, it refuses forbidden commercial claims in the brand documents."
+    },
+    {
+      "path": "tools/quality/check-bun-manifests.ts",
+      "covers": [],
+      "because": "no threat row: every manifest resolves the Bun toolchain contract through the local or the pinned governance tooling."
+    },
+    {
+      "path": "tools/quality/check-bun-minimum.ts",
+      "covers": [],
+      "because": "no threat row: the file has no header comment; from its code, it checks that the running Bun is at least the minimumVersion of toolchains/bun.json."
+    },
+    {
+      "path": "tools/quality/check-consumable-manifest.ts",
+      "covers": [],
+      "because": "no threat row: a manifest installed as a sha-pinned git-dep declares no specifier that resolves only inside this workspace."
+    },
+    {
+      "path": "tools/quality/check-context-hygiene.sh",
+      "covers": [],
+      "because": "no threat row: private identifiers and machine-local paths are absent from the public tree."
+    },
+    {
+      "path": "tools/quality/check-data-inventory.ts",
+      "covers": [],
+      "because": "no threat row: every tracked file that is neither code nor Markdown is classified, so that no data file can loosen a guarded gate unseen."
+    },
+    {
+      "path": "tools/quality/check-dead-code.ts",
+      "covers": [],
+      "because": "no threat row: no source is unreachable from an entry point, no export is unreferenced, and no declared dependency is unused."
+    },
+    {
+      "path": "tools/quality/check-declared-licenses.ts",
+      "covers": [],
+      "because": "no threat row: the licence a publishable manifest declares matches the effective REUSE licence of its files."
+    },
+    {
+      "path": "tools/quality/check-dependency-policy.ts",
+      "covers": [],
+      "because": "no threat row: the repository's deny.toml is executed by cargo-deny against its committed Cargo graph, for bans, licenses and sources."
+    },
+    {
+      "path": "tools/quality/check-doc-commands.ts",
+      "covers": [],
+      "because": "no threat row: a `bun run` command written in a declared document names a script package.json defines, or carries a named exemption."
+    },
+    {
+      "path": "tools/quality/check-doctrine-governance.sh",
+      "covers": [],
+      "because": "no threat row: doctrine exists only in the invariants register, every accepted ADR carries its owner-arbitration trace, and retired doctrine cannot resurface."
+    },
+    {
+      "path": "tools/quality/check-document-staleness.ts",
+      "covers": [],
+      "because": "no threat row: long and unedited governance documents are listed for a human audit (migrate, archive or reconfirm); the command only lists."
+    },
+    {
+      "path": "tools/quality/check-empty-allowances.ts",
+      "covers": [],
+      "because": "no threat row: every allowEmpty call is nominatively listed in code, so that no gate silences itself without a reviewed entry."
+    },
+    {
+      "path": "tools/quality/check-forbidden-literals.ts",
+      "covers": [],
+      "because": "no threat row: tracked source refuses a download handed to an interpreter, a permission opened to every account, an IPv4 connection target and a tolerated workflow failure without a reason."
+    },
+    {
+      "path": "tools/quality/check-forgotten.ts",
+      "covers": [],
+      "because": "no threat row: evicted content does not reappear in the tree, no tracked file names an evicted path, and every recoverable location resolves."
+    },
+    {
+      "path": "tools/quality/check-history-blobs.ts",
+      "covers": [],
+      "because": "no threat row: heavy objects in a repository's history are listed with a recommendation, and project names that name a tool are reported; nothing is rewritten."
+    },
+    {
+      "path": "tools/quality/check-identifier-fingerprints.ts",
+      "covers": [],
+      "because": "no threat row: identifiers that must not appear in the tree are found by the SHA-256 of their tokens, without the identifiers being written in readable form."
+    },
+    {
+      "path": "tools/quality/check-import-boundaries.ts",
+      "covers": [],
+      "because": "no threat row: every import specifier of a package respects its declared dependencies, and no specifier names a product package."
+    },
+    {
+      "path": "tools/quality/check-issue-forms.ts",
+      "covers": [],
+      "because": "no threat row: the organisation's issue forms keep the required fields, labels and headings that the gates read."
+    },
+    {
+      "path": "tools/quality/check-js-licenses.ts",
+      "covers": [],
+      "because": "no threat row: third-party JavaScript licences belong to the reviewed allowed list, and first-party licences are decided by resolved source."
+    },
+    {
+      "path": "tools/quality/check-kernel-status-authority.ts",
+      "covers": [],
+      "because": "no threat row: the K1 to K5 status table of the loop security kernel is the single source that every other status claim must match."
+    },
+    {
+      "path": "tools/quality/check-mutation-rust.ts",
+      "covers": [],
+      "because": "no threat row: each Rust crate reaches its mutation survivor threshold, and a run that generates zero mutant is a failure, never a pass."
+    },
+    {
+      "path": "tools/quality/check-no-clever-production.ts",
+      "covers": [],
+      "because": "no threat row: no Clever Cloud resource and no production claim appears in living surfaces before G4."
+    },
+    {
+      "path": "tools/quality/check-no-transmission.ts",
+      "covers": [],
+      "because": "no threat row: the local-only apps do not import or call any network primitive, so user data never leaves the device."
+    },
+    {
+      "path": "tools/quality/check-objectives.ts",
+      "covers": [],
+      "because": "no threat row: the objective files, the forbidden-statement scan and the vision corpus are each verified, and a scan that inspects no file fails."
+    },
+    {
+      "path": "tools/quality/check-opaque-secret-fields.ts",
+      "covers": [],
+      "because": "no threat row: credentials carried under a non-issuer shape (hexadecimal or base64 values, literals in secret-named fields) are detected."
+    },
+    {
+      "path": "tools/quality/check-personal-data-boundary.ts",
+      "covers": [],
+      "because": "no threat row: the published tree carries no instance data about organisations or natural persons (invariant I-21)."
+    },
+    {
+      "path": "tools/quality/check-pinned-citations.ts",
+      "covers": [],
+      "because": "no threat row: every pinned code citation names a commit, a path and lines that exist."
+    },
+    {
+      "path": "tools/quality/check-pr-door.ts",
+      "covers": [],
+      "because": "no threat row: every pull request declares whether its change can be walked back, names a second instrument for a one-way change, and declares its origin."
+    },
+    {
+      "path": "tools/quality/check-pr-negatives.ts",
+      "covers": [],
+      "because": "no threat row: the negatives a pull request declares about itself are not contradicted by its own diff."
+    },
+    {
+      "path": "tools/quality/check-prd-decomposition.ts",
+      "covers": [],
+      "because": "no threat row: every criterion of an approved PRD is cited by a row of the work-package table, and a specification with no criterion fails."
+    },
+    {
+      "path": "tools/quality/check-product-coupling.ts",
+      "covers": [],
+      "because": "no threat row: the declared shared source trees name no consuming product, under named patterns held in data."
+    },
+    {
+      "path": "tools/quality/check-refusals.ts",
+      "covers": [],
+      "because": "no threat row: the fleet refusals register has its declared shape, and every refusal rests on public, pinned or dated evidence."
+    },
+    {
+      "path": "tools/quality/check-relative-links.ts",
+      "covers": [],
+      "because": "no threat row: the relative links, reference definitions and HTML links of tracked Markdown resolve to files and to heading anchors, offline."
+    },
+    {
+      "path": "tools/quality/check-resolved-refs.ts",
+      "covers": [],
+      "because": "no threat row: a branch supplied to a request is resolved from the repository, never written as a literal."
+    },
+    {
+      "path": "tools/quality/check-retired-names.ts",
+      "covers": [],
+      "because": "no threat row: retired tooling names are not reused as a workspace directory or as a package or crate name."
+    },
+    {
+      "path": "tools/quality/check-retired-repository-names.ts",
+      "covers": [],
+      "because": "no threat row: repository names retired by the authority consolidation are not referenced operationally."
+    },
+    {
+      "path": "tools/quality/check-review-evidence.ts",
+      "covers": ["R7"],
+      "because": "a pull request that mutates the human-touch surface (I-17: the registers and the ADRs) must point at a review artefact or at a dated owner-arbitration marker, so that no agent review stands for the human touch."
+    },
+    {
+      "path": "tools/quality/check-rule-feedback.ts",
+      "covers": [],
+      "because": "no threat row: a rule feedback ticket carries identifiers only, in its declared shape, so that no rule text or project description leaves the machine."
+    },
+    {
+      "path": "tools/quality/check-secret-scan.ts",
+      "covers": [],
+      "because": "no threat row: no committed credential (cloud key, VCS or CI token, private key) appears in a living surface."
+    },
+    {
+      "path": "tools/quality/check-shell-lint.sh",
+      "covers": [],
+      "because": "no threat row: every tracked shell script passes shellcheck at error severity."
+    },
+    {
+      "path": "tools/quality/check-source-policy.ts",
+      "covers": [],
+      "because": "no threat row: the file has no header comment; from its code, it refuses non-bun lockfiles and plain JavaScript sources in the tree, and fails if it read no file."
+    },
+    {
+      "path": "tools/quality/check-specification-lock.ts",
+      "covers": [],
+      "because": "no threat row: the application specifications are locked in governance mode or in product-repository mode, and zero inspected specifications is a failure."
+    },
+    {
+      "path": "tools/quality/check-third-parties.ts",
+      "covers": [],
+      "because": "no threat row: the third-party exit register has its declared shape, and no exit exercise past its due date lacks a record."
+    },
+    {
+      "path": "tools/quality/check-threat-model-citations.ts",
+      "covers": [],
+      "because": "no threat row: every I-xx cited in the declared security documents is a live register row, and a mention of a retired row is admitted only as declared in data."
+    },
+    {
+      "path": "tools/quality/check-threat-model-coverage.ts",
+      "covers": [],
+      "because": "no threat row: every tracked gate has exactly one coverage entry, and every covers identifier is a row of the threat model; the relevance of a covers is not judged."
+    },
+    {
+      "path": "tools/quality/check-threat-model-evidence.ts",
+      "covers": [],
+      "because": "no threat row: every threat of the STRIDE and LINDDUN section names an existing control or a residual, and the evidence the ledger names exists."
+    },
+    {
+      "path": "tools/quality/check-toolchain.ts",
+      "covers": [],
+      "because": "no threat row: the toolchain contract is satisfied through the local or the pinned governance tooling."
+    },
+    {
+      "path": "tools/quality/check-volatile-values.ts",
+      "covers": [],
+      "because": "no threat row: a version, a date or a count written in a root document is derived by a named command, not typed by hand."
+    },
+    {
+      "path": "tools/quality/check-work-package-link.ts",
+      "covers": [],
+      "because": "no threat row: every pull request names the work package it delivers, through a commit trailer, or an exemption class it verifies."
+    }
+  ]
+}

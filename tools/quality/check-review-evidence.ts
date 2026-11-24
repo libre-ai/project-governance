@@ -152,6 +152,9 @@ export const GATED_PATH_PATTERNS: readonly RegExp[] = [
   /^tools\/quality\/threat-model-citations\.v1\.json$/,
   // check-doc-commands.ts: the documents whose `bun run` commands are read, and the commands it admits.
   /^tools\/quality\/doc-commands\.v1\.json$/,
+  // check-threat-model-coverage.ts: which threat rows each gate claims to cover; an
+  // entry with an empty `covers` lets a gate stand without a threat behind it.
+  /^tools\/quality\/threat-model-coverage\.v1\.json$/,
   // check-skills-security.ts: the patterns a skill line is refused on.
   /^tools\/skills\/skills-security-patterns\.v1\.json$/,
   // check-ref-monotonicity.py: a composed ref allowed to move backwards or sideways.
@@ -215,6 +218,7 @@ export const GATED_PATHSPECS: readonly string[] = [
   "tools/quality/pr-negatives.v1.json",
   "tools/quality/threat-model-citations.v1.json",
   "tools/quality/doc-commands.v1.json",
+  "tools/quality/threat-model-coverage.v1.json",
   "tools/skills/skills-security-patterns.v1.json",
   ".github/composition/ref-monotonicity-exemptions.json",
   "ecosystem/release-age-exceptions.v1.yaml",
