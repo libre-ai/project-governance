@@ -152,6 +152,11 @@ jobs:
   bun-quality:
     name: Bun quality
     runs-on: ubuntu-latest
+    # Without it the job falls back to the 360-minute default, below the worst case of every
+    # attestation child hanging until its test budget ends (issue #299): the run is then
+    # cancelled instead of failing. Measured 2026-11-23 on the 10 latest completed runs of this
+    # workflow: the job took 223 s to 295 s. The bound is 20 minutes (1200 s).
+    timeout-minutes: 20
     steps:
       # Full history: `check:forgotten` proves each evicted tree is still recoverable
       # at the commit its register entry records. Unverifiable in a shallow clone.
