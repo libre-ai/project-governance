@@ -119,7 +119,7 @@ jobs:
 
       - name: Install licensing checker
         shell: bash
-        run: pipx install reuse==6.2.0
+        run: pipx install reuse==6.3.0
 
       # docs/toolchain/OSV-ADVISORY-DATABASE.md: a target whose gate reads the
       # offline OSV advisory database (OFFLINE_ADVISORY_DATABASES in
