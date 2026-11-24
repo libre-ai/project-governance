@@ -62,7 +62,7 @@ repository is `residual:` rather than supposed.
 
 | ID | Threat | Evidence |
 | --- | --- | --- |
-| T-S1-01 | Injected script modifies Boussole state | `ecosystem/check-web-headers.ts`, `ecosystem/check-web-headers.test.ts` :: `a relaxed script-src is refused, by token` |
+| T-S1-01 | Injected script modifies local application state | `ecosystem/check-web-headers.ts`, `ecosystem/check-web-headers.test.ts` :: `a relaxed script-src is refused, by token` |
 | T-S1-02 | Export JSON modified after generation | residual: the export digest and its verification at import live in the product repositories; this repository holds no file of that control and no commit of theirs was read for this ledger |
 | T-S1-03 | Notebook blocks synced to remote without consent | residual: the export flag lives in the Notebook repository; the no-transmission scanner kept here covers other local-only apps, not Notebook |
 | T-S2-01 | Browser session cookie stolen / fixed | residual: session rotation, cookie attributes and revocation live in the authentication repository; no commit of it was read for this ledger |
