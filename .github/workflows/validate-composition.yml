@@ -165,8 +165,12 @@ jobs:
             --root "$GITHUB_WORKSPACE/composition" --target "$INPUT_TARGET" --gate wasm \
             --bun "$(command -v bun)" --cargo "$(command -v cargo)" --node "$(command -v node)"
 
+      # personal-knowledge-workspace has no browser gate since the owner retired
+      # its Notebook app and the app's browser suite (2026-11-23):
+      # check-products.py refuses e2e for it, so listing it in the two browser
+      # steps would turn its composition red, not skip it.
       - name: Install browsers for the selected product
-        if: contains(fromJSON('["ai-work-supervision","personal-knowledge-workspace","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 - <<'PY'
@@ -175,7 +179,6 @@ jobs:
           import subprocess
           children = {
               'ai-work-supervision': 'packages/auth-web',
-              'personal-knowledge-workspace': 'apps/notebook',
               'project-website': '',
           }
           target = os.environ['INPUT_TARGET']
@@ -188,7 +191,7 @@ jobs:
           PY
 
       - name: Run selected browser suite sequentially
-        if: contains(fromJSON('["ai-work-supervision","personal-knowledge-workspace","project-website"]'), inputs.target)
+        if: contains(fromJSON('["ai-work-supervision","project-website"]'), inputs.target)
         shell: bash
         run: |
           python3 -B tooling/.github/composition/check-products.py \
