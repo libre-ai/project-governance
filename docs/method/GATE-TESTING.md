@@ -160,7 +160,8 @@ Chaque instance porte sa propre description ; cette note y renvoie et ne la reco
   `docs/method/LANGGRAPH-ENTRY-GATES.md` applique la preuve par mutant et l'environnement
   purgé à trois gates autonomes.
 - **Instruments d'attestation.** `tools/attestation/neutralise-check.ts` compte les sites de
-  refus, exige un marqueur par site, et classe un mutant qui plante à part d'un mutant tué.
+  refus, exige un marqueur par site, et classe à part d'un mutant tué un mutant qui plante et
+  un test arrêté par son délai.
 - **Lanceur de mutants.** `tools/quality/mutant.ts` produit et exécute les mutants décrits en
   donnée dans `tools/quality/mutants.v1.json` ; un outil qui y inscrit ses mutants n'écrit pas
   de procédure manuelle.

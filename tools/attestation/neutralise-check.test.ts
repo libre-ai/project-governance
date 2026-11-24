@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runChild } from "./child";
 import {
   census,
   judge,
@@ -10,7 +12,23 @@ import {
   neutralise,
   neutraliseJq,
   neutralisePython,
+  summarise,
 } from "./neutralise-check";
+
+/** Run one throwaway test file with the Bun under test, and return its report. */
+function bunTest(source: readonly string[]): { output: string; exitCode: number } {
+  const directory = mkdtempSync(join(tmpdir(), "neutralise-probe-"));
+  try {
+    writeFileSync(join(directory, "probe.test.ts"), `${source.join("\n")}\n`);
+    const run = runChild([process.execPath, "test", "./probe.test.ts"], {
+      cwd: directory,
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", HOME: directory, NO_COLOR: "1" },
+    });
+    return { output: `${run.stdout}${run.stderr}`, exitCode: run.exitCode };
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 describe("neutralise", () => {
   test("forces the whole condition to false, `||` included, and leaves the rest alone", () => {
@@ -136,8 +154,24 @@ describe("judge", () => {
     "",
   ].join("\n");
 
+  // Bun prints the timeout notice on the line AFTER the `(fail)` line, and the assertion that
+  // read the killed child's `null` exit code before it (issue #299).
+  const timedOut = [
+    "error: expect(received).toBe(expected)",
+    "Expected: 0",
+    "Received: null",
+    "(fail) group > red:a something [503.44ms]",
+    "  ^ this test timed out after 500ms.",
+    "",
+  ].join("\n");
+
   test("a failure with an assertion message is RED", () => {
-    expect(judge(assertionFailure, "a", 1)).toEqual({ label: "RED", assertions: 1, crashes: 0 });
+    expect(judge(assertionFailure, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 0,
+    });
   });
 
   test("a failure that only crashed is reported as such, not as caught", () => {
@@ -145,7 +179,105 @@ describe("judge", () => {
       label: "RED (crash only)",
       assertions: 0,
       crashes: 1,
+      timeouts: 0,
     });
+  });
+
+  test("a test ended by its time budget is BLOCKED, never RED, whatever assertion it failed", () => {
+    expect(judge(timedOut, "a", 1)).toEqual({
+      label: "BLOCKED (timed out)",
+      assertions: 0,
+      crashes: 0,
+      timeouts: 1,
+    });
+    // A timeout of another id is not this id's business, and does not leak into the next test.
+    expect(judge(`${timedOut.replace("red:a", "red:b")}${assertionFailure}`, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 0,
+    });
+  });
+
+  test("a timeout does not hide another red: test of the same id that failed by assertion", () => {
+    expect(judge(`${timedOut}${assertionFailure}`, "a", 1)).toEqual({
+      label: "RED",
+      assertions: 1,
+      crashes: 0,
+      timeouts: 1,
+    });
+    expect(judge(`${timedOut}${crashFailure}`, "a", 1).label).toBe("BLOCKED (timed out)");
+  });
+
+  test("the timeout notice is read from a real Bun run, not from a transcription of it", () => {
+    // The shape of issue #299: an assertion fails, then Bun reports the test's budget as spent.
+    // There the assertion read the `null` exit code of a child Bun killed; here the test blocks
+    // past its budget, which yields the same report without a child.
+    const run = bunTest([
+      'import { expect, test } from "bun:test";',
+      'test("red:probe-id blocks past its budget, then fails an assertion", () => {',
+      "  Bun.sleepSync(600);",
+      "  expect(1).toBe(0);",
+      "}, 300);",
+    ]);
+    expect(run.output).toContain("this test timed out after");
+    expect(run.output).toContain("error: expect(");
+    expect(judge(run.output, "probe-id", run.exitCode)).toEqual({
+      label: "BLOCKED (timed out)",
+      assertions: 0,
+      crashes: 0,
+      timeouts: 1,
+    });
+  });
+
+  test("a test stopped by its beforeEach or afterEach hook budget is BLOCKED (real Bun run)", () => {
+    const run = bunTest([
+      'import { beforeEach, describe, expect, test } from "bun:test";',
+      'describe("hooked", () => {',
+      "  beforeEach(async () => {",
+      "    await Bun.sleep(1000);",
+      "  }, 100);",
+      '  test("red:hook-id never starts", () => {',
+      "    expect(1).toBe(0);",
+      "  });",
+      "});",
+    ]);
+    expect(run.output).toContain("hook timed out for this test");
+    expect(judge(run.output, "hook-id", run.exitCode)).toEqual({
+      label: "BLOCKED (timed out)",
+      assertions: 0,
+      crashes: 0,
+      timeouts: 1,
+    });
+  });
+
+  test("an unhandled error between tests is no test's assertion (real Bun run)", () => {
+    // The first test leaves a timer that fails an assertion after it ended; Bun prints that
+    // error under `# Unhandled error between tests`, right before the next `(fail)` line.
+    const run = bunTest([
+      'import { beforeAll, describe, expect, test } from "bun:test";',
+      'test("red:leak-id ends before its timer fires", async () => {',
+      "  setTimeout(() => {",
+      "    expect(1).toBe(2);",
+      "  }, 50);",
+      "});",
+      'describe("later", () => {',
+      "  beforeAll(async () => {",
+      "    await Bun.sleep(200);",
+      "  });",
+      '  test("red:next-id crashes without an assertion", () => {',
+      '    throw new Error("crash");',
+      "  });",
+      "});",
+    ]);
+    expect(run.output).toContain("# Unhandled error between tests");
+    expect(judge(run.output, "next-id", run.exitCode)).toEqual({
+      label: "RED (crash only)",
+      assertions: 0,
+      crashes: 1,
+      timeouts: 0,
+    });
+    expect(judge(run.output, "leak-id", run.exitCode).label).toBe("STILL GREEN");
   });
 
   test("an exit code 0, or failures of other ids, are STILL GREEN", () => {
@@ -160,6 +292,47 @@ describe("judge", () => {
       crashFailure,
     ].join("\n");
     expect(judge(output, "a", 1).label).toBe("RED (crash only)");
+  });
+});
+
+describe("summarise", () => {
+  test("every mutant that is not RED is a problem, and one problem fails the run", () => {
+    const summary = summarise(
+      [
+        { file: "a.ts", label: "RED" },
+        { file: "a.ts", label: "BLOCKED (timed out)" },
+        { file: "b.sh", label: "RED (crash only)" },
+        { file: "b.sh", label: "STILL GREEN" },
+        { file: "b.sh", label: "RED" },
+      ],
+      0,
+    );
+    expect(summary.problems).toBe(3);
+    expect(summary.exitCode).toBe(1);
+  });
+
+  test("all RED and no structural problem pass; a structural problem alone fails", () => {
+    const red = [
+      { file: "a.ts", label: "RED" as const },
+      { file: "b.sh", label: "RED" as const },
+    ];
+    expect(summarise(red, 0)).toMatchObject({ problems: 0, exitCode: 0, mutated: 2 });
+    expect(summarise(red, 1)).toMatchObject({ problems: 1, exitCode: 1 });
+    expect(summarise([], 0)).toMatchObject({ problems: 0, exitCode: 0, mutated: 0 });
+  });
+
+  test("the per-file lines sum to the mutants, in the order red, crash only, timed out, still green", () => {
+    const summary = summarise(
+      [
+        { file: "a.ts", label: "STILL GREEN" },
+        { file: "a.ts", label: "RED" },
+        { file: "a.ts", label: "BLOCKED (timed out)" },
+        { file: "b.sh", label: "RED (crash only)" },
+      ],
+      0,
+    );
+    expect(summary.lines).toEqual(["  a.ts: 3 = 1 + 0 + 1 + 1", "  b.sh: 1 = 0 + 1 + 0 + 0"]);
+    expect(summary.mutated).toBe(4);
   });
 });
 

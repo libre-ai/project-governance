@@ -722,6 +722,20 @@ function scanBlob(
   if (classes.length > 0) add("blob", classes.join("+"), entry.oid);
 }
 
+/**
+ * Classes of one file read by the `text` command. Above the size limit (`maximumBlobBytes`, the
+ * same bound as a blob, default 64 MiB) the file is refused whole rather than partly scanned.
+ * The limit is an option so that a test can prove the refusal on a few bytes: proved on a 64 MiB
+ * file, a neutralised refusal let the scan run past the test's time budget, and the mutant was
+ * "caught" by the clock, not by an assertion (issue #299).
+ */
+export function classesOfText(bytes: Buffer, options: ScanOptions): string[] {
+  // neutralise:text-limit
+  if (bytes.length > (options.maximumBlobBytes ?? defaultMaximumBlobBytes))
+    return ["resource-limit"];
+  return classesOfBytes(bytes, options);
+}
+
 /** Content classes of raw bytes: latin1, UTF-16LE when a NUL byte is present, and strict UTF-8. */
 export function classesOfBytes(body: Buffer, options: ScanOptions): string[] {
   const classes = new Set(contentClasses(body.toString("latin1"), options));
@@ -1083,10 +1097,7 @@ function run(args: readonly string[]): number {
     // output names a file and a class, never the matched bytes.
     const results = positional.slice(1).map((path) => {
       const bytes = readOperatorFile(path, "input file");
-      let classes: string[];
-      // neutralise:text-limit
-      if (bytes.length > defaultMaximumBlobBytes) classes = ["resource-limit"];
-      else classes = classesOfBytes(bytes, options);
+      const classes = classesOfText(bytes, options);
       return { file: path.split("/").at(-1) ?? path, bytes: bytes.length, classes };
     });
     console.log(JSON.stringify({ files: results.length, results }, null, 2));
