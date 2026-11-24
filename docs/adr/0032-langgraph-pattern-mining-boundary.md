@@ -1,6 +1,6 @@
 # ADR-0032 — LangGraph comme oracle de patterns et de pannes, jamais comme autorité
 
-- **Statut :** accepted — ratification propriétaire par merge de `14b88be` le 2026-09-09, après revues à rôles séparés ; D1–D5 et D38 sont en vigueur. **Amendé par :** ADR-0058 (D1 et D38 pour le worker : LangGraph JS est un runtime admis du graphe interne d'un worker TypeScript).
+- **Statut :** accepted — ratification propriétaire par merge de `14b88be` le 2026-09-09, après revues à rôles séparés ; D1–D5 et D38 sont en vigueur. **Amendé par :** ADR-0058 (D1 et D38 pour le worker : LangGraph JS est un runtime admis du graphe interne d'un worker TypeScript), ADR-0063 (D4 : l'amendement d'ADR-0058 est renversé pour les produits, la fabrique et le harness ; D38 retrouve sa forme initiale, « jamais une autorité, jamais un runtime servi » ; D2 à D5 restent en vigueur mot pour mot, D123).
 - **Date :** 2026-09-09
 - **Arbitrage :** propriétaire, session du 2026-09-09 — option C retenue parmi trois positions : adoption comme cœur, simple benchmark ponctuel, ou oracle de recherche non normatif fortement réversible.
 - **Portée :** méthode d'étude de LangGraph/LangChain, frontière d'autorité d'un éventuel worker LangGraph et conditions préalables à toute évolution contractuelle.
