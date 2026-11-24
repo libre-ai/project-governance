@@ -154,4 +154,18 @@ describe("ghGraphQLRaw", () => {
     // the exit code instead of treating non-zero as "no data".
     expect(hasUsableGraphQLData(JSON.parse(result.stdout))).toBe(true);
   });
+
+  test("a gh that closes its stdin unread is judged on its exit code and output alone", async () => {
+    // The query is larger than a pipe buffer, so writing it to a `gh` that closed its stdin
+    // fails with EPIPE after the write call has returned. On Linux that rejection, left
+    // unhandled, ends the calling gate with exit 1 whatever `gh` answered (seen in CI); the
+    // shimmed runner then fails instead of printing the three channels.
+    const result = await ghGraphQLRawUnderShim(
+      '#!/bin/sh\nexec 0<&-\nsleep 0.2\nprintf \'{"data":{}}\'\nprintf "unread\\n" >&2\nexit 1\n',
+      `query { ${"__typename ".repeat(90_000)}}`,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('{"data":{}}');
+    expect(result.stderr.trim()).toBe("unread");
+  });
 });

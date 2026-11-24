@@ -21,8 +21,13 @@
  *    unbalance the structure and turn everything red for the wrong reason), runs the tests named
  *    `red:<id> `, and requires one to fail BY ASSERTION. A test that only crashes proves the
  *    mutant breaks the program, not that the test checks anything: it is reported as "crash
- *    only" and counted as a problem. The shell checks are mutated by exact text substitution
- *    (`fileMutations`), and the marker ids of that file must equal the substitution ids.
+ *    only" and counted as a problem. A test Bun ended on its time budget proves nothing either,
+ *    whatever assertion it failed on the way (a killed child's exit code reads `null`): it is
+ *    reported as "timed out" and counted as a problem. The tests start their children through
+ *    `child.ts`, which turns a killed child into a thrown error naming the signal, so a child's
+ *    own budget reads as a crash, not as an assertion. The shell checks are mutated by exact
+ *    text substitution (`fileMutations`), and the marker ids of that file must equal the
+ *    substitution ids.
  *
  * The same `red:` test may serve a TypeScript marker and a shell marker of the same id (the
  * shallow and ASCII refusals are asserted on both implementations); that overlap is listed.
@@ -210,29 +215,73 @@ export function neutraliseJq(source: string, id: string): string | null {
 }
 
 export interface Verdict {
-  readonly label: "RED" | "RED (crash only)" | "STILL GREEN";
+  readonly label: "RED" | "RED (crash only)" | "BLOCKED (timed out)" | "STILL GREEN";
   readonly assertions: number;
   readonly crashes: number;
+  readonly timeouts: number;
 }
 
-/** Classify the failures of a `bun test` run for one id. Pure: takes the raw output. */
+/**
+ * Bun's notices that it ended a test on a time budget, its own or that of a `beforeEach` or
+ * `afterEach` hook. Each is printed on the line right after the `(fail)` line of that test
+ * (measured with 1.4.0-canary.1: `  ^ this test timed out after 500ms.` and
+ * `  ^ a beforeEach/afterEach hook timed out for this test.`).
+ */
+const timeoutNotice = /this test timed out after|hook timed out for this test/;
+
+/**
+ * Bun's frame around an error thrown while no test runs (a late timer of an async test): the
+ * header, then the error between two rules of dashes. It is printed before the `(fail)` line of
+ * whatever test fails next, and belongs to none.
+ */
+const unhandledHeader = "# Unhandled error between tests";
+const rule = /^-+$/;
+
+/**
+ * Classify the failures of a `bun test` run for one id. Pure: takes the raw output.
+ *
+ * A failing `red:` test counts in exactly one of three counters. A test Bun ended on its time
+ * budget is a timeout, whatever assertion it failed on the way: when Bun kills a child in
+ * flight, its exit code reads `null` and the assertion on it fails, so that assertion says
+ * nothing about the mutant (issue #299). Only an assertion failure proves the mutant; a run
+ * whose only failures are timeouts is BLOCKED (no verdict), one whose only failures are
+ * crashes is "crash only". An unhandled error between tests is dropped: an assertion it
+ * carries belongs to no test, and counting it would credit the next failing test with it.
+ */
 export function judge(output: string, id: string, exitCode: number): Verdict {
   let assertions = 0;
   let crashes = 0;
+  let timeouts = 0;
   let chunk: string[] = [];
-  for (const line of output.split("\n")) {
+  // Rules still to cross inside an unhandled-error frame; its lines join no test's chunk.
+  let rulesLeft = 0;
+  const lines = output.split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] as string;
+    if (rulesLeft > 0) {
+      if (rule.test(line)) rulesLeft -= 1;
+      continue;
+    }
+    if (line === unhandledHeader) {
+      rulesLeft = 2;
+      continue;
+    }
     if (line.startsWith("(fail) ")) {
       if (line.includes(`red:${id} `)) {
-        if (chunk.some((text) => /error: expect\(/.test(text))) assertions += 1;
+        if (timeoutNotice.test(lines[index + 1] ?? "")) timeouts += 1;
+        else if (chunk.some((text) => /error: expect\(/.test(text))) assertions += 1;
         else crashes += 1;
       }
       chunk = [];
     } else if (line.startsWith("(pass) ")) chunk = [];
     else chunk.push(line);
   }
-  if (exitCode === 0 || assertions + crashes === 0)
-    return { label: "STILL GREEN", assertions, crashes };
-  return { label: assertions > 0 ? "RED" : "RED (crash only)", assertions, crashes };
+  const counts = { assertions, crashes, timeouts };
+  if (exitCode === 0 || assertions + crashes + timeouts === 0)
+    return { label: "STILL GREEN", ...counts };
+  if (assertions > 0) return { label: "RED", ...counts };
+  if (timeouts > 0) return { label: "BLOCKED (timed out)", ...counts };
+  return { label: "RED (crash only)", ...counts };
 }
 
 interface Edit {
@@ -401,6 +450,17 @@ const fileMutations: readonly FileMutation[] = [
     edits: [{ find: 'GIT_NO_REPLACE_OBJECTS: "1",', replace: "" }],
   },
   {
+    // A piped stderr counts against maxBuffer: a long git error reads as an output overrun.
+    id: "git-stderr-ignored",
+    file: scanner,
+    edits: [
+      {
+        find: 'stderr: "ignore",\n    maxBuffer: gitOutputLimit,',
+        replace: 'stderr: "pipe",\n    maxBuffer: gitOutputLimit,',
+      },
+    ],
+  },
+  {
     id: "headers-orphan",
     file: scanner,
     edits: [
@@ -425,6 +485,23 @@ const fileMutations: readonly FileMutation[] = [
     file: scanner,
     edits: [{ find: '"--strict",', replace: "" }],
   },
+  {
+    // A killed child returns its `null` exit code instead of throwing (issue #299).
+    id: "child-signal",
+    file: "child.ts",
+    edits: [
+      {
+        find: "if (exitCode === null || (result.signalCode !== undefined && result.signalCode !== null))",
+        replace: "if (false)",
+      },
+    ],
+  },
+  {
+    // The child runs without a budget of its own.
+    id: "child-timeout",
+    file: "child.ts",
+    edits: [{ find: "timeout: timeoutMs,", replace: "timeout: undefined," }],
+  },
 ];
 
 function runTests(directory: string, filter?: string): { code: number; output: string } {
@@ -439,6 +516,49 @@ function mutantOf(instrument: Instrument, source: string, id: string): string | 
   if (instrument.language === "py") return neutralisePython(source, id);
   if (instrument.language === "jq") return neutraliseJq(source, id);
   return null;
+}
+
+export interface MutantOutcome {
+  readonly file: string;
+  readonly label: Verdict["label"];
+}
+
+export interface Summary {
+  /** One line per file: mutated = red + crash only + timed out + still green. */
+  readonly lines: readonly string[];
+  readonly mutated: number;
+  /** The structural problems plus every mutant whose label is not RED. */
+  readonly problems: number;
+  readonly exitCode: 0 | 1;
+}
+
+const labelOrder: readonly Verdict["label"][] = [
+  "RED",
+  "RED (crash only)",
+  "BLOCKED (timed out)",
+  "STILL GREEN",
+];
+
+/**
+ * The verdict of a run. Pure: takes the label of every mutant and the count of structural
+ * problems (uncovered sites, duplicate ids, missing substitutions, unmatched mutations). Only
+ * RED proves a mutant; every other label is a problem, and one problem fails the run.
+ */
+export function summarise(outcomes: readonly MutantOutcome[], structuralProblems: number): Summary {
+  const perFile = new Map<string, Map<Verdict["label"], number>>();
+  for (const { file, label } of outcomes) {
+    const labels = perFile.get(file) ?? new Map<Verdict["label"], number>();
+    labels.set(label, (labels.get(label) ?? 0) + 1);
+    perFile.set(file, labels);
+  }
+  const lines = [...perFile].map(([file, labels]) => {
+    const counts = labelOrder.map((label) => labels.get(label) ?? 0);
+    const mutated = counts.reduce((sum, count) => sum + count, 0);
+    return `  ${file}: ${mutated} = ${counts.join(" + ")}`;
+  });
+  const unproved = outcomes.filter((outcome) => outcome.label !== "RED").length;
+  const problems = structuralProblems + unproved;
+  return { lines, mutated: outcomes.length, problems, exitCode: problems === 0 ? 0 : 1 };
 }
 
 function main(requested: readonly string[]): number {
@@ -480,13 +600,7 @@ function main(requested: readonly string[]): number {
   const work = mkdtempSync(join(tmpdir(), "neutralise-"));
   let markerRuns = 0;
   let substitutionRuns = 0;
-  const tally = new Map<string, { mutated: number; red: number }>();
-  const count = (file: string, red: boolean): void => {
-    const entry = tally.get(file) ?? { mutated: 0, red: 0 };
-    entry.mutated += 1;
-    if (red) entry.red += 1;
-    tally.set(file, entry);
-  };
+  const outcomes: MutantOutcome[] = [];
   try {
     const target = join(work, "tools", "attestation");
     cpSync(here, target, {
@@ -509,11 +623,9 @@ function main(requested: readonly string[]): number {
       const result = runTests(work, `red:${id} `);
       writeFileSync(join(target, file), original);
       const verdict = judge(result.output, id, result.code);
-      const red = verdict.label === "RED";
-      count(file, red);
-      if (!red) problems += 1;
+      outcomes.push({ file, label: verdict.label });
       console.log(
-        `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es): ${verdict.label}`,
+        `${label}: neutralised -> exit ${result.code}, ${verdict.assertions} assertion failure(s), ${verdict.crashes} crash(es), ${verdict.timeouts} timeout(s): ${verdict.label}`,
       );
     };
     for (const { instrument, source, ids } of targets) {
@@ -550,16 +662,15 @@ function main(requested: readonly string[]): number {
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
-  console.log("Neutralised per file (mutated / red by assertion):");
-  let total = 0;
-  for (const [file, entry] of tally) {
-    total += entry.mutated;
-    console.log(`  ${file}: ${entry.mutated} / ${entry.red}`);
-  }
   console.log(
-    `${total} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${problems} problem(s)`,
+    "Neutralised per file (mutated = red by assertion + crash only + timed out + still green):",
   );
-  return problems === 0 ? 0 : 1;
+  const summary = summarise(outcomes, problems);
+  for (const line of summary.lines) console.log(line);
+  console.log(
+    `${summary.mutated} check(s) neutralised = ${markerRuns} marker-driven + ${substitutionRuns} substitutions; ${summary.problems} problem(s)`,
+  );
+  return summary.exitCode;
 }
 
 if (import.meta.main) process.exitCode = main(process.argv.slice(2));
