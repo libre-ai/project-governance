@@ -1,0 +1,109 @@
+name: reusable-doc-commands
+# Fleet gate template: every command a declared document shows names something
+# that exists in the repository that shows it, a `bun run` script of its
+# package manifest or a package or binary of its Cargo manifests
+# (tools/quality/check-doc-commands.ts, whose header states the grammar, what
+# is not recognised and what is deliberately not asserted). Commands are
+# resolved by name: nothing a document shows is run.
+#
+# Published, not wired: no workflow of this repository calls it.
+#
+# Consumed as
+#   uses: libre-ai/project-governance/.github/workflows/reusable-doc-commands.yml@<sha>
+#   with:
+#     tooling_ref: <sha>
+# with tooling_ref pinned to the SAME sha. A gate evolution is a sha bump in
+# the consuming repository.
+#
+# The consuming repository declares its documents, its manifests and its
+# exemptions in ITS OWN registry, `tools/quality/doc-commands.v1.json`:
+#   { "manifest": "package.json", "cargo": "Cargo.toml",
+#     "documents": [{ "path": "...", "because": "..." }], "exemptions": [] }
+# with at least one of `manifest` and `cargo`. A repository without that file
+# gets a red job, never a green one.
+#
+# The trigger belongs to the CALLER (`pull_request`, `push`). Never
+# `pull_request_target`: it would run this job with the secrets and the write
+# token of the base repository over a head its author controls. This file
+# therefore declares `workflow_call` and nothing else
+# (tools/quality/reusable-doc-commands.test.ts asserts it).
+#
+# Prerequisites on the caller:
+#   - the calling job must grant `contents: read` (the called workflow cannot
+#     exceed the caller's grant);
+#   - no step that executes code of the pull request runs before this job: the
+#     pull request is the input the gate judges, never the program that judges it.
+#
+# Where the gate comes from, and where it runs: the governance repository at
+# tooling_ref is fetched into $RUNNER_TEMP/governance-tooling, outside the
+# workspace of the pull request, and the gate RUNS FROM THAT DIRECTORY (Bun
+# reads `bunfig.toml` and `.env` from its working directory; the measurements
+# are in reusable-work-package-link.yml). The gate reads the pull request only
+# through the absolute GITHUB_WORKSPACE it is given as an argument, refuses a
+# registry path or a symbolic link that leaves it, writes nothing, and is given
+# no token.
+#
+# Every step is pinned to exactly these lines by the structure test, and no
+# `env:` or `defaults:` exists above the steps.
+
+on:
+  workflow_call:
+    inputs:
+      tooling_ref:
+        description: >-
+          Full commit (40 lowercase hexadecimal characters) of
+          libre-ai/project-governance providing tools/quality
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  doc-commands:
+    name: Doc commands
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fetch the governance tooling at the pinned revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          TOOLING_REF: ${{ inputs.tooling_ref }}
+        run: |
+          if [[ ! "$TOOLING_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::tooling_ref must be a full commit of 40 lowercase hexadecimal characters"
+            exit 1
+          fi
+          TOOLING_DIR="$RUNNER_TEMP/governance-tooling"
+          mkdir "$TOOLING_DIR"
+          git init --quiet "$TOOLING_DIR"
+          git -C "$TOOLING_DIR" fetch --quiet --depth=1 https://github.com/libre-ai/project-governance.git "$TOOLING_REF"
+          git -C "$TOOLING_DIR" checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$TOOLING_DIR" rev-parse HEAD)" = "$TOOLING_REF"
+      - name: Install archived Bun toolchain
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        env:
+          BUN_ARCHIVE_URL: https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip
+          BUN_ARCHIVE_SHA256: 83144e2542c33aaae541cf16b42f8cf1c55c3b94c5395fc776417fa27e95bcbf
+        run: |
+          curl --fail --location --retry 3 --output "$RUNNER_TEMP/bun.zip" "$BUN_ARCHIVE_URL"
+          echo "$BUN_ARCHIVE_SHA256  $RUNNER_TEMP/bun.zip" | sha256sum --check --strict
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/bun-linux-x64" >> "$GITHUB_PATH"
+      - name: Verify the exact Bun revision
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: test "$(bun --revision)" = "1.4.0-canary.1+57f349f63"
+      - name: Resolve the commands of the declared documents
+        shell: bash
+        working-directory: ${{ runner.temp }}/governance-tooling
+        run: |
+          bun --no-env-file tools/quality/check-bun-minimum.ts
+          bun --no-env-file tools/quality/check-doc-commands.ts "$GITHUB_WORKSPACE"
