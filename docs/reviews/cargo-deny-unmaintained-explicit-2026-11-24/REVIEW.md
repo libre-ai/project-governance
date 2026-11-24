@@ -1,31 +1,34 @@
 <!-- SPDX-FileCopyrightText: 2026 Libre AI contributors -->
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-Verdict: approve-with-reservations
+Verdict: approve
 
 # `unmaintained = "all"` écrit dans la politique de base : dossier de mesure
 
 **Date :** 2026-11-24
 **Objet :** la pull request qui ajoute `unmaintained = "all"` à la section `[advisories]` de `deny.toml` et de `crates/ecosystem-engine/deny.toml`, sans changer la version de cargo-deny.
 **Nature :** dossier de revue d'une pull request écrite par un agent. Il rend compte de ce que l'auteur a mesuré et de la passe qui a examiné la pull request ; il n'est pas un arbitrage du propriétaire, et aucun agent n'en écrit.
-**Rôle :** une passe de revue, faite en lecture seule par un sous-agent à contexte neuf, distinct de l'auteur. Ce dossier est tenu par l'auteur, qui y reporte le verdict et les constats que la passe lui a rendus.
+**Rôle :** deux passes de revue, chacune faite en lecture seule par un sous-agent à contexte neuf, distinct de l'auteur. Ce dossier est tenu par l'auteur, qui y reporte le verdict et les constats que chaque passe lui a rendus.
 
-## La passe
+## Les passes
 
 | Passe | Commit relu | Base (`git merge-base`) | Verdict |
 | --- | --- | --- | --- |
 | 1 | `8ddbcb307537507ed261677b440a5e33fb8ed2c5` | `18e0a468527310590db2f49da15ba697250472a7` | approuvé avec réserves : un constat mineur |
+| 2 | `67f0b5ccc39cd25b42ee56a2cdf030d279b695fa` | `e8dc16550f9147ff3e2d59f8d7ced0fd143009ee` | approuvé : aucun constat |
 
-Le commit qui traite ce constat et met ce dossier à jour, ainsi que la fusion de la branche servie qui le précède, sont postérieurs à la passe. **Aucune passe ne les a relus.**
+La passe 2 a relu le commit qui traite le constat de la passe 1. Le commit qui inscrit la passe 2 dans ce dossier, et la fusion de la branche servie qui le précède, ne changent que ce dossier ; **aucune passe ne les a relus.**
 
-## Constat de la passe, et sa suite
+## Constat de la passe 1, et sa suite
 
 | Gravité | Constat | Suite |
 | --- | --- | --- |
-| minor | Le commentaire ajouté dans les deux `deny.toml` disait que la ligne garde le rapport d'avis « on the whole graph ». Ce n'est vrai que pour `unmaintained` : `unsound` vaut `workspace` par défaut sous les deux versions, et la politique ne l'écrit pas. | Corrigé : le commentaire se borne à `unmaintained` et dit que `unsound` reste à son défaut. Vérifié par l'auteur dans `src/advisories/cfg.rs` aux tags 0.19.5 (lignes 107-108 et 283-284) et 0.22.0 (lignes 288-289 et 447-448). Non relu. |
+| minor | Le commentaire ajouté dans les deux `deny.toml` disait que la ligne garde le rapport d'avis « on the whole graph ». Ce n'est vrai que pour `unmaintained` : `unsound` vaut `workspace` par défaut sous les deux versions, et la politique ne l'écrit pas. | Corrigé : le commentaire se borne à `unmaintained` et dit que `unsound` reste à son défaut. Vérifié par l'auteur dans `src/advisories/cfg.rs` aux tags 0.19.5 (lignes 107-108 et 283-284) et 0.22.0 (lignes 288-289 et 447-448). Relu par la passe 2, sans constat. |
 
-Aucun constat `blocking` ni `major`.
+Aucun constat `blocking` ni `major` dans l'une ou l'autre passe.
 
-## Ce que la passe a rejoué
+## Ce que la passe 1 a rejoué
+
+Ce que la passe 2 a rejoué n'a pas été transmis à l'auteur.
 
 - L'empreinte de l'archive 0.19.5 `aarch64-apple-darwin`, égale à celle de l'API des releases.
 - Sur ce dépôt, sous 0.19.5 : sorties identiques à l'octet avec et sans la ligne.
@@ -85,7 +88,7 @@ Second relevé, avec le fichier `deny.toml` de cette pull request passé tel que
 
 ## Non relu, non prouvé
 
-- Le commit de correction et cette mise à jour du dossier n'ont été relus par aucune passe.
+- L'inscription de la passe 2 dans ce dossier n'a été relue par aucune passe.
 - Les 14 graphes autres que ce dépôt et `artifact-verification`, et les 56 exécutions du second relevé, n'ont été mesurés que par l'auteur.
 - Les mesures viennent des binaires macOS arm64 ; la CI exécute le binaire Linux x64 de la même release. L'égalité de comportement entre les deux est supposée, pas mesurée.
 - Les dépôts privés de l'organisation n'ont pas été lus.
