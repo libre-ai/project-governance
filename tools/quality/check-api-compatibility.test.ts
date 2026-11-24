@@ -487,6 +487,101 @@ describe("verdicts read from the tool", () => {
     expect(last(outcome)).toContain("version not incremented");
   });
 
+  // `Bun.semver.order` reads a range as a version on the canary pinned in toolchains/bun.json
+  // and throws on it on Bun 1.4.5: the gate refuses the text before ordering anything.
+  test.each([
+    "^1.1.8",
+    "~1.1.8",
+    "1.x",
+    "1.0",
+    "*",
+    "latest",
+    "1.0.0-01",
+  ])("a baseline that declares %p is no readable version: 18, the tool is never called", async (declared) => {
+    const outcome = await gate({
+      repository: taggedThenMoved("libre-ai-engine-v1.0.0", declared),
+    });
+    expect(outcome.code).toBe(18);
+    expect(outcome.code).toBe(EXIT.crateAbsentFromBaseline);
+    expect(last(outcome)).toBe(
+      `crate ${CRATE} declares no readable version in baseline libre-ai-engine-v1.0.0`,
+    );
+    expect(outcome.calls).toEqual([]);
+  });
+
+  describe("a baseline that inherits its version from the workspace", () => {
+    const inheriting = (workspaceVersion: string): string => {
+      const repository = repositoryAt("inherited");
+      commit(repository, {
+        "Cargo.toml": `[workspace]\nmembers = ["crates/a"]\n\n[workspace.package]\nversion = "${workspaceVersion}"\n`,
+        "crates/a/Cargo.toml": `[package]\nname = "${CRATE}"\nversion.workspace = true\nedition = "2021"\n`,
+        "crates/a/src/lib.rs": "pub fn kept() {}\n",
+      });
+      git(repository, "tag", "libre-ai-engine-v1.0.0");
+      commit(repository, { "crates/a/src/lib.rs": "pub fn kept() {}\npub fn added() {}\n" });
+      return repository;
+    };
+
+    test("a version is read from the workspace table", async () => {
+      const outcome = await gate({ repository: inheriting("1.0.0") });
+      expect(outcome.code).toBe(0);
+      expect(header(outcome).baseline).toBe("libre-ai-engine-v1.0.0");
+    });
+
+    test("a range there is no readable version: 18", async () => {
+      const outcome = await gate({ repository: inheriting("^1.0.0") });
+      expect(outcome.code).toBe(18);
+      expect(last(outcome)).toContain("declares no readable version in baseline");
+      expect(outcome.calls).toEqual([]);
+    });
+  });
+
+  test.each([
+    "^1.2.0",
+    "1.x",
+    "1.2",
+    "latest",
+    "",
+  ])("a crate that declares %p is no version: 19, before any tag is read", async (declared) => {
+    const repository = taggedThenMoved("libre-ai-engine-v1.0.0");
+    const outcome = await gate({ repository, packages: packagesOf(repository, declared) });
+    expect(outcome.code).toBe(19);
+    expect(outcome.code).toBe(EXIT.unreadableRepository);
+    expect(last(outcome)).toBe(
+      `unreadable repository: ${CRATE} declares version '${declared}', which is not a version`,
+    );
+    expect(outcome.calls).toEqual([]);
+  });
+
+  // semver.org item 10: build metadata is ignored in precedence, so 1.0.0 is no increment over
+  // 1.0.0+a-b. The pinned canary reads the hyphen of the build as a pre-release (1.0.0+a-b below
+  // 1.0.0, so a "major release" of nothing), and Bun 1.4.5 reads the two as equal.
+  test.each([
+    "1.0.0+a-b",
+    "1.0.0+build-1",
+    "1.0.0+001",
+  ])("a baseline at %p and a crate at 1.0.0 are the same version: 16", async (declared) => {
+    const repository = taggedThenMoved("libre-ai-engine-v1.0.0", declared);
+    const outcome = await gate({
+      repository,
+      tool: BREAK,
+      packages: packagesOf(repository, "1.0.0"),
+    });
+    expect(outcome.code).toBe(16);
+    expect(last(outcome)).toContain("version not incremented");
+  });
+
+  test("a pre-release with build metadata is a version: ordered below its release", async () => {
+    const repository = taggedThenMoved("libre-ai-engine-v1.0.0", "1.0.0-rc.1+build.5");
+    const outcome = await gate({
+      repository,
+      tool: BREAK,
+      packages: packagesOf(repository, "1.0.0"),
+    });
+    expect(outcome.code).toBe(14);
+    expect(last(outcome)).toContain("API break");
+  });
+
   // The real tool reports breaks only within a compatibility class (a minor
   // or patch increment): 1.0.0 -> 1.1.0 with a function removed.
   test("a break with a minor increment over the baseline: 14", async () => {

@@ -28,6 +28,7 @@
  */
 
 import { concludeGate, GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { buildIndex } from "./build-index";
 import { fetchLiveRepositories, ORGANIZATION } from "./check-inventory-drift";
 import { RETRY_DELAYS_MS } from "./github-fleet";
@@ -48,12 +49,9 @@ export type Expectation = "present-unarchived" | "present-archived" | "absent";
 const MANIFEST_SOURCE = "ecosystem/LEGACY-MANIFEST.yaml";
 const LEGACY_PREFIX = "legacy.";
 
-// The pinned @types/bun does not declare Bun.YAML yet (same cast as build-index.ts).
-const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
-
 /** Parse the manifest strictly: a malformed entry throws, it is never skipped. */
 export function parseLegacyManifest(yamlText: string): LegacyEntry[] {
-  const document = yamlApi.parse(yamlText) as { repositories?: unknown } | null;
+  const document = parseYaml(yamlText) as { repositories?: unknown } | null;
   const repositories = document?.repositories;
   if (!Array.isArray(repositories)) {
     throw new Error(`${MANIFEST_SOURCE}: expected a repositories sequence`);

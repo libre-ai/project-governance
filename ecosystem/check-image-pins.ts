@@ -43,6 +43,7 @@
  * No workflow calls this gate and `bun run check` does not include it.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import { parseRegistry, type RegistryEntry } from "./check-context-conformance";
 import { exemption, type FleetFileReader, readRepositoryFiles } from "./fleet-tree";
 
@@ -203,7 +204,7 @@ export function scanComposeFile(text: string): ImageScan {
   }));
   let parsed: unknown;
   try {
-    parsed = Bun.YAML.parse(text);
+    parsed = parseYaml(text);
   } catch {
     // The parser's message can quote the file; only the fact is reported.
     return { references, unreadable: "YAML parse failed" };

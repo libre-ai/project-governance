@@ -27,6 +27,7 @@
  */
 
 import { GateReport } from "../tools/quality/gate-report";
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 
 /** A served branch untouched for strictly more than this many days is dormant. */
 export const DORMANT_AFTER_DAYS = 90;
@@ -186,7 +187,7 @@ const exceptionKey = (repository: string, kind: StalenessKind, number?: number):
 
 /** The exception register; a malformed entry throws, so the gate never runs on half a register. */
 export function parseStalenessExceptions(yamlText: string): StalenessException[] {
-  const document: unknown = Bun.YAML.parse(yamlText);
+  const document: unknown = parseYaml(yamlText);
   if (!isRecord(document) || document.schema_version !== STALENESS_EXCEPTIONS_SCHEMA_VERSION) {
     throw new Error(
       `${EXCEPTIONS_FILE}: schema_version must be ${STALENESS_EXCEPTIONS_SCHEMA_VERSION}`,

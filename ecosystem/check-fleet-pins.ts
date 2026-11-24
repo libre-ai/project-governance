@@ -71,6 +71,7 @@
  *     is not compared to anything.
  */
 
+import { parseYaml } from "../tools/quality/yaml-text-guard";
 import {
   buildIndex,
   type InventoryEntry,
@@ -1000,7 +1001,7 @@ export function selectFleetPinTargets(
 }
 
 if (import.meta.main) {
-  const register = Bun.YAML.parse(
+  const register = parseYaml(
     await Bun.file(new URL("fleet-pins.v1.yaml", import.meta.url)).text(),
   ) as { readonly generations: ReadonlyArray<{ readonly sha: string }> };
   // Oldest first, as declared — auditRepository measures age against this order.

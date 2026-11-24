@@ -43,6 +43,7 @@ import type { PublicBrandProjection } from "../../brand/build-public-projection"
 import { parseFleet } from "../../ecosystem/check-fleet-presentation";
 import { STATUS_SECTION_BEGIN, STATUS_SECTION_END } from "../../ecosystem/project-cards";
 import { buildFleetStatus, type FleetStatus } from "../../ecosystem/render-fleet-status";
+import { parseYaml } from "../quality/yaml-text-guard";
 import {
   BRAND_INTRO_BEGIN,
   BRAND_INTRO_END,
@@ -184,7 +185,6 @@ export interface LiveStateFailure {
 export async function readLiveState(): Promise<LiveState | LiveStateFailure> {
   const unreadable: string[] = [];
   const fleet = parseFleet(await Bun.file("ecosystem/repositories.v1.yaml").text());
-  const yamlApi = (Bun as unknown as { YAML: { parse(text: string): unknown } }).YAML;
   const cards: unknown[] = [];
   for (const entry of fleet) {
     if (entry.card === undefined) continue;
@@ -193,7 +193,7 @@ export async function readLiveState(): Promise<LiveState | LiveStateFailure> {
       unreadable.push(`${entry.repository}: declared card ${entry.card} is unreadable at main`);
       continue;
     }
-    cards.push(yamlApi.parse(text));
+    cards.push(parseYaml(text));
   }
 
   const migrationText = fetchFromGitHub("libre-ai/libre-ai", "ecosystem/migration-index.v1.yaml");
