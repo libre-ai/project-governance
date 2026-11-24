@@ -362,3 +362,49 @@ generations:
       limit: no pin turns red, and every consumer still on 75d6ea08 must
       move before another generation is declared. No generation is retired
       here.
+  - sha: 18e0a468527310590db2f49da15ba697250472a7
+    added_on: 2026-11-24
+    note: >-
+      Three toolchain pins move and one composition target loses its browser
+      gate; the composition manifest is unchanged from a00daec8 (`git diff
+      a00daec8 18e0a468 -- .github/composition/manifest.json` is empty), so
+      every composed ref is the one a00daec8 declared. osv-scanner 2.7.1
+      replaces 2.7.0 (#303: toolchains/osv-scanner.json and the version
+      install-toolchains.sh expects, read by validate-composition.yml for
+      every Bun target). cargo-audit 0.23.0 replaces 0.22.1 in
+      reusable-dependency-policy.yml (#305): its linux-musl archive is
+      digest-pinned and was extracted, but the binary has been executed by
+      nobody, and its download, digest check and `cargo-audit --version` are
+      blocking steps; the first execution is the first consumer pull request
+      that pins this generation and calls that template. cargo-llvm-cov
+      0.9.2 replaces 0.8.7 in validate-composition.yml (#306), in a step
+      that runs for the target artifact-verification only, and `cargo
+      install cargo-llvm-cov --version 0.9.2 --locked` has likewise run
+      nowhere: its first run is artifact-verification's own bump. The
+      composition no longer asks personal-knowledge-workspace for a browser
+      gate (#293: check-products.py refuses e2e for it and the two browser
+      steps of validate-composition.yml no longer list it), after the owner
+      retired its Notebook app on 2026-11-23. The context-hygiene check
+      (reusable-context-hygiene.yml and tools/quality/check-context-hygiene.sh)
+      loses the file exemption of the notebook-core-v2 Gate A reports, a
+      path no served branch of the organisation holds. The composition
+      tools drop inherited GIT_* variables from their git children, and
+      run-composition.py gains a read-only `verify` phase the workflow does
+      not call. The other six reusable templates and bun.lock are
+      unchanged; package.json gains scripts and no dependency. The
+      toolchain-freshness check (#301) runs from this repository's own
+      workflows, not from a consumer pin. Generation coherence is replayed
+      by generation-coherence.yml on the pull request that adds this entry;
+      the local replay could not reach the forge (the tool keeps an
+      allow-listed environment, which drops the proxy of the sandbox it ran
+      in), and the five gate files it compares are identical between this
+      commit and the composed governance d94081cc (`git diff --stat` is
+      empty). Grace window, measured by `bun tools/fleet/bump-generation.ts
+      --to 18e0a468 --public-only` before this declaration: 16 consumers on
+      a00daec8 plan a bump, all inside the fleet-bump class; signalement is
+      refused for surfaces that disagree (a00daec8 on its pins, 75d6ea08 in
+      three prose links); 2 repositories without a pin surface, 0
+      unreadable, product-research excluded as private. With this
+      declaration a00daec8 is one generation behind and 5f7742d two, the
+      grace limit, with no consumer on it: no pin turns red. No generation
+      is retired here.
