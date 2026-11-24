@@ -63,9 +63,12 @@ CARGO_DENY_VERSION = '0.22.0'
 # beside it. A generation whose composed ref still declares the previous
 # version must therefore install that one: refusing it fails every consumer at
 # this step, installing the current one fails the composed gate on its digest.
-# Remove once manifest.json composes a project-governance that declares
-# CARGO_DENY_VERSION.
+# Set it to None once manifest.json composes a project-governance that
+# declares CARGO_DENY_VERSION: check-composed-toolchain.py reads both lines
+# and the composed declaration, and fails while the tolerance outlives its
+# reason (or while the composed declaration is one this installer refuses).
 CARGO_DENY_PREVIOUS_VERSION = '0.19.5'
+CARGO_DENY_INSTALLABLE_VERSIONS = tuple(v for v in (CARGO_DENY_VERSION, CARGO_DENY_PREVIOUS_VERSION) if v is not None)
 CARGO_DENY_TRIPLE = 'x86_64-unknown-linux-musl'
 
 def validate_cargo_deny(policy):
@@ -74,7 +77,7 @@ def validate_cargo_deny(policy):
     # composition must install exactly what toolchains/cargo-deny.json pins.
     try:
         version = policy['version']
-        if policy['tool'] != 'cargo-deny' or version not in (CARGO_DENY_VERSION, CARGO_DENY_PREVIOUS_VERSION):
+        if policy['tool'] != 'cargo-deny' or version not in CARGO_DENY_INSTALLABLE_VERSIONS:
             raise ValueError('Unexpected cargo-deny version')
         d = policy['platforms']['linux-x64']
         stem = 'cargo-deny-' + version + '-' + CARGO_DENY_TRIPLE

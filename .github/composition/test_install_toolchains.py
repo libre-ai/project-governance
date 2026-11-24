@@ -47,6 +47,14 @@ class InstallerTests(unittest.TestCase):
    stem='cargo-deny-'+version+'-x86_64-unknown-linux-musl'
    return {'tool':'cargo-deny','version':version,'platforms':{'linux-x64':{'triple':'x86_64-unknown-linux-musl','archiveUrl':'https://github.com/EmbarkStudios/cargo-deny/releases/download/'+version+'/'+stem+'.tar.gz','archiveSha256':'a'*64,'executableRelativePath':stem+'/cargo-deny','executableSha256':'b'*64}}}
   # manifest.json composes a project-governance that trails this tooling and still declares 0.19.5.
+  # The accepted set is exactly these two: a sample of refused versions cannot show that no third one is admitted.
+  self.assertEqual(self.ns['CARGO_DENY_PREVIOUS_VERSION'],'0.19.5')
+  self.assertEqual(sorted(self.ns['CARGO_DENY_INSTALLABLE_VERSIONS']),sorted([self.ns['CARGO_DENY_VERSION'],'0.19.5']))
+  # ... and it is the set the validation reads: with another set in its place, that set alone is accepted.
+  with patch.dict(self.ns,{'CARGO_DENY_INSTALLABLE_VERSIONS':('1.2.3',)}):
+   self.assertEqual(self.ns['validate_cargo_deny'](declaration('1.2.3'))['version'],'1.2.3')
+   for refused in ['0.19.5',self.ns['CARGO_DENY_VERSION']]:
+    with self.assertRaisesRegex(ValueError,'^Unexpected cargo-deny version$'):self.ns['validate_cargo_deny'](declaration(refused))
   for version in ['0.19.5',self.ns['CARGO_DENY_VERSION']]:
    accepted=self.ns['validate_cargo_deny'](declaration(version))
    self.assertEqual(accepted['version'],version)
@@ -57,6 +65,35 @@ class InstallerTests(unittest.TestCase):
   # A declaration of one version carrying the archive of the other is refused.
   mixed=declaration('0.19.5');mixed['platforms']['linux-x64']['archiveUrl']=declaration(self.ns['CARGO_DENY_VERSION'])['platforms']['linux-x64']['archiveUrl']
   with self.assertRaisesRegex(ValueError,'^Unexpected cargo-deny archive URL$'):self.ns['validate_cargo_deny'](mixed)
+ def test_activation_with_the_current_cargo_deny_version(self):
+  # Same end-to-end path as the test below, with a declaration of the CURRENT version:
+  # what a generation installs once manifest.json composes a project-governance that declares it.
+  current=self.ns['CARGO_DENY_VERSION']
+  with tempfile.TemporaryDirectory() as d:
+   root=pathlib.Path(d).resolve();z=root/'fixture.zip';t=root/'fixture.tar.xz';g=root/'fixture.tar.gz';o=root/'osv-scanner_linux_amd64';o.write_bytes(b'osv')
+   with zipfile.ZipFile(z,'w') as out:out.writestr('bun-linux-x64/bun',b'bun')
+   with tarfile.open(t,'w:xz') as out:
+    entry=tarfile.TarInfo('node-v26.5.0-linux-x64/bin/node');entry.size=4;out.addfile(entry,io.BytesIO(b'node'))
+   stem='cargo-deny-'+current+'-x86_64-unknown-linux-musl'
+   with tarfile.open(g,'w:gz') as out:
+    entry=tarfile.TarInfo(stem+'/cargo-deny');entry.size=4;out.addfile(entry,io.BytesIO(b'deny'))
+   digest=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+   bp=root/'bun.json';np=root/'node.json';dp=root/'cargo-deny.json';op=root/'osv-scanner.json';gp=root/'path';ge=root/'env';gp.write_text('');ge.write_text('')
+   bp.write_text(json.dumps({'revision':'1.4.0-canary.1+57f349f63','assets':{'linux-x64':{'sha256':digest(z)}},'durableRelease':{'linuxX64Asset':'https://github.com/libre-ai/project-governance/releases/download/toolchain-bun-1.4.0-canary.1-57f349f63/bun-linux-x64.zip'}}))
+   np.write_text(json.dumps({'node':{'version':'26.5.0','platforms':{'linux-x64':{'archiveUrl':'https://nodejs.org/dist/v26.5.0/node-v26.5.0-linux-x64.tar.xz','archiveSha256':digest(t),'executableSha256':hashlib.sha256(b'node').hexdigest(),'executableRelativePath':'bin/node'}}}}))
+   dp.write_text(json.dumps({'tool':'cargo-deny','version':current,'platforms':{'linux-x64':{'triple':'x86_64-unknown-linux-musl','archiveUrl':'https://github.com/EmbarkStudios/cargo-deny/releases/download/'+current+'/'+stem+'.tar.gz','archiveSha256':digest(g),'executableRelativePath':stem+'/cargo-deny','executableSha256':hashlib.sha256(b'deny').hexdigest()}}}))
+   op.write_text(json.dumps({'tool':'osv-scanner','version':'2.7.1','platforms':{'linux-x64':{'binaryName':'osv-scanner_linux_amd64','binaryUrl':'https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_linux_amd64','binarySha256':digest(o)}}}))
+   def download(args,**kwargs):
+    url=args[-1];shutil.copyfile(z if url.endswith('.zip') else g if url.endswith('.tar.gz') else o if url.endswith('_linux_amd64') else t,args[args.index('--output')+1])
+   outputs={'bun':b'1.4.0-canary.1+57f349f63','node':b'v26.5.0','cargo-deny':b'cargo-deny 0.19.5','osv-scanner':b'osv-scanner version: 2.7.1\nosv-scalibr version: 0.5.3\ncommit: fixture\n'}
+   version=lambda args,**kwargs:outputs[pathlib.Path(args[0]).name]
+   with patch.dict(os.environ,{'RUNNER_TEMP':str(root),'GITHUB_PATH':str(gp),'GITHUB_ENV':str(ge)}),patch('sys.argv',['script',str(bp),str(np),str(dp),str(op)]),patch('platform.system',return_value='Linux'),patch('platform.machine',return_value='x86_64'),patch('subprocess.run',side_effect=download),patch('subprocess.check_output',side_effect=version):
+    # A binary reporting the previous version under a declaration of the current one is refused.
+    with self.assertRaises(ValueError):self.ns['main']()
+    self.assertEqual(gp.read_text(),'');self.assertEqual(ge.read_text(),'')
+    outputs['cargo-deny']=('cargo-deny '+current).encode();self.ns['main']()
+   self.assertIn('LIBRE_AI_CARGO_DENY='+str(pathlib.Path(gp.read_text().strip())/'cargo-deny')+'\n',ge.read_text())
+   self.assertEqual((pathlib.Path(gp.read_text().strip())/'cargo-deny').read_bytes(),b'deny')
  def test_osv_scanner_policy_is_the_pinned_release(self):
   root=SCRIPT.parents[2]
   osv=json.loads((root/'toolchains/osv-scanner.json').read_text())
