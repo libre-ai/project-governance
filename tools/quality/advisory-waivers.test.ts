@@ -4,6 +4,7 @@ import {
   type DefectCode,
   dayNumber,
   evaluateWaivers,
+  FIXTURE_MARKER,
   readAuditCommandSource,
   readCargoSource,
   readMetadata,
@@ -425,6 +426,19 @@ describe("a cargo-deny file that leaves `unmaintained` to the default", () => {
 
   test("an absent `unsound` is not reported: its default is the same under both versions", () => {
     expect(defects('[advisories]\nunmaintained = "all"\n')).toEqual([]);
+  });
+
+  test("the fixture marker does not exempt a file named deny.toml, wherever it lives", () => {
+    // The marker is read in files no reader claims by name. A file cargo-deny
+    // would read is a source whatever its directory says: a fixture that must
+    // not be judged carries another name (`deny.toml.fixture`).
+    const text = `# ${FIXTURE_MARKER}: a fixture\n[advisories]\nyanked = "deny"\n`;
+    for (const file of ["deny.toml", "tools/fleet/fixtures/x/deny.toml"]) {
+      const reading = readWaiverFile(file, text);
+      expect(reading?.skipped).toBeNull();
+      expect(reading?.implicitScopes).toEqual([{ key: "unmaintained", line: 2 }]);
+    }
+    expect(readWaiverFile("tools/fleet/fixtures/x/deny.toml.fixture", text)).toBeNull();
   });
 });
 

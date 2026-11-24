@@ -92,8 +92,14 @@ def judge(current, previous, composed, where):
     return failures
 
 
-def read_at(repository, ref, path, composed_paths):
-    """The text of `path` at `ref` of `repository`, from a shallow fetch of that exact commit."""
+def read_at(repository, ref, path, git=None):
+    """The text of `path` at `ref` of `repository`, from a shallow fetch of that exact commit.
+
+    `git(args)` runs git and returns the completed process; injected by the tests,
+    it defaults to the runner of check-composed-paths.py (no inherited GIT_* variable).
+    """
+    if git is None:
+        git = load_composed_paths()._git
     with tempfile.TemporaryDirectory(prefix="composed-toolchain-") as scratch:
         git_dir = str(Path(scratch) / "repo.git")
         for args in (
@@ -102,23 +108,24 @@ def read_at(repository, ref, path, composed_paths):
             ["--git-dir", git_dir, "fetch", "--quiet", "--no-tags", "--depth=1", "origin", ref],
             ["--git-dir", git_dir, "show", f"{ref}:{path}"],
         ):
-            done = composed_paths._git(args)
+            done = git(args)
             if done.returncode != 0:
                 lines = done.stderr.strip().splitlines()
                 raise ReadError(f"{repository}@{ref[:12]}: git {args[2] if args[0] == '--git-dir' else args[0]}: {lines[-1] if lines else 'refused'}")
         return done.stdout
 
 
-def main():
+def main(argv=None, read=read_at):
+    """`read(repository, ref, path)` returns the text of the composed declaration; injected by the tests."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=HERE / "manifest.json")
     parser.add_argument("--installer", type=Path, default=HERE / "install-toolchains.sh")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         row = json.loads(args.manifest.read_text(encoding="utf-8"))["repositories"]["project-governance"]
         repository, ref = row["repository"], row["ref"]
         current, previous = installer_versions(args.installer.read_text(encoding="utf-8"))
-        composed = declared_version(read_at(repository, ref, DECLARATION, load_composed_paths()))
+        composed = declared_version(read(repository, ref, DECLARATION))
     except (OSError, ValueError, KeyError, TypeError, ReadError) as error:
         print(f"Composed toolchain: unreadable input: {error}", file=sys.stderr)
         return 1

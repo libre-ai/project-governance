@@ -127,7 +127,11 @@ than as a script each repository copies.
   an argument array in a script — fails as unparseable. A test fixture or a
   document that only describes such flags says so with the marker
   `allow-audit-flag-fixture` and is listed by name on every run; the marker
-  is not read in a workflow, action, manifest, script, Makefile or justfile.
+  is not read in a workflow, action, manifest, script, Makefile or justfile,
+  nor in a file named as a cargo-deny, cargo-audit or osv-scanner
+  configuration: a `deny.toml` under a fixtures directory is judged like any
+  other, `IMPLICIT-SCOPE` included, and a fixture that must not be judged
+  carries another name (`deny.toml.fixture`).
   Each run prints its volume — `N waiver(s) read across I inspected of C
   classified file(s) (S skipped: reasons), K expiring within 30 days` —
   where inspected plus skipped equals classified, and a repository with no

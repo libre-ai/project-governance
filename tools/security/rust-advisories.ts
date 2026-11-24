@@ -27,7 +27,7 @@
 
 import { readFileSync } from "node:fs";
 import { dirname, join, posix } from "node:path";
-import { evaluateWaivers } from "../quality/advisory-waivers";
+import { evaluateWaivers, type ImplicitScope } from "../quality/advisory-waivers";
 import { readRepositoryWaivers } from "../quality/check-advisory-waivers";
 import { countLockedPackages } from "../quality/check-dependency-policy";
 
@@ -228,7 +228,7 @@ function namesFinding(id: string, finding: AdvisoryFinding): boolean {
 export function readCheckoutWaivers(
   root: string,
   today: string,
-): { tracked: string[]; coverage: WaiverCoverage } {
+): { tracked: string[]; coverage: WaiverCoverage; implicitScopes: ImplicitScopeReader } {
   const listing = Bun.spawnSync(["git", "-C", root, "ls-files", "-z"], {
     stdout: "pipe",
     stderr: "pipe",
@@ -258,7 +258,8 @@ export function readCheckoutWaivers(
     const reasons: string[] = [];
     for (const entry of entries) {
       // One entry is judged here. A scope the file leaves implicit is a defect
-      // of the file, reported by the waiver gate; it does not unmake a waiver.
+      // of the file: it does not unmake a waiver, and it is not dropped either
+      // — `implicitScopes` below hands it to `implicitScopeFailures`.
       const evaluation = evaluateWaivers([{ ...reading, entries: [entry], implicitScopes: [] }], {
         today,
         isTrackedFile,
@@ -272,7 +273,59 @@ export function readCheckoutWaivers(
     }
     return { covered: false, reason: reasons.join("; ") };
   };
-  return { tracked, coverage };
+  const implicitScopes: ImplicitScopeReader = (config) =>
+    readings.find((candidate) => candidate.file === config)?.implicitScopes ?? [];
+  return { tracked, coverage, implicitScopes };
+}
+
+/** The advisory scopes the deny.toml `config` leaves to cargo-deny's default, as the waiver gate reads them. */
+export type ImplicitScopeReader = (config: string) => readonly ImplicitScope[];
+
+export interface ImplicitScopeFailure {
+  readonly config: string;
+  readonly note: string;
+}
+
+/**
+ * One failure per deny.toml that governed an examination and leaves an
+ * advisory scope to cargo-deny's default.
+ *
+ * Since cargo-deny 0.22.0 an absent `advisories.unmaintained` means
+ * `"workspace"`: the lockfiles that file governs were examined for
+ * unmaintained crates among direct dependencies only, so "no uncovered
+ * advisory" on them was said of a narrower graph than the one this control
+ * claims. A failure, like every other finding of this report: the periodic
+ * control is the only reader of the whole fleet (the waiver gate reaches a
+ * repository only through its own composition), so a note here would be the
+ * scope narrowing nobody acts on. A lockfile cargo resolves inside an
+ * enclosing workspace was not examined with its file and does not count.
+ */
+export function implicitScopeFailures(
+  examinations: readonly LockExamination[],
+  scopesOf: ImplicitScopeReader,
+): ImplicitScopeFailure[] {
+  const locksByConfig = new Map<string, string[]>();
+  for (const examination of examinations) {
+    if (examination.config === null || examination.shadowed) continue;
+    locksByConfig.set(examination.config, [
+      ...(locksByConfig.get(examination.config) ?? []),
+      examination.lock,
+    ]);
+  }
+  const failures: ImplicitScopeFailure[] = [];
+  for (const [config, locks] of [...locksByConfig].sort(([a], [b]) => a.localeCompare(b))) {
+    const keys = [...new Set(scopesOf(config).map((scope) => scope.key))].sort();
+    if (keys.length === 0) continue;
+    const written = keys.map((key) => `\`${key} = "all"\``).join(", ");
+    failures.push({
+      config,
+      note:
+        `IMPLICIT-SCOPE: does not write advisories.${keys.join(", advisories.")} — cargo-deny read its default, ` +
+        `"workspace", so ${locks.length} Cargo.lock (${locks.sort().join(", ")}) was examined for those advisories ` +
+        `among direct dependencies only; write ${written}`,
+    });
+  }
+  return failures;
 }
 
 export interface DenyRun {
@@ -307,6 +360,8 @@ export interface RustVolume {
   readonly failed: number;
   readonly packages: number;
   readonly advisories: number;
+  /** Governing deny.toml files that leave an advisory scope to cargo-deny's default. */
+  readonly implicitScopes: number;
 }
 
 /**
@@ -323,7 +378,8 @@ export function rustVolumeLine(volume: RustVolume): string {
   return (
     `Rust: ${volume.repositories} repositories with a tracked Cargo.lock, ${volume.declared} Cargo.lock ` +
     `declared = ${volume.examined} examined + ${volume.shadowed} shadowed + ${volume.failed} failed, ` +
-    `${volume.packages} package(s) examined, ${volume.advisories} uncovered advisory(ies)${mismatch}`
+    `${volume.packages} package(s) examined, ${volume.advisories} uncovered advisory(ies), ` +
+    `${volume.implicitScopes} governing deny.toml with an implicit advisory scope${mismatch}`
   );
 }
 
