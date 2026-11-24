@@ -2,7 +2,7 @@
 
 - **Status:** locked package topology; simulation-only `WP-G2-A01` definition reviewed and schedulable
 - **Machine authority:** [`work-packages.v1.json`](work-packages.v1.json)
-- **Schema:** [`contracts/schemas/work-package-plan.v1.schema.json`](../../contracts/schemas/work-package-plan.v1.schema.json)
+- **Schema:** [`contracts/schemas/work-package-plan.v1.schema.json`](https://github.com/libre-ai/schemas-and-contracts/blob/HEAD/contracts/schemas/work-package-plan.v1.schema.json) in `libre-ai/schemas-and-contracts`
 
 G1 defines 27 bounded packages. A package is ready to schedule when its dependencies are merged; `locked` means its repository boundary and acceptance are no longer delegated to an implementation agent.
 
@@ -36,7 +36,7 @@ G1 defines 27 bounded packages. A package is ready to schedule when its dependen
 | `g2-5` | `WP-G2-Q01` | clean-checkout integrated foundation evidence |
 | `g2-6` | `WP-G2-A01` | deterministic agent control core against a fake harness, without OS/runtime capabilities |
 
-The role-separated definition verdicts for `WP-G2-A01` are recorded under [`../reviews/agent-orchestration-wp-g2-a01/`](../reviews/agent-orchestration-wp-g2-a01/); result conformance remains a separate future gate.
+The role-separated definition verdicts for `WP-G2-A01` are recorded in the archived hub, at `libre-ai/libre-ai@ba3761b45901bb2c7f850aaac8c6539e2c407533:docs/reviews/agent-orchestration-wp-g2-a01` (the last hub commit that holds them; they are not in this repository); result conformance remains a separate future gate.
 
 No application reconstruction starts before `WP-G2-Q01`. ADR-0005 does not alter that dependency: it permits only the disabled Notebook product-host slice needed to test the exact Gate B boundary with public fixtures. The canary remains bootstrap-only until `WP-G2-T01` explicitly qualifies a stable Rust-line Bun release. `WP-G2-S01` keeps `notebook-core` as the sole ContextDocument canonicalization authority and creates neither `crates/context` nor an orchestrator inside S01. The separate `WP-G2-A01` may create only a simulation-only control core under its exclusive paths; harness runtime, Pi launch and real Missions execution remain blocked. Practices scoring remains excluded; its WIT stays reserved until a new human-approved package demonstrates a real invariant.
 
